@@ -35,3 +35,5 @@ results/
 test1.log
 *.Zone.Identifier
 *:Zone.Identifier
+
+data/
