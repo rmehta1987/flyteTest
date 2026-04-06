@@ -1,0 +1,103 @@
+# Changelog
+
+This file records milestone-level changes in FLyteTest so repo scope, MCP
+surface changes, and prompt-driven handoff work are easier to track over time.
+
+Guidelines:
+
+- add new entries at the top under `Unreleased` until a milestone is finalized
+- describe what actually changed, not planned work
+- keep scope boundaries honest, especially for deferred post-PASA stages
+- link to prompt or checklist docs when they were part of the milestone handoff
+- use strikethrough for milestone items that were later removed, renamed, or superseded during refactoring, and add a short note explaining what replaced them
+
+Entry template:
+
+```markdown
+## Unreleased
+
+### Milestone name or date
+
+- added:
+  - short factual change
+- changed:
+  - short factual change
+- deferred:
+  - short factual change
+- ~~removed or superseded item~~
+  - replaced by: short explanation
+  - reason: refactor, scope correction, renamed contract, or other concise note
+```
+
+## Unreleased
+
+### BUSCO annotation QC milestone
+
+- added:
+  - implemented the `annotation_qc_busco` workflow for post-repeat-filtering annotation QC
+  - added the BUSCO task family: `busco_assess_proteins` and `collect_busco_results`
+  - added synthetic BUSCO coverage in `tests/test_functional.py`
+  - added a BUSCO milestone handoff prompt in `docs/busco_submission_prompt.md`
+- changed:
+  - advanced the implemented biological scope from repeat-filtered GFF3/protein collection through BUSCO-based annotation QC while keeping EggNOG, AGAT, and submission-prep deferred
+  - updated the registry, compatibility exports, README milestone tables, stage index, and BUSCO tool reference to expose the new QC boundary explicitly
+  - validated the BUSCO workflow with a real repo-local Apptainer runtime and explicit `_odb12` lineage datasets, and updated BUSCO docs to reflect the tested `flyte run` CLI surface and runtime paths
+- deferred:
+  - EggNOG, AGAT, and `table2asn` remain downstream stages outside this milestone
+
+### Repeat filtering and cleanup milestone
+
+- added:
+  - implemented the post-PASA `annotation_repeat_filtering` workflow for RepeatMasker conversion, gffread protein extraction, funannotate overlap filtering, repeat blasting, deterministic removal transforms, and final repeat-free GFF3/protein FASTA collection
+  - added the repeat-filtering task family: `repeatmasker_out_to_bed`, `gffread_proteins`, `funannotate_remove_bad_models`, `remove_overlap_repeat_models`, `funannotate_repeat_blast`, `remove_repeat_blast_hits`, and `collect_repeat_filter_results`
+  - added synthetic repeat-filtering tests plus local RepeatMasker fixture-path coverage in `tests/test_repeat_filtering.py`
+- changed:
+  - advanced the implemented biological scope from PASA post-EVM refinement through repeat filtering and cleanup while keeping the later functional and submission stages deferred
+  - updated the registry, compatibility exports, README milestone tables, tutorial context, and tool references to expose the repeat-filtering boundary explicitly
+  - implemented `trinity_denovo_assemble`, updated `transcript_evidence_generation` to collect both Trinity branches, and removed PASA's external de novo Trinity FASTA requirement in favor of the transcript-evidence bundle
+- deferred:
+  - BUSCO, EggNOG, AGAT, and `table2asn` remain downstream stages outside this milestone
+
+### Documentation and planning
+
+- clarified the active milestone, stop rule, and stage-by-stage notes alignment in `README.md`
+- added tutorial-backed prompt-planning context in `docs/tutorial_context.md`
+- added stage-oriented tool-reference landing pages and prompt starters under `docs/tool_refs/`
+- added refactor milestone tracking and handoff materials in `docs/refactor_completion_checklist.md` and `docs/refactor_submission_prompt.md`
+
+### Codebase structure and workflow coverage
+
+- split the repo into a package layout under `src/flytetest/` with separate task, workflow, type, registry, planning, and server modules
+- implemented deterministic workflow coverage through PASA post-EVM refinement while keeping repeat filtering, BUSCO, EggNOG, AGAT, and `table2asn` deferred
+- preserved the notes-faithful pre-EVM filename contract for `transcripts.gff3`, `predictions.gff3`, and `proteins.gff3`
+
+### MCP showcase
+
+- added a narrow FastMCP stdio server in `src/flytetest/server.py`
+- limited the runnable MCP showcase to:
+  - workflow `ab_initio_annotation_braker3`
+  - task `exonerate_align_chunk`
+- added prompt planning in `src/flytetest/planning.py` for explicit local-path extraction and hard downstream-stage declines
+- added small read-only MCP resources for scope discovery:
+  - `flytetest://scope`
+  - `flytetest://supported-targets`
+  - `flytetest://example-prompts`
+- added a compact additive `result_summary` block to `prompt_and_run` responses for success, decline, and failure cases
+
+### Validation and fixtures
+
+- added synthetic MCP server coverage in `tests/test_server.py`
+- staged lightweight tutorial-derived local fixture files under `data/` for bounded smoke testing
+
+## Prompt Tracking
+
+Current prompt/handoff docs already in the repo:
+
+- `docs/refactor_submission_prompt.md`
+- `docs/tutorial_context.md`
+- `docs/tool_refs/stage_index.md`
+
+Future improvement idea:
+
+- add a small prompt archive directory for accepted milestone prompts once the current MCP contract stabilizes
+- add an environment preflight layer that checks for the active interpreter, `mcp`, `flyte`, and other required tools instead of assuming they are already available

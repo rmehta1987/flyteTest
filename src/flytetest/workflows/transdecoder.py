@@ -1,3 +1,9 @@
+"""TransDecoder workflow entrypoint for PASA-derived coding prediction.
+
+This module resolves PASA assemblies from the current results bundle, runs the
+TransDecoder boundary, and collects stable downstream-ready outputs.
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -22,6 +28,7 @@ def transdecoder_from_pasa(
     transdecoder_min_protein_length: int = 100,
     transdecoder_genome_orf_script: str = "cdna_alignment_orf_to_genome_orf.pl",
 ) -> Dir:
+    """Run the current TransDecoder stage against PASA-derived assemblies."""
     pasa_results_path = require_path(Path(pasa_results.download_sync()), "PASA results directory")
     pasa_dir = require_path(
         pasa_results_path / "pasa",

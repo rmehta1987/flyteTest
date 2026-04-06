@@ -1,3 +1,9 @@
+"""Composed RNA-seq QC and quantification entrypoint for FLyteTest.
+
+This module preserves the original FastQC plus Salmon stage while broader
+annotation workflows are added alongside it.
+"""
+
 from __future__ import annotations
 
 from flyte.io import Dir, File
@@ -17,6 +23,7 @@ def rnaseq_qc_quant(
     salmon_sif: str = "",
     fastqc_sif: str = "",
 ) -> Dir:
+    """Run the current FastQC plus Salmon workflow and collect its outputs."""
     index = salmon_index(ref=ref, salmon_sif=salmon_sif)
     qc = fastqc(left=left, right=right, fastqc_sif=fastqc_sif)
     quant = salmon_quant(index=index, left=left, right=right, salmon_sif=salmon_sif)

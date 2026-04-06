@@ -29,6 +29,7 @@ sudo apt-get install -y \
   stringtie \
   gmap \
   minimap2 \
+  exonerate \
   transdecoder \
   sqlite3 \
   bioperl \
@@ -77,6 +78,7 @@ Then verify:
   which stringtie
   which gmap
   which minimap2
+  which exonerate
   which blat
   which TransDecoder.LongOrfs
   which accession_extractor.pl
@@ -90,5 +92,10 @@ bundled PASA instructions under:
 Later, for PASA workflow runs, you will also need:
   - a UniVec FASTA
   - a PASA alignAssembly template config file
+
+Later, for BRAKER3 workflow runs, this helper does not install BRAKER3 itself.
+Provide either:
+  - an existing local BRAKER3 installation with `braker.pl` on PATH
+  - or a container image passed via `braker3_sif`
 
 EOF

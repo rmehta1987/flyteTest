@@ -216,7 +216,7 @@ class StringTieAssemblyResult:
 
 @dataclass(frozen=True, slots=True)
 class TrinityDeNovoTranscriptAsset:
-    """External or future de novo Trinity transcript FASTA.
+    """De novo Trinity transcript FASTA.
 
     Future Flyte mapping:
     - `fasta_path` -> `flyte.io.File`
@@ -298,6 +298,69 @@ class PasaAlignmentAssemblyResult:
 
 
 @dataclass(frozen=True, slots=True)
+class PasaGeneModelUpdateInputBundleAsset:
+    """Staged PASA post-EVM refinement inputs rooted in PASA and EVM bundles.
+
+    Future Flyte mapping:
+    - `workspace_dir` -> `flyte.io.Dir`
+    - key config, genome, transcript, and annotation members remain explicit files
+    """
+
+    workspace_dir: Path
+    reference_genome_fasta_path: Path
+    current_annotations_gff3_path: Path
+    cleaned_transcripts_fasta_path: Path
+    align_config_path: Path
+    annot_compare_config_path: Path
+    database_path: Path
+    source_pasa_results_dir: Path | None = None
+    source_evm_results_dir: Path | None = None
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class PasaGeneModelUpdateRoundResult:
+    """One PASA annotation-refinement round after loading current annotations.
+
+    Future Flyte mapping:
+    - `workspace_dir` -> `flyte.io.Dir`
+    - updated GFF3 and BED members remain explicit file outputs
+    """
+
+    workspace_dir: Path
+    round_index: int
+    loaded_annotations_gff3_path: Path
+    updated_gff3_path: Path
+    updated_bed_path: Path | None = None
+    current_annotations_gff3_path: Path | None = None
+    input_bundle: PasaGeneModelUpdateInputBundleAsset | None = None
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class PasaGeneModelUpdateResultBundle:
+    """Collected PASA post-EVM refinement outputs spanning staged inputs and rounds.
+
+    Future Flyte mapping:
+    - `result_dir` -> `flyte.io.Dir`
+    - final updated GFF3 members remain explicit file outputs
+    """
+
+    result_dir: Path
+    staged_inputs_dir: Path
+    load_round_root: Path
+    update_round_root: Path
+    finalized_dir: Path
+    final_updated_gff3_path: Path
+    final_removed_gff3_path: Path
+    final_sorted_gff3_path: Path
+    manifest_path: Path | None = None
+    staged_inputs: PasaGeneModelUpdateInputBundleAsset | None = None
+    update_rounds: tuple[PasaGeneModelUpdateRoundResult, ...] = field(default_factory=tuple)
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
 class TransDecoderPredictionResult:
     """TransDecoder coding-region prediction outputs derived from PASA assemblies.
 
@@ -317,3 +380,326 @@ class TransDecoderPredictionResult:
     mrna_fasta_path: Path | None = None
     source_pasa: PasaAlignmentAssemblyResult | None = None
     notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class ProteinReferenceDatasetAsset:
+    """Local staged protein evidence inputs for Exonerate alignment.
+
+    Future Flyte mapping:
+    - `staged_dir` -> `flyte.io.Dir`
+    - `combined_fasta_path` -> `flyte.io.File`
+    - `source_fasta_paths` -> tuple of `flyte.io.File` at workflow boundaries
+    """
+
+    staged_dir: Path
+    combined_fasta_path: Path
+    source_fasta_paths: tuple[Path, ...] = field(default_factory=tuple)
+    staged_input_paths: tuple[Path, ...] = field(default_factory=tuple)
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class ChunkedProteinFastaAsset:
+    """One deterministic chunk of a staged protein FASTA dataset.
+
+    Future Flyte mapping:
+    - `chunk_fasta_path` -> `flyte.io.File`
+    - `chunk_dir` -> `flyte.io.Dir` when chunks are grouped as one artifact set
+    """
+
+    chunk_dir: Path
+    chunk_fasta_path: Path
+    chunk_index: int
+    protein_count: int
+    source_dataset: ProteinReferenceDatasetAsset | None = None
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class ExonerateChunkAlignmentResult:
+    """Raw Exonerate alignment output for one protein chunk.
+
+    Future Flyte mapping:
+    - `output_dir` -> `flyte.io.Dir`
+    - `raw_output_path` -> `flyte.io.File`
+    """
+
+    chunk_label: str
+    output_dir: Path
+    protein_chunk_fasta_path: Path
+    raw_output_path: Path
+    model: str = "protein2genome"
+    source_chunk: ChunkedProteinFastaAsset | None = None
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class EvmProteinEvidenceGff3Asset:
+    """Converted protein-evidence GFF3 intended for later EVM input.
+
+    Future Flyte mapping:
+    - `gff3_path` -> `flyte.io.File`
+    """
+
+    chunk_label: str
+    gff3_path: Path
+    source_alignment: ExonerateChunkAlignmentResult | None = None
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class ProteinEvidenceResultBundle:
+    """Collected protein-evidence outputs spanning staging through conversion.
+
+    Future Flyte mapping:
+    - `result_dir` -> `flyte.io.Dir`
+    - final combined files remain explicit file members
+    """
+
+    result_dir: Path
+    combined_protein_fasta_path: Path
+    chunk_dir: Path
+    raw_chunk_root: Path
+    evm_chunk_root: Path
+    concatenated_raw_output_path: Path
+    concatenated_evm_gff3_path: Path
+    reference_genome: ReferenceGenome | None = None
+    staged_dataset: ProteinReferenceDatasetAsset | None = None
+    chunk_assets: tuple[ChunkedProteinFastaAsset, ...] = field(default_factory=tuple)
+    raw_chunk_results: tuple[ExonerateChunkAlignmentResult, ...] = field(default_factory=tuple)
+    converted_chunk_results: tuple[EvmProteinEvidenceGff3Asset, ...] = field(default_factory=tuple)
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class Braker3InputBundleAsset:
+    """Local staged inputs for a BRAKER3 run.
+
+    Future Flyte mapping:
+    - `staged_dir` -> `flyte.io.Dir`
+    - `genome_fasta_path` -> `flyte.io.File`
+    - optional evidence members map to optional `flyte.io.File`
+    """
+
+    staged_dir: Path
+    genome_fasta_path: Path
+    rnaseq_bam_path: Path | None = None
+    protein_fasta_path: Path | None = None
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class Braker3RawRunResultAsset:
+    """Raw BRAKER3 run outputs with resolved `braker.gff3`.
+
+    Future Flyte mapping:
+    - `output_dir` -> `flyte.io.Dir`
+    - `braker_gff3_path` -> `flyte.io.File`
+    """
+
+    output_dir: Path
+    braker_gff3_path: Path
+    species_name: str
+    input_bundle: Braker3InputBundleAsset | None = None
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class Braker3NormalizedGff3Asset:
+    """Deterministically normalized BRAKER3 GFF3 for later EVM use.
+
+    Future Flyte mapping:
+    - `output_dir` -> `flyte.io.Dir`
+    - `normalized_gff3_path` -> `flyte.io.File`
+    """
+
+    output_dir: Path
+    normalized_gff3_path: Path
+    source_run: Braker3RawRunResultAsset | None = None
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class Braker3ResultBundle:
+    """Collected BRAKER3 outputs spanning staging, raw run, and normalization.
+
+    Future Flyte mapping:
+    - `result_dir` -> `flyte.io.Dir`
+    - stable GFF3 members remain explicit file paths
+    """
+
+    result_dir: Path
+    staged_inputs_dir: Path
+    raw_run_dir: Path
+    normalized_dir: Path
+    braker_gff3_path: Path
+    normalized_gff3_path: Path
+    reference_genome: ReferenceGenome | None = None
+    input_bundle: Braker3InputBundleAsset | None = None
+    raw_run: Braker3RawRunResultAsset | None = None
+    normalized_prediction: Braker3NormalizedGff3Asset | None = None
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class EvmTranscriptInputBundleAsset:
+    """Deterministically staged PASA transcript evidence for pre-EVM assembly.
+
+    Future Flyte mapping:
+    - `staged_dir` -> `flyte.io.Dir`
+    - `transcripts_gff3_path` -> `flyte.io.File`
+    """
+
+    staged_dir: Path
+    transcripts_gff3_path: Path
+    source_results_dir: Path | None = None
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class EvmProteinInputBundleAsset:
+    """Deterministically staged protein evidence for pre-EVM assembly.
+
+    Future Flyte mapping:
+    - `staged_dir` -> `flyte.io.Dir`
+    - `proteins_gff3_path` -> `flyte.io.File`
+    """
+
+    staged_dir: Path
+    proteins_gff3_path: Path
+    source_results_dir: Path | None = None
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class EvmPredictionInputBundleAsset:
+    """Deterministically staged prediction evidence for the pre-EVM contract.
+
+    Future Flyte mapping:
+    - `staged_dir` -> `flyte.io.Dir`
+    - `predictions_gff3_path` -> `flyte.io.File`
+    - component GFF3 and reference members remain explicit file outputs
+    """
+
+    staged_dir: Path
+    predictions_gff3_path: Path
+    braker_gff3_path: Path
+    transdecoder_genome_gff3_path: Path
+    reference_genome_fasta_path: Path
+    source_braker3_results_dir: Path | None = None
+    source_transdecoder_results_dir: Path | None = None
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class EvmInputPreparationBundle:
+    """Collected pre-EVM contract outputs spanning all upstream evidence channels.
+
+    Future Flyte mapping:
+    - `result_dir` -> `flyte.io.Dir`
+    - final contract files remain explicit file outputs for downstream EVM execution
+    """
+
+    result_dir: Path
+    reference_genome_fasta_path: Path
+    transcripts_gff3_path: Path
+    predictions_gff3_path: Path
+    proteins_gff3_path: Path
+    transcript_bundle: EvmTranscriptInputBundleAsset | None = None
+    protein_bundle: EvmProteinInputBundleAsset | None = None
+    prediction_bundle: EvmPredictionInputBundleAsset | None = None
+    manifest_path: Path | None = None
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class EvmExecutionInputBundleAsset:
+    """Prepared EVM execution workspace staged from the pre-EVM contract bundle.
+
+    Future Flyte mapping:
+    - `workspace_dir` -> `flyte.io.Dir`
+    - stable evidence and weights members remain explicit file outputs
+    """
+
+    workspace_dir: Path
+    reference_genome_fasta_path: Path
+    transcripts_gff3_path: Path
+    predictions_gff3_path: Path
+    proteins_gff3_path: Path
+    weights_path: Path
+    source_pre_evm_results_dir: Path | None = None
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class EvmPartitionBundleAsset:
+    """Partitioned EVM workspace with a deterministic partition listing.
+
+    Future Flyte mapping:
+    - `workspace_dir` -> `flyte.io.Dir`
+    - `partitions_dir` -> `flyte.io.Dir`
+    - `partition_listing_path` -> `flyte.io.File`
+    """
+
+    workspace_dir: Path
+    partitions_dir: Path
+    partition_listing_path: Path
+    segment_size: int
+    overlap_size: int
+    execution_input_bundle: EvmExecutionInputBundleAsset | None = None
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class EvmCommandSetAsset:
+    """Deterministic EVM command list generated from one partitioned workspace.
+
+    Future Flyte mapping:
+    - `workspace_dir` -> `flyte.io.Dir`
+    - `commands_path` -> `flyte.io.File`
+    """
+
+    workspace_dir: Path
+    commands_path: Path
+    output_file_name: str
+    command_count: int
+    partition_bundle: EvmPartitionBundleAsset | None = None
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class EvmConsensusResultBundle:
+    """Collected EVM execution outputs with stage-level provenance.
+
+    Future Flyte mapping:
+    - `result_dir` -> `flyte.io.Dir`
+    - stable final GFF3 and manifest members remain explicit file outputs
+    """
+
+    result_dir: Path
+    pre_evm_bundle_dir: Path
+    execution_input_dir: Path
+    partition_dir: Path
+    command_dir: Path
+    execution_dir: Path
+    recombined_dir: Path
+    weights_path: Path
+    partition_listing_path: Path
+    commands_path: Path
+    concatenated_gff3_path: Path
+    blank_lines_removed_gff3_path: Path
+    sorted_gff3_path: Path
+    manifest_path: Path | None = None
+    execution_input_bundle: EvmExecutionInputBundleAsset | None = None
+    partition_bundle: EvmPartitionBundleAsset | None = None
+    command_set: EvmCommandSetAsset | None = None
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+# Deprecated aliases kept local for older draft imports.
+EvmTranscriptInputBundle = EvmTranscriptInputBundleAsset
+EvmProteinInputBundle = EvmProteinInputBundleAsset
+EvmAbInitioInputBundleAsset = EvmPredictionInputBundleAsset
+EvmBraker3InputBundle = EvmPredictionInputBundleAsset
+EvmPrepBundle = EvmInputPreparationBundle

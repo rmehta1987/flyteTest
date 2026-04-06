@@ -13,11 +13,12 @@ This file defines how agents and developers should work in the repo.
 
 - Current workflow entrypoint: `flyte_rnaseq_workflow.py`
 - Current implemented scope: RNA-seq QC/quantification, transcript evidence generation, PASA transcript alignment/assembly, and TransDecoder coding prediction from PASA outputs
-- Current target scope from the attached pipeline notes: RNA-seq evidence generation through consensus annotation, post-processing, QC, and submission preparation
+- Current target scope from the working Markdown companion: RNA-seq evidence generation through consensus annotation, post-processing, QC, and submission preparation
+- `README.md` should include a stage-by-stage notes-alignment table, and milestone work should update it whenever a stage changes status
 
 ## Pipeline Source Notes
 
-The attached `Braker3 + Evidence Modeler Annotation Notes.docx.pdf` describes a concrete annotation pipeline with the following major stages:
+The working Markdown companion at `docs/braker3_evm_notes.md` describes a concrete annotation pipeline with the following major stages:
 
 - transcript evidence generation with Trinity, STAR, samtools, and StringTie
 - PASA transcript alignment and assembly refinement
@@ -33,7 +34,7 @@ The attached `Braker3 + Evidence Modeler Annotation Notes.docx.pdf` describes a 
 
 Important constraint:
 
-- the notes clearly use `braker.gff3` as an ab initio input to EVM, but they do not spell out the exact BRAKER3 execution commands in the extracted text
+- the notes clearly use `braker.gff3` as an ab initio input to EVM, but they do not spell out every BRAKER3 execution detail
 - therefore, treat BRAKER3 as a required upstream task family and EVM input source, but do not invent unsupported BRAKER3 substeps without documenting the assumption
 
 ## Core Principles
@@ -172,6 +173,39 @@ src/flytetest/
 - Keep task signatures explicit and typed
 - Keep helper functions deterministic and reusable
 - Return structured artifacts and lightweight summaries where possible
+
+## Local Environment
+
+- the project Python environment lives in `.venv/`
+- prefer `.venv/bin/python`, `.venv/bin/pip`, and `.venv/bin/flyte` instead of assuming global installs
+- when a command depends on project packages or the Flyte CLI, run it through the `.venv` interpreter or executable path
+- do not rely on shell activation state persisting across commands; use explicit `.venv/bin/...` paths in command examples and validation steps
+
+## Code Readability Expectations
+
+- every Python module should start with a short module docstring that explains the file's purpose and pipeline position
+- every top-level function should have a concise docstring, including private helpers when they encode meaningful path resolution, normalization, or pipeline assumptions
+- inline comments should explain non-obvious biological, runtime, or filesystem logic rather than restating simple code
+- when touching an existing file, bring the touched functions and module header closer to this standard
+
+Readable code is part of reproducibility in this repo.
+Future contributors and delegated agents should be able to understand a stage boundary from the file and function docstrings without reconstructing the whole call graph.
+
+## Required Repo-Local Guides
+
+After reading this file and `DESIGN.md`, agents should also read the relevant repo-local guide under `.codex/` before making changes.
+
+Use:
+
+- `.codex/tasks.md` for task-module work in `src/flytetest/tasks/`
+- `.codex/workflows.md` for workflow work in `src/flytetest/workflows/` and `flyte_rnaseq_workflow.py`
+- `.codex/documentation.md` for `README.md`, docs, manifests, and user-facing milestone explanations
+- `.codex/comments.md` for module docstrings, function docstrings, and inline comment/readability work across the codebase
+- `.codex/testing.md` for validation strategy and verification expectations
+- `.codex/code-review.md` when doing review or audit work
+
+If a change spans multiple areas, read all relevant `.codex` guides.
+These guides refine repo workflow and implementation style, but they do not override the biological and architectural constraints in `AGENTS.md` and `DESIGN.md`.
 
 ## Prompt-Driven System Conventions
 

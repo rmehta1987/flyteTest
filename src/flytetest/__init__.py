@@ -1,10 +1,32 @@
+"""Public package exports for FLyteTest.
+
+This module re-exports registry helpers and typed assets so callers can inspect
+the supported pipeline surface from the package root.
+"""
+
 from flytetest.registry import REGISTRY_ENTRIES, get_entry, list_entries
 from flytetest.types import (
+    Braker3InputBundleAsset,
+    Braker3NormalizedGff3Asset,
+    Braker3RawRunResultAsset,
+    Braker3ResultBundle,
     CombinedTrinityTranscriptAsset,
+    ChunkedProteinFastaAsset,
+    EvmInputPreparationBundle,
+    EvmProteinInputBundleAsset,
+    EvmPredictionInputBundleAsset,
+    EvmTranscriptInputBundleAsset,
+    EvmProteinEvidenceGff3Asset,
+    ExonerateChunkAlignmentResult,
     MergedBamAsset,
     PasaAlignmentAssemblyResult,
     PasaCleanedTranscriptAsset,
+    PasaGeneModelUpdateInputBundleAsset,
+    PasaGeneModelUpdateResultBundle,
+    PasaGeneModelUpdateRoundResult,
     PasaSqliteConfigAsset,
+    ProteinEvidenceResultBundle,
+    ProteinReferenceDatasetAsset,
     QcReport,
     ReadPair,
     ReferenceGenome,
@@ -20,11 +42,27 @@ from flytetest.types import (
 )
 
 __all__ = [
+    "Braker3InputBundleAsset",
+    "Braker3NormalizedGff3Asset",
+    "Braker3RawRunResultAsset",
+    "Braker3ResultBundle",
     "CombinedTrinityTranscriptAsset",
+    "ChunkedProteinFastaAsset",
+    "EvmInputPreparationBundle",
+    "EvmProteinInputBundleAsset",
+    "EvmPredictionInputBundleAsset",
+    "EvmTranscriptInputBundleAsset",
+    "EvmProteinEvidenceGff3Asset",
+    "ExonerateChunkAlignmentResult",
     "MergedBamAsset",
     "PasaAlignmentAssemblyResult",
     "PasaCleanedTranscriptAsset",
+    "PasaGeneModelUpdateInputBundleAsset",
+    "PasaGeneModelUpdateResultBundle",
+    "PasaGeneModelUpdateRoundResult",
     "PasaSqliteConfigAsset",
+    "ProteinEvidenceResultBundle",
+    "ProteinReferenceDatasetAsset",
     "QcReport",
     "ReadPair",
     "ReferenceGenome",

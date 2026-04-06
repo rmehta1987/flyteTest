@@ -12,7 +12,7 @@ __pycache__/
 htmlcov/
 
 # Local virtual environments
-flytetest/
+/flytetest/
 .venv/
 venv/
 env/
@@ -29,3 +29,9 @@ results/
 .idea/
 .vscode/
 *~
+
+# Local runtime and artifact files
+.runtime/
+test1.log
+*.Zone.Identifier
+*:Zone.Identifier

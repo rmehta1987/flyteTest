@@ -1,3 +1,10 @@
+"""Transcript-evidence workflow entrypoint for FLyteTest.
+
+This module composes the current notes-ordered transcript branch upstream of
+PASA: de novo Trinity, STAR indexing and alignment, one-BAM merge,
+genome-guided Trinity, StringTie, and stable result collection.
+"""
+
 from __future__ import annotations
 
 from flyte.io import Dir, File
@@ -9,6 +16,7 @@ from flytetest.tasks.transcript_evidence import (
     star_align_sample,
     star_genome_index,
     stringtie_assemble,
+    trinity_denovo_assemble,
     trinity_genome_guided_assemble,
 )
 
@@ -31,6 +39,15 @@ def transcript_evidence_generation(
     genome_guided_max_intron: int = 10000,
     stringtie_threads: int = 4,
 ) -> Dir:
+    """Generate the current single-sample transcript-evidence bundle upstream of PASA."""
+    trinity_denovo = trinity_denovo_assemble(
+        left=left,
+        right=right,
+        sample_id=sample_id,
+        trinity_sif=trinity_sif,
+        trinity_cpu=trinity_cpu,
+        trinity_max_memory_gb=trinity_max_memory_gb,
+    )
     index = star_genome_index(genome=genome, star_sif=star_sif, star_threads=star_threads)
     alignment = star_align_sample(
         index=index,
@@ -60,6 +77,7 @@ def transcript_evidence_generation(
         genome=genome,
         left=left,
         right=right,
+        trinity_denovo=trinity_denovo,
         star_index=index,
         alignment=alignment,
         merged_bam=merged_bam,

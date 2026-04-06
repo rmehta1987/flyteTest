@@ -1,3 +1,9 @@
+"""Quantification tasks for the original FLyteTest RNA-seq workflow.
+
+This module keeps the current Salmon indexing, quantification, and result
+collection boundaries used by the compatibility entrypoint.
+"""
+
 from __future__ import annotations
 
 import json
@@ -13,6 +19,7 @@ from flytetest.config import RESULTS_PREFIX, RESULTS_ROOT, WORKFLOW_NAME, env, r
 
 @env.task
 def salmon_index(ref: File, salmon_sif: str = "") -> Dir:
+    """Build a Salmon index from a transcriptome FASTA."""
     ref_path = require_path(Path(ref.download_sync()), "Reference transcriptome")
     out_dir = Path(tempfile.mkdtemp(prefix="salmon_index_")) / "index"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -32,6 +39,7 @@ def salmon_quant(
     right: File,
     salmon_sif: str = "",
 ) -> Dir:
+    """Quantify one paired-end sample against a prebuilt Salmon index."""
     index_path = require_path(Path(index.download_sync()), "Salmon index directory")
     left_path = require_path(Path(left.download_sync()), "Read 1 FASTQ")
     right_path = require_path(Path(right.download_sync()), "Read 2 FASTQ")
@@ -62,6 +70,7 @@ def salmon_quant(
 
 @env.task
 def collect_results(qc: Dir, quant: Dir) -> Dir:
+    """Copy QC and quantification outputs into a stable manifest-bearing bundle."""
     qc_path = require_path(Path(qc.download_sync()), "FastQC output directory")
     quant_path = require_path(Path(quant.download_sync()), "Salmon quantification directory")
 
