@@ -31,6 +31,8 @@ case "$MODE" in
   index)
     require_file "$HOST_GENOME_FASTA"
     require_dir "$HOST_STAR_INDEX_DIR"
+    echo "STAR index input genome: $HOST_GENOME_FASTA"
+    echo "STAR index output dir: $HOST_STAR_INDEX_DIR"
 
     runtime_exec "$STAR_SIF" STAR \
       --runMode genomeGenerate \
@@ -49,6 +51,10 @@ case "$MODE" in
     require_file "$LEFT_FASTQ"
     require_file "$RIGHT_FASTQ"
     require_dir "$STAR_ALIGN_DIR"
+    echo "STAR align genome dir: $HOST_GENOME_DIR"
+    echo "STAR align reads: $LEFT_FASTQ"
+    echo "STAR align reads: $RIGHT_FASTQ"
+    echo "STAR align output dir: $STAR_ALIGN_DIR"
 
     cmd=(
       STAR

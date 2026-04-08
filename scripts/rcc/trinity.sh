@@ -36,9 +36,17 @@ case "$MODE" in
       shopt -s nullglob
       LEFT_FILES=("$HOST_FASTQ_DIR"/*1.fastq.gz)
       RIGHT_FILES=("$HOST_FASTQ_DIR"/*2.fastq.gz)
+      if [[ ${#LEFT_FILES[@]} -eq 0 || ${#RIGHT_FILES[@]} -eq 0 ]]; then
+        LEFT_FILES=("$HOST_FASTQ_DIR"/*reads_1.fq.gz)
+        RIGHT_FILES=("$HOST_FASTQ_DIR"/*reads_2.fq.gz)
+      fi
       shopt -u nullglob
       if [[ ${#LEFT_FILES[@]} -eq 0 || ${#RIGHT_FILES[@]} -eq 0 ]]; then
         echo "missing Trinity FASTQ inputs under $HOST_FASTQ_DIR" >&2
+        echo "expected one of:" >&2
+        echo "  $HOST_FASTQ_DIR/*1.fastq.gz" >&2
+        echo "  $HOST_FASTQ_DIR/*reads_1.fq.gz" >&2
+        echo "and matching right reads patterns" >&2
         exit 1
       fi
       LEFT_FASTQ="$(printf '%s\n' "${LEFT_FILES[@]}" | paste -sd, -)"

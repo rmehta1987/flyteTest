@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 SMOKE_ROOT="${SMOKE_ROOT:-$PWD/temp/minimal_transcriptomics_smoke}"
 
 mkdir -p "$SMOKE_ROOT"
@@ -18,23 +19,40 @@ TRINITY_CPU="${TRINITY_CPU:-2}"
 TRINITY_MAX_MEMORY_GB="${TRINITY_MAX_MEMORY_GB:-4}"
 STAR_THREADS="${STAR_THREADS:-2}"
 STRINGTIE_THREADS="${STRINGTIE_THREADS:-2}"
+LEFT_FASTQ="${LEFT_FASTQ:-$REPO_ROOT/data/transcriptomics/ref-based/reads_1.fq.gz}"
+RIGHT_FASTQ="${RIGHT_FASTQ:-$REPO_ROOT/data/transcriptomics/ref-based/reads_2.fq.gz}"
+HOST_GENOME_FASTA="${HOST_GENOME_FASTA:-$REPO_ROOT/data/braker3/reference/genome.fa}"
+INPUT_BAM="${INPUT_BAM:-$REPO_ROOT/data/braker3/rnaseq/RNAseq.bam}"
+
+echo "transcriptomics smoke root: $SMOKE_ROOT"
+echo "trinity reads: $LEFT_FASTQ"
+echo "trinity reads: $RIGHT_FASTQ"
+echo "star genome: $HOST_GENOME_FASTA"
+echo "stringtie bam: $INPUT_BAM"
 
 WORK_DIR="$TRINITY_SMOKE_DIR" \
+LEFT_FASTQ="$LEFT_FASTQ" \
+RIGHT_FASTQ="$RIGHT_FASTQ" \
 TRINITY_CPU="$TRINITY_CPU" \
 TRINITY_MAX_MEMORY_GB="$TRINITY_MAX_MEMORY_GB" \
 bash "$SCRIPT_DIR/trinity.sh"
 
 WORK_DIR="$STAR_SMOKE_DIR" \
+HOST_GENOME_FASTA="$HOST_GENOME_FASTA" \
 STAR_THREADS="$STAR_THREADS" \
 MODE=index \
 bash "$SCRIPT_DIR/star.sh"
 
 WORK_DIR="$STAR_SMOKE_DIR" \
+HOST_GENOME_FASTA="$HOST_GENOME_FASTA" \
+LEFT_FASTQ="$LEFT_FASTQ" \
+RIGHT_FASTQ="$RIGHT_FASTQ" \
 STAR_THREADS="$STAR_THREADS" \
 MODE=align \
 bash "$SCRIPT_DIR/star.sh"
 
 WORK_DIR="$STRINGTIE_SMOKE_DIR" \
+INPUT_BAM="$INPUT_BAM" \
 STRINGTIE_THREADS="$STRINGTIE_THREADS" \
 bash "$SCRIPT_DIR/stringtie.sh"
 

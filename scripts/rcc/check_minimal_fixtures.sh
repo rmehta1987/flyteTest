@@ -24,7 +24,8 @@ for rel_path in "${required_files[@]}"; do
 done
 
 if [[ "$missing" -ne 0 ]]; then
+  echo "checked under: $REPO_ROOT" >&2
   exit 1
 fi
 
-echo "all minimal fixtures are present"
+echo "all minimal fixtures are present under $REPO_ROOT/data"

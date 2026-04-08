@@ -24,6 +24,8 @@ require_file "$STRINGTIE_SIF"
 
 require_file "$INPUT_BAM"
 require_dir "$HOST_OUT_DIR"
+echo "StringTie input BAM: $INPUT_BAM"
+echo "StringTie output dir: $HOST_OUT_DIR"
 
 runtime_exec "$STRINGTIE_SIF" stringtie "$CONTAINER_INPUT_BAM" \
   -p "$STRINGTIE_THREADS" \
