@@ -20,8 +20,108 @@ Planned Flyte mapping:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import types
+from dataclasses import dataclass, field, fields, is_dataclass
 from pathlib import Path
+from typing import Any, Mapping, TypeVar, Union, get_args, get_origin, get_type_hints
+
+
+_ManifestSerializableT = TypeVar("_ManifestSerializableT", bound="ManifestSerializable")
+
+
+def _serialize_manifest_value(value: Any) -> Any:
+    """Convert asset values into JSON-compatible manifest payloads."""
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, tuple):
+        return [_serialize_manifest_value(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _serialize_manifest_value(item) for key, item in value.items()}
+    if is_dataclass(value):
+        if hasattr(value, "to_dict"):
+            return value.to_dict()
+        return {field_info.name: _serialize_manifest_value(getattr(value, field_info.name)) for field_info in fields(value)}
+    return value
+
+
+def _is_optional_manifest_type(annotation: Any) -> bool:
+    """Return whether one type hint is an optional union."""
+    origin = get_origin(annotation)
+    return origin in (Union, types.UnionType) and type(None) in get_args(annotation)
+
+
+def _deserialize_manifest_value(annotation: Any, value: Any) -> Any:
+    """Rehydrate one serialized asset value using a dataclass type hint."""
+    if value is None:
+        return None
+    if annotation is Any:
+        return value
+    if annotation is Path:
+        return Path(str(value))
+    if annotation is str:
+        return str(value)
+    if annotation is int:
+        return int(value)
+    if annotation is bool:
+        return bool(value)
+
+    origin = get_origin(annotation)
+    if origin is tuple:
+        item_type = get_args(annotation)[0]
+        return tuple(_deserialize_manifest_value(item_type, item) for item in value)
+    if origin is dict:
+        key_type, value_type = get_args(annotation)
+        return {
+            _deserialize_manifest_value(key_type, key): _deserialize_manifest_value(value_type, item)
+            for key, item in value.items()
+        }
+    if _is_optional_manifest_type(annotation):
+        inner = [item for item in get_args(annotation) if item is not type(None)]
+        if len(inner) == 1:
+            return _deserialize_manifest_value(inner[0], value)
+    if isinstance(annotation, type) and is_dataclass(annotation):
+        if hasattr(annotation, "from_dict"):
+            return annotation.from_dict(value)
+        hints = get_type_hints(annotation)
+        return annotation(
+            **{
+                field_info.name: _deserialize_manifest_value(hints[field_info.name], value[field_info.name])
+                for field_info in fields(annotation)
+                if isinstance(value, Mapping) and field_info.name in value
+            }
+        )
+    return value
+
+
+class ManifestSerializable:
+    """Mixin for asset dataclasses that need stable manifest round-trips."""
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize one asset dataclass into JSON-compatible data."""
+        return {field_info.name: _serialize_manifest_value(getattr(self, field_info.name)) for field_info in fields(self)}
+
+    @classmethod
+    def from_dict(cls: type[_ManifestSerializableT], payload: Mapping[str, Any]) -> _ManifestSerializableT:
+        """Deserialize one asset dataclass from JSON-compatible data."""
+        hints = get_type_hints(cls)
+        kwargs = {}
+        for field_info in fields(cls):
+            if field_info.name not in payload:
+                continue
+            kwargs[field_info.name] = _deserialize_manifest_value(hints[field_info.name], payload[field_info.name])
+        return cls(**kwargs)
+
+
+@dataclass(frozen=True, slots=True)
+class AssetToolProvenance(ManifestSerializable):
+    """Typed provenance for generic asset names that preserve tool lineage."""
+
+    tool_name: str
+    tool_stage: str
+    tool_version: str | None = None
+    legacy_asset_name: str | None = None
+    source_manifest_key: str | None = None
+    notes: tuple[str, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,7 +248,7 @@ class StarGenomeIndexAsset:
 
 
 @dataclass(frozen=True, slots=True)
-class StarAlignmentResult:
+class StarAlignmentResult(ManifestSerializable):
     """Local STAR alignment result for one paired-end sample.
 
     Future Flyte mapping:
@@ -164,6 +264,12 @@ class StarAlignmentResult:
     source_reads: ReadPair | None = None
     star_index: StarGenomeIndexAsset | None = None
     notes: tuple[str, ...] = field(default_factory=tuple)
+    provenance: AssetToolProvenance | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RnaSeqAlignmentResult(StarAlignmentResult):
+    """Generic RNA-seq alignment result name compatible with STAR outputs."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -242,7 +348,7 @@ class CombinedTrinityTranscriptAsset:
 
 
 @dataclass(frozen=True, slots=True)
-class PasaCleanedTranscriptAsset:
+class PasaCleanedTranscriptAsset(ManifestSerializable):
     """seqclean output used by PASA align/assemble.
 
     Future Flyte mapping:
@@ -255,6 +361,12 @@ class PasaCleanedTranscriptAsset:
     input_transcripts: CombinedTrinityTranscriptAsset
     univec_fasta_path: Path | None = None
     notes: tuple[str, ...] = field(default_factory=tuple)
+    provenance: AssetToolProvenance | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CleanedTranscriptDataset(PasaCleanedTranscriptAsset):
+    """Generic cleaned transcript dataset name compatible with PASA seqclean outputs."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -521,7 +633,7 @@ class Braker3NormalizedGff3Asset:
 
 
 @dataclass(frozen=True, slots=True)
-class Braker3ResultBundle:
+class Braker3ResultBundle(ManifestSerializable):
     """Collected BRAKER3 outputs spanning staging, raw run, and normalization.
 
     Future Flyte mapping:
@@ -540,6 +652,12 @@ class Braker3ResultBundle:
     raw_run: Braker3RawRunResultAsset | None = None
     normalized_prediction: Braker3NormalizedGff3Asset | None = None
     notes: tuple[str, ...] = field(default_factory=tuple)
+    provenance: AssetToolProvenance | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AbInitioResultBundle(Braker3ResultBundle):
+    """Generic ab initio annotation bundle name compatible with BRAKER3 outputs."""
 
 
 @dataclass(frozen=True, slots=True)

@@ -139,8 +139,12 @@ execution.
 
 ## Confirmed Decisions
 
-- Day one execution remains limited to `ab_initio_annotation_braker3`,
-  `protein_evidence_alignment`, and `exonerate_align_chunk`.
+- MCP recipe execution is limited to explicitly registered local handlers:
+  `ab_initio_annotation_braker3`, `protein_evidence_alignment`,
+  `exonerate_align_chunk`, `annotation_qc_busco`,
+  `annotation_functional_eggnog`, `annotation_postprocess_agat`,
+  `annotation_postprocess_agat_conversion`, and
+  `annotation_postprocess_agat_cleanup`.
 - `prompt_and_run` stays available as a compatibility alias over the new
   recipe flow.
 - Frozen recipe artifacts live under `.runtime/specs/` so they are easy to
@@ -148,31 +152,34 @@ execution.
 
 ## Next Expansion Slice
 
-After the day-one cutover, the next planned MCP slice is Milestone 10:
-recipe input binding and BUSCO enablement.
+Milestone 10 landed the explicit recipe input contract and enabled BUSCO as the
+first post-day-one MCP recipe target. Milestone 11 reused that contract to
+enable individual recipe-backed EggNOG and AGAT targets.
 
-The priority is to widen the recipe-preparation input contract before widening
-the runnable handler map. MCP clients should be able to pass:
+MCP clients should continue to pass:
 
 - prior manifest sources, such as `run_manifest.json` paths or result
   directories
 - explicit planner bindings, especially serialized `QualityAssessmentTarget`
   payloads
-- explicit runtime bindings, starting with `busco_lineages_text`, optional
-  `busco_sif`, and `busco_cpu`
+- explicit runtime bindings, such as EggNOG database settings, CPU counts,
+  container image paths, AGAT FASTA paths, and AGAT container image paths
 
-Only after those inputs are explicit and tested should the server add
-`annotation_qc_busco` to the local handler map as the first post-day-one
-target. EggNOG, AGAT, Slurm, and database-backed asset discovery remain
-separate follow-up work.
+The local handler map now includes `annotation_functional_eggnog`,
+`annotation_postprocess_agat`, `annotation_postprocess_agat_conversion`, and
+`annotation_postprocess_agat_cleanup` as separate runnable targets. A composed
+EggNOG-plus-AGAT pipeline, table2asn, Slurm, and database-backed asset
+discovery remain separate follow-up work.
 
-Detailed plan:
+Detailed plans:
 
 - `docs/realtime_refactor_plans/2026-04-07-milestone-10-mcp-recipe-input-binding-busco.md`
+- `docs/realtime_refactor_plans/2026-04-08-milestone-11-mcp-eggnog-agat.md`
 
-Companion handoff prompt:
+Companion handoff prompts:
 
 - `docs/mcp_recipe_binding_busco_submission_prompt.md`
+- `docs/mcp_recipe_binding_eggnog_agat_submission_prompt.md`
 
 ## Verification Plan
 

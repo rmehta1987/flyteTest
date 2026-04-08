@@ -30,9 +30,10 @@ from flytetest.config import (
     run_tool,
 )
 from flytetest.types import (
+    AssetToolProvenance,
+    CleanedTranscriptDataset,
     CombinedTrinityTranscriptAsset,
     PasaAlignmentAssemblyResult,
-    PasaCleanedTranscriptAsset,
     PasaGeneModelUpdateInputBundleAsset,
     PasaGeneModelUpdateResultBundle,
     PasaGeneModelUpdateRoundResult,
@@ -461,13 +462,19 @@ def collect_pasa_results(
             "The combined transcript FASTA follows the note order: de novo Trinity first, then Trinity-GG.",
         ),
     )
-    cleaned_asset = PasaCleanedTranscriptAsset(
+    cleaned_asset = CleanedTranscriptDataset(
         output_dir=copied_seqclean_dir,
         clean_fasta_path=_seqclean_clean_fasta(copied_seqclean_dir),
         input_transcripts=combined_asset,
         univec_fasta_path=univec_input,
         notes=(
             "seqclean output is staged in its own directory because PASA tooling writes auxiliary files beside the cleaned FASTA.",
+        ),
+        provenance=AssetToolProvenance(
+            tool_name="PASA seqclean",
+            tool_stage="transcript cleaning",
+            legacy_asset_name="PasaCleanedTranscriptAsset",
+            source_manifest_key="pasa_cleaned_transcripts",
         ),
     )
     sqlite_database_path = _sqlite_db_path(copied_config_dir)
@@ -555,7 +562,8 @@ def collect_pasa_results(
                 "trinity_de_novo": asdict(denovo_asset),
                 "combined_trinity": asdict(combined_asset),
                 "stringtie": asdict(stringtie_asset),
-                "pasa_cleaned_transcripts": asdict(cleaned_asset),
+                "cleaned_transcript_dataset": cleaned_asset.to_dict(),
+                "pasa_cleaned_transcripts": cleaned_asset.to_dict(),
                 "pasa_database_config": asdict(database_asset),
                 "pasa_alignment_assembly": asdict(pasa_asset),
             }

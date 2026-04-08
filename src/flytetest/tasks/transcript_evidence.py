@@ -26,11 +26,12 @@ from flytetest.config import (
     transcript_evidence_env,
 )
 from flytetest.types import (
+    AssetToolProvenance,
     MergedBamAsset,
+    RnaSeqAlignmentResult,
     TrinityDeNovoTranscriptAsset,
     ReadPair,
     ReferenceGenome,
-    StarAlignmentResult,
     StarGenomeIndexAsset,
     StringTieAssemblyResult,
     TrinityGenomeGuidedAssemblyResult,
@@ -412,7 +413,7 @@ def collect_transcript_evidence_results(
         reference_genome=reference_asset,
         notes=("This first implementation always builds a fresh STAR index.",),
     )
-    alignment_asset = StarAlignmentResult(
+    alignment_asset = RnaSeqAlignmentResult(
         sample_id=sample_id,
         output_dir=copied_alignment_dir,
         sorted_bam_path=_star_sorted_bam(copied_alignment_dir),
@@ -422,6 +423,12 @@ def collect_transcript_evidence_results(
         star_index=star_index_asset,
         notes=(
             "Gzipped FASTQ inputs use STAR --readFilesCommand zcat when both mates end in .gz.",
+        ),
+        provenance=AssetToolProvenance(
+            tool_name="STAR",
+            tool_stage="RNA-seq genome alignment",
+            legacy_asset_name="StarAlignmentResult",
+            source_manifest_key="star_alignment",
         ),
     )
     merged_bam_asset = MergedBamAsset(
@@ -486,7 +493,8 @@ def collect_transcript_evidence_results(
                 "read_pair": asdict(read_pair_asset),
                 "trinity_de_novo": asdict(trinity_denovo_asset),
                 "star_index": asdict(star_index_asset),
-                "star_alignment": asdict(alignment_asset),
+                "rna_seq_alignment": alignment_asset.to_dict(),
+                "star_alignment": alignment_asset.to_dict(),
                 "merged_bam": asdict(merged_bam_asset),
                 "trinity_genome_guided": asdict(trinity_asset),
                 "stringtie": asdict(stringtie_asset),

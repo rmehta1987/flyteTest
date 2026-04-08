@@ -6,7 +6,9 @@ architecture lands behind compatibility seams.
 
 from __future__ import annotations
 
+import json
 import sys
+import tempfile
 from pathlib import Path
 from unittest import TestCase
 
@@ -29,6 +31,66 @@ from flytetest.planner_types import (
     TranscriptEvidenceSet,
 )
 from flytetest.planning import plan_request, plan_typed_request, split_entry_inputs, supported_entry_parameters
+
+
+def _repeat_filter_manifest_dir(base_dir: Path, name: str) -> Path:
+    """Create one synthetic repeat-filter manifest directory for BUSCO planning tests."""
+    result_dir = base_dir / name
+    result_dir.mkdir()
+    (result_dir / "run_manifest.json").write_text(
+        json.dumps(
+            {
+                "workflow": "annotation_repeat_filtering",
+                "assumptions": ["Repeat-filtered outputs are QC-ready."],
+                "inputs": {"reference_genome": "data/genome.fa"},
+                "outputs": {
+                    "all_repeats_removed_gff3": str(result_dir / "all_repeats_removed.gff3"),
+                    "final_proteins_fasta": str(result_dir / "all_repeats_removed.proteins.fa"),
+                },
+            },
+            indent=2,
+        )
+    )
+    return result_dir
+
+
+def _eggnog_manifest_dir(base_dir: Path, name: str) -> Path:
+    """Create one synthetic EggNOG manifest directory for AGAT planning tests."""
+    result_dir = base_dir / name
+    result_dir.mkdir()
+    (result_dir / "run_manifest.json").write_text(
+        json.dumps(
+            {
+                "workflow": "annotation_functional_eggnog",
+                "assumptions": ["EggNOG outputs are AGAT-ready."],
+                "outputs": {
+                    "eggnog_annotated_gff3": str(result_dir / "all_repeats_removed.eggnog.gff3"),
+                    "repeat_filter_proteins_fasta": str(result_dir / "all_repeats_removed.proteins.fa"),
+                },
+            },
+            indent=2,
+        )
+    )
+    return result_dir
+
+
+def _agat_conversion_manifest_dir(base_dir: Path, name: str) -> Path:
+    """Create one synthetic AGAT conversion manifest directory for cleanup planning tests."""
+    result_dir = base_dir / name
+    result_dir.mkdir()
+    (result_dir / "run_manifest.json").write_text(
+        json.dumps(
+            {
+                "workflow": "annotation_postprocess_agat_conversion",
+                "assumptions": ["AGAT conversion outputs are cleanup-ready."],
+                "outputs": {
+                    "agat_converted_gff3": str(result_dir / "all_repeats_removed.agat.gff3"),
+                },
+            },
+            indent=2,
+        )
+    )
+    return result_dir
 
 
 class PlanningTests(TestCase):
@@ -120,6 +182,207 @@ class PlanningTests(TestCase):
             "generated::repeat_filter_then_busco_qc::preview",
         )
         self.assertEqual(payload["binding_plan"]["target_kind"], "generated_workflow")
+
+    def test_typed_plan_accepts_serialized_quality_assessment_target_binding(self) -> None:
+        """Resolve BUSCO from an explicit serialized quality target plus runtime bindings."""
+        target = QualityAssessmentTarget(
+            source_result_dir=Path("results/repeat_filter_20260407_120000"),
+            source_manifest_path=Path("results/repeat_filter_20260407_120000/run_manifest.json"),
+            annotation_gff3_path=Path("results/repeat_filter_20260407_120000/all_repeats_removed.gff3"),
+            proteins_fasta_path=Path("results/repeat_filter_20260407_120000/all_repeats_removed.proteins.fa"),
+        )
+
+        payload = plan_typed_request(
+            "Run BUSCO quality assessment on the annotation.",
+            explicit_bindings={"QualityAssessmentTarget": target.to_dict()},
+            runtime_bindings={
+                "busco_lineages_text": "embryophyta_odb10",
+                "busco_sif": "busco.sif",
+                "busco_cpu": 12,
+            },
+        )
+
+        self.assertTrue(payload["supported"])
+        self.assertEqual(payload["planning_outcome"], "registered_workflow")
+        self.assertEqual(payload["biological_goal"], "annotation_qc_busco")
+        self.assertEqual(payload["required_planner_types"], ["QualityAssessmentTarget"])
+        self.assertEqual(
+            payload["resolved_inputs"]["QualityAssessmentTarget"]["source_result_dir"],
+            str(target.source_result_dir),
+        )
+        self.assertEqual(
+            payload["binding_plan"]["runtime_bindings"],
+            {
+                "busco_lineages_text": "embryophyta_odb10",
+                "busco_sif": "busco.sif",
+                "busco_cpu": 12,
+            },
+        )
+
+    def test_typed_plan_resolves_busco_from_manifest_sources(self) -> None:
+        """Resolve BUSCO from a repeat-filter manifest source without guessing."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result_dir = _repeat_filter_manifest_dir(tmp_path, "repeat_filter_results")
+
+            payload = plan_typed_request(
+                "Run BUSCO quality assessment on the annotation.",
+                manifest_sources=(result_dir,),
+                runtime_bindings={
+                    "busco_lineages_text": "embryophyta_odb10",
+                    "busco_cpu": 12,
+                },
+            )
+
+        self.assertTrue(payload["supported"])
+        self.assertEqual(payload["biological_goal"], "annotation_qc_busco")
+        self.assertEqual(
+            payload["resolved_inputs"]["QualityAssessmentTarget"]["source_result_dir"],
+            str(result_dir),
+        )
+        self.assertEqual(
+            payload["binding_plan"]["manifest_derived_paths"]["QualityAssessmentTarget"]["label"],
+            str(result_dir / "run_manifest.json"),
+        )
+        self.assertEqual(
+            payload["binding_plan"]["runtime_bindings"],
+            {
+                "busco_lineages_text": "embryophyta_odb10",
+                "busco_cpu": 12,
+            },
+        )
+
+    def test_typed_plan_freezes_resource_policy_from_prompt_and_caller_inputs(self) -> None:
+        """Persist structured resource and runtime-image policy in the binding plan."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result_dir = _repeat_filter_manifest_dir(tmp_path, "repeat_filter_results")
+
+            payload = plan_typed_request(
+                "Run BUSCO quality assessment on the annotation with 12 CPUs, memory 48Gi, queue short, walltime 02:00:00.",
+                manifest_sources=(result_dir,),
+                runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                resource_request={"memory": "64Gi"},
+                execution_profile="local",
+                runtime_image={"apptainer_image": "busco.sif"},
+            )
+
+        self.assertTrue(payload["supported"])
+        self.assertEqual(payload["execution_profile"], "local")
+        self.assertEqual(payload["resource_spec"]["cpu"], "12")
+        self.assertEqual(payload["resource_spec"]["memory"], "64Gi")
+        self.assertEqual(payload["resource_spec"]["queue"], "short")
+        self.assertEqual(payload["resource_spec"]["walltime"], "02:00:00")
+        self.assertEqual(payload["runtime_image"]["apptainer_image"], "busco.sif")
+        self.assertEqual(payload["binding_plan"]["execution_profile"], "local")
+        self.assertEqual(payload["binding_plan"]["resource_spec"], payload["resource_spec"])
+        self.assertEqual(payload["binding_plan"]["runtime_image"], payload["runtime_image"])
+
+    def test_typed_plan_accepts_slurm_execution_profile(self) -> None:
+        """Freeze Slurm resource policy for later submission without running it."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result_dir = _repeat_filter_manifest_dir(tmp_path, "repeat_filter_results")
+
+            payload = plan_typed_request(
+                "Run BUSCO quality assessment on the annotation using execution profile slurm on queue batch.",
+                manifest_sources=(result_dir,),
+                runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+            )
+
+        self.assertTrue(payload["supported"])
+        self.assertEqual(payload["candidate_outcome"], "registered_workflow")
+        self.assertEqual(payload["planning_outcome"], "registered_workflow")
+        self.assertEqual(payload["execution_profile"], "slurm")
+        self.assertEqual(payload["binding_plan"]["execution_profile"], "slurm")
+        self.assertEqual(payload["resource_spec"]["execution_class"], "slurm")
+
+    def test_typed_plan_reports_ambiguous_busco_manifest_sources(self) -> None:
+        """Decline BUSCO planning when multiple manifests could satisfy the QC target."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result_dirs = (
+                _repeat_filter_manifest_dir(tmp_path, "repeat_filter_results_a"),
+                _repeat_filter_manifest_dir(tmp_path, "repeat_filter_results_b"),
+            )
+
+            payload = plan_typed_request(
+                "Run BUSCO quality assessment on the annotation.",
+                manifest_sources=result_dirs,
+            )
+
+        self.assertFalse(payload["supported"])
+        self.assertEqual(payload["planning_outcome"], "declined")
+        self.assertEqual(payload["candidate_outcome"], "registered_workflow")
+        self.assertIn("choose one explicitly", payload["missing_requirements"][0])
+
+    def test_typed_plan_resolves_eggnog_from_busco_manifest_source(self) -> None:
+        """Use a BUSCO manifest to recover the repeat-filter boundary for EggNOG."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            repeat_dir = _repeat_filter_manifest_dir(tmp_path, "repeat_filter_results")
+            busco_dir = tmp_path / "busco_results"
+            busco_dir.mkdir()
+            (busco_dir / "run_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "workflow": "annotation_qc_busco",
+                        "source_bundle": {"repeat_filter_results": str(repeat_dir)},
+                        "outputs": {
+                            "final_proteins_fasta": str(busco_dir / "all_repeats_removed.proteins.fa"),
+                            "busco_summary_tsv": str(busco_dir / "busco_summary.tsv"),
+                        },
+                    },
+                    indent=2,
+                )
+            )
+
+            payload = plan_typed_request(
+                "Run EggNOG functional annotation on the repeat-filtered proteins.",
+                manifest_sources=(busco_dir,),
+                runtime_bindings={"eggnog_data_dir": "/db/eggnog", "eggnog_database": "Diptera"},
+            )
+
+        self.assertTrue(payload["supported"])
+        self.assertEqual(payload["matched_entry_names"], ["annotation_functional_eggnog"])
+        self.assertEqual(
+            payload["resolved_inputs"]["QualityAssessmentTarget"]["source_result_dir"],
+            str(repeat_dir),
+        )
+        self.assertEqual(
+            payload["binding_plan"]["runtime_bindings"],
+            {"eggnog_data_dir": "/db/eggnog", "eggnog_database": "Diptera"},
+        )
+
+    def test_typed_plan_resolves_agat_targets_from_manifest_sources(self) -> None:
+        """Resolve AGAT statistics/conversion and cleanup from compatible manifests."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            eggnog_dir = _eggnog_manifest_dir(tmp_path, "eggnog_results")
+            conversion_dir = _agat_conversion_manifest_dir(tmp_path, "agat_conversion_results")
+
+            conversion = plan_typed_request(
+                "Run AGAT conversion on the EggNOG-annotated GFF3.",
+                manifest_sources=(eggnog_dir,),
+                runtime_bindings={"agat_sif": "agat.sif"},
+            )
+            cleanup = plan_typed_request(
+                "Run AGAT cleanup on the converted GFF3.",
+                manifest_sources=(conversion_dir,),
+            )
+
+        self.assertTrue(conversion["supported"])
+        self.assertTrue(cleanup["supported"])
+        self.assertEqual(conversion["matched_entry_names"], ["annotation_postprocess_agat_conversion"])
+        self.assertEqual(cleanup["matched_entry_names"], ["annotation_postprocess_agat_cleanup"])
+        self.assertEqual(
+            conversion["resolved_inputs"]["QualityAssessmentTarget"]["source_result_dir"],
+            str(eggnog_dir),
+        )
+        self.assertEqual(
+            cleanup["resolved_inputs"]["QualityAssessmentTarget"]["source_result_dir"],
+            str(conversion_dir),
+        )
 
     def test_typed_plan_selects_eggnog_functional_annotation(self) -> None:
         """Represent post-BUSCO functional annotation as a registered EggNOG workflow."""

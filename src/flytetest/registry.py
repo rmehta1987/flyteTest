@@ -2400,6 +2400,40 @@ _WORKFLOW_COMPATIBILITY_METADATA: dict[str, RegistryCompatibilityMetadata] = {
 }
 
 
+_WORKFLOW_LOCAL_RESOURCE_DEFAULTS: dict[str, dict[str, str]] = {
+    "rnaseq_qc_quant": {"cpu": "4", "memory": "16Gi", "execution_class": "local"},
+    "transcript_evidence_generation": {"cpu": "8", "memory": "32Gi", "execution_class": "local"},
+    "pasa_transcript_alignment": {"cpu": "8", "memory": "32Gi", "execution_class": "local"},
+    "transdecoder_from_pasa": {"cpu": "8", "memory": "32Gi", "execution_class": "local"},
+    "protein_evidence_alignment": {"cpu": "8", "memory": "32Gi", "execution_class": "local"},
+    "ab_initio_annotation_braker3": {"cpu": "16", "memory": "64Gi", "execution_class": "local"},
+    "consensus_annotation_evm_prep": {"cpu": "16", "memory": "64Gi", "execution_class": "local"},
+    "consensus_annotation_evm": {"cpu": "16", "memory": "64Gi", "execution_class": "local"},
+    "annotation_refinement_pasa": {"cpu": "8", "memory": "32Gi", "execution_class": "local"},
+    "annotation_repeat_filtering": {"cpu": "16", "memory": "64Gi", "execution_class": "local"},
+    "annotation_qc_busco": {"cpu": "16", "memory": "64Gi", "execution_class": "local"},
+    "annotation_functional_eggnog": {"cpu": "16", "memory": "64Gi", "execution_class": "local"},
+    "annotation_postprocess_agat": {"cpu": "8", "memory": "32Gi", "execution_class": "local"},
+    "annotation_postprocess_agat_conversion": {"cpu": "8", "memory": "32Gi", "execution_class": "local"},
+    "annotation_postprocess_agat_cleanup": {"cpu": "8", "memory": "32Gi", "execution_class": "local"},
+}
+
+
+def _with_resource_defaults(name: str, metadata: RegistryCompatibilityMetadata) -> RegistryCompatibilityMetadata:
+    """Attach declarative local resource defaults to workflow compatibility metadata."""
+    resources = _WORKFLOW_LOCAL_RESOURCE_DEFAULTS.get(name)
+    if resources is None:
+        return metadata
+    execution_defaults = dict(metadata.execution_defaults)
+    execution_defaults.setdefault("resources", resources)
+    supported_profiles = tuple(dict.fromkeys((*metadata.supported_execution_profiles, "slurm")))
+    return replace(
+        metadata,
+        execution_defaults=execution_defaults,
+        supported_execution_profiles=supported_profiles,
+    )
+
+
 def _backfill_workflow_compatibility_metadata(
     entries: tuple[RegistryEntry, ...],
 ) -> tuple[RegistryEntry, ...]:
@@ -2412,7 +2446,10 @@ def _backfill_workflow_compatibility_metadata(
     return tuple(
         # `replace` keeps the existing name, category, description, inputs,
         # outputs, and tags intact while swapping in planner-facing notes.
-        replace(entry, compatibility=_WORKFLOW_COMPATIBILITY_METADATA[entry.name])
+        replace(
+            entry,
+            compatibility=_with_resource_defaults(entry.name, _WORKFLOW_COMPATIBILITY_METADATA[entry.name]),
+        )
         if entry.name in _WORKFLOW_COMPATIBILITY_METADATA
         else entry
         for entry in entries

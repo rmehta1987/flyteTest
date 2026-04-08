@@ -92,6 +92,8 @@ class SpecTests(TestCase):
             resolved_prior_assets={"quality_target": "all_repeats_removed.proteins.fa"},
             manifest_derived_paths={"repeat_filter_manifest": "results/repeat_filter_20260406_120000/run_manifest.json"},
             execution_profile="local",
+            resource_spec=ResourceSpec(cpu="16", memory="64Gi", queue="short", walltime="02:00:00"),
+            runtime_image=RuntimeImageSpec(apptainer_image="busco.sif"),
             runtime_bindings={"busco_cpu": 16, "busco_sif": "busco.sif"},
             unresolved_requirements=("lineage datasets must remain available locally",),
             assumptions=("This is a planning-time binding record only.",),
@@ -99,6 +101,8 @@ class SpecTests(TestCase):
 
         self.assertEqual(BindingPlan.from_dict(binding_plan.to_dict()), binding_plan)
         self.assertTrue(binding_plan.metadata_only)
+        self.assertEqual(binding_plan.resource_spec.cpu, "16")
+        self.assertEqual(binding_plan.runtime_image.apptainer_image, "busco.sif")
 
     def test_workflow_spec_can_represent_registered_workflow_selection(self) -> None:
         """Represent a direct registered-workflow choice without composition."""

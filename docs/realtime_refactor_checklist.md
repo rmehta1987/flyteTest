@@ -67,7 +67,7 @@ types or modules exist.
 Each milestone below must satisfy its acceptance evidence and compatibility
 guardrails before later critical-path work can be considered complete.
 
-Short stop-rule note for Milestones 1 through 10:
+Short stop-rule note for Milestones 1 through 20:
 
 - keep `plan_request(...)` on the typed recipe-planning path, and preserve
   structured unsupported responses when inputs cannot be resolved
@@ -81,6 +81,14 @@ Short stop-rule note for Milestones 1 through 10:
   must stay readable and truthful
 - deterministic execution means reproducible and inspectable plans, not a ban
   on dynamic workflow assembly from prompts
+- compatibility-preserving asset aliases are allowed, but historical manifests
+  and planner adapters must keep loading and replaying older asset names
+- dynamic composition remains registry-constrained, typed, bounded, and
+  reviewable before any executor runs it
+- Slurm failure recovery should stay frozen-recipe driven and Slurm-specific,
+  not broaden into generic remote orchestration
+- execution-capable composed DAGs remain gated on Milestone 19 caching and
+  resumability, even if Milestone 15 lands earlier as a composition preview
 
 ## Plan History Rule
 
@@ -113,7 +121,7 @@ Status: Complete
 - [x] The architecture refactor is tracked in a separate checklist rather than
       being merged into the notes-faithful pipeline milestone gate.
 
-### Still required
+### Completed
 
 - [x] Inventory the compatibility-critical interfaces in
       `src/flytetest/planning.py`, `src/flytetest/registry.py`,
@@ -201,7 +209,7 @@ Status: Complete
 - [x] Keep current Flyte `File` and `Dir` task signatures unchanged while the
       planner type layer is introduced.
 
-### Still required
+### Completed
 
 - [x] Decide where the planner-facing biology types live and document how they
       differ from the larger local-path-centric asset catalog.
@@ -611,7 +619,7 @@ Status: Complete
 
 ### Acceptance evidence
 
-- `docs/realtime_refactor_plans/2026-04-07-milestone-9-mcp-spec-cutover.md`
+- `docs/realtime_refactor_plans/archive/2026-04-07-milestone-9-mcp-spec-cutover.md`
 - `tests/test_server.py`
 - `tests/test_planning.py`
 - `tests/test_spec_executor.py`
@@ -630,48 +638,50 @@ Status: Complete
 Goal: add explicit MCP recipe input binding and enable BUSCO as the first
 post-day-one recipe target.
 
-Status: Not started
+Status: Complete
 
 ### Done
 
-- [ ] Confirm BUSCO is the first post-day-one MCP expansion target.
-- [ ] Confirm the MCP recipe input contract for prior manifests, explicit
+- [x] Confirm BUSCO is the first post-day-one MCP expansion target.
+- [x] Confirm the MCP recipe input contract for prior manifests, explicit
       planner bindings, and runtime bindings.
 
 ### Still required
 
-- [ ] Extend `prepare_run_recipe(...)` and its internal planning path so MCP
+- [x] Extend `prepare_run_recipe(...)` and its internal planning path so MCP
       callers can provide prior `run_manifest.json` paths or result directories
       as manifest sources.
-- [ ] Extend the recipe preparation contract so callers can provide explicit
+- [x] Extend the recipe preparation contract so callers can provide explicit
       planner bindings when they already have a serialized
       `QualityAssessmentTarget`.
-- [ ] Extend the recipe preparation contract so callers can provide runtime
+- [x] Extend the recipe preparation contract so callers can provide runtime
       bindings such as `busco_lineages_text`, optional `busco_sif`, and
       `busco_cpu` without relying on prompt text alone.
-- [ ] Enable `annotation_qc_busco` in the MCP local handler map only after its
+- [x] Enable `annotation_qc_busco` in the MCP local handler map only after its
       manifest source, runtime binding, and result-summary behavior are covered
       by tests.
-- [ ] Add or update synthetic MCP recipe tests that prepare and run a BUSCO
+- [x] Add or update synthetic MCP recipe tests that prepare and run a BUSCO
       recipe through `LocalWorkflowSpecExecutor` with a fake handler.
-- [ ] Update README, MCP docs, capability maturity notes, and handoff prompts so
+- [x] Update README, MCP docs, capability maturity notes, and handoff prompts so
       they describe BUSCO MCP support only after the handler lands.
+
+All Milestone 10 checklist items are complete in this slice.
 
 ### Milestone 10 implementation note
 
-- This is the first expansion after the day-one MCP cutover. It should widen
-  the input-binding contract before it widens the runnable handler map.
+- This slice widened the input-binding contract before it widened the runnable
+  handler map.
 - `annotation_qc_busco` consumes a `QualityAssessmentTarget`, usually adapted
   from an `annotation_repeat_filtering` manifest or supplied explicitly by the
   caller.
-- BUSCO runtime choices must stay explicit and inspectable in the saved recipe:
+- BUSCO runtime choices stay explicit and inspectable in the saved recipe:
   at minimum `busco_lineages_text`, optional `busco_sif`, and `busco_cpu`.
 - EggNOG and AGAT remain intentionally deferred until the same binding pattern
-  is proven on BUSCO.
+  is proven on those later stages.
 
 ### Acceptance evidence
 
-- `docs/realtime_refactor_plans/2026-04-07-milestone-10-mcp-recipe-input-binding-busco.md`
+- `docs/realtime_refactor_plans/archive/2026-04-07-milestone-10-mcp-recipe-input-binding-busco.md`
 - `docs/mcp_recipe_binding_busco_submission_prompt.md`
 - `tests/test_server.py`
 - `tests/test_planning.py`
@@ -687,8 +697,547 @@ Status: Not started
   the saved recipe.
 - Making manifest/result-bundle resolution ambiguous when more than one prior
   result could satisfy `QualityAssessmentTarget`.
-- Accidentally widening the MCP surface to EggNOG or AGAT before BUSCO proves
-  the input-binding pattern.
+- Accidentally widening the MCP surface to EggNOG or AGAT before each workflow
+  has explicit input mapping, runtime binding persistence, and synthetic MCP
+  coverage.
+
+## Milestone 11
+
+Goal: extend the recipe-backed MCP execution surface to the remaining completed
+functional annotation workflows: EggNOG and AGAT.
+
+Status: Completed
+
+### Completed
+
+- [x] Confirm EggNOG and AGAT are exposed as individual runnable MCP targets
+      matching the existing `RegistryEntry` workflow boundaries rather than as
+      one composed pipeline target.
+- [x] Extend the MCP contract with `ShowcaseTarget` entries for
+      `annotation_functional_eggnog`, `annotation_postprocess_agat`,
+      `annotation_postprocess_agat_conversion`, and
+      `annotation_postprocess_agat_cleanup`.
+- [x] Extend `_local_node_handlers()` so the four workflows route through the
+      explicit workflow handler only after input mapping tests are in place.
+- [x] Add or reuse executor helpers that map resolved planner values or
+      manifest-derived saved bindings to concrete workflow inputs:
+      `repeat_filter_results`, `eggnog_results`, and
+      `agat_conversion_results`.
+- [x] Extend manifest adapters only where needed so EggNOG and AGAT manifests
+      can be resolved without guessing among multiple compatible sources.
+- [x] Keep EggNOG and AGAT runtime choices explicit in saved recipes instead of
+      relying on prompt text:
+      `eggnog_data_dir`, `eggnog_sif`, `eggnog_cpu`, `eggnog_database`,
+      `annotation_fasta_path`, and `agat_sif`.
+- [x] Add synthetic MCP recipe tests for preparation, saved binding
+      persistence, fake-handler execution through `LocalWorkflowSpecExecutor`,
+      result summaries, and missing or ambiguous target declines.
+- [x] Update README, MCP docs, capability maturity notes, and handoff prompts
+      once the implementation lands.
+
+### Milestone 11 implementation note
+
+- Remote object support, database-backed discovery, and broad storage-native
+  asset return remain out of scope.
+- This milestone reuses the Milestone 10 JSON-friendly input context:
+  `manifest_sources`, `explicit_bindings`, and `runtime_bindings`.
+- EggNOG consumes a repeat-filter or QC target and maps it to
+  `repeat_filter_results`.
+- AGAT statistics and conversion consume an EggNOG manifest boundary and map
+  it to `eggnog_results`.
+- AGAT cleanup consumes an AGAT conversion manifest boundary and maps it
+  to `agat_conversion_results`.
+- A composed EggNOG-plus-AGAT pipeline target should be a later milestone if the
+  project wants that UX.
+
+### Acceptance evidence
+
+- `docs/realtime_refactor_plans/archive/2026-04-08-milestone-11-mcp-eggnog-agat.md`
+- `docs/mcp_recipe_binding_eggnog_agat_submission_prompt.md`
+- `tests/test_server.py`
+- `tests/test_planning.py`
+- `tests/test_spec_executor.py`
+- README, MCP docs, capability maturity notes, and MCP contract docs stay
+  aligned with whichever EggNOG and AGAT behavior has actually landed
+
+### Compatibility risks
+
+- Exposing EggNOG or AGAT in the MCP target list before the executor can build
+  their concrete workflow inputs from saved recipe bindings.
+- Treating workflow-layer tests as enough without MCP recipe tests.
+- Hiding database directories, CPU counts, container image paths, or FASTA
+  paths inside natural-language prompt text.
+- Adding table2asn, Slurm, or a composed downstream pipeline in the same slice.
+
+## Milestone 12
+
+Goal: make resource requests and execution profiles first-class in the
+recipe-backed MCP planning flow.
+
+Status: Complete
+
+### Still required
+
+- [x] Extend typed planning and recipe preparation so explicit resource
+      requests become structured fields instead of prompt text.
+- [x] Connect registry compatibility metadata and default execution profile
+      names to current runnable MCP targets.
+- [x] Persist the selected execution profile and resource bindings into saved
+      artifacts and local execution results.
+- [x] Add synthetic tests for resource-profile selection, persistence, and
+      structured declines for incomplete or contradictory resource requests.
+- [x] Update README, `docs/mcp_showcase.md`, `docs/capability_maturity.md`,
+      and the handoff prompt after the behavior lands.
+
+### Milestone 12 implementation note
+
+- This slice stayed local-first and declarative.
+- It prepares the recipe layer for Slurm later without introducing scheduler
+  submission.
+- `BindingPlan` now carries `execution_profile`, `ResourceSpec`, and
+  `RuntimeImageSpec`; the planner, MCP preparation path, saved artifacts, and
+  local executor preserve those fields.
+
+### Acceptance evidence
+
+- `docs/realtime_refactor_plans/2026-04-08-milestone-12-resource-aware-recipe-planning.md`
+- `docs/realtime_refactor_milestone_12_submission_prompt.md`
+- Tests likely to include `tests/test_specs.py`, `tests/test_planning.py`,
+  `tests/test_server.py`, `tests/test_spec_executor.py`, and
+  `tests/test_registry.py`
+- `README.md`, `docs/mcp_showcase.md`, `docs/capability_maturity.md`, and MCP
+  contract docs stay aligned with the landed behavior
+
+### Compatibility risks
+
+- Hiding resource requests inside prompt text instead of freezing them into
+  the saved recipe
+- Adding Slurm submission before explicit resource policy is in place
+- Breaking current runnable targets or manifest contracts while plumbing
+  resource metadata
+
+## Milestone 13
+
+Goal: turn frozen recipe artifacts into deterministic Slurm submissions with
+durable run records.
+
+Status: Complete
+
+### Still required
+
+- [x] Create `SlurmWorkflowSpecExecutor` as a sibling class to
+      `LocalWorkflowSpecExecutor`.
+- [x] Implement a deterministic `sbatch` translation layer that converts a
+      `WorkflowSpec` and its `ExecutionProfile` into a Bash/Slurm script.
+- [x] Dispatch the generated script with
+      `subprocess.run(["sbatch", script_path], ...)` and persist the emitted
+      Slurm Job ID.
+- [x] Capture the submitted run in a run-scoped filesystem record under
+      `.runtime/runs/` with the job ID, script path, selected execution
+      profile, and stdout / stderr paths.
+- [x] Expose `run_slurm_recipe` as an MCP endpoint while preserving local
+      recipe execution behavior.
+- [x] Add synthetic tests for script determinism, `sbatch` parsing, run-record
+      persistence, and MCP wiring.
+- [x] Keep an optional live smoke test separate from milestone 13 synthesis;
+      it submits a tiny script with explicit `rcc-staff` / `broadwl` Slurm
+      policy and stays skipped unless `sbatch` is available.
+- [x] Update README, `docs/mcp_showcase.md`, `docs/capability_maturity.md`,
+      and the handoff prompt after the behavior lands.
+
+### Milestone 13 implementation note
+
+- This slice treats filesystem-backed run records as durable state, not
+  in-memory MCP state.
+- `SlurmWorkflowSpecExecutor` renders a deterministic `sbatch` script from a
+  saved `WorkflowSpec` artifact, explicit `BindingPlan.execution_profile`, and
+  frozen `ResourceSpec`, then persists the accepted job ID under
+  `.runtime/runs/`.
+- The MCP surface now exposes `run_slurm_recipe` as an explicit submission
+  endpoint while preserving `run_local_recipe` and `prompt_and_run`.
+- Scheduler monitoring, cancellation, retry, and resumability remain later
+  milestones and are not hidden inside this submission slice.
+
+### Acceptance evidence
+
+- `docs/realtime_refactor_plans/2026-04-08-milestone-13-slurm-executor-engine.md`
+- `docs/realtime_refactor_milestone_13_submission_prompt.md`
+- Tests:
+  - `tests/test_spec_executor.py`
+  - `tests/test_server.py`
+  - `tests/test_planning.py`
+  - `tests/test_registry.py`
+- `README.md`, `docs/mcp_showcase.md`, `docs/capability_maturity.md`, and
+  `src/flytetest/mcp_contract.py` stay aligned with the landed behavior
+
+### Compatibility risks
+
+- Losing track of running jobs if the MCP process restarts before the run
+  record is written
+- Colliding run records if the state file is keyed only by recipe spec ID
+- Reintroducing prompt-text-based resource inference instead of using the
+  frozen execution profile
+- Expanding into scheduler monitoring or cancellation before the submission
+  and run-record boundary is proven
+
+## Milestone 14
+
+Goal: decouple the biology-facing asset model from vendor-specific names
+without breaking manifest replay or planner compatibility.
+
+Status: Complete
+
+### Still required
+
+- [x] Introduce a `ManifestSerializable` compatibility mixin or interface with
+      `to_dict()` and `from_dict()` helpers for asset types that need durable
+      round-tripping.
+- [x] Add generic asset aliases or sibling types for:
+      `Braker3ResultBundle` → `AbInitioResultBundle`,
+      `StarAlignmentResult` → `RnaSeqAlignmentResult`, and
+      `PasaCleanedTranscriptAsset` → `CleanedTranscriptDataset`.
+- [x] Update `planner_adapters.py`, resolver compatibility, and local workflow
+      outputs to prefer the generic names while still accepting legacy manifest
+      shapes.
+- [x] Add typed provenance metadata so tool-specific details remain explicit
+      without forcing them into an untyped catch-all dictionary.
+- [x] Add compatibility tests that prove older manifests still load and replay
+      through the generic asset layer.
+- [x] Update README, `docs/capability_maturity.md`, and the handoff prompt
+      after the behavior lands.
+
+### Milestone 14 implementation note
+
+- This slice is additive and compatibility-preserving, not a hard cutover that
+  deletes legacy names.
+- `src/flytetest/types/assets.py` now exposes `ManifestSerializable`,
+  `AssetToolProvenance`, `AbInitioResultBundle`, `RnaSeqAlignmentResult`, and
+  `CleanedTranscriptDataset`.
+- The current BRAKER3, STAR, and PASA manifest emitters write generic asset
+  keys alongside legacy keys so older manifest shapes remain readable and newer
+  records can prefer generic names.
+- Resolver bundle matching accepts generic subclasses without losing legacy
+  `Braker3ResultBundle` compatibility.
+- Historical run records remain replayable without mass-editing JSON
+  manifests.
+
+### Acceptance evidence
+
+- `docs/realtime_refactor_plans/2026-04-08-milestone-14-generic-asset-compatibility.md`
+- `docs/realtime_refactor_milestone_14_submission_prompt.md`
+- Tests:
+  - `tests/test_planner_types.py`
+  - `tests/test_resolver.py`
+  - `tests/test_spec_executor.py`
+- `README.md`, `docs/capability_maturity.md`, and compatibility docs stay
+  aligned with the landed behavior
+
+### Compatibility risks
+
+- Breaking replay for existing `run_manifest.json` files by renaming asset
+  classes too early
+- Losing resolver compatibility with older manifest shapes or serialized
+  planner bindings
+- Hiding tool provenance inside an untyped catch-all field instead of keeping
+  it inspectable
+- Rewriting historical manifests instead of teaching the loader to understand
+  them
+
+## Milestone 19
+
+Goal: support caching and resumability for frozen recipes so interrupted work
+can continue without recomputing completed stages.
+
+Status: Not started
+
+### Still required
+
+- [ ] Define cache keys for frozen `WorkflowSpec` artifacts and resolved
+      inputs.
+- [ ] Decide what resume means for local saved-spec execution versus Slurm
+      execution.
+- [ ] Persist stage completion state in run records.
+- [ ] Re-run only missing or invalidated stages when a run is resumed.
+- [ ] Add synthetic tests for cache hits, cache misses, and interrupted-run
+      recovery.
+- [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
+      after the behavior lands.
+
+### Milestone 19 implementation note
+
+- This slice should keep caching and resumability explicit and inspectable.
+- It should key reuse off the frozen recipe, resolved inputs, and relevant
+  runtime bindings rather than hidden mutable state.
+- Resume behavior should be compatible with both local saved-spec execution
+  and the Slurm path that Milestones 13, 16, and 18 establish.
+- It is the prerequisite that makes execution-capable composed DAGs safe to
+  expose after Milestone 15 has already defined the composition preview.
+
+### Acceptance evidence
+
+- `docs/realtime_refactor_plans/2026-04-08-milestone-19-caching-resumability.md`
+- `docs/realtime_refactor_milestone_19_submission_prompt.md`
+- Tests likely to include `tests/test_spec_executor.py`, `tests/test_server.py`,
+  and any focused cache / resume coverage
+- `README.md`, `docs/capability_maturity.md`, and compatibility docs stay
+  aligned with the landed behavior
+
+### Compatibility risks
+
+- Reusing stale results when the frozen spec or resolved inputs no longer
+  match
+- Making resume behavior ambiguous between local and Slurm execution paths
+- Hiding stage-completion state in memory instead of the durable run record
+- Turning caching into an implicit behavior instead of an explicit replay rule
+
+## Milestone 18
+
+Goal: add Slurm-specific retry and resubmission policy for failed jobs while
+preserving the frozen recipe boundary.
+
+Status: Not started
+
+### Still required
+
+- [ ] Define a Slurm failure-classification model in the run-record layer.
+- [ ] Distinguish retryable failures from terminal failures using scheduler
+      state and exit information.
+- [ ] Add a retry policy with an explicit maximum attempt limit.
+- [ ] Resubmit failed jobs by reusing the frozen `WorkflowSpec` and recorded
+      execution profile.
+- [ ] Preserve the original run record while linking retry attempts back to
+      the parent job.
+- [ ] Expose retry and resubmission operations through the execution layer or
+      MCP in a Slurm-specific way.
+- [ ] Add synthetic tests for retry classification, resubmission behavior,
+      attempt limits, and stale-record handling.
+
+### Milestone 18 implementation note
+
+- This slice should stay Slurm-specific and frozen-recipe driven.
+- It should build on the run-record boundary and scheduler reconciliation work
+  rather than inventing generic remote orchestration.
+- Every retry attempt should remain explicit and inspectable in the run
+  history.
+
+### Acceptance evidence
+
+- `docs/realtime_refactor_plans/2026-04-08-milestone-18-slurm-retry-resubmission-policy.md`
+- `docs/realtime_refactor_milestone_18_submission_prompt.md`
+- Tests likely to include `tests/test_spec_executor.py`, `tests/test_server.py`,
+  and any focused retry / resubmission coverage
+- `README.md`, `docs/capability_maturity.md`, and compatibility docs stay
+  aligned with the landed behavior
+
+### Compatibility risks
+
+- Masking a real infrastructure or biological failure with broad automatic
+  retries
+- Losing reproducibility if retries drift away from the frozen spec or bound
+  execution profile
+- Collapsing retry history into a single run record instead of linking explicit
+  attempts
+- Letting a retry policy broaden into generic remote execution
+
+## Milestone 15
+
+Goal: compose workflow graphs from biological intent while keeping generated
+plans typed, bounded, reviewable, and registry-constrained.
+
+Status: Not started
+
+### Still required
+
+- [ ] Add an intent-based planning route in `planning.py` that can produce a
+      supported `WorkflowSpec` preview or a structured decline from biological
+      intent.
+- [ ] Implement registry-constrained graph composition using
+      `RegistryEntry.compatibility` so only biologically valid stage edges are
+      considered.
+- [ ] Bundle multiple sequential `TaskSpec` nodes into a cohesive multi-node
+      `WorkflowSpec` with explicit stage boundaries and frozen inputs and
+      outputs.
+- [ ] Enforce cycle detection, stage-count limits, and structured decline
+      reasons for unsupported or ambiguous compositions.
+- [ ] Require explicit user approval for the composed recipe preview, with
+      execution gated until Milestone 19 lands.
+- [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
+      after the behavior lands.
+
+### Milestone 15 implementation note
+
+- This slice should be registry-driven and compatibility-preserving, not an
+  unconstrained autonomous graph search.
+- It should keep dynamic workflow creation typed, inspectable, and reviewable
+  before execution.
+- It should only open the composition and approval path; execution-capable
+  composed DAGs stay gated on Milestone 19 caching and resumability.
+- The approval boundary should sit on the frozen recipe, not on a specific
+  backend such as local or Slurm execution.
+
+### Acceptance evidence
+
+- `docs/realtime_refactor_plans/2026-04-08-milestone-15-registry-driven-dynamic-composition.md`
+- `docs/realtime_refactor_milestone_15_submission_prompt.md`
+- Tests likely to include `tests/test_planning.py`, `tests/test_registry.py`,
+  `tests/test_server.py`, and any focused composition / decline coverage
+- `README.md`, `docs/capability_maturity.md`, and compatibility docs stay
+  aligned with the landed behavior
+
+### Compatibility risks
+
+- Hallucinated or biologically invalid stage paths if composition is not
+  constrained by registry compatibility
+- Infinite loops or runaway graph expansion if cycle detection and depth
+  limits are missing
+- Executing a composed recipe before the user has reviewed the frozen graph
+- Breaking current supported-path planning while adding the new intent route
+
+## Milestone 16
+
+Goal: reconcile submitted Slurm runs with durable records and expose job
+lifecycle operations.
+
+Status: Complete
+
+### Still required
+
+- [x] Add a filesystem-backed Slurm run-record loader and status model for
+      submitted jobs.
+- [x] Poll scheduler state with `squeue`, `scontrol show job`, and `sacct`
+      to reconcile pending, running, completed, failed, and cancelled jobs.
+- [x] Record stdout and stderr paths, exit code, and final scheduler state in
+      the durable Slurm run record.
+- [x] Expose MCP status and cancellation operations for submitted Slurm runs
+      while preserving the submission path.
+- [x] Add synthetic tests for scheduler reconciliation, cancellation, and
+      stale or missing run-record handling.
+- [x] Update README, `docs/mcp_showcase.md`, `docs/capability_maturity.md`,
+      and the handoff prompt after the behavior lands.
+
+### Milestone 16 implementation note
+
+- This slice builds on the submission and run-record boundary from Milestone 13
+  rather than reworking submission itself.
+- `SlurmWorkflowSpecExecutor` now loads durable run records, reconciles live or
+  accounting state with `squeue`, `scontrol show job`, and `sacct`, and writes
+  observed scheduler state, stdout/stderr paths, exit code, and terminal state
+  back to the record when available.
+- The MCP surface now exposes `monitor_slurm_job` and `cancel_slurm_job`.
+- Cancellation records an explicit `scancel` request and leaves final cancelled
+  state to later reconciliation rather than inventing scheduler state.
+
+### Acceptance evidence
+
+- `docs/realtime_refactor_plans/2026-04-08-milestone-16-slurm-job-lifecycle-observability.md`
+- `docs/realtime_refactor_milestone_16_submission_prompt.md`
+- Tests:
+  - `tests/test_spec_executor.py`
+  - `tests/test_server.py`
+- `README.md`, `docs/mcp_showcase.md`, `docs/capability_maturity.md`, and MCP
+  contract docs stay aligned with the landed behavior
+
+### Compatibility risks
+
+- Losing consistency between the filesystem run record and live scheduler
+  state after MCP restarts
+- Missing final stdout, stderr, or exit-state details when a job transitions
+  quickly through terminal states
+- Surfacing cancellation or monitoring behavior without the durable run record
+  being authoritative
+- Breaking the submission path while adding lifecycle plumbing
+
+## Milestone 17
+
+Goal: make generic biology-facing asset names the preferred internal surface
+while retaining legacy aliases for replay and compatibility.
+
+Status: Not started
+
+### Still required
+
+- [ ] Update planner adapters to emit the generic asset names by default
+      wherever the workflow semantics are already known.
+- [ ] Update local workflow outputs and manifest-producing helpers to prefer
+      the generic asset types while keeping legacy aliases available.
+- [ ] Ensure resolver and replay paths still accept historical legacy asset
+      names without rewriting manifests.
+- [ ] Expand tests to cover both legacy alias loading and generic-name
+      round-tripping through planner adapters and workflow outputs.
+- [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
+      after the behavior lands.
+
+### Milestone 17 implementation note
+
+- This slice should be a migration and adoption phase, not a compatibility
+  break.
+- It should build on the aliases and loaders from Milestone 14 instead of
+  replacing them.
+- Legacy names should stay available for replay, but new internal outputs
+  should prefer the generic asset vocabulary.
+
+### Acceptance evidence
+
+- `docs/realtime_refactor_plans/2026-04-08-milestone-17-generic-asset-adoption.md`
+- `docs/realtime_refactor_milestone_17_submission_prompt.md`
+- Tests likely to include `tests/test_planner_adapters.py`, `tests/test_resolver.py`,
+  `tests/test_spec_executor.py`, and any workflow-output coverage that proves
+  the generic names are now preferred
+- `README.md`, `docs/capability_maturity.md`, and compatibility docs stay
+  aligned with the landed behavior
+
+### Compatibility risks
+
+- Breaking manifest replay if legacy aliases are removed too early
+- Mixing generic and legacy asset names inconsistently across adapters and
+  local workflow outputs
+- Losing the ability to load historical run records after the migration
+- Updating only the type names without changing the actual emitted internal
+  surface
+
+## Milestone 20
+
+Goal: make workflow outputs durable and reusable as asset references without
+introducing a database-first architecture.
+
+Status: Not started
+
+### Still required
+
+- [ ] Define a durable asset reference model for workflow outputs.
+- [ ] Persist or index outputs so they can be reloaded after the local run
+      directory is gone.
+- [ ] Update manifests to carry durable asset references where appropriate.
+- [ ] Add tests for asset lookup, replay, and downstream reuse.
+- [ ] Keep legacy manifest paths working during the migration.
+- [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
+      after the behavior lands.
+
+### Milestone 20 implementation note
+
+- This slice should stay manifest-driven and filesystem-backed in its first
+  form.
+- It should make outputs durable and reusable without becoming a database-first
+  asset platform.
+- Legacy paths and replay behavior should stay intact while durable references
+  are introduced.
+
+### Acceptance evidence
+
+- `docs/realtime_refactor_plans/2026-04-08-milestone-20-storage-native-durable-asset-return.md`
+- `docs/realtime_refactor_milestone_20_submission_prompt.md`
+- Tests likely to include `tests/test_resolver.py`, `tests/test_spec_executor.py`,
+  and any focused asset-reference or replay coverage
+- `README.md`, `docs/capability_maturity.md`, and compatibility docs stay
+  aligned with the landed behavior
+
+### Compatibility risks
+
+- Breaking replay for older manifests by replacing path-based outputs too
+  abruptly
+- Turning the first durable asset model into a database-first architecture
+- Losing compatibility with current filesystem-backed result bundles
+- Making asset references opaque instead of inspectable through manifests
 
 ## Verification Matrix
 
@@ -696,7 +1245,7 @@ Status: Not started
 | --- | --- |
 | Planner compatibility | `tests/test_planning.py` covers current typed recipe outcomes, structured declines, and any newly introduced resolver inputs |
 | Registry compatibility | `tests/test_registry.py` covers current listing behavior plus richer metadata |
-| MCP compatibility | `tests/test_server.py` preserves the recipe-backed day-one tool/resource behavior until intentionally expanded |
+| MCP compatibility | `tests/test_server.py` preserves the recipe-backed tool/resource behavior until intentionally expanded |
 | Compatibility exports | import checks or tests confirm `flyte_rnaseq_workflow.py` still exposes current entrypoints |
 | Planner-facing types | synthetic round-trip tests through planning/binding structures |
 | Resolver | tests cover explicit local bindings, manifest inputs, and registered bundle resolution |

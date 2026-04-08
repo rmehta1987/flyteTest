@@ -8,7 +8,7 @@ You are continuing the FLyteTest MCP spec cutover under the rules in:
 - /home/rmeht/Projects/flyteTest/DESIGN.md
 - /home/rmeht/Projects/flyteTest/mcp_implementation_plan.md
 - /home/rmeht/Projects/flyteTest/docs/realtime_refactor_checklist.md
-- /home/rmeht/Projects/flyteTest/docs/realtime_refactor_plans/2026-04-07-milestone-9-mcp-spec-cutover.md
+- /home/rmeht/Projects/flyteTest/docs/realtime_refactor_plans/archive/2026-04-07-milestone-9-mcp-spec-cutover.md
 - /home/rmeht/Projects/flyteTest/docs/realtime_refactor_plans/README.md
 - /home/rmeht/Projects/flyteTest/README.md
 - /home/rmeht/Projects/flyteTest/docs/capability_maturity.md
@@ -23,7 +23,7 @@ Context:
 
 - The source of truth for the cutover is `mcp_implementation_plan.md`.
 - The source of truth for the implementation breakdown is
-  `docs/realtime_refactor_plans/2026-04-07-milestone-9-mcp-spec-cutover.md`,
+  `docs/realtime_refactor_plans/archive/2026-04-07-milestone-9-mcp-spec-cutover.md`,
   which should remain the detailed slice plan.
 - The source of truth for progress tracking is
   `docs/realtime_refactor_checklist.md`, which now includes Milestone 9.
@@ -39,7 +39,7 @@ Context:
 Task:
 
 1. Read `mcp_implementation_plan.md` and
-   `docs/realtime_refactor_plans/2026-04-07-milestone-9-mcp-spec-cutover.md`.
+   `docs/realtime_refactor_plans/archive/2026-04-07-milestone-9-mcp-spec-cutover.md`.
 2. Investigate the current implementation state in `server.py`, `planning.py`,
    `spec_artifacts.py`, `spec_executor.py`, `registry.py`, and the relevant
    tests.

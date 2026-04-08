@@ -8,6 +8,7 @@ through explicit node handlers.
 from __future__ import annotations
 
 import hashlib
+import os
 import shlex
 import shutil
 import subprocess
@@ -15,6 +16,7 @@ import sys
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime
+from collections.abc import Mapping, Sequence
 from io import TextIOWrapper
 from pathlib import Path
 from typing import Any
@@ -25,9 +27,14 @@ from flytetest.mcp_contract import (
     LIST_ENTRIES_LIMITATIONS,
     MCP_RESOURCE_URIS,
     MCP_TOOL_NAMES,
+    RECIPE_INPUT_BINDING_RULES,
+    RECIPE_INPUT_CONTEXT_FIELDS,
+    RECIPE_INPUT_MANIFEST_RULES,
+    RECIPE_INPUT_RUNTIME_RULES,
     PRIMARY_TOOL_NAME,
     PROMPT_REQUIREMENTS,
     PROTEIN_WORKFLOW_EXAMPLE_PROMPT,
+    RUN_SLURM_RECIPE_TOOL_NAME,
     RESULT_CODE_DECLINED_MISSING_INPUTS,
     RESULT_CODE_DECLINED_UNSUPPORTED_REQUEST,
     RESULT_CODE_DEFINITIONS,
@@ -40,6 +47,11 @@ from flytetest.mcp_contract import (
     REASON_CODE_UNSUPPORTED_EXECUTION_TARGET,
     REASON_CODE_UNSUPPORTED_OR_AMBIGUOUS_REQUEST,
     SHOWCASE_SERVER_NAME,
+    SUPPORTED_AGAT_CLEANUP_WORKFLOW_NAME,
+    SUPPORTED_AGAT_CONVERSION_WORKFLOW_NAME,
+    SUPPORTED_AGAT_WORKFLOW_NAME,
+    SUPPORTED_BUSCO_WORKFLOW_NAME,
+    SUPPORTED_EGGNOG_WORKFLOW_NAME,
     SUPPORTED_PROTEIN_WORKFLOW_NAME,
     SUPPORTED_TARGET_NAMES,
     SUPPORTED_TASK_NAME,
@@ -57,12 +69,21 @@ from flytetest.planning import (
 )
 from flytetest.registry import RegistryEntry, get_entry
 from flytetest.spec_artifacts import artifact_from_typed_plan, save_workflow_spec_artifact
-from flytetest.spec_executor import LocalNodeExecutionRequest, LocalSpecExecutionResult, LocalWorkflowSpecExecutor
+from flytetest.spec_executor import (
+    LocalNodeExecutionRequest,
+    LocalSpecExecutionResult,
+    LocalWorkflowSpecExecutor,
+    SlurmLifecycleResult,
+    SlurmSpecExecutionResult,
+    SlurmWorkflowSpecExecutor,
+)
+from flytetest.specs import ResourceSpec, RuntimeImageSpec
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ENTRYPOINT = REPO_ROOT / "flyte_rnaseq_workflow.py"
 DEFAULT_RECIPE_DIR = REPO_ROOT / ".runtime" / "specs"
+DEFAULT_RUN_DIR = REPO_ROOT / ".runtime" / "runs"
 SERVER_TOOL_NAMES = MCP_TOOL_NAMES
 SERVER_RESOURCE_URIS = MCP_RESOURCE_URIS
 
@@ -99,6 +120,88 @@ def _entry_payload(name: str) -> dict[str, object]:
 def _supported_entry_payloads() -> list[dict[str, object]]:
     """Return the stable serialized target list shared by tools and resources."""
     return [_entry_payload(name) for name in SUPPORTED_TARGET_NAMES]
+
+
+def _normalize_manifest_sources(manifest_sources: Sequence[str | Path] | None) -> tuple[tuple[Path, ...], tuple[str, ...]]:
+    """Validate manifest-source paths before typed planning runs."""
+    resolved_sources: list[Path] = []
+    limitations: list[str] = []
+    for raw_source in manifest_sources or ():
+        source_path = Path(raw_source)
+        if not source_path.exists():
+            limitations.append(f"Manifest source `{source_path}` does not exist.")
+            continue
+        if source_path.is_dir():
+            manifest_path = source_path / "run_manifest.json"
+            if not manifest_path.exists():
+                limitations.append(f"Manifest source `{source_path}` does not contain `run_manifest.json`.")
+                continue
+            if not os.access(manifest_path, os.R_OK):
+                limitations.append(f"Manifest source `{source_path}` is not readable.")
+                continue
+            resolved_sources.append(source_path)
+            continue
+        if source_path.name != "run_manifest.json":
+            limitations.append(
+                f"Manifest source `{source_path}` must be a `run_manifest.json` file or a result directory."
+            )
+            continue
+        if not os.access(source_path, os.R_OK):
+            limitations.append(f"Manifest source `{source_path}` is not readable.")
+            continue
+        resolved_sources.append(source_path)
+    return tuple(resolved_sources), tuple(limitations)
+
+
+def _recipe_input_context_payload(
+    *,
+    manifest_sources: Sequence[str | Path] | None = None,
+    explicit_bindings: Mapping[str, Any] | None = None,
+    runtime_bindings: Mapping[str, Any] | None = None,
+    resource_request: Mapping[str, Any] | ResourceSpec | None = None,
+    execution_profile: str | None = None,
+    runtime_image: Mapping[str, Any] | RuntimeImageSpec | str | None = None,
+) -> dict[str, object]:
+    """Serialize the explicit recipe input context for MCP responses."""
+    return {
+        "manifest_sources": [str(path) for path in (manifest_sources or ())],
+        "explicit_bindings": _jsonable(dict(explicit_bindings or {})),
+        "runtime_bindings": _jsonable(dict(runtime_bindings or {})),
+        "resource_request": _jsonable(resource_request or {}),
+        "execution_profile": execution_profile,
+        "runtime_image": _jsonable(runtime_image or {}),
+    }
+
+
+def _unsupported_recipe_prep_plan(
+    prompt: str,
+    *,
+    limitations: Sequence[str],
+    recipe_input_context: dict[str, object],
+) -> dict[str, object]:
+    """Build a structured decline payload for invalid recipe inputs."""
+    limitation_list = [str(limitation) for limitation in limitations]
+    return {
+        "supported": False,
+        "original_request": prompt,
+        "planning_outcome": "declined",
+        "candidate_outcome": None,
+        "biological_goal": None,
+        "matched_entry_names": [],
+        "required_planner_types": [],
+        "produced_planner_types": [],
+        "resolved_inputs": {},
+        "missing_requirements": limitation_list,
+        "runtime_requirements": [],
+        "assumptions": [
+            "Recipe preparation validates manifest sources before typed planning runs.",
+        ],
+        "rationale": limitation_list or ["The supplied recipe inputs could not be validated."],
+        "workflow_spec": None,
+        "binding_plan": None,
+        "metadata_only": True,
+        "recipe_input_context": recipe_input_context,
+    }
 
 
 def _workflow_command_flag(name: str) -> str:
@@ -138,7 +241,12 @@ def resource_scope() -> dict[str, object]:
         "tool_surface": list(SERVER_TOOL_NAMES),
         "supported_runnable_targets": _supported_runnable_targets(),
         "prompt_requirements": list(PROMPT_REQUIREMENTS),
+        "recipe_input_context_fields": list(RECIPE_INPUT_CONTEXT_FIELDS),
+        "recipe_input_manifest_rules": list(RECIPE_INPUT_MANIFEST_RULES),
+        "recipe_input_binding_rules": list(RECIPE_INPUT_BINDING_RULES),
+        "recipe_input_runtime_rules": list(RECIPE_INPUT_RUNTIME_RULES),
         "recipe_artifact_directory": str(DEFAULT_RECIPE_DIR),
+        "slurm_run_record_directory": str(DEFAULT_RUN_DIR),
         "limitations": list(showcase_limitations()),
     }
 
@@ -170,7 +278,12 @@ def resource_prompt_and_run_contract() -> dict[str, object]:
         "supported_tools": list(SERVER_TOOL_NAMES),
         "supported_runnable_targets": _supported_runnable_targets(),
         "prompt_requirements": list(PROMPT_REQUIREMENTS),
+        "recipe_input_context_fields": list(RECIPE_INPUT_CONTEXT_FIELDS),
+        "recipe_input_manifest_rules": list(RECIPE_INPUT_MANIFEST_RULES),
+        "recipe_input_binding_rules": list(RECIPE_INPUT_BINDING_RULES),
+        "recipe_input_runtime_rules": list(RECIPE_INPUT_RUNTIME_RULES),
         "recipe_artifact_directory": str(DEFAULT_RECIPE_DIR),
+        "slurm_run_record_directory": str(DEFAULT_RUN_DIR),
         "result_summary_fields": list(RESULT_SUMMARY_FIELDS),
         "typed_planning_fields": [
             "planning_outcome",
@@ -185,6 +298,7 @@ def resource_prompt_and_run_contract() -> dict[str, object]:
         "limitations": [
             *showcase_limitations(),
             "Execution uses saved WorkflowSpec artifacts and explicit local node handlers.",
+            "`run_slurm_recipe` submits only recipes whose frozen execution profile is `slurm`.",
         ],
     }
 
@@ -218,8 +332,8 @@ def run_workflow(
             "limitations": [
                 (
                     "Only the workflows "
-                    f"`{SUPPORTED_WORKFLOW_NAME}` and `{SUPPORTED_PROTEIN_WORKFLOW_NAME}` "
-                    "are executable through this showcase workflow runner."
+                    + ", ".join(f"`{name}`" for name in SUPPORTED_WORKFLOW_NAMES)
+                    + " are executable through this showcase workflow runner."
                 ),
             ],
         }
@@ -310,7 +424,7 @@ def run_workflow(
         "limitations": [
             (
                 "Execution stays limited to the selected prebuilt workflow and does not imply "
-                "EVM or later downstream annotation stages."
+                "additional downstream stages."
             ),
         ],
     }
@@ -401,6 +515,8 @@ def _jsonable(value: Any) -> Any:
     """Convert paths and nested containers into JSON-compatible values."""
     if isinstance(value, Path):
         return str(value)
+    if hasattr(value, "to_dict"):
+        return _jsonable(value.to_dict())
     if isinstance(value, dict):
         return {str(key): _jsonable(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
@@ -452,6 +568,11 @@ def _local_node_handlers(
     return {
         SUPPORTED_WORKFLOW_NAME: workflow_handler,
         SUPPORTED_PROTEIN_WORKFLOW_NAME: workflow_handler,
+        SUPPORTED_BUSCO_WORKFLOW_NAME: workflow_handler,
+        SUPPORTED_EGGNOG_WORKFLOW_NAME: workflow_handler,
+        SUPPORTED_AGAT_WORKFLOW_NAME: workflow_handler,
+        SUPPORTED_AGAT_CONVERSION_WORKFLOW_NAME: workflow_handler,
+        SUPPORTED_AGAT_CLEANUP_WORKFLOW_NAME: workflow_handler,
         SUPPORTED_TASK_NAME: task_handler,
     }
 
@@ -511,6 +632,9 @@ def _result_from_local_spec_execution(result: LocalSpecExecutionResult) -> dict[
         "stderr": "",
         "output_paths": output_paths,
         "resolved_planner_inputs": _jsonable(dict(result.resolved_planner_inputs)),
+        "execution_profile": result.execution_profile,
+        "resource_spec": _jsonable(result.resource_spec),
+        "runtime_image": _jsonable(result.runtime_image),
         "node_results": node_results,
         "final_outputs": _jsonable(dict(result.final_outputs)),
         "assumptions": list(result.assumptions),
@@ -518,15 +642,104 @@ def _result_from_local_spec_execution(result: LocalSpecExecutionResult) -> dict[
     }
 
 
-def _prepare_run_recipe_impl(prompt: str, *, recipe_dir: Path | None = None) -> dict[str, object]:
+def _result_from_slurm_spec_execution(result: SlurmSpecExecutionResult) -> dict[str, object]:
+    """Serialize Slurm submission into the MCP execution-result shape."""
+    run_record = result.run_record
+    output_paths = []
+    if run_record is not None:
+        output_paths = [str(run_record.run_record_path), str(run_record.script_path)]
+    return {
+        "supported": result.supported,
+        "entry_name": result.workflow_name,
+        "entry_category": "workflow",
+        "workflow_name": result.workflow_name,
+        "execution_mode": "slurm-workflow-spec-executor",
+        "exit_status": 0 if result.supported else 1,
+        "stdout": result.scheduler_stdout,
+        "stderr": result.scheduler_stderr,
+        "output_paths": output_paths,
+        "execution_profile": result.execution_profile,
+        "resource_spec": _jsonable(result.resource_spec),
+        "runtime_image": _jsonable(result.runtime_image),
+        "run_record": _jsonable(run_record),
+        "script_text": result.script_text,
+        "assumptions": list(result.assumptions),
+        "limitations": list(result.limitations),
+    }
+
+
+def _result_from_slurm_lifecycle(result: SlurmLifecycleResult) -> dict[str, object]:
+    """Serialize Slurm lifecycle operations for MCP clients."""
+    run_record = result.run_record
+    snapshot = result.scheduler_snapshot
+    return {
+        "supported": result.supported,
+        "action": result.action,
+        "execution_mode": "slurm-lifecycle",
+        "run_record": _jsonable(run_record),
+        "scheduler_snapshot": _jsonable(snapshot),
+        "scheduler_state": run_record.scheduler_state if run_record is not None else None,
+        "final_scheduler_state": run_record.final_scheduler_state if run_record is not None else None,
+        "job_id": run_record.job_id if run_record is not None else (snapshot.job_id if snapshot is not None else None),
+        "stdout_path": str(run_record.stdout_path) if run_record is not None else None,
+        "stderr_path": str(run_record.stderr_path) if run_record is not None else None,
+        "exit_code": run_record.scheduler_exit_code if run_record is not None else None,
+        "limitations": list(result.limitations),
+        "assumptions": list(result.assumptions),
+    }
+
+
+def _prepare_run_recipe_impl(
+    prompt: str,
+    *,
+    manifest_sources: Sequence[str | Path] | None = None,
+    explicit_bindings: Mapping[str, Any] | None = None,
+    runtime_bindings: Mapping[str, Any] | None = None,
+    resource_request: Mapping[str, Any] | ResourceSpec | None = None,
+    execution_profile: str | None = None,
+    runtime_image: Mapping[str, Any] | RuntimeImageSpec | str | None = None,
+    recipe_dir: Path | None = None,
+) -> dict[str, object]:
     """Plan and freeze one prompt as a local workflow-spec artifact."""
-    typed_plan = plan_typed_request(prompt)
+    recipe_input_context = _recipe_input_context_payload(
+        manifest_sources=manifest_sources,
+        explicit_bindings=explicit_bindings,
+        runtime_bindings=runtime_bindings,
+        resource_request=resource_request,
+        execution_profile=execution_profile,
+        runtime_image=runtime_image,
+    )
+    normalized_manifest_sources, limitations = _normalize_manifest_sources(manifest_sources)
+    if limitations:
+        return {
+            "supported": False,
+            "original_request": prompt,
+            "typed_plan": _unsupported_recipe_prep_plan(
+                prompt,
+                limitations=limitations,
+                recipe_input_context=recipe_input_context,
+            ),
+            "artifact_path": None,
+            "recipe_input_context": recipe_input_context,
+            "limitations": list(limitations),
+        }
+
+    typed_plan = plan_typed_request(
+        prompt,
+        explicit_bindings=explicit_bindings or {},
+        manifest_sources=normalized_manifest_sources,
+        runtime_bindings=runtime_bindings or {},
+        resource_request=resource_request,
+        execution_profile=execution_profile,
+        runtime_image=runtime_image,
+    )
     if not typed_plan.get("supported", False):
         return {
             "supported": False,
             "original_request": prompt,
             "typed_plan": typed_plan,
             "artifact_path": None,
+            "recipe_input_context": recipe_input_context,
             "limitations": _limitations_from_typed_plan(typed_plan),
         }
 
@@ -546,13 +759,31 @@ def _prepare_run_recipe_impl(prompt: str, *, recipe_dir: Path | None = None) -> 
         "typed_plan": typed_plan,
         "artifact_path": str(artifact_path),
         "created_at": created_at,
+        "recipe_input_context": recipe_input_context,
         "limitations": [],
     }
 
 
-def prepare_run_recipe(prompt: str) -> dict[str, object]:
+def prepare_run_recipe(
+    prompt: str,
+    *,
+    manifest_sources: Sequence[str | Path] | None = None,
+    explicit_bindings: Mapping[str, Any] | None = None,
+    runtime_bindings: Mapping[str, Any] | None = None,
+    resource_request: Mapping[str, Any] | ResourceSpec | None = None,
+    execution_profile: str | None = None,
+    runtime_image: Mapping[str, Any] | RuntimeImageSpec | str | None = None,
+) -> dict[str, object]:
     """Plan one prompt and save a frozen workflow-spec recipe artifact."""
-    return _prepare_run_recipe_impl(prompt)
+    return _prepare_run_recipe_impl(
+        prompt,
+        manifest_sources=manifest_sources,
+        explicit_bindings=explicit_bindings,
+        runtime_bindings=runtime_bindings,
+        resource_request=resource_request,
+        execution_profile=execution_profile,
+        runtime_image=runtime_image,
+    )
 
 
 def _run_local_recipe_impl(
@@ -595,6 +826,84 @@ def run_local_recipe(artifact_path: str) -> dict[str, object]:
     return _run_local_recipe_impl(artifact_path)
 
 
+def _run_slurm_recipe_impl(
+    artifact_path: str | Path,
+    *,
+    run_dir: Path | None = None,
+    sbatch_runner: Any = subprocess.run,
+) -> dict[str, object]:
+    """Submit one frozen workflow-spec recipe through `sbatch`."""
+    result = SlurmWorkflowSpecExecutor(
+        run_root=run_dir or DEFAULT_RUN_DIR,
+        repo_root=REPO_ROOT,
+        sbatch_runner=sbatch_runner,
+    ).submit(Path(artifact_path))
+    execution_result = _result_from_slurm_spec_execution(result)
+    return {
+        "supported": bool(result.supported),
+        "artifact_path": str(artifact_path),
+        "execution_result": execution_result,
+        "run_record_path": str(result.run_record.run_record_path) if result.run_record is not None else None,
+        "job_id": result.run_record.job_id if result.run_record is not None else None,
+        "limitations": list(result.limitations),
+    }
+
+
+def run_slurm_recipe(artifact_path: str) -> dict[str, object]:
+    """Submit a previously frozen workflow-spec recipe artifact to Slurm."""
+    return _run_slurm_recipe_impl(artifact_path)
+
+
+def _monitor_slurm_job_impl(
+    run_record_path: str | Path,
+    *,
+    run_dir: Path | None = None,
+    scheduler_runner: Any = subprocess.run,
+) -> dict[str, object]:
+    """Reconcile one Slurm job from its durable run record."""
+    result = SlurmWorkflowSpecExecutor(
+        run_root=run_dir or DEFAULT_RUN_DIR,
+        repo_root=REPO_ROOT,
+        scheduler_runner=scheduler_runner,
+    ).reconcile(Path(run_record_path))
+    return {
+        "supported": bool(result.supported),
+        "run_record_path": str(run_record_path),
+        "lifecycle_result": _result_from_slurm_lifecycle(result),
+        "limitations": list(result.limitations),
+    }
+
+
+def monitor_slurm_job(run_record_path: str) -> dict[str, object]:
+    """Inspect and reconcile a submitted Slurm job from its run record."""
+    return _monitor_slurm_job_impl(run_record_path)
+
+
+def _cancel_slurm_job_impl(
+    run_record_path: str | Path,
+    *,
+    run_dir: Path | None = None,
+    scheduler_runner: Any = subprocess.run,
+) -> dict[str, object]:
+    """Cancel one Slurm job from its durable run record."""
+    result = SlurmWorkflowSpecExecutor(
+        run_root=run_dir or DEFAULT_RUN_DIR,
+        repo_root=REPO_ROOT,
+        scheduler_runner=scheduler_runner,
+    ).cancel(Path(run_record_path))
+    return {
+        "supported": bool(result.supported),
+        "run_record_path": str(run_record_path),
+        "lifecycle_result": _result_from_slurm_lifecycle(result),
+        "limitations": list(result.limitations),
+    }
+
+
+def cancel_slurm_job(run_record_path: str) -> dict[str, object]:
+    """Request cancellation for a submitted Slurm job from its run record."""
+    return _cancel_slurm_job_impl(run_record_path)
+
+
 def _supported_target_names() -> list[str]:
     """Return the exact day-one recipe target names exposed through MCP."""
     return list(SUPPORTED_TARGET_NAMES)
@@ -607,6 +916,33 @@ def _summary_used_inputs(plan: dict[str, object]) -> dict[str, object]:
         extracted_inputs = {}
     if extracted_inputs:
         return {name: value for name, value in extracted_inputs.items() if value not in (None, "")}
+
+    resolved_inputs = plan.get("resolved_inputs", {})
+    if isinstance(resolved_inputs, dict) and "QualityAssessmentTarget" in resolved_inputs:
+        target_value = resolved_inputs.get("QualityAssessmentTarget")
+        if isinstance(target_value, dict):
+            matched_entry_names = plan.get("matched_entry_names", [])
+            target_name = matched_entry_names[0] if isinstance(matched_entry_names, list) and matched_entry_names else None
+            input_name = {
+                SUPPORTED_BUSCO_WORKFLOW_NAME: "repeat_filter_results",
+                SUPPORTED_EGGNOG_WORKFLOW_NAME: "repeat_filter_results",
+                SUPPORTED_AGAT_WORKFLOW_NAME: "eggnog_results",
+                SUPPORTED_AGAT_CONVERSION_WORKFLOW_NAME: "eggnog_results",
+                SUPPORTED_AGAT_CLEANUP_WORKFLOW_NAME: "agat_conversion_results",
+            }.get(str(target_name), "repeat_filter_results")
+            source_dir = target_value.get("source_result_dir")
+            if not source_dir and isinstance(target_value.get("source_manifest_path"), str):
+                source_dir = str(Path(target_value["source_manifest_path"]).parent)
+            if isinstance(source_dir, str) and source_dir:
+                context_inputs = {input_name: source_dir}
+                runtime_bindings = plan.get("binding_plan", {})
+                if isinstance(runtime_bindings, dict):
+                    runtime_values = runtime_bindings.get("runtime_bindings", {})
+                    if isinstance(runtime_values, dict):
+                        context_inputs.update(
+                            {name: value for name, value in runtime_values.items() if value not in (None, "")}
+                        )
+                return context_inputs
 
     binding_plan = plan.get("binding_plan", {})
     if isinstance(binding_plan, dict):
@@ -750,6 +1086,9 @@ def _build_result_summary(
         "reason_code": reason_code,
         "target_name": target_name,
         "target_category": target_category,
+        "execution_profile": plan.get("execution_profile"),
+        "resource_spec": _jsonable(plan.get("resource_spec")),
+        "runtime_image": _jsonable(plan.get("runtime_image")),
         "execution_attempted": execution_attempted,
         "used_inputs": used_inputs,
         "output_paths": output_paths if isinstance(output_paths, list) else [],
@@ -776,10 +1115,26 @@ def _prompt_and_run_impl(
     prompt: str,
     workflow_runner: Any = run_workflow,
     task_runner: Any = run_task,
+    *,
+    manifest_sources: Sequence[str | Path] | None = None,
+    explicit_bindings: Mapping[str, Any] | None = None,
+    runtime_bindings: Mapping[str, Any] | None = None,
+    resource_request: Mapping[str, Any] | ResourceSpec | None = None,
+    execution_profile: str | None = None,
+    runtime_image: Mapping[str, Any] | RuntimeImageSpec | str | None = None,
     recipe_dir: Path | None = None,
 ) -> dict[str, object]:
     """Prepare a frozen recipe and execute it through the local spec executor."""
-    recipe = _prepare_run_recipe_impl(prompt, recipe_dir=recipe_dir)
+    recipe = _prepare_run_recipe_impl(
+        prompt,
+        manifest_sources=manifest_sources,
+        explicit_bindings=explicit_bindings,
+        runtime_bindings=runtime_bindings,
+        resource_request=resource_request,
+        execution_profile=execution_profile,
+        runtime_image=runtime_image,
+        recipe_dir=recipe_dir,
+    )
     plan = recipe["typed_plan"]
     if not recipe["supported"]:
         result_summary = _build_result_summary(
@@ -830,9 +1185,26 @@ def _prompt_and_run_impl(
     }
 
 
-def prompt_and_run(prompt: str) -> dict[str, object]:
+def prompt_and_run(
+    prompt: str,
+    *,
+    manifest_sources: Sequence[str | Path] | None = None,
+    explicit_bindings: Mapping[str, Any] | None = None,
+    runtime_bindings: Mapping[str, Any] | None = None,
+    resource_request: Mapping[str, Any] | ResourceSpec | None = None,
+    execution_profile: str | None = None,
+    runtime_image: Mapping[str, Any] | RuntimeImageSpec | str | None = None,
+) -> dict[str, object]:
     """Plan one prompt and run it through the recipe-backed execution flow."""
-    return _prompt_and_run_impl(prompt)
+    return _prompt_and_run_impl(
+        prompt,
+        manifest_sources=manifest_sources,
+        explicit_bindings=explicit_bindings,
+        runtime_bindings=runtime_bindings,
+        resource_request=resource_request,
+        execution_profile=execution_profile,
+        runtime_image=runtime_image,
+    )
 
 
 def _load_fastmcp() -> Any:
@@ -911,6 +1283,9 @@ def create_mcp_server(fastmcp_cls: Any | None = None) -> Any:
     mcp.tool()(plan_request)
     mcp.tool()(prepare_run_recipe)
     mcp.tool()(run_local_recipe)
+    mcp.tool()(run_slurm_recipe)
+    mcp.tool()(monitor_slurm_job)
+    mcp.tool()(cancel_slurm_job)
     mcp.tool()(prompt_and_run)
     mcp.resource(SERVER_RESOURCE_URIS[0])(resource_scope)
     mcp.resource(SERVER_RESOURCE_URIS[1])(resource_supported_targets)

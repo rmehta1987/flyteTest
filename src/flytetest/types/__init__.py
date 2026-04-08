@@ -5,10 +5,13 @@ pipeline stage boundaries without changing current Flyte task contracts.
 """
 
 from flytetest.types.assets import (
+    AbInitioResultBundle,
+    AssetToolProvenance,
     Braker3InputBundleAsset,
     Braker3NormalizedGff3Asset,
     Braker3RawRunResultAsset,
     Braker3ResultBundle,
+    CleanedTranscriptDataset,
     CombinedTrinityTranscriptAsset,
     ChunkedProteinFastaAsset,
     EvmBraker3InputBundle,
@@ -25,6 +28,7 @@ from flytetest.types.assets import (
     EvmTranscriptInputBundleAsset,
     EvmProteinEvidenceGff3Asset,
     ExonerateChunkAlignmentResult,
+    ManifestSerializable,
     MergedBamAsset,
     PasaAlignmentAssemblyResult,
     PasaCleanedTranscriptAsset,
@@ -39,6 +43,7 @@ from flytetest.types.assets import (
     ReferenceGenome,
     SalmonIndexAsset,
     SalmonQuantResult,
+    RnaSeqAlignmentResult,
     StarAlignmentResult,
     StarGenomeIndexAsset,
     StringTieAssemblyResult,
@@ -49,10 +54,13 @@ from flytetest.types.assets import (
 )
 
 __all__ = [
+    "AbInitioResultBundle",
+    "AssetToolProvenance",
     "Braker3InputBundleAsset",
     "Braker3NormalizedGff3Asset",
     "Braker3RawRunResultAsset",
     "Braker3ResultBundle",
+    "CleanedTranscriptDataset",
     "EvmBraker3InputBundle",
     "EvmCommandSetAsset",
     "EvmConsensusResultBundle",
@@ -69,6 +77,7 @@ __all__ = [
     "ChunkedProteinFastaAsset",
     "EvmProteinEvidenceGff3Asset",
     "ExonerateChunkAlignmentResult",
+    "ManifestSerializable",
     "MergedBamAsset",
     "PasaAlignmentAssemblyResult",
     "PasaCleanedTranscriptAsset",
@@ -83,6 +92,7 @@ __all__ = [
     "ReferenceGenome",
     "SalmonIndexAsset",
     "SalmonQuantResult",
+    "RnaSeqAlignmentResult",
     "StarAlignmentResult",
     "StarGenomeIndexAsset",
     "StringTieAssemblyResult",

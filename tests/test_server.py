@@ -1,11 +1,12 @@
 """Synthetic tests for the FLyteTest MCP recipe-backed server.
 
-These checks keep the server transport MCP-shaped while preserving the day-one
-execution target set of two workflows and one task.
+These checks keep the server transport MCP-shaped while preserving the explicit
+recipe-backed execution target set.
 """
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import tempfile
@@ -30,6 +31,11 @@ from flytetest.mcp_contract import (
     PROTEIN_WORKFLOW_EXAMPLE_PROMPT,
     RESULT_CODE_DEFINITIONS,
     SHOWCASE_SERVER_NAME,
+    SUPPORTED_AGAT_CLEANUP_WORKFLOW_NAME,
+    SUPPORTED_AGAT_CONVERSION_WORKFLOW_NAME,
+    SUPPORTED_AGAT_WORKFLOW_NAME,
+    SUPPORTED_BUSCO_WORKFLOW_NAME,
+    SUPPORTED_EGGNOG_WORKFLOW_NAME,
     SUPPORTED_PROTEIN_WORKFLOW_NAME,
     SUPPORTED_TARGET_NAMES,
     SUPPORTED_TASK_NAME,
@@ -44,22 +50,89 @@ from flytetest.server import (
     _resolve_flyte_cli,
     _should_skip_stdio_line,
     _prepare_run_recipe_impl,
+    _cancel_slurm_job_impl,
+    _monitor_slurm_job_impl,
     _run_local_recipe_impl,
+    _run_slurm_recipe_impl,
     create_mcp_server,
     list_entries,
     plan_request,
     prompt_and_run,
     prepare_run_recipe,
+    monitor_slurm_job,
+    cancel_slurm_job,
     resource_example_prompts,
     resource_prompt_and_run_contract,
     resource_scope,
     resource_supported_targets,
     run_local_recipe,
+    run_slurm_recipe,
     run_workflow,
 )
+from flytetest.spec_artifacts import load_workflow_spec_artifact
 
 EXPECTED_TARGET_NAMES = list(SUPPORTED_TARGET_NAMES)
 EXPECTED_RUNNABLE_TARGETS = supported_runnable_targets_payload()
+
+
+def _repeat_filter_manifest_dir(tmp_path: Path) -> Path:
+    """Create one synthetic repeat-filter result directory with a run manifest."""
+    result_dir = tmp_path / "repeat_filter_results"
+    result_dir.mkdir()
+    (result_dir / "run_manifest.json").write_text(
+        json.dumps(
+            {
+                "workflow": "annotation_repeat_filtering",
+                "assumptions": ["Repeat-filtered outputs are QC-ready."],
+                "inputs": {"reference_genome": "data/genome.fa"},
+                "outputs": {
+                    "all_repeats_removed_gff3": str(result_dir / "all_repeats_removed.gff3"),
+                    "final_proteins_fasta": str(result_dir / "all_repeats_removed.proteins.fa"),
+                },
+            },
+            indent=2,
+        )
+    )
+    return result_dir
+
+
+def _eggnog_manifest_dir(tmp_path: Path, name: str = "eggnog_results") -> Path:
+    """Create one synthetic EggNOG result directory with a run manifest."""
+    result_dir = tmp_path / name
+    result_dir.mkdir()
+    (result_dir / "run_manifest.json").write_text(
+        json.dumps(
+            {
+                "workflow": "annotation_functional_eggnog",
+                "assumptions": ["EggNOG outputs are AGAT-ready."],
+                "outputs": {
+                    "eggnog_annotated_gff3": str(result_dir / "all_repeats_removed.eggnog.gff3"),
+                    "repeat_filter_proteins_fasta": str(result_dir / "all_repeats_removed.proteins.fa"),
+                },
+            },
+            indent=2,
+        )
+    )
+    return result_dir
+
+
+def _agat_conversion_manifest_dir(tmp_path: Path) -> Path:
+    """Create one synthetic AGAT conversion result directory with a run manifest."""
+    result_dir = tmp_path / "agat_conversion_results"
+    result_dir.mkdir()
+    (result_dir / "run_manifest.json").write_text(
+        json.dumps(
+            {
+                "workflow": "annotation_postprocess_agat_conversion",
+                "assumptions": ["AGAT conversion outputs are cleanup-ready."],
+                "outputs": {
+                    "agat_converted_gff3": str(result_dir / "all_repeats_removed.agat.gff3"),
+                },
+            },
+            indent=2,
+        )
+    )
+    return result_dir
 
 
 class FakeFastMCP:
@@ -118,7 +191,7 @@ class ServerTests(TestCase):
         self.assertFalse(_should_skip_stdio_line('{"jsonrpc":"2.0"}\n'))
 
     def test_list_entries_exposes_only_the_supported_targets(self) -> None:
-        """List exactly the two workflows and one task in day-one scope."""
+        """List only the explicitly runnable MCP recipe targets."""
         payload = list_entries()
 
         self.assertEqual([entry["name"] for entry in payload["entries"]], EXPECTED_TARGET_NAMES)
@@ -126,6 +199,9 @@ class ServerTests(TestCase):
         self.assertIn(f"`{SUPPORTED_WORKFLOW_NAME}`", payload["limitations"][0])
         self.assertIn(f"`{SUPPORTED_PROTEIN_WORKFLOW_NAME}`", payload["limitations"][0])
         self.assertIn(f"`{SUPPORTED_TASK_NAME}`", payload["limitations"][0])
+        self.assertIn("annotation_qc_busco", payload["limitations"][0])
+        self.assertIn("annotation_functional_eggnog", payload["limitations"][0])
+        self.assertIn("annotation_postprocess_agat_cleanup", payload["limitations"][0])
 
     def test_scope_resource_describes_the_recipe_surface(self) -> None:
         """Describe the stdio recipe contract without implying broader support."""
@@ -135,6 +211,10 @@ class ServerTests(TestCase):
         self.assertEqual(payload["primary_tool"], PRIMARY_TOOL_NAME)
         self.assertEqual(payload["supported_runnable_targets"], EXPECTED_RUNNABLE_TARGETS)
         self.assertIn(".runtime/specs", payload["recipe_artifact_directory"])
+        self.assertIn("manifest_sources", payload["recipe_input_context_fields"])
+        self.assertIn("busco_lineages_text", payload["recipe_input_runtime_rules"][1])
+        self.assertIn("eggnog_data_dir", payload["recipe_input_runtime_rules"][2])
+        self.assertIn("annotation_fasta_path", payload["recipe_input_runtime_rules"][3])
 
     def test_supported_targets_resource_matches_the_exact_showcase_entries(self) -> None:
         """Keep the resource target list aligned with the tool-facing entry list."""
@@ -160,6 +240,8 @@ class ServerTests(TestCase):
         self.assertEqual(payload["primary_tool"], PRIMARY_TOOL_NAME)
         self.assertEqual(payload["supported_tools"], list(MCP_TOOL_NAMES))
         self.assertEqual(payload["supported_runnable_targets"], EXPECTED_RUNNABLE_TARGETS)
+        self.assertIn("manifest_sources", payload["recipe_input_context_fields"])
+        self.assertIn("QualityAssessmentTarget", payload["recipe_input_binding_rules"][1])
         self.assertIn("result_code", payload["result_summary_fields"])
         self.assertIn("reason_code", payload["result_summary_fields"])
         self.assertEqual(
@@ -247,6 +329,457 @@ class ServerTests(TestCase):
         self.assertTrue(executed["supported"])
         self.assertEqual(calls[0], {"genome": "data/genome.fa", "protein_fastas": ["data/proteins.fa"]})
         self.assertEqual(executed["execution_result"]["output_paths"], ["/tmp/protein_evidence_results"])
+
+    def test_run_slurm_recipe_submits_saved_slurm_artifact(self) -> None:
+        """Submit a frozen Slurm-profile recipe and persist a run record."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result_dir = _repeat_filter_manifest_dir(tmp_path)
+            prepared = _prepare_run_recipe_impl(
+                "Run BUSCO quality assessment on the annotation.",
+                manifest_sources=(result_dir,),
+                runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                resource_request={"cpu": 12, "memory": "48Gi", "queue": "batch", "walltime": "02:00:00"},
+                execution_profile="slurm",
+                recipe_dir=tmp_path,
+            )
+            captured: dict[str, object] = {}
+
+            def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                captured["args"] = args
+                captured.update(kwargs)
+                return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 24680\n", stderr="")
+
+            submitted = _run_slurm_recipe_impl(
+                str(prepared["artifact_path"]),
+                run_dir=tmp_path / "runs",
+                sbatch_runner=fake_sbatch,
+            )
+            run_record_exists = Path(str(submitted["run_record_path"])).exists()
+
+        self.assertTrue(prepared["supported"])
+        self.assertTrue(submitted["supported"])
+        self.assertEqual(submitted["job_id"], "24680")
+        self.assertTrue(run_record_exists)
+        self.assertEqual(captured["args"][0], "sbatch")
+        self.assertEqual(submitted["execution_result"]["execution_mode"], "slurm-workflow-spec-executor")
+        self.assertEqual(submitted["execution_result"]["run_record"]["resource_spec"]["queue"], "batch")
+
+    def test_run_slurm_recipe_rejects_local_profile_artifact(self) -> None:
+        """Require Slurm recipes to be explicitly frozen with the Slurm profile."""
+        with tempfile.TemporaryDirectory() as tmp:
+            prepared = _prepare_run_recipe_impl(
+                "Run protein evidence alignment with genome data/genome.fa and protein evidence data/proteins.fa",
+                recipe_dir=Path(tmp),
+            )
+            submitted = _run_slurm_recipe_impl(
+                str(prepared["artifact_path"]),
+                run_dir=Path(tmp) / "runs",
+                sbatch_runner=lambda *args, **kwargs: subprocess.CompletedProcess(args=args, returncode=0),
+            )
+
+        self.assertFalse(submitted["supported"])
+        self.assertIn("execution_profile `slurm`", submitted["limitations"][0])
+
+    def test_monitor_slurm_job_reconciles_saved_record(self) -> None:
+        """Expose Slurm status reconciliation through the server helper."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result_dir = _repeat_filter_manifest_dir(tmp_path)
+            prepared = _prepare_run_recipe_impl(
+                "Run BUSCO quality assessment on the annotation.",
+                manifest_sources=(result_dir,),
+                runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                resource_request={"cpu": 12, "memory": "48Gi", "queue": "batch"},
+                execution_profile="slurm",
+                recipe_dir=tmp_path,
+            )
+
+            def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 44444\n", stderr="")
+
+            submitted = _run_slurm_recipe_impl(
+                str(prepared["artifact_path"]),
+                run_dir=tmp_path / "runs",
+                sbatch_runner=fake_sbatch,
+            )
+
+            def fake_scheduler(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                if args[0] == "squeue":
+                    return subprocess.CompletedProcess(args=args, returncode=0, stdout="PENDING\n", stderr="")
+                if args[0] == "scontrol":
+                    return subprocess.CompletedProcess(
+                        args=args,
+                        returncode=0,
+                        stdout=f"JobId=44444 JobState=PENDING ExitCode=0:0 StdOut={tmp_path / 'job.out'} StdErr={tmp_path / 'job.err'} Reason=Resources\n",
+                        stderr="",
+                    )
+                if args[0] == "sacct":
+                    return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+                raise AssertionError(args)
+
+            status = _monitor_slurm_job_impl(
+                str(submitted["run_record_path"]),
+                run_dir=tmp_path / "runs",
+                scheduler_runner=fake_scheduler,
+            )
+
+        self.assertTrue(status["supported"])
+        self.assertEqual(status["lifecycle_result"]["scheduler_state"], "PENDING")
+        self.assertEqual(status["lifecycle_result"]["job_id"], "44444")
+        self.assertEqual(status["lifecycle_result"]["scheduler_snapshot"]["source"], "squeue")
+
+    def test_cancel_slurm_job_records_cancellation_request(self) -> None:
+        """Expose Slurm cancellation through the server helper."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result_dir = _repeat_filter_manifest_dir(tmp_path)
+            prepared = _prepare_run_recipe_impl(
+                "Run BUSCO quality assessment on the annotation.",
+                manifest_sources=(result_dir,),
+                runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                execution_profile="slurm",
+                recipe_dir=tmp_path,
+            )
+
+            def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 55555\n", stderr="")
+
+            submitted = _run_slurm_recipe_impl(
+                str(prepared["artifact_path"]),
+                run_dir=tmp_path / "runs",
+                sbatch_runner=fake_sbatch,
+            )
+            calls: list[list[str]] = []
+
+            def fake_scheduler(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                calls.append(args)
+                return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+            cancelled = _cancel_slurm_job_impl(
+                str(submitted["run_record_path"]),
+                run_dir=tmp_path / "runs",
+                scheduler_runner=fake_scheduler,
+            )
+
+        self.assertTrue(cancelled["supported"])
+        self.assertEqual(calls, [["scancel", "55555"]])
+        self.assertEqual(cancelled["lifecycle_result"]["scheduler_state"], "cancellation_requested")
+
+    def test_monitor_slurm_job_reports_missing_record(self) -> None:
+        """Report missing run records instead of inventing state."""
+        with tempfile.TemporaryDirectory() as tmp:
+            status = _monitor_slurm_job_impl(Path(tmp) / "missing")
+
+        self.assertFalse(status["supported"])
+        self.assertIn("No such file", status["limitations"][0])
+
+    def test_prepare_run_recipe_accepts_busco_manifest_sources_and_runtime_bindings(self) -> None:
+        """Freeze BUSCO recipe bindings from an explicit repeat-filter manifest source."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result_dir = _repeat_filter_manifest_dir(tmp_path)
+            prepared = _prepare_run_recipe_impl(
+                "Run BUSCO quality assessment on the annotation.",
+                manifest_sources=(result_dir,),
+                runtime_bindings={
+                    "busco_lineages_text": "embryophyta_odb10",
+                    "busco_sif": "busco.sif",
+                    "busco_cpu": 12,
+                },
+                resource_request={"cpu": 12, "memory": "48Gi", "queue": "short"},
+                execution_profile="local",
+                runtime_image={"apptainer_image": "busco.sif"},
+                recipe_dir=tmp_path,
+            )
+            artifact = load_workflow_spec_artifact(Path(str(prepared["artifact_path"])))
+
+        self.assertTrue(prepared["supported"])
+        self.assertEqual(prepared["recipe_input_context"]["manifest_sources"], [str(result_dir)])
+        self.assertEqual(
+            prepared["recipe_input_context"]["resource_request"],
+            {"cpu": 12, "memory": "48Gi", "queue": "short"},
+        )
+        self.assertEqual(
+            prepared["typed_plan"]["resolved_inputs"]["QualityAssessmentTarget"]["source_result_dir"],
+            str(result_dir),
+        )
+        self.assertEqual(prepared["typed_plan"]["execution_profile"], "local")
+        self.assertEqual(prepared["typed_plan"]["resource_spec"]["cpu"], "12")
+        self.assertEqual(prepared["typed_plan"]["resource_spec"]["memory"], "48Gi")
+        self.assertEqual(prepared["typed_plan"]["runtime_image"]["apptainer_image"], "busco.sif")
+        self.assertEqual(
+            prepared["typed_plan"]["binding_plan"]["runtime_bindings"],
+            {
+                "busco_lineages_text": "embryophyta_odb10",
+                "busco_sif": "busco.sif",
+                "busco_cpu": 12,
+            },
+        )
+        self.assertEqual(artifact.binding_plan.resource_spec.memory, "48Gi")
+        self.assertEqual(artifact.binding_plan.runtime_image.apptainer_image, "busco.sif")
+
+    def test_prepare_run_recipe_rejects_missing_manifest_sources(self) -> None:
+        """Return a structured decline when a manifest source cannot be validated."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            prepared = _prepare_run_recipe_impl(
+                "Run BUSCO quality assessment on the annotation.",
+                manifest_sources=(tmp_path / "missing",),
+                recipe_dir=tmp_path,
+            )
+
+        self.assertFalse(prepared["supported"])
+        self.assertIsNone(prepared["artifact_path"])
+        self.assertIn("does not exist", prepared["limitations"][0])
+        self.assertEqual(prepared["recipe_input_context"]["manifest_sources"], [str(tmp_path / "missing")])
+
+    def test_prompt_and_run_accepts_busco_recipe_context(self) -> None:
+        """Allow the compatibility alias to execute BUSCO from explicit recipe inputs."""
+        prompt = "Run BUSCO quality assessment on the annotation."
+        captured: dict[str, object] = {}
+
+        def fake_workflow_runner(workflow_name: str, inputs: dict[str, object]) -> dict[str, object]:
+            captured["workflow_name"] = workflow_name
+            captured["inputs"] = inputs
+            return {
+                "supported": True,
+                "entry_name": workflow_name,
+                "entry_category": "workflow",
+                "execution_mode": "synthetic-test",
+                "exit_status": 0,
+                "stdout": "",
+                "stderr": "",
+                "output_paths": ["/tmp/busco_results"],
+                "limitations": [],
+            }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result_dir = _repeat_filter_manifest_dir(tmp_path)
+            payload = _prompt_and_run_impl(
+                prompt,
+                workflow_runner=fake_workflow_runner,
+                manifest_sources=(result_dir,),
+                runtime_bindings={
+                    "busco_lineages_text": "embryophyta_odb10",
+                    "busco_sif": "busco.sif",
+                    "busco_cpu": 12,
+                },
+                resource_request={"cpu": 12, "memory": "48Gi"},
+                recipe_dir=tmp_path,
+            )
+            artifact_exists = Path(str(payload["artifact_path"])).exists()
+
+        self.assertTrue(payload["supported"])
+        self.assertTrue(payload["execution_attempted"])
+        self.assertTrue(artifact_exists)
+        self.assertEqual(captured["workflow_name"], SUPPORTED_BUSCO_WORKFLOW_NAME)
+        self.assertEqual(
+            captured["inputs"],
+            {
+                "repeat_filter_results": result_dir,
+                "busco_lineages_text": "embryophyta_odb10",
+                "busco_sif": "busco.sif",
+                "busco_cpu": 12,
+            },
+        )
+        self.assertEqual(
+            payload["result_summary"]["used_inputs"],
+            {
+                "repeat_filter_results": str(result_dir),
+                "busco_lineages_text": "embryophyta_odb10",
+                "busco_sif": "busco.sif",
+                "busco_cpu": 12,
+            },
+        )
+        self.assertEqual(
+            payload["execution_result"]["resolved_planner_inputs"]["QualityAssessmentTarget"]["source_result_dir"],
+            str(result_dir),
+        )
+        self.assertEqual(payload["execution_result"]["execution_profile"], "local")
+        self.assertEqual(payload["execution_result"]["resource_spec"]["cpu"], "12")
+        self.assertEqual(payload["execution_result"]["resource_spec"]["memory"], "48Gi")
+        self.assertEqual(payload["result_summary"]["execution_profile"], "local")
+        self.assertEqual(payload["result_summary"]["resource_spec"]["memory"], "48Gi")
+
+    def test_prepare_run_recipe_accepts_eggnog_manifest_sources_and_runtime_bindings(self) -> None:
+        """Freeze EggNOG recipe bindings from a repeat-filter manifest source."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result_dir = _repeat_filter_manifest_dir(tmp_path)
+            prepared = _prepare_run_recipe_impl(
+                "Run EggNOG functional annotation on the repeat-filtered proteins.",
+                manifest_sources=(result_dir,),
+                runtime_bindings={
+                    "eggnog_data_dir": "/db/eggnog",
+                    "eggnog_sif": "eggnog.sif",
+                    "eggnog_cpu": 16,
+                    "eggnog_database": "Diptera",
+                },
+                recipe_dir=tmp_path,
+            )
+            artifact = load_workflow_spec_artifact(Path(str(prepared["artifact_path"])))
+
+        self.assertTrue(prepared["supported"])
+        self.assertEqual(prepared["typed_plan"]["matched_entry_names"], [SUPPORTED_EGGNOG_WORKFLOW_NAME])
+        self.assertEqual(
+            artifact.binding_plan.runtime_bindings,
+            {
+                "eggnog_data_dir": "/db/eggnog",
+                "eggnog_sif": "eggnog.sif",
+                "eggnog_cpu": 16,
+                "eggnog_database": "Diptera",
+            },
+        )
+        self.assertEqual(
+            artifact.binding_plan.manifest_derived_paths["QualityAssessmentTarget"]["label"],
+            str(result_dir / "run_manifest.json"),
+        )
+
+    def test_prepare_run_recipe_accepts_agat_manifest_sources(self) -> None:
+        """Freeze AGAT recipes from explicit EggNOG and AGAT conversion manifests."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            eggnog_dir = _eggnog_manifest_dir(tmp_path)
+            conversion_dir = _agat_conversion_manifest_dir(tmp_path)
+            stats = _prepare_run_recipe_impl(
+                "Run AGAT statistics on the EggNOG-annotated GFF3.",
+                manifest_sources=(eggnog_dir,),
+                runtime_bindings={"annotation_fasta_path": "data/genome.fa", "agat_sif": "agat.sif"},
+                recipe_dir=tmp_path,
+            )
+            conversion = _prepare_run_recipe_impl(
+                "Run AGAT conversion on the EggNOG-annotated GFF3.",
+                manifest_sources=(eggnog_dir,),
+                runtime_bindings={"agat_sif": "agat.sif"},
+                recipe_dir=tmp_path,
+            )
+            cleanup = _prepare_run_recipe_impl(
+                "Run AGAT cleanup on the converted GFF3.",
+                manifest_sources=(conversion_dir,),
+                recipe_dir=tmp_path,
+            )
+
+        self.assertTrue(stats["supported"])
+        self.assertTrue(conversion["supported"])
+        self.assertTrue(cleanup["supported"])
+        self.assertEqual(stats["typed_plan"]["matched_entry_names"], [SUPPORTED_AGAT_WORKFLOW_NAME])
+        self.assertEqual(conversion["typed_plan"]["matched_entry_names"], [SUPPORTED_AGAT_CONVERSION_WORKFLOW_NAME])
+        self.assertEqual(cleanup["typed_plan"]["matched_entry_names"], [SUPPORTED_AGAT_CLEANUP_WORKFLOW_NAME])
+        self.assertEqual(
+            stats["typed_plan"]["binding_plan"]["runtime_bindings"],
+            {"annotation_fasta_path": "data/genome.fa", "agat_sif": "agat.sif"},
+        )
+        self.assertEqual(conversion["typed_plan"]["binding_plan"]["runtime_bindings"], {"agat_sif": "agat.sif"})
+        self.assertEqual(
+            cleanup["typed_plan"]["resolved_inputs"]["QualityAssessmentTarget"]["source_result_dir"],
+            str(conversion_dir),
+        )
+
+    def test_prepare_run_recipe_declines_ambiguous_eggnog_manifest_sources(self) -> None:
+        """Refuse to choose among multiple compatible EggNOG input manifests."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            first = _eggnog_manifest_dir(tmp_path, "eggnog_results_a")
+            second = _eggnog_manifest_dir(tmp_path, "eggnog_results_b")
+            prepared = _prepare_run_recipe_impl(
+                "Run AGAT conversion on the EggNOG-annotated GFF3.",
+                manifest_sources=(first, second),
+                runtime_bindings={"agat_sif": "agat.sif"},
+                recipe_dir=tmp_path,
+            )
+
+        self.assertFalse(prepared["supported"])
+        self.assertIsNone(prepared["artifact_path"])
+        self.assertIn("choose one explicitly", prepared["limitations"][0])
+
+    def test_prompt_and_run_accepts_eggnog_recipe_context(self) -> None:
+        """Execute EggNOG through the recipe context and local workflow handler."""
+        captured: dict[str, object] = {}
+
+        def fake_workflow_runner(workflow_name: str, inputs: dict[str, object]) -> dict[str, object]:
+            captured["workflow_name"] = workflow_name
+            captured["inputs"] = inputs
+            return {
+                "supported": True,
+                "entry_name": workflow_name,
+                "entry_category": "workflow",
+                "execution_mode": "synthetic-test",
+                "exit_status": 0,
+                "stdout": "",
+                "stderr": "",
+                "output_paths": ["/tmp/eggnog_results"],
+                "limitations": [],
+            }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result_dir = _repeat_filter_manifest_dir(tmp_path)
+            payload = _prompt_and_run_impl(
+                "Run EggNOG functional annotation on the repeat-filtered proteins.",
+                workflow_runner=fake_workflow_runner,
+                manifest_sources=(result_dir,),
+                runtime_bindings={
+                    "eggnog_data_dir": "/db/eggnog",
+                    "eggnog_sif": "eggnog.sif",
+                    "eggnog_cpu": 16,
+                    "eggnog_database": "Diptera",
+                },
+                recipe_dir=tmp_path,
+            )
+
+        self.assertTrue(payload["supported"])
+        self.assertEqual(captured["workflow_name"], SUPPORTED_EGGNOG_WORKFLOW_NAME)
+        self.assertEqual(
+            captured["inputs"],
+            {
+                "repeat_filter_results": result_dir,
+                "eggnog_data_dir": "/db/eggnog",
+                "eggnog_sif": "eggnog.sif",
+                "eggnog_cpu": 16,
+                "eggnog_database": "Diptera",
+            },
+        )
+        self.assertEqual(payload["result_summary"]["used_inputs"]["repeat_filter_results"], str(result_dir))
+        self.assertEqual(payload["result_summary"]["used_inputs"]["eggnog_data_dir"], "/db/eggnog")
+
+    def test_prompt_and_run_accepts_agat_cleanup_recipe_context(self) -> None:
+        """Execute AGAT cleanup from an explicit AGAT conversion manifest source."""
+        captured: dict[str, object] = {}
+
+        def fake_workflow_runner(workflow_name: str, inputs: dict[str, object]) -> dict[str, object]:
+            captured["workflow_name"] = workflow_name
+            captured["inputs"] = inputs
+            return {
+                "supported": True,
+                "entry_name": workflow_name,
+                "entry_category": "workflow",
+                "execution_mode": "synthetic-test",
+                "exit_status": 0,
+                "stdout": "",
+                "stderr": "",
+                "output_paths": ["/tmp/agat_cleanup_results"],
+                "limitations": [],
+            }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            conversion_dir = _agat_conversion_manifest_dir(tmp_path)
+            payload = _prompt_and_run_impl(
+                "Run AGAT cleanup on the converted GFF3.",
+                workflow_runner=fake_workflow_runner,
+                manifest_sources=(conversion_dir,),
+                recipe_dir=tmp_path,
+            )
+
+        self.assertTrue(payload["supported"])
+        self.assertEqual(captured["workflow_name"], SUPPORTED_AGAT_CLEANUP_WORKFLOW_NAME)
+        self.assertEqual(captured["inputs"], {"agat_conversion_results": conversion_dir})
+        self.assertEqual(
+            payload["result_summary"]["used_inputs"],
+            {"agat_conversion_results": str(conversion_dir)},
+        )
 
     def test_prompt_and_run_workflow_prompt_uses_extracted_inputs(self) -> None:
         """Plan and dispatch the BRAKER3 example prompt through the workflow runner."""

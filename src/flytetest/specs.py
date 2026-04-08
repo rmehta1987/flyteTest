@@ -254,6 +254,8 @@ class BindingPlan(SpecSerializable):
     resolved_prior_assets: dict[str, Any] = field(default_factory=dict)
     manifest_derived_paths: dict[str, Any] = field(default_factory=dict)
     execution_profile: str | None = None
+    resource_spec: ResourceSpec | None = None
+    runtime_image: RuntimeImageSpec | None = None
     runtime_bindings: dict[str, Any] = field(default_factory=dict)
     unresolved_requirements: tuple[str, ...] = field(default_factory=tuple)
     assumptions: tuple[str, ...] = field(default_factory=tuple)

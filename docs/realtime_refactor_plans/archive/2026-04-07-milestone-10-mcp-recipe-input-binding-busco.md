@@ -7,6 +7,9 @@ Related checklist milestone:
 
 ## Current State
 
+- This slice has landed in code. BUSCO recipe input binding, saved recipe
+  freezing, and local handler execution now use the explicit manifest-source,
+  planner-binding, and runtime-binding contract described below.
 - The MCP server now uses the recipe-backed flow from Milestone 9.
 - `prepare_run_recipe(...)` freezes a supported typed plan into a saved artifact
   under `.runtime/specs/`.
@@ -14,34 +17,35 @@ Related checklist milestone:
   `LocalWorkflowSpecExecutor`.
 - `prompt_and_run(...)` remains available as a compatibility alias over
   prepare-then-run.
-- Day-one execution remains limited to:
+- MCP execution before this slice was limited to:
   - `ab_initio_annotation_braker3`
   - `protein_evidence_alignment`
   - `exonerate_align_chunk`
-- Typed planning already recognizes `annotation_qc_busco` and requires a
+- MCP execution after this slice also includes `annotation_qc_busco`.
+- Typed planning recognizes `annotation_qc_busco` and requires a
   `QualityAssessmentTarget`.
 - `LocalManifestAssetResolver` can resolve planner-facing values from explicit
-  bindings, manifest sources, and result bundles, but the MCP recipe tools do
-  not yet expose that resolver input contract to clients.
+  bindings, manifest sources, and result bundles, and the MCP recipe tools now
+  expose that resolver input contract to clients for BUSCO.
 
 ## Target State
 
-- MCP recipe preparation accepts explicit input context in addition to the
-  natural-language prompt.
+- The landed recipe-preparation contract accepts explicit input context in
+  addition to the natural-language prompt.
 - MCP callers can provide prior manifest paths or result directories so the
   resolver can adapt a repeat-filtering result into a `QualityAssessmentTarget`.
 - MCP callers can provide serialized planner bindings directly when they already
   have a `QualityAssessmentTarget`.
-- MCP callers can provide runtime bindings that must be frozen into the saved
+- MCP callers can provide runtime bindings that are frozen into the saved
   recipe, starting with BUSCO choices such as:
   - `busco_lineages_text`
   - `busco_sif`
   - `busco_cpu`
-- `annotation_qc_busco` becomes the first post-day-one MCP recipe target only
-  after its local handler, saved artifact shape, and result summary behavior are
-  covered by tests.
+- `annotation_qc_busco` is now the first post-day-one MCP recipe target and its
+  local handler, saved artifact shape, and result summary behavior are covered
+  by tests.
 - EggNOG and AGAT remain deferred until the same input-binding pattern is proven
-  on BUSCO.
+  on those later stages.
 
 ## Scope
 

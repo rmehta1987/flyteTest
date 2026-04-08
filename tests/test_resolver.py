@@ -17,7 +17,7 @@ sys.path.insert(0, str(SRC_DIR))
 
 from flytetest.planner_types import ProteinEvidenceSet, QualityAssessmentTarget, ReferenceGenome, TranscriptEvidenceSet
 from flytetest.resolver import LocalManifestAssetResolver
-from flytetest.types.assets import ProteinEvidenceResultBundle, ProteinReferenceDatasetAsset
+from flytetest.types.assets import AbInitioResultBundle, AssetToolProvenance, ProteinEvidenceResultBundle, ProteinReferenceDatasetAsset
 from flytetest.types.assets import ReferenceGenome as AssetReferenceGenome
 
 
@@ -169,6 +169,31 @@ class ResolverTests(TestCase):
         self.assertIsInstance(result.resolved_value, ProteinEvidenceSet)
         self.assertEqual(result.selected_source.kind, "result_bundle")
         self.assertEqual(result.resolved_value.evm_ready_gff3_path, Path("results/protein/protein_evidence.evm.gff3"))
+
+    def test_resolver_accepts_generic_ab_initio_bundle_objects(self) -> None:
+        """Resolve generic ab initio bundles without losing legacy compatibility."""
+        resolver = LocalManifestAssetResolver()
+        bundle = AbInitioResultBundle(
+            result_dir=Path("results/ab_initio"),
+            staged_inputs_dir=Path("results/ab_initio/staged"),
+            raw_run_dir=Path("results/ab_initio/raw"),
+            normalized_dir=Path("results/ab_initio/normalized"),
+            braker_gff3_path=Path("results/ab_initio/raw/braker.gff3"),
+            normalized_gff3_path=Path("results/ab_initio/normalized/braker.normalized.gff3"),
+            reference_genome=AssetReferenceGenome(fasta_path=Path("data/genome.fa")),
+            provenance=AssetToolProvenance(
+                tool_name="BRAKER3",
+                tool_stage="ab initio annotation",
+                legacy_asset_name="Braker3ResultBundle",
+            ),
+        )
+
+        result = resolver.resolve("AnnotationEvidenceSet", result_bundles=(bundle,))
+
+        self.assertTrue(result.is_resolved)
+        self.assertEqual(result.selected_source.bundle_type, "AbInitioResultBundle")
+        self.assertEqual(result.resolved_value.ab_initio_predictions_gff3_path, bundle.normalized_gff3_path)
+        self.assertIn("BRAKER3", result.resolved_value.notes[0])
 
     def test_resolver_can_satisfy_downstream_qc_target_from_prior_result_manifest(self) -> None:
         """Resolve a downstream QC target from a prior repeat-filter result bundle manifest."""

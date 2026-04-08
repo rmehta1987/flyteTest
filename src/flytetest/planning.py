@@ -16,7 +16,7 @@ import inspect
 import json
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from importlib import import_module
 from pathlib import Path
 from typing import Any, Literal
@@ -33,6 +33,8 @@ from flytetest.resolver import AssetResolver, LocalManifestAssetResolver, Resolu
 from flytetest.specs import (
     BindingPlan,
     GeneratedEntityRecord,
+    ResourceSpec,
+    RuntimeImageSpec,
     TypedFieldSpec,
     WorkflowEdgeSpec,
     WorkflowNodeSpec,
@@ -92,6 +94,9 @@ class TypedPlanningGoal:
     generated_entity_id: str | None = None
     unresolved_runtime_requirements: tuple[str, ...] = field(default_factory=tuple)
     runtime_bindings: dict[str, object] = field(default_factory=dict)
+    execution_profile: str | None = None
+    resource_spec: ResourceSpec | None = None
+    runtime_image: RuntimeImageSpec | None = None
 
 
 def _normalize(text: str) -> str:
@@ -321,6 +326,191 @@ def _extract_task_inputs(request: str, prompt_paths: tuple[PromptPath, ...]) -> 
         extracted["exonerate_model"] = model_match.group(1)
 
     return extracted
+
+
+def _coerce_resource_spec(value: Mapping[str, Any] | ResourceSpec | None) -> ResourceSpec | None:
+    """Convert caller-supplied resource policy into the typed recipe shape."""
+    if value is None:
+        return None
+    if isinstance(value, ResourceSpec):
+        return value
+
+    allowed_fields = {"cpu", "memory", "gpu", "queue", "walltime", "execution_class", "notes"}
+    kwargs: dict[str, Any] = {}
+    for key in allowed_fields:
+        if key not in value or value[key] in (None, ""):
+            continue
+        if key == "notes":
+            notes_value = value[key]
+            kwargs[key] = (
+                (str(notes_value),)
+                if isinstance(notes_value, str) or not isinstance(notes_value, Sequence)
+                else tuple(str(note) for note in notes_value)
+            )
+        else:
+            kwargs[key] = str(value[key])
+    return ResourceSpec(**kwargs) if kwargs else None
+
+
+def _coerce_runtime_image_spec(value: Mapping[str, Any] | RuntimeImageSpec | str | None) -> RuntimeImageSpec | None:
+    """Convert caller-supplied runtime image policy into the typed recipe shape."""
+    if value is None or value == "":
+        return None
+    if isinstance(value, RuntimeImageSpec):
+        return value
+    if isinstance(value, str):
+        if value.endswith((".sif", ".simg")):
+            return RuntimeImageSpec(apptainer_image=value)
+        return RuntimeImageSpec(container_image=value)
+
+    allowed_fields = {"container_image", "apptainer_image", "runtime_assumptions", "compatibility_notes"}
+    kwargs: dict[str, Any] = {}
+    for key in allowed_fields:
+        if key not in value or value[key] in (None, ""):
+            continue
+        if key in {"runtime_assumptions", "compatibility_notes"}:
+            image_notes = value[key]
+            kwargs[key] = (
+                (str(image_notes),)
+                if isinstance(image_notes, str) or not isinstance(image_notes, Sequence)
+                else tuple(str(note) for note in image_notes)
+            )
+        else:
+            kwargs[key] = str(value[key])
+    return RuntimeImageSpec(**kwargs) if kwargs else None
+
+
+def _merge_resource_specs(base: ResourceSpec | None, override: ResourceSpec | None) -> ResourceSpec | None:
+    """Overlay explicit resource values on top of registry defaults."""
+    if base is None:
+        return override
+    if override is None:
+        return base
+    return ResourceSpec(
+        cpu=override.cpu or base.cpu,
+        memory=override.memory or base.memory,
+        gpu=override.gpu or base.gpu,
+        queue=override.queue or base.queue,
+        walltime=override.walltime or base.walltime,
+        execution_class=override.execution_class or base.execution_class,
+        notes=(*base.notes, *override.notes),
+    )
+
+
+def _extract_resource_spec_from_prompt(request: str) -> ResourceSpec | None:
+    """Parse conservative resource mentions from prompt text into a ResourceSpec."""
+    cpu: str | None = None
+    memory: str | None = None
+    queue: str | None = None
+    walltime: str | None = None
+
+    cpu_match = re.search(r"\b(\d+)\s*(?:cpu|cpus|cores?)\b", request, flags=re.IGNORECASE)
+    if cpu_match:
+        cpu = cpu_match.group(1)
+
+    memory_match = re.search(
+        r"\b(?:memory|mem|ram)\s*[:=]?\s*(\d+\s*(?:gib|gb|mib|mb))\b|\b(\d+\s*(?:gib|gb|mib|mb))\s*(?:memory|mem|ram)\b",
+        request,
+        flags=re.IGNORECASE,
+    )
+    if memory_match:
+        memory = (memory_match.group(1) or memory_match.group(2)).replace(" ", "")
+
+    queue_match = re.search(r"\b(?:queue|partition)\s*[:=]?\s*([A-Za-z0-9_.-]+)\b", request, flags=re.IGNORECASE)
+    if queue_match:
+        queue = queue_match.group(1)
+
+    walltime_match = re.search(
+        r"\b(?:walltime|wall time|time limit)\s*[:=]?\s*([0-9]+(?::[0-9]{2}){1,2}|[0-9]+[hm])\b",
+        request,
+        flags=re.IGNORECASE,
+    )
+    if walltime_match:
+        walltime = walltime_match.group(1)
+
+    if not any((cpu, memory, queue, walltime)):
+        return None
+    notes = (
+        "Scheduler-oriented fields are frozen for review and replay before an executor consumes the recipe.",
+    )
+    return ResourceSpec(cpu=cpu, memory=memory, queue=queue, walltime=walltime, notes=notes)
+
+
+def _extract_execution_profile_from_prompt(request: str) -> str | None:
+    """Parse an explicit execution profile name from the prompt when present."""
+    profile_match = re.search(
+        r"\b(?:execution profile|profile)\s*[:=]?\s*([A-Za-z0-9_.-]+)\b",
+        request,
+        flags=re.IGNORECASE,
+    )
+    if profile_match:
+        return _clean_path(profile_match.group(1)).lower()
+    if re.search(r"\bslurm\b", request, flags=re.IGNORECASE):
+        return "slurm"
+    return None
+
+
+def _extract_runtime_image_from_prompt(request: str) -> RuntimeImageSpec | None:
+    """Parse a global runtime image request from prompt text when clearly labeled."""
+    image_match = re.search(
+        r"\b(?:runtime image|container image|apptainer image)\s*[:=]?\s*([A-Za-z0-9_./:-]+)",
+        request,
+        flags=re.IGNORECASE,
+    )
+    if not image_match:
+        return None
+    return _coerce_runtime_image_spec(_clean_path(image_match.group(1)))
+
+
+def _registry_default_resource_spec(entry: RegistryEntry) -> ResourceSpec | None:
+    """Return the registry's default local resource policy for one entry."""
+    resources = entry.compatibility.execution_defaults.get("resources")
+    return _coerce_resource_spec(resources) if isinstance(resources, Mapping) else None
+
+
+def _select_execution_policy(
+    goal: TypedPlanningGoal,
+    *,
+    request: str,
+    resource_request: Mapping[str, Any] | ResourceSpec | None,
+    execution_profile: str | None,
+    runtime_image: Mapping[str, Any] | RuntimeImageSpec | str | None,
+) -> tuple[str, ResourceSpec | None, RuntimeImageSpec | None, tuple[str, ...], tuple[str, ...]]:
+    """Resolve profile, resources, and runtime image policy for a typed goal."""
+    entries = tuple(get_entry(entry_name) for entry_name in goal.target_entry_names)
+    default_profile = str(entries[0].compatibility.execution_defaults.get("profile", "local")) if entries else "local"
+    supported_profiles = set(entries[0].compatibility.supported_execution_profiles if entries else ("local",))
+    for entry in entries[1:]:
+        supported_profiles.intersection_update(entry.compatibility.supported_execution_profiles)
+    if not supported_profiles:
+        supported_profiles.add("local")
+
+    prompt_profile = _extract_execution_profile_from_prompt(request)
+    selected_profile = _clean_path(execution_profile or prompt_profile or default_profile or "local").lower()
+    unresolved: list[str] = []
+    assumptions: list[str] = []
+    if selected_profile not in supported_profiles:
+        unresolved.append(
+            f"Execution profile `{selected_profile}` is not supported for `{goal.name}`; supported profiles: {', '.join(sorted(supported_profiles))}."
+        )
+
+    registry_default = _registry_default_resource_spec(entries[0]) if entries else None
+    prompt_resources = _extract_resource_spec_from_prompt(request)
+    caller_resources = _coerce_resource_spec(resource_request)
+    selected_resources = _merge_resource_specs(_merge_resource_specs(registry_default, prompt_resources), caller_resources)
+    if selected_resources is not None and selected_profile != (selected_resources.execution_class or selected_profile):
+        selected_resources = replace(selected_resources, execution_class=selected_profile)
+
+    selected_image = _coerce_runtime_image_spec(runtime_image) or _extract_runtime_image_from_prompt(request)
+    if selected_resources is not None:
+        assumptions.append(
+            "ResourceSpec is frozen into the recipe for review and replay before local or Slurm execution consumes it."
+        )
+    if selected_image is not None:
+        assumptions.append(
+            "RuntimeImageSpec is frozen into the recipe as policy metadata; existing workflow inputs still control tool-specific SIF arguments."
+        )
+    return selected_profile, selected_resources, selected_image, tuple(unresolved), tuple(assumptions)
 
 
 def _classify_target(normalized_request: str) -> tuple[str | None, float, tuple[str, ...]]:
@@ -840,13 +1030,16 @@ def _binding_plan_for_typed_goal(
     return BindingPlan(
         target_name=goal.name,
         target_kind=target_kind,
+        explicit_user_bindings=dict(resolved_inputs),
         resolved_prior_assets=dict(source_labels),
         manifest_derived_paths={
             planner_type_name: source
             for planner_type_name, source in source_labels.items()
             if isinstance(source, Mapping) and source.get("kind") == "manifest"
         },
-        execution_profile="local",
+        execution_profile=goal.execution_profile or "local",
+        resource_spec=goal.resource_spec,
+        runtime_image=goal.runtime_image,
         runtime_bindings=dict(goal.runtime_bindings),
         unresolved_requirements=unresolved_requirements,
         assumptions=assumptions,
@@ -925,13 +1118,19 @@ def plan_typed_request(
     explicit_bindings: Mapping[str, Any] | None = None,
     manifest_sources: Sequence[Path | Mapping[str, Any]] = (),
     result_bundles: Sequence[Any] = (),
+    runtime_bindings: Mapping[str, Any] | None = None,
+    resource_request: Mapping[str, Any] | ResourceSpec | None = None,
+    execution_profile: str | None = None,
+    runtime_image: Mapping[str, Any] | RuntimeImageSpec | str | None = None,
     resolver: AssetResolver | None = None,
 ) -> dict[str, object]:
     """Plan a prompt through the Milestone 5 typed resolver and registry path.
 
     This entrypoint is additive: it previews the broader `realtime` planning
     flow while `plan_request(...)` continues to preserve the current MCP
-    showcase payload and explicit-path behavior.
+    showcase payload and explicit-path behavior. Optional runtime bindings are
+    frozen into the saved binding plan so recipe preparation can keep them
+    explicit instead of inferring them from prompt text later.
     """
     goal = _planning_goal_for_typed_request(request)
     if goal is None:
@@ -953,20 +1152,39 @@ def plan_typed_request(
         result_bundles=result_bundles,
         resolver=resolver,
     )
+    selected_profile, selected_resources, selected_image, resource_requirements, resource_assumptions = (
+        _select_execution_policy(
+            goal,
+            request=request,
+            resource_request=resource_request,
+            execution_profile=execution_profile,
+            runtime_image=runtime_image,
+        )
+    )
+    merged_runtime_bindings = dict(goal.runtime_bindings)
+    merged_runtime_bindings.update(runtime_bindings or {})
+    goal = replace(
+        goal,
+        runtime_bindings=merged_runtime_bindings,
+        execution_profile=selected_profile,
+        resource_spec=selected_resources,
+        runtime_image=selected_image,
+    )
     workflow_spec = _workflow_spec_for_typed_goal(goal, source_prompt=request)
     binding_plan = _binding_plan_for_typed_goal(
         goal,
         resolved_inputs=resolved_inputs,
         source_labels=source_labels,
-        unresolved_requirements=missing_requirements + goal.unresolved_runtime_requirements,
+        unresolved_requirements=missing_requirements + resource_requirements + goal.unresolved_runtime_requirements,
         assumptions=assumptions
+        + resource_assumptions
         + (
             "Typed planning uses resolver and registry metadata before any future execution step.",
             "WorkflowSpec and BindingPlan outputs are metadata-only in Milestone 5.",
         ),
     )
 
-    supported = not missing_requirements
+    supported = not missing_requirements and not resource_requirements
     return {
         "supported": supported,
         "original_request": request,
@@ -977,8 +1195,11 @@ def plan_typed_request(
         "required_planner_types": list(goal.required_planner_types),
         "produced_planner_types": list(goal.produced_planner_types),
         "resolved_inputs": resolved_inputs,
-        "missing_requirements": list(missing_requirements),
+        "missing_requirements": list(missing_requirements + resource_requirements),
         "runtime_requirements": list(goal.unresolved_runtime_requirements),
+        "execution_profile": selected_profile,
+        "resource_spec": selected_resources.to_dict() if selected_resources is not None else None,
+        "runtime_image": selected_image.to_dict() if selected_image is not None else None,
         "assumptions": list(binding_plan.assumptions),
         "rationale": list(goal.rationale),
         "workflow_spec": workflow_spec.to_dict() if workflow_spec is not None else None,

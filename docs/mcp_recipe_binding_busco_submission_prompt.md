@@ -2,6 +2,10 @@ Use this prompt when handing the MCP recipe input-binding and BUSCO enablement
 slice off to another Codex session or when starting the next implementation
 pass.
 
+This BUSCO slice has now landed in code. Keep this prompt as a reference for
+the manifest-source / explicit-binding / runtime-binding pattern, and start the
+next follow-on slice from EggNOG or AGAT instead of redoing BUSCO work.
+
 ```text
 You are continuing the FLyteTest MCP recipe-backed execution work under the rules in:
 
@@ -9,7 +13,7 @@ You are continuing the FLyteTest MCP recipe-backed execution work under the rule
 - /home/rmeht/Projects/flyteTest/DESIGN.md
 - /home/rmeht/Projects/flyteTest/mcp_implementation_plan.md
 - /home/rmeht/Projects/flyteTest/docs/realtime_refactor_checklist.md
-- /home/rmeht/Projects/flyteTest/docs/realtime_refactor_plans/2026-04-07-milestone-10-mcp-recipe-input-binding-busco.md
+- /home/rmeht/Projects/flyteTest/docs/realtime_refactor_plans/archive/2026-04-07-milestone-10-mcp-recipe-input-binding-busco.md
 - /home/rmeht/Projects/flyteTest/docs/realtime_refactor_plans/README.md
 - /home/rmeht/Projects/flyteTest/README.md
 - /home/rmeht/Projects/flyteTest/docs/mcp_showcase.md
@@ -41,12 +45,12 @@ Context:
   caller.
 - BUSCO runtime choices such as `busco_lineages_text`, optional `busco_sif`, and
   `busco_cpu` must be explicit in the saved recipe.
-- EggNOG and AGAT MCP execution are intentionally deferred until BUSCO proves
-  the input-binding pattern.
+- EggNOG and AGAT MCP execution are intentionally deferred to Milestone 11,
+  which should reuse the BUSCO input-binding pattern.
 
 Task:
 
-1. Read `docs/realtime_refactor_plans/2026-04-07-milestone-10-mcp-recipe-input-binding-busco.md`.
+1. Read `docs/realtime_refactor_plans/archive/2026-04-07-milestone-10-mcp-recipe-input-binding-busco.md`.
 2. Investigate the current implementation state in `server.py`, `planning.py`,
    `resolver.py`, `planner_adapters.py`, `spec_artifacts.py`,
    `spec_executor.py`, `registry.py`, and the relevant tests.

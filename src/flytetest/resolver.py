@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Literal, Mapping, Protocol, Sequence
 
 from flytetest.planner_adapters import (
+    annotation_evidence_from_ab_initio_bundle,
     annotation_evidence_from_braker_bundle,
     annotation_evidence_from_evm_prep_bundle,
     annotation_evidence_from_manifest,
@@ -40,6 +41,7 @@ from flytetest.planner_types import (
     TranscriptEvidenceSet,
 )
 from flytetest.types.assets import (
+    AbInitioResultBundle,
     Braker3ResultBundle,
     EvmConsensusResultBundle,
     EvmInputPreparationBundle,
@@ -131,6 +133,9 @@ _MANIFEST_ADAPTERS = {
 _BUNDLE_ADAPTERS: dict[type[Any], dict[str, Any]] = {
     ProteinEvidenceResultBundle: {
         "ProteinEvidenceSet": protein_evidence_from_bundle,
+    },
+    AbInitioResultBundle: {
+        "AnnotationEvidenceSet": annotation_evidence_from_ab_initio_bundle,
     },
     Braker3ResultBundle: {
         "AnnotationEvidenceSet": annotation_evidence_from_braker_bundle,
@@ -250,7 +255,13 @@ class LocalManifestAssetResolver:
                 )
 
         for bundle in result_bundles:
-            bundle_adapters = _BUNDLE_ADAPTERS.get(type(bundle), {})
+            bundle_adapters = {}
+            bundle_type_name = type(bundle).__name__
+            for bundle_type, candidate_adapters in _BUNDLE_ADAPTERS.items():
+                if isinstance(bundle, bundle_type):
+                    bundle_adapters = candidate_adapters
+                    bundle_type_name = bundle_type.__name__
+                    break
             bundle_adapter = bundle_adapters.get(target_type_name)
             if bundle_adapter is None:
                 continue
@@ -264,8 +275,8 @@ class LocalManifestAssetResolver:
                     value=value,
                     source=ResolverSource(
                         kind="result_bundle",
-                        label=type(bundle).__name__,
-                        bundle_type=type(bundle).__name__,
+                        label=bundle_type_name,
+                        bundle_type=bundle_type_name,
                     ),
                 )
             )

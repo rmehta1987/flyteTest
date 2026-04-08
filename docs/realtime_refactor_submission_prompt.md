@@ -30,7 +30,7 @@ Context:
 - The existing `docs/refactor_completion_checklist.md` remains the notes-faithful pipeline milestone gate and should not be replaced by this refactor tracker.
 - Preserve the current runnable workflows, `flyte_rnaseq_workflow.py`
   compatibility exports, existing manifest contracts, and the MCP
-  recipe-backed day-one handler set unless the selected checklist item
+  recipe-backed handler set unless the selected checklist item
   explicitly changes one of them.
 - Do not introduce a database-first or storage-first rewrite as a prerequisite.
 - Keep current Flyte `File` and `Dir` task signatures unless the selected checklist item explicitly allows a compatibility-safe change.
@@ -66,7 +66,8 @@ Important constraints:
 - Prefer incremental refactors around compatibility seams instead of rewrites.
 - Keep the current planner behavior and MCP recipe-backed day-one handler set
   as compatibility subsets until the selected milestone intentionally broadens
-  them.
+  them, as Milestone 10 did for BUSCO and Milestone 11 plans to do for
+  EggNOG/AGAT.
 - Do not describe "deterministic" as meaning "static workflow list only";
   dynamic workflow generation remains a project goal when it is saved,
   typed, and reviewable.

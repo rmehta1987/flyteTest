@@ -17,16 +17,17 @@ preparation and broad Slurm orchestration remain deferred.
 ## Current Status
 
 - Active biological milestone: `AGAT post-processing after EggNOG`
-- Active architecture milestone: `realtime` refactor Milestones 0 through 8 plus
-  Lanes A, B, and C are complete
+- Active architecture milestone: `realtime` refactor Milestones 0 through 14
+  and Milestone 16 are complete; Milestone 18 Slurm retry/resubmission is next
+  on the Slurm lane
 - Implemented biological scope: transcript evidence, PASA align/assemble,
   TransDecoder, protein evidence, tutorial-backed BRAKER3, corrected pre-EVM
   contract assembly, deterministic EVM execution, PASA post-EVM refinement,
   repeat filtering cleanup, BUSCO-based annotation QC, EggNOG functional
   annotation, and the AGAT statistics, conversion, and cleanup slices
 - Deferred biological scope: optional `table2asn` submission preparation
-- Deferred execution scope: generic `sbatch` orchestration, cluster-aware queue
-  binding, remote/indexed discovery, and arbitrary Python task-code generation
+- Deferred execution scope: Slurm retry, resumability, remote/indexed
+  discovery, and arbitrary Python task-code generation
 
 Important terminology:
 
@@ -215,34 +216,42 @@ Implemented architecture layers:
 
 - [planner_types.py](/home/rmeht/Projects/flyteTest/src/flytetest/planner_types.py): biology-facing planner dataclasses
 - [planner_adapters.py](/home/rmeht/Projects/flyteTest/src/flytetest/planner_adapters.py): adapters from current assets and manifests into planner-facing types
+- [types/assets.py](/home/rmeht/Projects/flyteTest/src/flytetest/types/assets.py): local asset dataclasses with generic compatibility names and legacy aliases for replay
 - [specs.py](/home/rmeht/Projects/flyteTest/src/flytetest/specs.py): `TaskSpec`, `WorkflowSpec`, `BindingPlan`, runtime, resource, and generated-entity metadata
 - [resolver.py](/home/rmeht/Projects/flyteTest/src/flytetest/resolver.py): local manifest-backed resolution from explicit bindings, result directories, and result bundles
 - [registry.py](/home/rmeht/Projects/flyteTest/src/flytetest/registry.py): static registry plus additive compatibility metadata for current workflows
-- [planning.py](/home/rmeht/Projects/flyteTest/src/flytetest/planning.py): typed prompt planning plus day-one explicit-path recipe bindings
+- [planning.py](/home/rmeht/Projects/flyteTest/src/flytetest/planning.py): typed prompt planning plus explicit-path and explicit recipe input bindings
 - [spec_artifacts.py](/home/rmeht/Projects/flyteTest/src/flytetest/spec_artifacts.py): saved replayable `WorkflowSpec` plus `BindingPlan` JSON artifacts
 - [spec_executor.py](/home/rmeht/Projects/flyteTest/src/flytetest/spec_executor.py): local saved-spec execution through caller-provided registered handlers
 
 Current architecture limits:
 
-- the runnable MCP surface executes only its day-one local handler targets
+- the runnable MCP surface executes only its explicit local handler targets
 - dynamic workflow creation currently stops at typed spec previews, saved spec
   artifacts, and controlled local saved-spec execution
 - the resolver is local and file-based; remote or indexed discovery remains
   future work
 - saved-spec execution is local and handler-based; it does not auto-load every
   checked-in Flyte workflow
-- Slurm/HPC support is a target execution mode, but generic `sbatch`
-  orchestration and queue-aware scheduling are not implemented yet
+- Slurm/HPC support now has a deterministic `sbatch` submission path for frozen
+  Slurm-profile recipes, with lifecycle reconciliation and cancellation
+  recorded under `.runtime/runs/`. Retry and resumability remain future work.
 
 ## MCP Recipe Surface
 
 The MCP server is a stdio tool provider, not a chat agent. It now prepares
-saved `WorkflowSpec` recipes before local execution. Day-one local execution is
-still intentionally limited to three targets:
+saved `WorkflowSpec` recipes before local execution or Slurm submission.
+Current local MCP execution is intentionally limited to these individual
+targets:
 
 - workflow: `ab_initio_annotation_braker3`
 - workflow: `protein_evidence_alignment`
 - task: `exonerate_align_chunk`
+- workflow: `annotation_qc_busco`
+- workflow: `annotation_functional_eggnog`
+- workflow: `annotation_postprocess_agat`
+- workflow: `annotation_postprocess_agat_conversion`
+- workflow: `annotation_postprocess_agat_cleanup`
 
 Supported tools:
 
@@ -250,6 +259,9 @@ Supported tools:
 - `plan_request`
 - `prepare_run_recipe`
 - `run_local_recipe`
+- `run_slurm_recipe`
+- `monitor_slurm_job`
+- `cancel_slurm_job`
 - `prompt_and_run`
 
 Launch command:
@@ -264,10 +276,46 @@ Current MCP behavior:
 - `prepare_run_recipe` saves a frozen recipe under `.runtime/specs/`
 - `run_local_recipe` executes a previously saved recipe through explicit local
   handlers
+- `run_slurm_recipe` submits a previously saved Slurm-profile recipe with
+  `sbatch`, writes the generated script and a durable run record under
+  `.runtime/runs/`, and records the accepted Slurm job ID
+- `monitor_slurm_job` reconciles the durable Slurm run record with `squeue`,
+  `scontrol show job`, and `sacct`, then persists observed scheduler state,
+  stdout/stderr paths, exit code, and final state when available
+- `cancel_slurm_job` requests cancellation with `scancel` from the durable run
+  record and records the cancellation request for later reconciliation
 - `prompt_and_run` remains available as a compatibility alias over prepare then
   run
-- prompts for the day-one targets must contain explicit local paths that can be
-  frozen into runtime bindings
+- `prepare_run_recipe` and `prompt_and_run` accept optional `manifest_sources`,
+  `explicit_bindings`, `runtime_bindings`, `resource_request`,
+  `execution_profile`, and `runtime_image` arguments
+- `manifest_sources` must be `run_manifest.json` paths or result directories
+  containing one
+- BUSCO and EggNOG recipe preparation can resolve a
+  `QualityAssessmentTarget` from a repeat-filtering or compatible QC manifest,
+  or accept one directly as a serialized planner binding
+- AGAT statistics and conversion recipe preparation can resolve a
+  `QualityAssessmentTarget` from an EggNOG result manifest
+- AGAT cleanup recipe preparation can resolve a `QualityAssessmentTarget` from
+  an AGAT conversion result manifest
+- BUSCO runtime settings such as `busco_lineages_text`, `busco_sif`, and
+  `busco_cpu`, EggNOG settings such as `eggnog_data_dir`, `eggnog_sif`,
+  `eggnog_cpu`, and `eggnog_database`, and AGAT settings such as
+  `annotation_fasta_path` and `agat_sif` are frozen into the saved recipe
+  rather than inferred from prompt text
+- resource settings such as `cpu`, `memory`, `queue`, and `walltime`, the
+  selected execution profile, and optional runtime image policy are frozen into
+  the saved recipe as structured metadata; `local` recipes run through local
+  handlers, and `slurm` recipes can be submitted through `run_slurm_recipe`
+- the runnable MCP surface currently includes
+  `ab_initio_annotation_braker3`, `protein_evidence_alignment`,
+  `exonerate_align_chunk`, `annotation_qc_busco`,
+  `annotation_functional_eggnog`, `annotation_postprocess_agat`,
+  `annotation_postprocess_agat_conversion`, and
+  `annotation_postprocess_agat_cleanup`
+- EggNOG and AGAT remain individual MCP recipe targets in this slice; a
+  composed EggNOG-plus-AGAT pipeline, `table2asn`, Slurm retry/resubmission,
+  resumability, and database-backed asset discovery remain deferred
 - additional registered workflows require explicit local handlers before they
   are exposed as runnable MCP targets
 
@@ -316,10 +364,14 @@ If a `*_sif` path is empty, tasks use native binaries. If provided, tasks use
 `apptainer exec` or `singularity exec` with deterministic bind mounts for the
 relevant input and output parent directories.
 
-Slurm support is still a design target rather than a generic execution backend
-in this repo. Future Slurm integration should connect through execution
-profiles, resource specs, and saved workflow specs instead of hiding
-cluster-specific behavior inside prompts.
+Slurm support now starts with a filesystem-backed `sbatch` submission path:
+prepare a recipe with execution profile `slurm`, then call `run_slurm_recipe`
+on the saved artifact. The submission record captures the Slurm job ID,
+generated script path, stdout and stderr log patterns, selected execution
+profile, and resource spec under `.runtime/runs/`. `monitor_slurm_job`
+reconciles the record with `squeue`, `scontrol show job`, and `sacct`, while
+`cancel_slurm_job` records explicit `scancel` requests. Retry and resumability
+remain later milestones.
 
 ## Assumptions
 
@@ -328,7 +380,9 @@ cluster-specific behavior inside prompts.
 - `flyte_rnaseq_workflow.py` remains a thin compatibility module for
   `flyte run`.
 - `src/flytetest/types/` is a local modeling layer, not a full remote asset
-  platform.
+  platform. It now exposes generic compatibility names such as
+  `AbInitioResultBundle`, `RnaSeqAlignmentResult`, and
+  `CleanedTranscriptDataset` while keeping legacy names readable.
 - The planner-facing public contract starts in
   `src/flytetest/planner_types.py`.
 - Tool references are concise repo-local planning references, not replacements

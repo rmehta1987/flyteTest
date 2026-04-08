@@ -47,6 +47,18 @@ class RegistryTests(TestCase):
                 self.assertTrue(entry.compatibility.reusable_as_reference)
                 self.assertIn("local", entry.compatibility.supported_execution_profiles)
                 self.assertEqual(entry.compatibility.execution_defaults["result_manifest"], "run_manifest.json")
+                self.assertEqual(entry.compatibility.execution_defaults["resources"]["execution_class"], "local")
+
+    def test_runnable_workflows_expose_declarative_local_resource_defaults(self) -> None:
+        """Keep Milestone 12 resource defaults visible in registry metadata."""
+        self.assertEqual(
+            get_entry("annotation_qc_busco").compatibility.execution_defaults["resources"],
+            {"cpu": "16", "memory": "64Gi", "execution_class": "local"},
+        )
+        self.assertEqual(
+            get_entry("protein_evidence_alignment").compatibility.execution_defaults["resources"],
+            {"cpu": "8", "memory": "32Gi", "execution_class": "local"},
+        )
 
     def test_current_workflow_compatibility_metadata_is_composition_ready(self) -> None:
         """Keep reference-workflow graph metadata populated without changing signatures."""

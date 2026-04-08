@@ -26,10 +26,11 @@ from flytetest.config import (
     run_tool,
 )
 from flytetest.types import (
+    AbInitioResultBundle,
+    AssetToolProvenance,
     Braker3InputBundleAsset,
     Braker3NormalizedGff3Asset,
     Braker3RawRunResultAsset,
-    Braker3ResultBundle,
     ReferenceGenome,
 )
 
@@ -377,7 +378,7 @@ def collect_braker3_results(
             "Normalization remains intentionally narrow and stops at a stable later-EVM-ready GFF3 boundary.",
         ),
     )
-    result_bundle = Braker3ResultBundle(
+    result_bundle = AbInitioResultBundle(
         result_dir=out_dir,
         staged_inputs_dir=copied_staged_dir,
         raw_run_dir=copied_raw_dir,
@@ -390,6 +391,12 @@ def collect_braker3_results(
         normalized_prediction=normalized_asset,
         notes=(
             "This milestone stops at BRAKER3 raw-output capture plus deterministic normalization for later EVM use.",
+        ),
+        provenance=AssetToolProvenance(
+            tool_name="BRAKER3",
+            tool_stage="ab initio annotation",
+            legacy_asset_name="Braker3ResultBundle",
+            source_manifest_key="braker3_result_bundle",
         ),
     )
 
@@ -426,7 +433,8 @@ def collect_braker3_results(
                 "braker3_input_bundle": asdict(input_bundle_asset),
                 "braker3_raw_run": asdict(raw_run_asset),
                 "braker3_normalized_gff3": asdict(normalized_asset),
-                "braker3_result_bundle": asdict(result_bundle),
+                "ab_initio_result_bundle": result_bundle.to_dict(),
+                "braker3_result_bundle": result_bundle.to_dict(),
             }
         ),
         "raw_run_manifest": raw_run_manifest,

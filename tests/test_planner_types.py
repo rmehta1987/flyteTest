@@ -14,6 +14,7 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(SRC_DIR))
 
 from flytetest.planner_adapters import (
+    annotation_evidence_from_ab_initio_bundle,
     annotation_evidence_from_braker_bundle,
     annotation_evidence_from_manifest,
     consensus_annotation_from_manifest,
@@ -35,10 +36,16 @@ from flytetest.planner_types import (
     TranscriptEvidenceSet,
 )
 from flytetest.types.assets import (
+    AbInitioResultBundle,
+    AssetToolProvenance,
     Braker3ResultBundle,
+    CleanedTranscriptDataset,
+    CombinedTrinityTranscriptAsset,
     ProteinEvidenceResultBundle,
     ProteinReferenceDatasetAsset,
     ReadPair,
+    RnaSeqAlignmentResult,
+    TrinityGenomeGuidedAssemblyResult,
 )
 from flytetest.types.assets import ReferenceGenome as AssetReferenceGenome
 
@@ -138,6 +145,58 @@ class PlannerTypeTests(TestCase):
         self.assertEqual(reads.sample_id, "sampleA")
         self.assertEqual(reads.condition, "treated")
         self.assertEqual(reads.left_reads_path, Path("data/read_1.fastq.gz"))
+
+    def test_generic_asset_names_round_trip_with_typed_provenance(self) -> None:
+        """Round-trip generic asset names while preserving legacy provenance."""
+        alignment = RnaSeqAlignmentResult(
+            sample_id="sampleA",
+            output_dir=Path("results/star"),
+            sorted_bam_path=Path("results/star/Aligned.sortedByCoord.out.bam"),
+            provenance=AssetToolProvenance(
+                tool_name="STAR",
+                tool_stage="RNA-seq genome alignment",
+                legacy_asset_name="StarAlignmentResult",
+                source_manifest_key="star_alignment",
+            ),
+        )
+        genome_guided = TrinityGenomeGuidedAssemblyResult(
+            output_dir=Path("results/trinity_gg"),
+            assembly_fasta_path=Path("results/trinity_gg/Trinity-GG.fasta"),
+        )
+        cleaned = CleanedTranscriptDataset(
+            output_dir=Path("results/pasa/seqclean"),
+            clean_fasta_path=Path("results/pasa/seqclean/transcripts.fa.clean"),
+            input_transcripts=CombinedTrinityTranscriptAsset(
+                fasta_path=Path("results/pasa/combined.fa"),
+                genome_guided_transcripts=genome_guided,
+            ),
+            provenance=AssetToolProvenance(
+                tool_name="PASA seqclean",
+                tool_stage="transcript cleaning",
+                legacy_asset_name="PasaCleanedTranscriptAsset",
+                source_manifest_key="pasa_cleaned_transcripts",
+            ),
+        )
+        ab_initio = AbInitioResultBundle(
+            result_dir=Path("results/ab_initio"),
+            staged_inputs_dir=Path("results/ab_initio/staged"),
+            raw_run_dir=Path("results/ab_initio/raw"),
+            normalized_dir=Path("results/ab_initio/normalized"),
+            braker_gff3_path=Path("results/ab_initio/raw/braker.gff3"),
+            normalized_gff3_path=Path("results/ab_initio/normalized/braker.normalized.gff3"),
+            reference_genome=AssetReferenceGenome(fasta_path=Path("data/genome.fa")),
+            provenance=AssetToolProvenance(
+                tool_name="BRAKER3",
+                tool_stage="ab initio annotation",
+                legacy_asset_name="Braker3ResultBundle",
+                source_manifest_key="braker3_result_bundle",
+            ),
+        )
+
+        self.assertEqual(RnaSeqAlignmentResult.from_dict(alignment.to_dict()), alignment)
+        self.assertEqual(CleanedTranscriptDataset.from_dict(cleaned.to_dict()), cleaned)
+        self.assertEqual(AbInitioResultBundle.from_dict(ab_initio.to_dict()), ab_initio)
+        self.assertEqual(ab_initio.provenance.legacy_asset_name, "Braker3ResultBundle")
 
     def test_transcript_evidence_manifest_adapter_uses_current_bundle_shape(self) -> None:
         """Lift the transcript-evidence collector manifest into the new planner type."""
@@ -273,10 +332,24 @@ class PlannerTypeTests(TestCase):
             },
         }
 
+        generic_bundle = AbInitioResultBundle(
+            result_dir=Path("results/ab_initio"),
+            staged_inputs_dir=Path("results/ab_initio/staged"),
+            raw_run_dir=Path("results/ab_initio/raw"),
+            normalized_dir=Path("results/ab_initio/normalized"),
+            braker_gff3_path=Path("results/ab_initio/raw/braker.gff3"),
+            normalized_gff3_path=Path("results/ab_initio/normalized/braker.normalized.gff3"),
+            reference_genome=AssetReferenceGenome(fasta_path=Path("data/genome.fa")),
+            provenance=AssetToolProvenance(tool_name="BRAKER3", tool_stage="ab initio annotation"),
+        )
+
         from_bundle = annotation_evidence_from_braker_bundle(braker_bundle)
+        from_generic_bundle = annotation_evidence_from_ab_initio_bundle(generic_bundle)
         from_manifest = annotation_evidence_from_manifest(pre_evm_manifest)
 
         self.assertEqual(from_bundle.ab_initio_predictions_gff3_path, Path("results/braker3/normalized/braker.normalized.gff3"))
+        self.assertEqual(from_generic_bundle.ab_initio_predictions_gff3_path, Path("results/ab_initio/normalized/braker.normalized.gff3"))
+        self.assertIn("BRAKER3", from_generic_bundle.notes[0])
         self.assertEqual(from_manifest.reference_genome.fasta_path, Path("data/genome.fa"))
         self.assertEqual(from_manifest.transcript_alignments_gff3_path, Path("results/pre_evm/transcripts.gff3"))
         self.assertEqual(from_manifest.protein_alignments_gff3_path, Path("results/pre_evm/proteins.gff3"))

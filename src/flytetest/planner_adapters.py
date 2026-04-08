@@ -21,6 +21,7 @@ from flytetest.planner_types import (
     TranscriptEvidenceSet,
 )
 from flytetest.types.assets import (
+    AbInitioResultBundle,
     Braker3ResultBundle,
     EvmConsensusResultBundle,
     EvmInputPreparationBundle,
@@ -286,16 +287,26 @@ def protein_evidence_from_manifest(source: Path | Mapping[str, Any]) -> ProteinE
     )
 
 
-def annotation_evidence_from_braker_bundle(bundle: Braker3ResultBundle) -> AnnotationEvidenceSet:
-    """Adapt the current BRAKER3-only bundle into planner-facing annotation evidence."""
+def annotation_evidence_from_ab_initio_bundle(bundle: AbInitioResultBundle | Braker3ResultBundle) -> AnnotationEvidenceSet:
+    """Adapt the generic ab initio bundle into planner-facing annotation evidence."""
     if bundle.reference_genome is None:
-        raise ValueError("Braker3ResultBundle must include a reference genome for planner adaptation.")
+        raise ValueError("AbInitioResultBundle must include a reference genome for planner adaptation.")
+    provenance_notes: tuple[str, ...] = ()
+    if getattr(bundle, "provenance", None) is not None:
+        provenance_notes = (
+            f"Ab initio evidence adapted from {bundle.provenance.tool_name} at {bundle.provenance.tool_stage}.",
+        )
     return AnnotationEvidenceSet(
         reference_genome=reference_genome_from_asset(bundle.reference_genome, source_result_dir=bundle.result_dir),
         ab_initio_predictions_gff3_path=bundle.normalized_gff3_path,
         source_result_dir=bundle.result_dir,
-        notes=tuple(bundle.notes),
+        notes=provenance_notes + tuple(bundle.notes),
     )
+
+
+def annotation_evidence_from_braker_bundle(bundle: Braker3ResultBundle) -> AnnotationEvidenceSet:
+    """Adapt the legacy BRAKER3-only bundle into planner-facing annotation evidence."""
+    return annotation_evidence_from_ab_initio_bundle(bundle)
 
 
 def annotation_evidence_from_evm_prep_bundle(bundle: EvmInputPreparationBundle) -> AnnotationEvidenceSet:
@@ -343,12 +354,21 @@ def annotation_evidence_from_manifest(source: Path | Mapping[str, Any]) -> Annot
 
     if workflow == "ab_initio_annotation_braker3":
         reference_genome = _reference_from_manifest(manifest, result_dir=result_dir, manifest_path=manifest_path)
+        provenance_notes = ()
+        if isinstance(assets, Mapping):
+            ab_initio_bundle = assets.get("ab_initio_result_bundle")
+            if isinstance(ab_initio_bundle, Mapping):
+                provenance = ab_initio_bundle.get("provenance")
+                if isinstance(provenance, Mapping) and provenance.get("tool_name"):
+                    provenance_notes = (
+                        f"Ab initio evidence adapted from {provenance['tool_name']}.",
+                    )
         return AnnotationEvidenceSet(
             reference_genome=reference_genome,
             ab_initio_predictions_gff3_path=_path_or_none(outputs.get("normalized_braker_gff3")),
             source_result_dir=result_dir,
             source_manifest_path=manifest_path,
-            notes=_string_tuple(manifest.get("repo_policy", [])),
+            notes=provenance_notes + _string_tuple(manifest.get("repo_policy", [])),
         )
 
     if workflow == "consensus_annotation_evm_prep":
@@ -483,6 +503,7 @@ def quality_assessment_target_from_manifest(source: Path | Mapping[str, Any]) ->
     manifest, manifest_path = _manifest_data(source)
     result_dir = _result_dir_from_manifest(manifest, manifest_path)
     workflow = str(manifest.get("workflow", ""))
+    outputs = manifest.get("outputs", {})
 
     if workflow == "annotation_repeat_filtering":
         consensus = consensus_annotation_from_manifest(manifest)
@@ -507,6 +528,28 @@ def quality_assessment_target_from_manifest(source: Path | Mapping[str, Any]) ->
             + _string_tuple(manifest.get("assumptions", [])),
         )
 
+    if workflow == "annotation_qc_busco":
+        source_bundle = manifest.get("source_bundle", {})
+        repeat_filter_results = None
+        if isinstance(source_bundle, Mapping):
+            repeat_filter_results = _path_or_none(source_bundle.get("repeat_filter_results"))
+        return QualityAssessmentTarget(
+            proteins_fasta_path=_path_or_none(outputs.get("final_proteins_fasta")),
+            source_result_dir=repeat_filter_results or result_dir,
+            source_manifest_path=manifest_path,
+            notes=("BUSCO QC outputs point back to the repeat-filtered protein boundary for EggNOG.",)
+            + _string_tuple(manifest.get("assumptions", [])),
+        )
+
+    if workflow == "annotation_postprocess_agat_conversion":
+        return QualityAssessmentTarget(
+            annotation_gff3_path=_path_or_none(outputs.get("agat_converted_gff3")),
+            source_result_dir=result_dir,
+            source_manifest_path=manifest_path,
+            notes=("AGAT conversion outputs are the current cleanup-ready target boundary.",)
+            + _string_tuple(manifest.get("assumptions", [])),
+        )
+
     if workflow == "consensus_annotation_evm":
         consensus = consensus_annotation_from_manifest(manifest)
         return QualityAssessmentTarget(
@@ -523,6 +566,7 @@ def quality_assessment_target_from_manifest(source: Path | Mapping[str, Any]) ->
 
 
 __all__ = [
+    "annotation_evidence_from_ab_initio_bundle",
     "annotation_evidence_from_braker_bundle",
     "annotation_evidence_from_evm_prep_bundle",
     "annotation_evidence_from_manifest",
