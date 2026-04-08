@@ -33,7 +33,52 @@ results/
 # Local runtime and artifact files
 .runtime/
 test1.log
+*.log
+slurm-*.out
+slurm-*.err
 *.Zone.Identifier
 *:Zone.Identifier
 
 data/
+
+# Environment files and secrets (keep credentials out of git)
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.kubeconfig
+**/*credentials*.json
+**/*secret*.json
+**/*token*.json
+
+# Workflow engines, caches, and databases
+.snakemake/
+.nextflow*
+.nxf/
+work/
+nf-work/
+*.sqlite
+*.db
+
+# Common large bioinformatics artifacts (keep datasets out of git)
+*.bam
+*.bai
+*.cram
+*.crai
+*.sam
+*.fastq
+*.fq
+*.fastq.gz
+*.fq.gz
+*.fasta
+*.fa
+*.fna
+*.faa
+*.gff
+*.gff3
+*.gtf
+*.bed
+*.vcf
+*.vcf.gz
