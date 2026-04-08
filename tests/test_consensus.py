@@ -18,9 +18,9 @@ from unittest.mock import patch
 TESTS_DIR = Path(__file__).resolve().parent
 SRC_DIR = TESTS_DIR.parent / "src"
 DATA_DIR = TESTS_DIR.parent / "data"
-GENOME_FASTA = DATA_DIR / "genome.fa"
-RNASEQ_BAM = DATA_DIR / "RNAseq.bam"
-PROTEIN_FASTA = DATA_DIR / "proteins.fa"
+GENOME_FASTA = DATA_DIR / "braker3" / "reference" / "genome.fa"
+RNASEQ_BAM = DATA_DIR / "braker3" / "rnaseq" / "RNAseq.bam"
+PROTEIN_FASTA = DATA_DIR / "braker3" / "protein_data" / "fastas" / "proteins.fa"
 
 sys.path.insert(0, str(TESTS_DIR))
 sys.path.insert(0, str(SRC_DIR))

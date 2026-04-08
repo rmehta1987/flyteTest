@@ -27,7 +27,7 @@ class ResolverTests(TestCase):
     def test_explicit_binding_wins_over_discovered_sources(self) -> None:
         """Prefer an explicit local planner value over any discovered manifest candidate."""
         resolver = LocalManifestAssetResolver()
-        explicit_reference = ReferenceGenome(fasta_path=Path("data/genome.fa"))
+        explicit_reference = ReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa"))
 
         result = resolver.resolve(
             "ReferenceGenome",
@@ -59,7 +59,7 @@ class ResolverTests(TestCase):
                         },
                         "assets": {
                             "reference_genome": {
-                                "fasta_path": "data/genome.fa",
+                                "fasta_path": "data/braker3/reference/genome.fa",
                                 "organism_name": "Example organism",
                                 "assembly_name": None,
                                 "taxonomy_id": None,
@@ -69,8 +69,8 @@ class ResolverTests(TestCase):
                             },
                             "read_pair": {
                                 "sample_id": "sampleA",
-                                "left_reads_path": "data/read_1.fastq.gz",
-                                "right_reads_path": "data/read_2.fastq.gz",
+                                "left_reads_path": "data/transcriptomics/ref-based/reads_1.fq.gz",
+                                "right_reads_path": "data/transcriptomics/ref-based/reads_2.fq.gz",
                                 "platform": "ILLUMINA",
                                 "strandedness": None,
                                 "condition": None,
@@ -87,7 +87,7 @@ class ResolverTests(TestCase):
         self.assertTrue(result.is_resolved)
         self.assertIsInstance(result.resolved_value, TranscriptEvidenceSet)
         self.assertEqual(result.selected_source.kind, "manifest")
-        self.assertEqual(result.resolved_value.reference_genome.fasta_path, Path("data/genome.fa"))
+        self.assertEqual(result.resolved_value.reference_genome.fasta_path, Path("data/braker3/reference/genome.fa"))
         self.assertEqual(result.resolved_value.read_sets[0].sample_id, "sampleA")
 
     def test_resolver_reports_ambiguity_instead_of_guessing(self) -> None:
@@ -100,6 +100,11 @@ class ResolverTests(TestCase):
                 result_dir = tmp_path / f"protein_results_{index}"
                 result_dir.mkdir()
                 manifest_path = result_dir / "run_manifest.json"
+                protein_fasta_path = (
+                    "data/braker3/protein_data/fastas/proteins.fa"
+                    if index == 1
+                    else "data/braker3/protein_data/fastas/proteins_extra.fa"
+                )
                 manifest_path.write_text(
                     json.dumps(
                         {
@@ -110,7 +115,7 @@ class ResolverTests(TestCase):
                             },
                             "assets": {
                                 "reference_genome": {
-                                    "fasta_path": "data/genome.fa",
+                                    "fasta_path": "data/braker3/reference/genome.fa",
                                     "organism_name": None,
                                     "assembly_name": None,
                                     "taxonomy_id": None,
@@ -119,7 +124,7 @@ class ResolverTests(TestCase):
                                     "notes": [],
                                 },
                                 "protein_reference_dataset": {
-                                    "source_fasta_paths": [f"data/proteins_{index}.fa"],
+                                    "source_fasta_paths": [protein_fasta_path],
                                 },
                             },
                         },
@@ -155,11 +160,11 @@ class ResolverTests(TestCase):
             evm_chunk_root=Path("results/protein/evm"),
             concatenated_raw_output_path=Path("results/protein/all_chunks.exonerate.out"),
             concatenated_evm_gff3_path=Path("results/protein/protein_evidence.evm.gff3"),
-            reference_genome=AssetReferenceGenome(fasta_path=Path("data/genome.fa")),
+            reference_genome=AssetReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa")),
             staged_dataset=ProteinReferenceDatasetAsset(
                 staged_dir=Path("results/protein/staged"),
                 combined_fasta_path=Path("results/protein/staged/proteins.all.fa"),
-                source_fasta_paths=(Path("data/proteins.fa"),),
+                source_fasta_paths=(Path("data/braker3/protein_data/fastas/proteins.fa"),),
             ),
         )
 
@@ -180,7 +185,7 @@ class ResolverTests(TestCase):
             normalized_dir=Path("results/ab_initio/normalized"),
             braker_gff3_path=Path("results/ab_initio/raw/braker.gff3"),
             normalized_gff3_path=Path("results/ab_initio/normalized/braker.normalized.gff3"),
-            reference_genome=AssetReferenceGenome(fasta_path=Path("data/genome.fa")),
+            reference_genome=AssetReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa")),
             provenance=AssetToolProvenance(
                 tool_name="BRAKER3",
                 tool_stage="ab initio annotation",
@@ -207,7 +212,7 @@ class ResolverTests(TestCase):
                         "workflow": "annotation_repeat_filtering",
                         "assumptions": ["Repeat-filtered outputs are QC-ready."],
                         "inputs": {
-                            "reference_genome": "data/genome.fa",
+                            "reference_genome": "data/braker3/reference/genome.fa",
                         },
                         "outputs": {
                             "all_repeats_removed_gff3": str(result_dir / "all_repeats_removed.gff3"),

@@ -31,7 +31,7 @@ class SpecArtifactTests(TestCase):
 
     def test_generated_workflow_spec_artifact_round_trips_from_typed_plan(self) -> None:
         """Save and reload a generated spec preview with prompt provenance."""
-        reference_genome = ReferenceGenome(fasta_path=Path("data/genome.fa"))
+        reference_genome = ReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa"))
         consensus_annotation = ConsensusAnnotation(
             reference_genome=reference_genome,
             annotation_gff3_path=Path("results/evm/evm.out.gff3"),
@@ -63,7 +63,7 @@ class SpecArtifactTests(TestCase):
 
     def test_save_workflow_spec_artifact_creates_missing_parent_directories(self) -> None:
         """Write artifacts into a fresh nested directory without precreating it."""
-        reference_genome = ReferenceGenome(fasta_path=Path("data/genome.fa"))
+        reference_genome = ReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa"))
         consensus_annotation = ConsensusAnnotation(
             reference_genome=reference_genome,
             annotation_gff3_path=Path("results/evm/evm.out.gff3"),
@@ -85,7 +85,7 @@ class SpecArtifactTests(TestCase):
 
     def test_replayable_spec_pair_does_not_reparse_prompt(self) -> None:
         """Reload the saved spec and binding plan directly for future replay work."""
-        reference_genome = ReferenceGenome(fasta_path=Path("data/genome.fa"))
+        reference_genome = ReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa"))
         consensus_annotation = ConsensusAnnotation(
             reference_genome=reference_genome,
             annotation_gff3_path=Path("results/evm/evm.out.gff3"),

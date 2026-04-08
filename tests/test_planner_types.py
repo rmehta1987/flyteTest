@@ -56,15 +56,15 @@ class PlannerTypeTests(TestCase):
     def test_nested_planner_types_round_trip_through_dicts(self) -> None:
         """Round-trip nested planner dataclasses through the planning-time serialization path."""
         reference = ReferenceGenome(
-            fasta_path=Path("data/genome.fa"),
+            fasta_path=Path("data/braker3/reference/genome.fa"),
             organism_name="fly",
             source_result_dir=Path("results/reference"),
             notes=("Planner-facing genome boundary.",),
         )
         reads = ReadSet(
             sample_id="sampleA",
-            left_reads_path=Path("data/reads_1.fastq.gz"),
-            right_reads_path=Path("data/reads_2.fastq.gz"),
+            left_reads_path=Path("data/transcriptomics/ref-based/reads_1.fq.gz"),
+            right_reads_path=Path("data/transcriptomics/ref-based/reads_2.fq.gz"),
             source_manifest_path=Path("results/transcript/run_manifest.json"),
         )
         transcript_evidence = TranscriptEvidenceSet(
@@ -77,7 +77,7 @@ class PlannerTypeTests(TestCase):
         )
         protein_evidence = ProteinEvidenceSet(
             reference_genome=reference,
-            source_protein_fastas=(Path("data/proteins.fa"),),
+            source_protein_fastas=(Path("data/braker3/protein_data/fastas/proteins.fa"),),
             evm_ready_gff3_path=Path("results/protein_evidence.evm.gff3"),
         )
         annotation_evidence = AnnotationEvidenceSet(
@@ -115,15 +115,15 @@ class PlannerTypeTests(TestCase):
     def test_lower_level_asset_adapters_preserve_current_metadata(self) -> None:
         """Adapt the existing path-centric asset layer into planner-facing types without mutation."""
         genome_asset = AssetReferenceGenome(
-            fasta_path=Path("data/genome.fa"),
+            fasta_path=Path("data/braker3/reference/genome.fa"),
             organism_name="Example organism",
             assembly_name="asm1",
             taxonomy_id=7227,
         )
         read_pair = ReadPair(
             sample_id="sampleA",
-            left_reads_path=Path("data/read_1.fastq.gz"),
-            right_reads_path=Path("data/read_2.fastq.gz"),
+            left_reads_path=Path("data/transcriptomics/ref-based/reads_1.fq.gz"),
+            right_reads_path=Path("data/transcriptomics/ref-based/reads_2.fq.gz"),
             condition="treated",
         )
 
@@ -144,7 +144,7 @@ class PlannerTypeTests(TestCase):
         self.assertEqual(reference.source_result_dir, Path("results/braker3"))
         self.assertEqual(reads.sample_id, "sampleA")
         self.assertEqual(reads.condition, "treated")
-        self.assertEqual(reads.left_reads_path, Path("data/read_1.fastq.gz"))
+        self.assertEqual(reads.left_reads_path, Path("data/transcriptomics/ref-based/reads_1.fq.gz"))
 
     def test_generic_asset_names_round_trip_with_typed_provenance(self) -> None:
         """Round-trip generic asset names while preserving legacy provenance."""
@@ -184,7 +184,7 @@ class PlannerTypeTests(TestCase):
             normalized_dir=Path("results/ab_initio/normalized"),
             braker_gff3_path=Path("results/ab_initio/raw/braker.gff3"),
             normalized_gff3_path=Path("results/ab_initio/normalized/braker.normalized.gff3"),
-            reference_genome=AssetReferenceGenome(fasta_path=Path("data/genome.fa")),
+            reference_genome=AssetReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa")),
             provenance=AssetToolProvenance(
                 tool_name="BRAKER3",
                 tool_stage="ab initio annotation",
@@ -214,7 +214,7 @@ class PlannerTypeTests(TestCase):
             },
             "assets": {
                 "reference_genome": {
-                    "fasta_path": "data/genome.fa",
+                    "fasta_path": "data/braker3/reference/genome.fa",
                     "organism_name": "Example organism",
                     "assembly_name": None,
                     "taxonomy_id": None,
@@ -224,8 +224,8 @@ class PlannerTypeTests(TestCase):
                 },
                 "read_pair": {
                     "sample_id": "sampleA",
-                    "left_reads_path": "data/read_1.fastq.gz",
-                    "right_reads_path": "data/read_2.fastq.gz",
+                    "left_reads_path": "data/transcriptomics/ref-based/reads_1.fq.gz",
+                    "right_reads_path": "data/transcriptomics/ref-based/reads_2.fq.gz",
                     "platform": "ILLUMINA",
                     "strandedness": None,
                     "condition": None,
@@ -236,7 +236,7 @@ class PlannerTypeTests(TestCase):
 
         adapted = transcript_evidence_from_manifest(manifest)
 
-        self.assertEqual(adapted.reference_genome.fasta_path, Path("data/genome.fa"))
+        self.assertEqual(adapted.reference_genome.fasta_path, Path("data/braker3/reference/genome.fa"))
         self.assertEqual(adapted.read_sets[0].sample_id, "sampleA")
         self.assertEqual(adapted.de_novo_transcripts_path, Path("results/trinity_denovo.Trinity.fasta"))
         self.assertEqual(adapted.genome_guided_transcripts_path, Path("results/trinity_gg.Trinity-GG.fasta"))
@@ -244,11 +244,14 @@ class PlannerTypeTests(TestCase):
 
     def test_protein_evidence_adapters_cover_bundle_and_manifest_inputs(self) -> None:
         """Adapt both the current result bundle and the current manifest shape."""
-        genome_asset = AssetReferenceGenome(fasta_path=Path("data/genome.fa"))
+        genome_asset = AssetReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa"))
         staged_dataset = ProteinReferenceDatasetAsset(
             staged_dir=Path("results/protein/staged"),
             combined_fasta_path=Path("results/protein/staged/proteins.all.fa"),
-            source_fasta_paths=(Path("data/proteins.fa"), Path("data/proteins_extra.fa")),
+            source_fasta_paths=(
+                Path("data/braker3/protein_data/fastas/proteins.fa"),
+                Path("data/braker3/protein_data/fastas/proteins_extra.fa"),
+            ),
         )
         bundle = ProteinEvidenceResultBundle(
             result_dir=Path("results/protein"),
@@ -272,7 +275,7 @@ class PlannerTypeTests(TestCase):
             "chunking": {"proteins_per_chunk": 250},
             "assets": {
                 "reference_genome": {
-                    "fasta_path": "data/genome.fa",
+                    "fasta_path": "data/braker3/reference/genome.fa",
                     "organism_name": None,
                     "assembly_name": None,
                     "taxonomy_id": None,
@@ -281,7 +284,10 @@ class PlannerTypeTests(TestCase):
                     "notes": [],
                 },
                 "protein_reference_dataset": {
-                    "source_fasta_paths": ["data/proteins.fa", "data/proteins_extra.fa"],
+                    "source_fasta_paths": [
+                        "data/braker3/protein_data/fastas/proteins.fa",
+                        "data/braker3/protein_data/fastas/proteins_extra.fa",
+                    ],
                 },
             },
         }
@@ -289,7 +295,13 @@ class PlannerTypeTests(TestCase):
         from_bundle = protein_evidence_from_bundle(bundle)
         from_manifest = protein_evidence_from_manifest(manifest)
 
-        self.assertEqual(from_bundle.source_protein_fastas, (Path("data/proteins.fa"), Path("data/proteins_extra.fa")))
+        self.assertEqual(
+            from_bundle.source_protein_fastas,
+            (
+                Path("data/braker3/protein_data/fastas/proteins.fa"),
+                Path("data/braker3/protein_data/fastas/proteins_extra.fa"),
+            ),
+        )
         self.assertEqual(from_bundle.evm_ready_gff3_path, Path("results/protein/protein_evidence.evm.gff3"))
         self.assertEqual(from_manifest.source_protein_fastas, from_bundle.source_protein_fastas)
         self.assertIn("250 proteins", from_manifest.notes[-1])
@@ -303,7 +315,7 @@ class PlannerTypeTests(TestCase):
             normalized_dir=Path("results/braker3/normalized"),
             braker_gff3_path=Path("results/braker3/raw/braker.gff3"),
             normalized_gff3_path=Path("results/braker3/normalized/braker.normalized.gff3"),
-            reference_genome=AssetReferenceGenome(fasta_path=Path("data/genome.fa")),
+            reference_genome=AssetReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa")),
             notes=("BRAKER notes.",),
         )
         pre_evm_manifest = {
@@ -321,14 +333,14 @@ class PlannerTypeTests(TestCase):
             },
             "assets": {
                 "evm_input_preparation_bundle": {
-                    "reference_genome_fasta_path": "data/genome.fa",
+                    "reference_genome_fasta_path": "data/braker3/reference/genome.fa",
                     "prediction_bundle": {
                         "braker_gff3_path": "results/pre_evm/braker.gff3",
                     },
                 },
             },
             "pre_evm_contract": {
-                "reference_genome_fasta": {"path": "data/genome.fa"},
+                "reference_genome_fasta": {"path": "data/braker3/reference/genome.fa"},
             },
         }
 
@@ -339,7 +351,7 @@ class PlannerTypeTests(TestCase):
             normalized_dir=Path("results/ab_initio/normalized"),
             braker_gff3_path=Path("results/ab_initio/raw/braker.gff3"),
             normalized_gff3_path=Path("results/ab_initio/normalized/braker.normalized.gff3"),
-            reference_genome=AssetReferenceGenome(fasta_path=Path("data/genome.fa")),
+            reference_genome=AssetReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa")),
             provenance=AssetToolProvenance(tool_name="BRAKER3", tool_stage="ab initio annotation"),
         )
 
@@ -350,7 +362,7 @@ class PlannerTypeTests(TestCase):
         self.assertEqual(from_bundle.ab_initio_predictions_gff3_path, Path("results/braker3/normalized/braker.normalized.gff3"))
         self.assertEqual(from_generic_bundle.ab_initio_predictions_gff3_path, Path("results/ab_initio/normalized/braker.normalized.gff3"))
         self.assertIn("BRAKER3", from_generic_bundle.notes[0])
-        self.assertEqual(from_manifest.reference_genome.fasta_path, Path("data/genome.fa"))
+        self.assertEqual(from_manifest.reference_genome.fasta_path, Path("data/braker3/reference/genome.fa"))
         self.assertEqual(from_manifest.transcript_alignments_gff3_path, Path("results/pre_evm/transcripts.gff3"))
         self.assertEqual(from_manifest.protein_alignments_gff3_path, Path("results/pre_evm/proteins.gff3"))
         self.assertEqual(from_manifest.combined_predictions_gff3_path, Path("results/pre_evm/predictions.gff3"))
@@ -378,7 +390,7 @@ class PlannerTypeTests(TestCase):
             "assets": {
                 "evm_consensus_result_bundle": {
                     "execution_input_bundle": {
-                        "reference_genome_fasta_path": "data/genome.fa",
+                        "reference_genome_fasta_path": "data/braker3/reference/genome.fa",
                     },
                 },
             },
@@ -386,7 +398,7 @@ class PlannerTypeTests(TestCase):
         repeat_filter_manifest = {
             "workflow": "annotation_repeat_filtering",
             "assumptions": ["Repeat-filtered outputs are QC-ready."],
-            "inputs": {"reference_genome": "data/genome.fa"},
+            "inputs": {"reference_genome": "data/braker3/reference/genome.fa"},
             "outputs": {
                 "all_repeats_removed_gff3": "results/repeat/all_repeats_removed.gff3",
                 "final_proteins_fasta": "results/repeat/all_repeats_removed.proteins.fa",

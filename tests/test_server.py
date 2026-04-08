@@ -84,7 +84,7 @@ def _repeat_filter_manifest_dir(tmp_path: Path) -> Path:
             {
                 "workflow": "annotation_repeat_filtering",
                 "assumptions": ["Repeat-filtered outputs are QC-ready."],
-                "inputs": {"reference_genome": "data/genome.fa"},
+                "inputs": {"reference_genome": "data/braker3/reference/genome.fa"},
                 "outputs": {
                     "all_repeats_removed_gff3": str(result_dir / "all_repeats_removed.gff3"),
                     "final_proteins_fasta": str(result_dir / "all_repeats_removed.proteins.fa"),
@@ -259,8 +259,8 @@ class ServerTests(TestCase):
         """Classify the BRAKER3 prompt and freeze explicit local paths."""
         prompt = (
             "Annotate the genome sequence of a small eukaryote using BRAKER3 "
-            "with genome data/genome.fa, RNA-seq evidence data/RNAseq.bam, "
-            "and protein evidence data/proteins.fa"
+            "with genome data/braker3/reference/genome.fa, RNA-seq evidence data/braker3/rnaseq/RNAseq.bam, "
+            "and protein evidence data/braker3/protein_data/fastas/proteins.fa"
         )
 
         payload = plan_request(prompt)
@@ -270,9 +270,9 @@ class ServerTests(TestCase):
         self.assertEqual(
             payload["binding_plan"]["runtime_bindings"],
             {
-                "genome": "data/genome.fa",
-                "rnaseq_bam_path": "data/RNAseq.bam",
-                "protein_fasta_path": "data/proteins.fa",
+                "genome": "data/braker3/reference/genome.fa",
+                "rnaseq_bam_path": "data/braker3/rnaseq/RNAseq.bam",
+                "protein_fasta_path": "data/braker3/protein_data/fastas/proteins.fa",
             },
         )
 
@@ -288,8 +288,8 @@ class ServerTests(TestCase):
     def test_plan_request_builds_protein_workflow_recipe_plan(self) -> None:
         """Classify the protein-evidence prompt and preserve protein FASTA order."""
         prompt = (
-            "Run protein evidence alignment with genome data/genome.fa, "
-            "protein evidence data/proteins.fa, and protein evidence data/proteins_extra.fa"
+            "Run protein evidence alignment with genome data/braker3/reference/genome.fa, "
+            "protein evidence data/braker3/protein_data/fastas/proteins.fa, and protein evidence data/braker3/protein_data/fastas/proteins_extra.fa"
         )
 
         payload = plan_request(prompt)
@@ -299,16 +299,19 @@ class ServerTests(TestCase):
         self.assertEqual(
             payload["binding_plan"]["runtime_bindings"],
             {
-                "genome": "data/genome.fa",
-                "protein_fastas": ["data/proteins.fa", "data/proteins_extra.fa"],
+                "genome": "data/braker3/reference/genome.fa",
+                "protein_fastas": [
+                    "data/braker3/protein_data/fastas/proteins.fa",
+                    "data/braker3/protein_data/fastas/proteins_extra.fa",
+                ],
             },
         )
 
     def test_prepare_and_run_local_recipe_round_trips_saved_artifact(self) -> None:
         """Prepare a frozen recipe and execute it through explicit local handlers."""
         prompt = (
-            "Run protein evidence alignment with genome data/genome.fa and "
-            "protein evidence data/proteins.fa"
+            "Run protein evidence alignment with genome data/braker3/reference/genome.fa and "
+            "protein evidence data/braker3/protein_data/fastas/proteins.fa"
         )
         calls: list[dict[str, object]] = []
 
@@ -327,7 +330,7 @@ class ServerTests(TestCase):
             )
 
         self.assertTrue(executed["supported"])
-        self.assertEqual(calls[0], {"genome": "data/genome.fa", "protein_fastas": ["data/proteins.fa"]})
+        self.assertEqual(calls[0], {"genome": "data/braker3/reference/genome.fa", "protein_fastas": ["data/braker3/protein_data/fastas/proteins.fa"]})
         self.assertEqual(executed["execution_result"]["output_paths"], ["/tmp/protein_evidence_results"])
 
     def test_run_slurm_recipe_submits_saved_slurm_artifact(self) -> None:
@@ -369,7 +372,7 @@ class ServerTests(TestCase):
         """Require Slurm recipes to be explicitly frozen with the Slurm profile."""
         with tempfile.TemporaryDirectory() as tmp:
             prepared = _prepare_run_recipe_impl(
-                "Run protein evidence alignment with genome data/genome.fa and protein evidence data/proteins.fa",
+                "Run protein evidence alignment with genome data/braker3/reference/genome.fa and protein evidence data/braker3/protein_data/fastas/proteins.fa",
                 recipe_dir=Path(tmp),
             )
             submitted = _run_slurm_recipe_impl(
@@ -646,7 +649,7 @@ class ServerTests(TestCase):
             stats = _prepare_run_recipe_impl(
                 "Run AGAT statistics on the EggNOG-annotated GFF3.",
                 manifest_sources=(eggnog_dir,),
-                runtime_bindings={"annotation_fasta_path": "data/genome.fa", "agat_sif": "agat.sif"},
+                runtime_bindings={"annotation_fasta_path": "data/braker3/reference/genome.fa", "agat_sif": "agat.sif"},
                 recipe_dir=tmp_path,
             )
             conversion = _prepare_run_recipe_impl(
@@ -669,7 +672,7 @@ class ServerTests(TestCase):
         self.assertEqual(cleanup["typed_plan"]["matched_entry_names"], [SUPPORTED_AGAT_CLEANUP_WORKFLOW_NAME])
         self.assertEqual(
             stats["typed_plan"]["binding_plan"]["runtime_bindings"],
-            {"annotation_fasta_path": "data/genome.fa", "agat_sif": "agat.sif"},
+            {"annotation_fasta_path": "data/braker3/reference/genome.fa", "agat_sif": "agat.sif"},
         )
         self.assertEqual(conversion["typed_plan"]["binding_plan"]["runtime_bindings"], {"agat_sif": "agat.sif"})
         self.assertEqual(
@@ -785,8 +788,8 @@ class ServerTests(TestCase):
         """Plan and dispatch the BRAKER3 example prompt through the workflow runner."""
         prompt = (
             "Annotate the genome sequence of a small eukaryote using BRAKER3 "
-            "with genome data/genome.fa, RNA-seq evidence data/RNAseq.bam, "
-            "and protein evidence data/proteins.fa"
+            "with genome data/braker3/reference/genome.fa, RNA-seq evidence data/braker3/rnaseq/RNAseq.bam, "
+            "and protein evidence data/braker3/protein_data/fastas/proteins.fa"
         )
         captured: dict[str, object] = {}
 
@@ -820,9 +823,9 @@ class ServerTests(TestCase):
         self.assertEqual(
             captured["inputs"],
             {
-                "genome": "data/genome.fa",
-                "rnaseq_bam_path": "data/RNAseq.bam",
-                "protein_fasta_path": "data/proteins.fa",
+                "genome": "data/braker3/reference/genome.fa",
+                "rnaseq_bam_path": "data/braker3/rnaseq/RNAseq.bam",
+                "protein_fasta_path": "data/braker3/protein_data/fastas/proteins.fa",
             },
         )
         self.assertEqual(payload["execution_result"]["exit_status"], 0)
@@ -834,9 +837,9 @@ class ServerTests(TestCase):
         self.assertEqual(
             payload["result_summary"]["used_inputs"],
             {
-                "genome": "data/genome.fa",
-                "rnaseq_bam_path": "data/RNAseq.bam",
-                "protein_fasta_path": "data/proteins.fa",
+                "genome": "data/braker3/reference/genome.fa",
+                "rnaseq_bam_path": "data/braker3/rnaseq/RNAseq.bam",
+                "protein_fasta_path": "data/braker3/protein_data/fastas/proteins.fa",
             },
         )
         self.assertEqual(payload["result_summary"]["output_paths"], ["/tmp/braker3_results"])
@@ -858,8 +861,8 @@ class ServerTests(TestCase):
     def test_prompt_and_run_protein_workflow_prompt_uses_extracted_inputs(self) -> None:
         """Plan and dispatch the protein-evidence example prompt through the workflow runner."""
         prompt = (
-            "Run protein evidence alignment with genome data/genome.fa and "
-            "protein evidence data/proteins.fa"
+            "Run protein evidence alignment with genome data/braker3/reference/genome.fa and "
+            "protein evidence data/braker3/protein_data/fastas/proteins.fa"
         )
         captured: dict[str, object] = {}
 
@@ -893,8 +896,8 @@ class ServerTests(TestCase):
         self.assertEqual(
             captured["inputs"],
             {
-                "genome": "data/genome.fa",
-                "protein_fastas": ["data/proteins.fa"],
+                "genome": "data/braker3/reference/genome.fa",
+                "protein_fastas": ["data/braker3/protein_data/fastas/proteins.fa"],
             },
         )
         self.assertEqual(payload["result_summary"]["status"], "succeeded")
@@ -904,8 +907,8 @@ class ServerTests(TestCase):
         self.assertEqual(
             payload["result_summary"]["used_inputs"],
             {
-                "genome": "data/genome.fa",
-                "protein_fastas": ["data/proteins.fa"],
+                "genome": "data/braker3/reference/genome.fa",
+                "protein_fastas": ["data/braker3/protein_data/fastas/proteins.fa"],
             },
         )
         self.assertEqual(payload["result_summary"]["output_paths"], ["/tmp/protein_evidence_results"])
@@ -914,7 +917,7 @@ class ServerTests(TestCase):
         """Plan and dispatch the Exonerate example prompt through the task runner."""
         prompt = (
             "Experiment with Exonerate protein-to-genome alignment using genome "
-            "data/genome.fa and protein chunk data/proteins.fa"
+            "data/braker3/reference/genome.fa and protein chunk data/braker3/protein_data/fastas/proteins.fa"
         )
         captured: dict[str, object] = {}
 
@@ -948,8 +951,8 @@ class ServerTests(TestCase):
         self.assertEqual(
             captured["inputs"],
             {
-                "genome": "data/genome.fa",
-                "protein_chunk": "data/proteins.fa",
+                "genome": "data/braker3/reference/genome.fa",
+                "protein_chunk": "data/braker3/protein_data/fastas/proteins.fa",
             },
         )
         self.assertEqual(payload["execution_result"]["entry_category"], "task")
@@ -960,8 +963,8 @@ class ServerTests(TestCase):
         self.assertEqual(
             payload["result_summary"]["used_inputs"],
             {
-                "genome": "data/genome.fa",
-                "protein_chunk": "data/proteins.fa",
+                "genome": "data/braker3/reference/genome.fa",
+                "protein_chunk": "data/braker3/protein_data/fastas/proteins.fa",
             },
         )
         self.assertEqual(payload["result_summary"]["output_paths"], ["/tmp/exonerate_results"])
@@ -969,7 +972,7 @@ class ServerTests(TestCase):
     def test_prompt_and_run_no_longer_blocks_downstream_terms(self) -> None:
         """Execute the day-one target without the old downstream term blocklist."""
         prompt = (
-            "Run protein evidence alignment with genome data/genome.fa and protein evidence data/proteins.fa, "
+            "Run protein evidence alignment with genome data/braker3/reference/genome.fa and protein evidence data/braker3/protein_data/fastas/proteins.fa, "
             "then continue into EVM and BUSCO."
         )
 
@@ -1029,7 +1032,7 @@ class ServerTests(TestCase):
         """Report a compact failure summary when the matched execution returns non-zero."""
         prompt = (
             "Annotate the genome sequence using BRAKER3 "
-            "with genome data/genome.fa and protein evidence data/proteins.fa"
+            "with genome data/braker3/reference/genome.fa and protein evidence data/braker3/protein_data/fastas/proteins.fa"
         )
 
         def fake_workflow_runner(workflow_name: str, inputs: dict[str, object]) -> dict[str, object]:
@@ -1037,8 +1040,8 @@ class ServerTests(TestCase):
             self.assertEqual(
                 inputs,
                 {
-                    "genome": "data/genome.fa",
-                    "protein_fasta_path": "data/proteins.fa",
+                    "genome": "data/braker3/reference/genome.fa",
+                    "protein_fasta_path": "data/braker3/protein_data/fastas/proteins.fa",
                 },
             )
             return {
@@ -1071,8 +1074,8 @@ class ServerTests(TestCase):
         self.assertEqual(
             payload["result_summary"]["used_inputs"],
             {
-                "genome": "data/genome.fa",
-                "protein_fasta_path": "data/proteins.fa",
+                "genome": "data/braker3/reference/genome.fa",
+                "protein_fasta_path": "data/braker3/protein_data/fastas/proteins.fa",
             },
         )
         self.assertIn("BRAKER3 failed to start", payload["result_summary"]["message"])
@@ -1094,9 +1097,9 @@ class ServerTests(TestCase):
         response = run_workflow(
             workflow_name=SUPPORTED_WORKFLOW_NAME,
             inputs={
-                "genome": "data/genome.fa",
-                "rnaseq_bam_path": "data/RNAseq.bam",
-                "protein_fasta_path": "data/proteins.fa",
+                "genome": "data/braker3/reference/genome.fa",
+                "rnaseq_bam_path": "data/braker3/rnaseq/RNAseq.bam",
+                "protein_fasta_path": "data/braker3/protein_data/fastas/proteins.fa",
                 "braker_species": "small_eukaryote",
             },
             runner=fake_run,
@@ -1109,7 +1112,7 @@ class ServerTests(TestCase):
             [_resolve_flyte_cli(), "run", "--local", "flyte_rnaseq_workflow.py", SUPPORTED_WORKFLOW_NAME],
         )
         self.assertIn("--genome", command)
-        self.assertIn("data/genome.fa", command)
+        self.assertIn("data/braker3/reference/genome.fa", command)
         self.assertIn("--rnaseq_bam_path", command)
         self.assertIn("--protein_fasta_path", command)
         self.assertEqual(response["exit_status"], 0)
@@ -1131,8 +1134,11 @@ class ServerTests(TestCase):
         response = run_workflow(
             workflow_name=SUPPORTED_PROTEIN_WORKFLOW_NAME,
             inputs={
-                "genome": "data/genome.fa",
-                "protein_fastas": ["data/proteins.fa", "data/proteins_extra.fa"],
+                "genome": "data/braker3/reference/genome.fa",
+                "protein_fastas": [
+                    "data/braker3/protein_data/fastas/proteins.fa",
+                    "data/braker3/protein_data/fastas/proteins_extra.fa",
+                ],
                 "proteins_per_chunk": 250,
             },
             runner=fake_run,
@@ -1145,8 +1151,8 @@ class ServerTests(TestCase):
             [_resolve_flyte_cli(), "run", "--local", "flyte_rnaseq_workflow.py", SUPPORTED_PROTEIN_WORKFLOW_NAME],
         )
         self.assertEqual(command.count("--protein_fastas"), 2)
-        self.assertIn("data/proteins.fa", command)
-        self.assertIn("data/proteins_extra.fa", command)
+        self.assertIn("data/braker3/protein_data/fastas/proteins.fa", command)
+        self.assertIn("data/braker3/protein_data/fastas/proteins_extra.fa", command)
         self.assertIn("--proteins_per_chunk", command)
         self.assertEqual(response["exit_status"], 0)
 

@@ -13,9 +13,9 @@ Combine ab initio predictions, transcript evidence, and protein evidence into co
 
 Current local fixture roots for upstream smoke-test generation:
 
-- `data/genome.fa`
-- `data/RNAseq.bam`
-- `data/proteins.fa`
+- `data/braker3/reference/genome.fa`
+- `data/braker3/rnaseq/RNAseq.bam`
+- `data/braker3/protein_data/fastas/proteins.fa`
 
 ## Key Outputs
 

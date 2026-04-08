@@ -513,8 +513,9 @@ def _select_execution_policy(
     return selected_profile, selected_resources, selected_image, tuple(unresolved), tuple(assumptions)
 
 
-def _classify_target(normalized_request: str) -> tuple[str | None, float, tuple[str, ...]]:
+def _classify_target(request: str) -> tuple[str | None, float, tuple[str, ...]]:
     """Classify the prompt as one supported workflow, task, or unsupported."""
+    normalized_request = _normalize(_PATH_RE.sub(" ", request))
     has_exonerate = "exonerate" in normalized_request
     has_braker = "braker3" in normalized_request or "braker" in normalized_request
     has_annotation_intent = "annotate" in normalized_request and "genome" in normalized_request
@@ -628,7 +629,7 @@ def _planning_goal_for_typed_request(request: str) -> TypedPlanningGoal | None:
     if any(keyword in normalized_request for keyword in ("variant calling", "snv", "snp", "vcf")):
         return None
 
-    matched_name, _, _ = _classify_target(normalized_request)
+    matched_name, _, _ = _classify_target(request)
     if matched_name is not None:
         prompt_paths = _extract_prompt_paths(request)
         if matched_name == SUPPORTED_WORKFLOW_NAME:
@@ -1260,9 +1261,7 @@ def _unsupported_plan(
 
 def plan_request(request: str) -> dict[str, object]:
     """Plan one prompt for the narrow workflow-or-task showcase."""
-    normalized_request = _normalize(request)
-
-    matched_name, confidence, rationale = _classify_target(normalized_request)
+    matched_name, confidence, rationale = _classify_target(request)
     if matched_name is None:
         return _unsupported_plan(
             request,

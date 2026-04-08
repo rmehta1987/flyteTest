@@ -42,7 +42,7 @@ def _repeat_filter_manifest_dir(base_dir: Path, name: str) -> Path:
             {
                 "workflow": "annotation_repeat_filtering",
                 "assumptions": ["Repeat-filtered outputs are QC-ready."],
-                "inputs": {"reference_genome": "data/genome.fa"},
+                "inputs": {"reference_genome": "data/braker3/reference/genome.fa"},
                 "outputs": {
                     "all_repeats_removed_gff3": str(result_dir / "all_repeats_removed.gff3"),
                     "final_proteins_fasta": str(result_dir / "all_repeats_removed.proteins.fa"),
@@ -98,10 +98,10 @@ class PlanningTests(TestCase):
 
     def test_typed_plan_resolves_direct_registered_workflow(self) -> None:
         """Select a registered workflow through planner types and resolver bindings."""
-        reference_genome = ReferenceGenome(fasta_path=Path("data/genome.fa"))
+        reference_genome = ReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa"))
         protein_evidence = ProteinEvidenceSet(
             reference_genome=reference_genome,
-            source_protein_fastas=(Path("data/proteins.fa"),),
+            source_protein_fastas=(Path("data/braker3/protein_data/fastas/proteins.fa"),),
         )
 
         payload = plan_typed_request(
@@ -123,7 +123,7 @@ class PlanningTests(TestCase):
 
     def test_typed_plan_builds_registered_stage_composition(self) -> None:
         """Represent an EVM consensus request as reviewed registered workflow stages."""
-        reference_genome = ReferenceGenome(fasta_path=Path("data/genome.fa"))
+        reference_genome = ReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa"))
         transcript_evidence = TranscriptEvidenceSet(
             reference_genome=reference_genome,
             pasa_assemblies_gff3_path=Path("results/pasa/pasa_assemblies.gff3"),
@@ -160,7 +160,7 @@ class PlanningTests(TestCase):
 
     def test_typed_plan_builds_generated_workflow_spec_preview(self) -> None:
         """Represent a not-yet-checked-in multi-stage request as a metadata-only spec preview."""
-        reference_genome = ReferenceGenome(fasta_path=Path("data/genome.fa"))
+        reference_genome = ReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa"))
         consensus_annotation = ConsensusAnnotation(
             reference_genome=reference_genome,
             annotation_gff3_path=Path("results/evm/evm.out.gff3"),
@@ -508,8 +508,8 @@ class PlanningTests(TestCase):
     def test_plan_request_keeps_current_supported_payload_shape(self) -> None:
         """Return the stable planning payload for a supported protein-evidence prompt."""
         prompt = (
-            "Run protein evidence alignment with genome data/genome.fa and "
-            "protein evidence data/proteins.fa"
+            "Run protein evidence alignment with genome data/braker3/reference/genome.fa and "
+            "protein evidence data/braker3/protein_data/fastas/proteins.fa"
         )
 
         payload = plan_request(prompt)
@@ -539,8 +539,8 @@ class PlanningTests(TestCase):
         self.assertEqual(
             payload["extracted_inputs"],
             {
-                "genome": "data/genome.fa",
-                "protein_fastas": ["data/proteins.fa"],
+                "genome": "data/braker3/reference/genome.fa",
+                "protein_fastas": ["data/braker3/protein_data/fastas/proteins.fa"],
             },
         )
         self.assertEqual(payload["missing_required_inputs"], [])
@@ -557,8 +557,8 @@ class PlanningTests(TestCase):
     def test_plan_request_no_longer_blocks_downstream_terms(self) -> None:
         """Keep prompt-path planning available without the old MCP downstream blocklist."""
         payload = plan_request(
-            "Run protein evidence alignment with genome data/genome.fa and protein evidence "
-            "data/proteins.fa, then continue into EVM and BUSCO."
+            "Run protein evidence alignment with genome data/braker3/reference/genome.fa and protein evidence "
+            "data/braker3/protein_data/fastas/proteins.fa, then continue into EVM and BUSCO."
         )
 
         self.assertTrue(payload["supported"])

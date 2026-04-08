@@ -11,9 +11,9 @@ Generate ab initio gene predictions to provide a core evidence source for consen
 
 Lightweight local fixture examples for milestone-scoped testing:
 
-- `data/genome.fa`
-- `data/RNAseq.bam`
-- `data/proteins.fa`
+- `data/braker3/reference/genome.fa`
+- `data/braker3/rnaseq/RNAseq.bam`
+- `data/braker3/protein_data/fastas/proteins.fa`
 
 ## Key Outputs
 
@@ -78,9 +78,9 @@ Goal:
 Run or refine `braker3_predict` for ab initio evidence generation.
 
 Inputs:
-- genome FASTA such as `data/genome.fa`
-- RNA-seq BAM such as `data/RNAseq.bam`
-- protein FASTA such as `data/proteins.fa`
+- genome FASTA such as `data/braker3/reference/genome.fa`
+- RNA-seq BAM such as `data/braker3/rnaseq/RNAseq.bam`
+- protein FASTA such as `data/braker3/protein_data/fastas/proteins.fa`
 - optional `braker3_sif` container image
 
 Constraints:

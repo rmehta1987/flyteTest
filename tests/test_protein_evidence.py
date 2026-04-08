@@ -19,8 +19,8 @@ import shutil
 TESTS_DIR = Path(__file__).resolve().parent
 SRC_DIR = TESTS_DIR.parent / "src"
 DATA_DIR = TESTS_DIR.parent / "data"
-PROTEIN_FASTA = DATA_DIR / "proteins.fa"
-GENOME_FASTA = DATA_DIR / "genome.fa"
+PROTEIN_FASTA = DATA_DIR / "braker3" / "protein_data" / "fastas" / "proteins.fa"
+GENOME_FASTA = DATA_DIR / "braker3" / "reference" / "genome.fa"
 sys.path.insert(0, str(TESTS_DIR))
 sys.path.insert(0, str(SRC_DIR))
 

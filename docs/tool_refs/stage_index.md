@@ -319,7 +319,7 @@ Refine `annotation_repeat_filtering` or one of its explicit repeat-filter tasks.
 Context:
 - consume the PASA-updated sorted GFF3 boundary, not an earlier EVM shortcut
 - keep RepeatMasker conversion, gffread protein extraction, overlap cleanup, repeat blasting, and final GFF3/protein collection explicit
-- use the local `data/repeatmasker/` fixture directory for smoke-test planning when binaries are available and synthetic tests otherwise
+- use synthetic tests or an external RepeatMasker `.out` file for smoke-test planning; this repo does not currently ship a checked-in `data/repeatmasker/` fixture directory
 - state any inferred funannotate wrapper behavior explicitly
 
 Deliver:

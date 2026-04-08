@@ -134,26 +134,26 @@ Legacy QC and quantification baseline:
 
 ```bash
 .venv/bin/flyte run --local flyte_rnaseq_workflow.py rnaseq_qc_quant \
-  --ref data/transcriptome.fa \
-  --left data/reads_1.fq.gz \
-  --right data/reads_2.fq.gz
+  --ref data/transcriptomics/ref-based/transcriptome.fa \
+  --left data/transcriptomics/ref-based/reads_1.fq.gz \
+  --right data/transcriptomics/ref-based/reads_2.fq.gz
 ```
 
 BRAKER3 tutorial-backed smoke shape:
 
 ```bash
 .venv/bin/flyte run --local flyte_rnaseq_workflow.py ab_initio_annotation_braker3 \
-  --genome data/genome.fa \
-  --rnaseq_bam_path data/RNAseq.bam \
-  --protein_fasta_path data/proteins.fa
+  --genome data/braker3/reference/genome.fa \
+  --rnaseq_bam_path data/braker3/rnaseq/RNAseq.bam \
+  --protein_fasta_path data/braker3/protein_data/fastas/proteins.fa
 ```
 
 Protein-evidence smoke shape:
 
 ```bash
 .venv/bin/flyte run --local flyte_rnaseq_workflow.py protein_evidence_alignment \
-  --genome data/genome.fa \
-  --protein_fastas data/proteins.fa
+  --genome data/braker3/reference/genome.fa \
+  --protein_fastas data/braker3/protein_data/fastas/proteins.fa
 ```
 
 BUSCO QC after repeat filtering:
@@ -330,14 +330,16 @@ and [docs/mcp_showcase.md](/home/rmeht/Projects/flyteTest/docs/mcp_showcase.md).
 
 Canonical lightweight fixture roots:
 
-- `data/genome.fa`
-- `data/RNAseq.bam`
-- `data/proteins.fa`
-- `data/braker3/`
-- `data/repeatmasker/`
-- `data/functional/`
-- `data/transcriptomics/ref-based/`
+- `data/transcriptomics/ref-based/reads_1.fq.gz`
+- `data/transcriptomics/ref-based/reads_2.fq.gz`
+- `data/transcriptomics/ref-based/transcriptome.fa`
+- `data/braker3/reference/genome.fa`
+- `data/braker3/rnaseq/RNAseq.bam`
+- `data/braker3/protein_data/fastas/proteins.fa`
+- `data/braker3/protein_data/fastas/proteins_extra.fa`
 
+Use [scripts/rcc/download_minimal_fixtures.sh](/home/rmeht/Projects/flyteTest/scripts/rcc/download_minimal_fixtures.sh)
+to restore the lightweight tutorial-backed smoke files on a cluster checkout.
 Use [docs/tutorial_context.md](/home/rmeht/Projects/flyteTest/docs/tutorial_context.md)
 for Galaxy tutorial mappings, fixture provenance, and smoke-test planning.
 Use synthetic tests when external binaries or lineage datasets are unavailable.

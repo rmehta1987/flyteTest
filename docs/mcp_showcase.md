@@ -85,19 +85,19 @@ compatible manifest source is supplied.
 Example BRAKER3 workflow prompt:
 
 ```text
-Annotate the genome sequence of a small eukaryote using BRAKER3 with genome data/genome.fa, RNA-seq evidence data/RNAseq.bam, and protein evidence data/proteins.fa
+Annotate the genome sequence of a small eukaryote using BRAKER3 with genome data/braker3/reference/genome.fa, RNA-seq evidence data/braker3/rnaseq/RNAseq.bam, and protein evidence data/braker3/protein_data/fastas/proteins.fa
 ```
 
 Example protein-evidence workflow prompt:
 
 ```text
-Run protein evidence alignment with genome data/genome.fa and protein evidence data/proteins.fa
+Run protein evidence alignment with genome data/braker3/reference/genome.fa and protein evidence data/braker3/protein_data/fastas/proteins.fa
 ```
 
 Example Exonerate task prompt:
 
 ```text
-Experiment with Exonerate protein-to-genome alignment using genome data/genome.fa and protein chunk data/proteins.fa
+Experiment with Exonerate protein-to-genome alignment using genome data/braker3/reference/genome.fa and protein chunk data/braker3/protein_data/fastas/proteins.fa
 ```
 
 ## Recipe Flow

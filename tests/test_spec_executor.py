@@ -34,7 +34,7 @@ from flytetest.spec_executor import (
 
 def _artifact_with_runtime_bindings(tmp_path: Path):
     """Build one generated-spec artifact with enough runtime values to run locally."""
-    reference_genome = ReferenceGenome(fasta_path=Path("data/genome.fa"))
+    reference_genome = ReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa"))
     consensus_annotation = ConsensusAnnotation(
         reference_genome=reference_genome,
         annotation_gff3_path=Path("results/evm/evm.out.gff3"),
@@ -63,7 +63,7 @@ def _busco_artifact_with_runtime_bindings(tmp_path: Path):
             {
                 "workflow": "annotation_repeat_filtering",
                 "assumptions": ["Repeat-filtered outputs are QC-ready."],
-                "inputs": {"reference_genome": "data/genome.fa"},
+                "inputs": {"reference_genome": "data/braker3/reference/genome.fa"},
                 "outputs": {
                     "all_repeats_removed_gff3": str(result_dir / "all_repeats_removed.gff3"),
                     "final_proteins_fasta": str(result_dir / "all_repeats_removed.proteins.fa"),
@@ -102,7 +102,7 @@ def _slurm_busco_artifact_with_runtime_bindings(tmp_path: Path):
             {
                 "workflow": "annotation_repeat_filtering",
                 "assumptions": ["Repeat-filtered outputs are QC-ready."],
-                "inputs": {"reference_genome": "data/genome.fa"},
+                "inputs": {"reference_genome": "data/braker3/reference/genome.fa"},
                 "outputs": {
                     "all_repeats_removed_gff3": str(result_dir / "all_repeats_removed.gff3"),
                     "final_proteins_fasta": str(result_dir / "all_repeats_removed.proteins.fa"),
@@ -253,7 +253,7 @@ class SpecExecutorTests(TestCase):
             stats_artifact = _quality_target_artifact(
                 "Run AGAT statistics on the EggNOG-annotated GFF3.",
                 eggnog_target,
-                runtime_bindings={"annotation_fasta_path": "data/genome.fa", "agat_sif": "agat.sif"},
+                runtime_bindings={"annotation_fasta_path": "data/braker3/reference/genome.fa", "agat_sif": "agat.sif"},
             )
             convert_artifact = _quality_target_artifact(
                 "Run AGAT conversion on the EggNOG-annotated GFF3.",
@@ -294,7 +294,7 @@ class SpecExecutorTests(TestCase):
             [
                 (
                     "annotation_postprocess_agat",
-                    {"eggnog_results": eggnog_dir, "annotation_fasta_path": "data/genome.fa", "agat_sif": "agat.sif"},
+                    {"eggnog_results": eggnog_dir, "annotation_fasta_path": "data/braker3/reference/genome.fa", "agat_sif": "agat.sif"},
                 ),
                 ("annotation_postprocess_agat_conversion", {"eggnog_results": eggnog_dir, "agat_sif": "agat.sif"}),
                 ("annotation_postprocess_agat_cleanup", {"agat_conversion_results": conversion_dir}),

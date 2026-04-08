@@ -10,9 +10,8 @@ Provide repeat annotations that can be converted into the BED-style overlap inpu
 
 Local fixture context for optional smoke planning:
 
-- `data/repeatmasker/genome_raw.fasta`
-- `data/repeatmasker/Muco_library_RM2.fasta`
-- `data/repeatmasker/Muco_library_EDTA.fasta`
+- this repo does not currently ship a checked-in `data/repeatmasker/` fixture directory
+- use synthetic inputs or an external RepeatMasker `.out` file when planning the conversion boundary
 
 ## Key Outputs
 
@@ -70,5 +69,5 @@ Deliver:
 ## Notes And Caveats
 
 - FLyteTest currently implements RepeatMasker output conversion, not RepeatMasker execution.
-- The local `data/repeatmasker/` fixtures are for smoke-test planning and optional upstream `.out` generation when binaries are available.
+- The repo does not currently include checked-in RepeatMasker smoke fixtures, so smoke planning should use synthetic inputs or a separately staged `.out` file.
 - The BED coordinates are intentionally notes-shaped rather than normalized beyond the documented `$1/$4/$5` extraction.

@@ -10,8 +10,8 @@ Scope note:
 
 ## Purpose
 
-This file explains how to use Galaxy tutorials and the local mirrored fixture
-files as reference context when:
+This file explains how to use Galaxy tutorials and the local stage-specific
+fixture files as reference context when:
 
 - prompting Codex to implement or refine tasks
 - prompting Codex to assemble local or Apptainer-backed commands
@@ -62,22 +62,20 @@ For those repo-specific details, use:
 
 ## Local Fixture Roots
 
-Prefer the local mirrored fixture files under `data/` instead of re-downloading
-tutorial assets during ordinary implementation or test work.
+Prefer the local stage-specific fixture files under `data/` instead of
+re-downloading tutorial assets during ordinary implementation or test work.
 
 Current canonical roots:
 
-- `data/genome.fa`
-- `data/RNAseq.bam`
-- `data/proteins.fa`
-- `data/braker3/`
-- `data/repeatmasker/`
-- `data/functional/`
 - `data/transcriptomics/ref-based/`
+- `data/braker3/reference/`
+- `data/braker3/rnaseq/`
+- `data/braker3/protein_data/fastas/`
 
-Use the top-level mirrors for lightweight smoke tests and the stage-specific
-subdirectories when a prompt needs clearer provenance or additional tutorial
-files.
+Use the stage-specific subdirectories for lightweight smoke tests and clearer
+provenance. Prefer the stage-local paths listed below unless a prompt
+explicitly needs another stage-local tutorial asset from the same stage
+family.
 
 ## Stage Mapping
 
@@ -86,7 +84,7 @@ repo stage to tutorial source.
 
 Before writing testing expectations for a future milestone prompt, first check
 whether that stage already has a documented tutorial-backed dataset or local
-mirrored fixture set in `README.md`, this file, or `data/`. Prefer those
+fixture set in `README.md`, this file, or `data/`. Prefer those
 real-data fixtures for bounded smoke tests when they exist; fall back to
 synthetic tests only when no suitable tutorial-backed fixture is available or
 the required binaries are missing.
@@ -162,9 +160,9 @@ Task:
 - assemble the local Apptainer command plan for `ab_initio_annotation_braker3`
 
 Inputs:
-- data/genome.fa
-- data/RNAseq.bam
-- data/proteins.fa
+- data/braker3/reference/genome.fa
+- data/braker3/rnaseq/RNAseq.bam
+- data/braker3/protein_data/fastas/proteins.fa
 - a local `braker3_sif`
 
 Output:
@@ -208,8 +206,8 @@ Reference context:
 - Braker3 tutorial-derived fixtures under `data/`
 
 Smoke-test inputs:
-- data/genome.fa
-- data/proteins.fa
+- data/braker3/reference/genome.fa
+- data/braker3/protein_data/fastas/proteins.fa
 
 Requirements:
 - preserve deterministic chunk behavior
@@ -240,26 +238,23 @@ already present under `data/`.
 
 Current directly usable local files:
 
-- `data/reads_1.fq.gz`
-- `data/reads_2.fq.gz`
-- `data/transcriptome.fa`
-- `data/genome.fa`
-- `data/RNAseq.bam`
-- `data/proteins.fa`
-- `data/braker3/reference/genome.fasta`
-- `data/braker3/reference/genome_masked_braker3.fasta`
-- `data/braker3/protein_data/protein_sequences.fasta`
-- `data/repeatmasker/genome_raw.fasta`
-- `data/repeatmasker/Muco_library_RM2.fasta`
-- `data/repeatmasker/Muco_library_EDTA.fasta`
-- `data/functional/proteins.fasta`
+- `data/transcriptomics/ref-based/reads_1.fq.gz`
+- `data/transcriptomics/ref-based/reads_2.fq.gz`
+- `data/transcriptomics/ref-based/transcriptome.fa`
+- `data/braker3/reference/genome.fa`
+- `data/braker3/rnaseq/RNAseq.bam`
+- `data/braker3/protein_data/fastas/proteins.fa`
+- `data/braker3/protein_data/fastas/proteins_extra.fa`
+
+The extra protein FASTA is a tiny synthetic helper used to keep
+multi-input protein-evidence and planner tests realistic.
 
 Practical rule:
 
-- use raw read, genome, BAM, and protein files in `data/` for direct tool smoke tests
+- use stage-local read, genome, BAM, and protein files under `data/` for direct tool smoke tests
 - use stage result bundles or synthetic fixtures for PASA, TransDecoder, and EVM work
-- use `data/repeatmasker/` plus synthetic PASA-update bundles when planning bounded repeat-filtering smoke tests
-- prefer the top-level mirrors for lightweight local testing unless provenance from the tutorial subdirectories matters
+- prefer the stage-specific subdirectories unless a prompt explicitly needs
+  another stage-local tutorial asset
 
 ### Direct `data/` Smoke-Test Prompt Templates
 
@@ -276,8 +271,8 @@ Task:
 - run or refine `fastqc`
 
 Fixture inputs:
-- data/reads_1.fq.gz
-- data/reads_2.fq.gz
+- data/transcriptomics/ref-based/reads_1.fq.gz
+- data/transcriptomics/ref-based/reads_2.fq.gz
 
 Requirements:
 - treat this as descriptive read QC only
@@ -303,9 +298,9 @@ Task:
 - run or refine `salmon_index` and `salmon_quant`
 
 Fixture inputs:
-- data/transcriptome.fa
-- data/reads_1.fq.gz
-- data/reads_2.fq.gz
+- data/transcriptomics/ref-based/transcriptome.fa
+- data/transcriptomics/ref-based/reads_1.fq.gz
+- data/transcriptomics/ref-based/reads_2.fq.gz
 
 Requirements:
 - keep index creation and quantification as separate boundaries
@@ -331,9 +326,9 @@ Task:
 - run or refine `star_genome_index` and `star_align_sample`
 
 Fixture inputs:
-- data/genome.fa
-- data/reads_1.fq.gz
-- data/reads_2.fq.gz
+- data/braker3/reference/genome.fa
+- data/transcriptomics/ref-based/reads_1.fq.gz
+- data/transcriptomics/ref-based/reads_2.fq.gz
 
 Requirements:
 - keep indexing and alignment as separate stages
@@ -359,7 +354,7 @@ Task:
 - run or refine `samtools_merge_bams`
 
 Fixture inputs:
-- data/RNAseq.bam
+- data/braker3/rnaseq/RNAseq.bam
 
 Requirements:
 - keep the merge boundary explicit even if the smoke test uses one BAM
@@ -385,7 +380,7 @@ Task:
 - run or refine `trinity_genome_guided_assemble`
 
 Fixture inputs:
-- data/RNAseq.bam
+- data/braker3/rnaseq/RNAseq.bam
 
 Requirements:
 - keep this scoped to genome-guided Trinity only
@@ -411,7 +406,7 @@ Task:
 - run or refine `stringtie_assemble`
 
 Fixture inputs:
-- data/RNAseq.bam
+- data/braker3/rnaseq/RNAseq.bam
 
 Requirements:
 - support optional `stringtie_sif`
@@ -438,8 +433,8 @@ Task:
 - run or refine `exonerate_align_chunk` and `exonerate_to_evm_gff3`
 
 Fixture inputs:
-- data/genome.fa
-- data/proteins.fa
+- data/braker3/reference/genome.fa
+- data/braker3/protein_data/fastas/proteins.fa
 
 Requirements:
 - keep chunked alignment and GFF3 conversion explicit
@@ -466,9 +461,9 @@ Task:
 - run or refine `ab_initio_annotation_braker3`
 
 Fixture inputs:
-- data/braker3/reference/genome_masked_braker3.fasta
-- data/RNAseq.bam
-- data/braker3/protein_data/protein_sequences.fasta
+- data/braker3/reference/genome.fa
+- data/braker3/rnaseq/RNAseq.bam
+- data/braker3/protein_data/fastas/proteins.fa
 
 Requirements:
 - preserve the current tutorial-backed BRAKER3 boundary
@@ -597,8 +592,8 @@ Task:
 - if task-level work is needed, focus on `exonerate_align_chunk`
 
 Fixture inputs:
-- data/genome.fa
-- data/proteins.fa
+- data/braker3/reference/genome.fa
+- data/braker3/protein_data/fastas/proteins.fa
 
 Requirements:
 - keep protein staging and chunking deterministic
@@ -626,9 +621,9 @@ Task:
 - implement, refine, or run `ab_initio_annotation_braker3`
 
 Fixture inputs:
-- data/genome.fa
-- data/RNAseq.bam
-- data/proteins.fa
+- data/braker3/reference/genome.fa
+- data/braker3/rnaseq/RNAseq.bam
+- data/braker3/protein_data/fastas/proteins.fa
 
 Requirements:
 - preserve the current local-first BRAKER3 boundary
@@ -638,7 +633,8 @@ Requirements:
 - do not broaden scope into repeat filtering or post-BRAKER3 stages unless requested
 
 Validation:
-- prefer tutorial-backed smoke coverage with the local mirrored Braker3 fixtures
+- prefer tutorial-backed smoke coverage with the local stage-specific Braker3
+  fixtures
 - keep deterministic collector and manifest tests in place even when BRAKER3 is unavailable
 ```
 
@@ -749,6 +745,6 @@ Use FLyteTest tutorial context from:
 Treat the tutorial docs as stage reference only.
 Treat the registry and current code as the source of truth for task names,
 workflow names, and implemented scope.
-Prefer local mirrored fixtures under `data/`.
+Prefer local stage-specific fixtures under `data/`.
 Be explicit about inferred behavior and do not broaden scope past the active milestone.
 ```

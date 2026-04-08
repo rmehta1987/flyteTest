@@ -98,9 +98,9 @@ fi
 if [[ -n "${FASTQC_SIF:-}" && -n "${SALMON_SIF:-}" ]]; then
   echo "==> Running rnaseq_qc_quant smoke test against bundled example data"
   "$FLYTE_BIN" run --local "${ROOT_DIR}/flyte_rnaseq_workflow.py" rnaseq_qc_quant \
-    --ref "${ROOT_DIR}/data/transcriptome.fa" \
-    --left "${ROOT_DIR}/data/reads_1.fq.gz" \
-    --right "${ROOT_DIR}/data/reads_2.fq.gz" \
+    --ref "${ROOT_DIR}/data/transcriptomics/ref-based/transcriptome.fa" \
+    --left "${ROOT_DIR}/data/transcriptomics/ref-based/reads_1.fq.gz" \
+    --right "${ROOT_DIR}/data/transcriptomics/ref-based/reads_2.fq.gz" \
     --fastqc-sif "$FASTQC_SIF" \
     --salmon-sif "$SALMON_SIF"
 else

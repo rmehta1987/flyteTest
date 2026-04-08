@@ -12,8 +12,8 @@ Align protein evidence to the genome and convert the results into annotation-sup
 
 Lightweight local fixture examples for milestone-scoped testing:
 
-- `data/proteins.fa`
-- `data/genome.fa`
+- `data/braker3/protein_data/fastas/proteins.fa`
+- `data/braker3/reference/genome.fa`
 
 ## Key Tasks
 
@@ -40,7 +40,7 @@ Lightweight local fixture examples for milestone-scoped testing:
 - Exonerate is implemented in FLyteTest as a local-input protein-evidence milestone.
 - Raw and converted outputs are both important in the design notes and should remain distinct artifacts.
 - The current task family keeps chunk alignment, conversion, and concatenation as separate deterministic steps.
-- The current real-data test suite uses the local fixture layout in `tests/test_protein_evidence.py` with subsets copied from `data/proteins.fa`.
+- The current real-data test suite uses the local fixture layout in `tests/test_protein_evidence.py` with subsets copied from `data/braker3/protein_data/fastas/proteins.fa`.
 - This milestone does not include BRAKER3, EVM, PASA update rounds, repeat filtering, BUSCO, EggNOG, AGAT, or submission prep.
 
 ## Official Documentation

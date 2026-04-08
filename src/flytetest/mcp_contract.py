@@ -151,16 +151,16 @@ RECIPE_INPUT_RUNTIME_RULES = (
 
 WORKFLOW_EXAMPLE_PROMPT = (
     "Annotate the genome sequence of a small eukaryote using BRAKER3 "
-    "with genome data/genome.fa, RNA-seq evidence data/RNAseq.bam, "
-    "and protein evidence data/proteins.fa"
+    "with genome data/braker3/reference/genome.fa, RNA-seq evidence data/braker3/rnaseq/RNAseq.bam, "
+    "and protein evidence data/braker3/protein_data/fastas/proteins.fa"
 )
 PROTEIN_WORKFLOW_EXAMPLE_PROMPT = (
-    "Run protein evidence alignment with genome data/genome.fa and protein "
-    "evidence data/proteins.fa"
+    "Run protein evidence alignment with genome data/braker3/reference/genome.fa and protein "
+    "evidence data/braker3/protein_data/fastas/proteins.fa"
 )
 TASK_EXAMPLE_PROMPT = (
     "Experiment with Exonerate protein-to-genome alignment using genome "
-    "data/genome.fa and protein chunk data/proteins.fa"
+    "data/braker3/reference/genome.fa and protein chunk data/braker3/protein_data/fastas/proteins.fa"
 )
 SHOWCASE_LIMITATIONS = (
     "The MCP recipe surface executes `ab_initio_annotation_braker3`, `protein_evidence_alignment`, `exonerate_align_chunk`, `annotation_qc_busco`, `annotation_functional_eggnog`, `annotation_postprocess_agat`, `annotation_postprocess_agat_conversion`, and `annotation_postprocess_agat_cleanup` through explicit local handlers.",

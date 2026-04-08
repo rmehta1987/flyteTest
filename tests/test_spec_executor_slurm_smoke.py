@@ -34,7 +34,7 @@ class SlurmSpecExecutorSmokeTests(unittest.TestCase):
         """Submit one trivial Slurm script and confirm it writes the expected stdout."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
-            output_dir = tmp_path / "Flytetest"
+            output_dir = tmp_path / "FlyteTest"
             output_dir.mkdir()
 
             script_path = tmp_path / "hello_from_slurm.sbatch"
@@ -50,8 +50,8 @@ class SlurmSpecExecutorSmokeTests(unittest.TestCase):
                     #SBATCH --job-name=FlyteTest
                     #SBATCH --account=rcc-staff
                     #SBATCH --partition=broadwl
-                    #SBATCH --output=Flytetest/%j.out
-                    #SBATCH --error=Flytetest/%j.out
+                    #SBATCH --output=FlyteTest/%j.out
+                    #SBATCH --error=FlyteTest/%j.err
 
                     echo "hello from slurm"
                     """
