@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-SMOKE_ROOT="${SMOKE_ROOT:-$PWD/temp/minimal_transcriptomics_smoke}"
+SMOKE_ROOT="${SMOKE_ROOT:-$REPO_ROOT/temp/minimal_transcriptomics_smoke}"
 
 mkdir -p "$SMOKE_ROOT"
 

@@ -12,5 +12,5 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec "$SCRIPT_DIR/minimal_transcriptomics_smoke.sh"
+REPO_ROOT="${SLURM_SUBMIT_DIR:-$PWD}"
+exec "$REPO_ROOT/scripts/rcc/minimal_transcriptomics_smoke.sh"
