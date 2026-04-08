@@ -1,0 +1,5 @@
+# Single entrypoint for cluster virtualenv installs.
+# Installs runtime deps and the local `flytetest` package (from `src/`).
+-r requirements.txt
+-e .
+

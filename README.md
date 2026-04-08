@@ -124,7 +124,10 @@ now lives under [src/flytetest/](/home/rmeht/Projects/flyteTest/src/flytetest).
 Use the repo-local virtualenv commands when possible:
 
 ```bash
-.venv/bin/pip install -r requirements.txt
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -U pip
+python -m pip install -r requirements-cluster.txt
 ```
 
 Legacy QC and quantification baseline:
