@@ -61,6 +61,28 @@ class SpecArtifactTests(TestCase):
         self.assertIn("repeatmasker_out", loaded.runtime_requirements[0])
         self.assertEqual(loaded.replay_metadata["request_id"], "test-request")
 
+    def test_save_workflow_spec_artifact_creates_missing_parent_directories(self) -> None:
+        """Write artifacts into a fresh nested directory without precreating it."""
+        reference_genome = ReferenceGenome(fasta_path=Path("data/genome.fa"))
+        consensus_annotation = ConsensusAnnotation(
+            reference_genome=reference_genome,
+            annotation_gff3_path=Path("results/evm/evm.out.gff3"),
+        )
+        typed_plan = plan_typed_request(
+            "Create a generated WorkflowSpec for repeat filtering and BUSCO QC.",
+            explicit_bindings={"ConsensusAnnotation": consensus_annotation},
+        )
+        artifact = artifact_from_typed_plan(typed_plan, created_at="2026-04-07T12:00:00Z")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            destination = Path(tmp) / ".runtime" / "specs"
+            output_path = save_workflow_spec_artifact(artifact, destination)
+
+            self.assertTrue(output_path.exists())
+            self.assertEqual(output_path.parent, destination)
+            self.assertEqual(output_path.name, DEFAULT_SPEC_ARTIFACT_FILENAME)
+            self.assertTrue(destination.exists())
+
     def test_replayable_spec_pair_does_not_reparse_prompt(self) -> None:
         """Reload the saved spec and binding plan directly for future replay work."""
         reference_genome = ReferenceGenome(fasta_path=Path("data/genome.fa"))

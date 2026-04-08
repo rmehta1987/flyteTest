@@ -146,6 +146,34 @@ execution.
 - Frozen recipe artifacts live under `.runtime/specs/` so they are easy to
   inspect and stay out of the repository root.
 
+## Next Expansion Slice
+
+After the day-one cutover, the next planned MCP slice is Milestone 10:
+recipe input binding and BUSCO enablement.
+
+The priority is to widen the recipe-preparation input contract before widening
+the runnable handler map. MCP clients should be able to pass:
+
+- prior manifest sources, such as `run_manifest.json` paths or result
+  directories
+- explicit planner bindings, especially serialized `QualityAssessmentTarget`
+  payloads
+- explicit runtime bindings, starting with `busco_lineages_text`, optional
+  `busco_sif`, and `busco_cpu`
+
+Only after those inputs are explicit and tested should the server add
+`annotation_qc_busco` to the local handler map as the first post-day-one
+target. EggNOG, AGAT, Slurm, and database-backed asset discovery remain
+separate follow-up work.
+
+Detailed plan:
+
+- `docs/realtime_refactor_plans/2026-04-07-milestone-10-mcp-recipe-input-binding-busco.md`
+
+Companion handoff prompt:
+
+- `docs/mcp_recipe_binding_busco_submission_prompt.md`
+
 ## Verification Plan
 
 ### Automated Tests

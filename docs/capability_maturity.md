@@ -49,6 +49,9 @@ surfaces evolve.
 - Continue using the normalized spec layer as the stable handoff between planner, saved artifacts, and the local executor.
 - Harden the recipe-backed MCP surface and add local handlers only when inputs,
   runtime bindings, and result contracts are explicit.
+- Add MCP recipe input binding for manifest sources, explicit planner bindings,
+  and runtime bindings, then enable `annotation_qc_busco` as the first
+  post-day-one recipe target once the handler path is covered by tests.
 - Start using the new registry compatibility metadata in planner and resolver work while preserving the older listing helpers.
 - Keep dynamic workflow generation replayable by routing new workflow shapes
   through `WorkflowSpec`, `BindingPlan`, provenance, and explicit assumptions.

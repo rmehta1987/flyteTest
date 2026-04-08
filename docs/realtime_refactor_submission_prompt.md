@@ -28,7 +28,10 @@ Context:
 - The source of truth for the architecture refactor task breakdown is `docs/realtime_refactor_checklist.md`, which should remain the quick-reference progress tracker.
 - `docs/realtime_refactor_plans/` is the place to keep detailed per-slice plan history for this refactor, with superseded or completed revisions moved into `docs/realtime_refactor_plans/archive/`.
 - The existing `docs/refactor_completion_checklist.md` remains the notes-faithful pipeline milestone gate and should not be replaced by this refactor tracker.
-- Preserve the current runnable workflows, `flyte_rnaseq_workflow.py` compatibility exports, existing manifest contracts, and the narrow MCP showcase unless the selected checklist item explicitly changes one of them.
+- Preserve the current runnable workflows, `flyte_rnaseq_workflow.py`
+  compatibility exports, existing manifest contracts, and the MCP
+  recipe-backed day-one handler set unless the selected checklist item
+  explicitly changes one of them.
 - Do not introduce a database-first or storage-first rewrite as a prerequisite.
 - Keep current Flyte `File` and `Dir` task signatures unless the selected checklist item explicitly allows a compatibility-safe change.
 - Treat deterministic execution and dynamic workflow creation as compatible:
@@ -61,7 +64,9 @@ Task:
 Important constraints:
 
 - Prefer incremental refactors around compatibility seams instead of rewrites.
-- Keep the current planner behavior and current MCP showcase as compatibility subsets until the broader planner/resolver architecture is ready.
+- Keep the current planner behavior and MCP recipe-backed day-one handler set
+  as compatibility subsets until the selected milestone intentionally broadens
+  them.
 - Do not describe "deterministic" as meaning "static workflow list only";
   dynamic workflow generation remains a project goal when it is saved,
   typed, and reviewable.

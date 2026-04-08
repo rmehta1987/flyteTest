@@ -67,10 +67,10 @@ types or modules exist.
 Each milestone below must satisfy its acceptance evidence and compatibility
 guardrails before later critical-path work can be considered complete.
 
-Short stop-rule note for Milestones 1 through 9:
+Short stop-rule note for Milestones 1 through 10:
 
-- do not break the current `plan_request(...)` payload shape or explicit-path
-  requirement while richer planning metadata lands
+- keep `plan_request(...)` on the typed recipe-planning path, and preserve
+  structured unsupported responses when inputs cannot be resolved
 - do not break `list_entries()` / `get_entry()` consumer behavior while the
   registry grows into a compatibility graph
 - do not rename the current MCP tools or resource URIs before a deliberate
@@ -625,13 +625,78 @@ Status: Complete
 - Losing the current explicit artifact/replay boundary while moving to the new
   recipe flow
 
+## Milestone 10
+
+Goal: add explicit MCP recipe input binding and enable BUSCO as the first
+post-day-one recipe target.
+
+Status: Not started
+
+### Done
+
+- [ ] Confirm BUSCO is the first post-day-one MCP expansion target.
+- [ ] Confirm the MCP recipe input contract for prior manifests, explicit
+      planner bindings, and runtime bindings.
+
+### Still required
+
+- [ ] Extend `prepare_run_recipe(...)` and its internal planning path so MCP
+      callers can provide prior `run_manifest.json` paths or result directories
+      as manifest sources.
+- [ ] Extend the recipe preparation contract so callers can provide explicit
+      planner bindings when they already have a serialized
+      `QualityAssessmentTarget`.
+- [ ] Extend the recipe preparation contract so callers can provide runtime
+      bindings such as `busco_lineages_text`, optional `busco_sif`, and
+      `busco_cpu` without relying on prompt text alone.
+- [ ] Enable `annotation_qc_busco` in the MCP local handler map only after its
+      manifest source, runtime binding, and result-summary behavior are covered
+      by tests.
+- [ ] Add or update synthetic MCP recipe tests that prepare and run a BUSCO
+      recipe through `LocalWorkflowSpecExecutor` with a fake handler.
+- [ ] Update README, MCP docs, capability maturity notes, and handoff prompts so
+      they describe BUSCO MCP support only after the handler lands.
+
+### Milestone 10 implementation note
+
+- This is the first expansion after the day-one MCP cutover. It should widen
+  the input-binding contract before it widens the runnable handler map.
+- `annotation_qc_busco` consumes a `QualityAssessmentTarget`, usually adapted
+  from an `annotation_repeat_filtering` manifest or supplied explicitly by the
+  caller.
+- BUSCO runtime choices must stay explicit and inspectable in the saved recipe:
+  at minimum `busco_lineages_text`, optional `busco_sif`, and `busco_cpu`.
+- EggNOG and AGAT remain intentionally deferred until the same binding pattern
+  is proven on BUSCO.
+
+### Acceptance evidence
+
+- `docs/realtime_refactor_plans/2026-04-07-milestone-10-mcp-recipe-input-binding-busco.md`
+- `docs/mcp_recipe_binding_busco_submission_prompt.md`
+- `tests/test_server.py`
+- `tests/test_planning.py`
+- `tests/test_spec_executor.py`
+- `README.md`, `docs/mcp_showcase.md`, `docs/capability_maturity.md`, and the
+  MCP contract stay aligned with whichever BUSCO behavior has actually landed
+
+### Compatibility risks
+
+- Treating any registry entry as MCP-runnable before it has an explicit local
+  handler.
+- Hiding runtime requirements inside prompt text instead of freezing them into
+  the saved recipe.
+- Making manifest/result-bundle resolution ambiguous when more than one prior
+  result could satisfy `QualityAssessmentTarget`.
+- Accidentally widening the MCP surface to EggNOG or AGAT before BUSCO proves
+  the input-binding pattern.
+
 ## Verification Matrix
 
 | Area | Minimum verification |
 | --- | --- |
-| Planner compatibility | `tests/test_planning.py` covers current showcase behavior and new typed outcomes when introduced |
+| Planner compatibility | `tests/test_planning.py` covers current typed recipe outcomes, structured declines, and any newly introduced resolver inputs |
 | Registry compatibility | `tests/test_registry.py` covers current listing behavior plus richer metadata |
-| MCP compatibility | `tests/test_server.py` preserves current tool/resource behavior until intentionally expanded |
+| MCP compatibility | `tests/test_server.py` preserves the recipe-backed day-one tool/resource behavior until intentionally expanded |
 | Compatibility exports | import checks or tests confirm `flyte_rnaseq_workflow.py` still exposes current entrypoints |
 | Planner-facing types | synthetic round-trip tests through planning/binding structures |
 | Resolver | tests cover explicit local bindings, manifest inputs, and registered bundle resolution |

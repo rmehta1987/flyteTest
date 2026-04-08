@@ -119,3 +119,13 @@ The day-one handler map covers the original three runnable targets. Broader
 registered stages such as EVM, PASA refinement, repeat filtering, BUSCO,
 EggNOG, AGAT, and `table2asn` should be enabled only after their recipe inputs,
 runtime bindings, and local handlers are made explicit.
+
+## Planned Next Slice
+
+The next planned MCP expansion is BUSCO recipe enablement. That work should add
+an explicit recipe-preparation input contract for prior manifest sources,
+serialized planner bindings, and runtime bindings before adding
+`annotation_qc_busco` to the local handler map.
+
+Until that slice lands, BUSCO may be recognized by typed planning, but it is not
+part of the runnable MCP handler set.
