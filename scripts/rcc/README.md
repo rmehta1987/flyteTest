@@ -185,6 +185,8 @@ cluster PASA `UniVec` path.
   It does not guess container paths beyond the documented bind mount.
 - The PASA prep smoke stages `temp/minimal_transcriptomics_smoke/trinity/
   trinity_out_dir/Trinity.fasta` into its own smoke workspace before running
-  `seqclean` and `accession_extract`.
+  `seqclean` and `accession_extract`. When present, it also copies the matching
+  `Trinity.fasta.gene_trans_map` provenance file into the PASA workspace.
 - The PASA smoke checker verifies the Trinity FASTA, the seqclean `.clean`
-  output, and the extracted `tdn.accs` file.
+  output, the extracted `tdn.accs` file, and the staged gene-transcript map
+  when one exists.

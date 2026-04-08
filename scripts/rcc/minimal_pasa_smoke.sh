@@ -36,8 +36,13 @@ find_trinity_fasta() {
 
   for candidate in \
     "$trinity_dir/Trinity.fasta" \
+    "$trinity_dir/Trinity.tmp.fasta" \
+    "$trinity_dir/trinity_out_dir.Trinity.fasta" \
     "$trinity_dir/trinity_denovo.Trinity.fasta" \
-    "$trinity_dir/Trinity-GG.fasta"; do
+    "$trinity_dir/Trinity-GG.fasta" \
+    "$trinity_dir/../Trinity.fasta" \
+    "$trinity_dir/../Trinity.tmp.fasta" \
+    "$trinity_dir/../trinity_out_dir.Trinity.fasta"; do
     if [[ -f "$candidate" ]]; then
       printf '%s\n' "$candidate"
       return 0
@@ -47,6 +52,7 @@ find_trinity_fasta() {
   shopt -s nullglob
   local named_candidates=("$trinity_dir"/*.Trinity.fasta)
   local fasta_candidates=("$trinity_dir"/*.fasta)
+  local tmp_candidates=("$trinity_dir"/*.tmp.fasta)
   shopt -u nullglob
 
   if [[ ${#named_candidates[@]} -eq 1 ]]; then
@@ -59,8 +65,13 @@ find_trinity_fasta() {
     return 0
   fi
 
+  if [[ ${#tmp_candidates[@]} -eq 1 ]]; then
+    printf '%s\n' "${tmp_candidates[0]}"
+    return 0
+  fi
+
   echo "Unable to resolve a single Trinity FASTA under $trinity_dir" >&2
-  echo "Looked for Trinity.fasta, trinity_denovo.Trinity.fasta, Trinity-GG.fasta, and a single *.Trinity.fasta or *.fasta file." >&2
+  echo "Looked for Trinity.fasta, Trinity.tmp.fasta, trinity_out_dir.Trinity.fasta, trinity_denovo.Trinity.fasta, Trinity-GG.fasta, and a single *.Trinity.fasta, *.tmp.fasta, or *.fasta file." >&2
   exit 1
 }
 
@@ -76,8 +87,18 @@ TRINITY_OUTPUT_DIR="${TRINITY_OUTPUT_DIR:-$TRANSCRIPTOMICS_SMOKE_ROOT/trinity/tr
 }
 
 TRINITY_FASTA="$(find_trinity_fasta "$TRINITY_OUTPUT_DIR")"
+TRINITY_GENE_TRANS_MAP="${TRINITY_FASTA}.gene_trans_map"
 STAGED_TRINITY_FASTA="$HOST_PASA_WORK_DIR/trinity_transcripts.fa"
+STAGED_TRINITY_GENE_TRANS_MAP="$HOST_PASA_WORK_DIR/$(basename "$TRINITY_GENE_TRANS_MAP")"
+echo "PASA Trinity FASTA selected: $TRINITY_FASTA"
 cp -f "$TRINITY_FASTA" "$STAGED_TRINITY_FASTA"
+if [[ -f "$TRINITY_GENE_TRANS_MAP" ]]; then
+  cp -f "$TRINITY_GENE_TRANS_MAP" "$STAGED_TRINITY_GENE_TRANS_MAP"
+  echo "PASA Trinity gene-transcript map selected: $TRINITY_GENE_TRANS_MAP"
+  echo "PASA staged gene-transcript map: $STAGED_TRINITY_GENE_TRANS_MAP"
+else
+  echo "PASA Trinity gene-transcript map not found: $TRINITY_GENE_TRANS_MAP"
+fi
 
 echo "PASA smoke root: $PASA_SMOKE_ROOT"
 echo "Trinity output dir: $TRINITY_OUTPUT_DIR"
