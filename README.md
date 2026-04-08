@@ -340,6 +340,10 @@ Canonical lightweight fixture roots:
 
 Use [scripts/rcc/download_minimal_fixtures.sh](/home/rmeht/Projects/flyteTest/scripts/rcc/download_minimal_fixtures.sh)
 to restore the lightweight tutorial-backed smoke files on a cluster checkout.
+Use [scripts/rcc/run_minimal_pasa_smoke.sh](/home/rmeht/Projects/flyteTest/scripts/rcc/run_minimal_pasa_smoke.sh)
+to reuse the Trinity smoke FASTA for the PASA prep smoke path on the cluster.
+Use [scripts/rcc/check_minimal_pasa_smoke.sh](/home/rmeht/Projects/flyteTest/scripts/rcc/check_minimal_pasa_smoke.sh)
+to verify the PASA prep smoke artifacts after the job finishes.
 Use [docs/tutorial_context.md](/home/rmeht/Projects/flyteTest/docs/tutorial_context.md)
 for Galaxy tutorial mappings, fixture provenance, and smoke-test planning.
 Use synthetic tests when external binaries or lineage datasets are unavailable.

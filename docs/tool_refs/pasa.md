@@ -85,6 +85,7 @@ Deliver:
 
 - FLyteTest currently implements PASA as a task family with explicit setup, align/assemble, and post-EVM update stages rather than one opaque step.
 - The current workflow consumes `trinity_denovo/`, `trinity_gg/`, and `stringtie/` outputs from the transcript evidence stage.
+- The cluster smoke helper can reuse `temp/minimal_transcriptomics_smoke/trinity/trinity_out_dir/Trinity.fasta` as the seqclean input, but full PASA align/assemble still needs the genome, StringTie GTF, and PASA config.
 - The PASA align/assemble template config and the PASA annotCompare template/config are external, environment-specific inputs in this repo.
 - The design notes explicitly mention substantial external dependencies such as SQLite or MySQL, samtools, BioPerl, minimap2, BLAT, and gmap.
 - This tool reference covers the implemented PASA scope only; repeat filtering, BUSCO, EggNOG, AGAT, and `table2asn` remain downstream stages elsewhere in the annotation graph.

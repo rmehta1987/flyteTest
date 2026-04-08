@@ -253,6 +253,8 @@ Practical rule:
 
 - use stage-local read, genome, BAM, and protein files under `data/` for direct tool smoke tests
 - use stage result bundles or synthetic fixtures for PASA, TransDecoder, and EVM work
+- use `temp/minimal_transcriptomics_smoke/trinity/trinity_out_dir/Trinity.fasta`
+  as the Trinity source for PASA `seqclean` and accession-extraction smoke
 - prefer the stage-specific subdirectories unless a prompt explicitly needs
   another stage-local tutorial asset
 

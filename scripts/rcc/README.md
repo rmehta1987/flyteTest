@@ -36,6 +36,13 @@ you override the `*_SIF` environment variables.
   smoke runner
 - `run_minimal_transcriptomics_smoke.sh`: convenience launcher that creates the
   output directory and submits the transcriptomics smoke job
+- `minimal_pasa_smoke.sh`: reuses the Trinity smoke FASTA and runs PASA
+  `seqclean` plus `accession_extract`
+- `check_minimal_pasa_smoke.sh`: verifies the Trinity-to-PASA smoke artifacts
+  are present
+- `minimal_pasa_smoke.sbatch`: Slurm wrapper for the PASA prep smoke runner
+- `run_minimal_pasa_smoke.sh`: convenience launcher that creates the output
+  directory and submits the PASA prep smoke job
 - `download_minimal_fixtures.sh`: restores the small tutorial-backed smoke
   fixtures into `data/`
 
@@ -137,6 +144,13 @@ Run the transcriptomics smoke suite:
 bash scripts/rcc/run_minimal_transcriptomics_smoke.sh
 ```
 
+Run the PASA prep smoke suite:
+
+```bash
+bash scripts/rcc/check_minimal_pasa_smoke.sh
+bash scripts/rcc/run_minimal_pasa_smoke.sh
+```
+
 Restore the minimal tutorial-backed fixtures:
 
 ```bash
@@ -157,9 +171,9 @@ tests and cluster validation:
   - `data/braker3/protein_data/fastas/proteins.fa`
   - `data/braker3/protein_data/fastas/proteins_extra.fa`
 
-PASA is intentionally left out of the download helper for now because the
-cluster already has a working PASA dataset and the wrapper is wired to that
-existing path layout.
+The PASA prep smoke is intentionally left out of the download helper because it
+reuses the Trinity FASTA emitted by the transcriptomics smoke and the existing
+cluster PASA `UniVec` path.
 
 ## Notes
 
@@ -169,3 +183,8 @@ existing path layout.
   corresponding `*_SIF` environment variable before running the wrapper.
 - The PASA wrapper treats the script-defined host files as the source of truth.
   It does not guess container paths beyond the documented bind mount.
+- The PASA prep smoke stages `temp/minimal_transcriptomics_smoke/trinity/
+  trinity_out_dir/Trinity.fasta` into its own smoke workspace before running
+  `seqclean` and `accession_extract`.
+- The PASA smoke checker verifies the Trinity FASTA, the seqclean `.clean`
+  output, and the extracted `tdn.accs` file.
