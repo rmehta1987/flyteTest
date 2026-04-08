@@ -6,16 +6,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# Host checkout root; the cluster smoke uses repo-local fixture paths.
 HOST_PROJECT_DIR="${HOST_PROJECT_DIR:-$REPO_ROOT}"
+# Container bind target for the checkout root.
 CONTAINER_PROJECT_DIR="${CONTAINER_PROJECT_DIR:-/workspace}"
+# Host scratch area for the STAR index and alignment outputs.
 WORK_DIR="${WORK_DIR:-$PWD/temp}"
 MODE="${MODE:-index}" # index | align
 
 STAR_SIF="${STAR_SIF:-/project/rcc/hyadav/genomes/software/STAR.sif}"
 STAR_THREADS="${STAR_THREADS:-4}"
+# Reference genome used to build the STAR genome index.
 HOST_GENOME_FASTA="${HOST_GENOME_FASTA:-$HOST_PROJECT_DIR/data/braker3/reference/genome.fa}"
+# STAR genome index lives in container scratch and mirrors a host scratch dir.
 STAR_INDEX_DIR="${STAR_INDEX_DIR:-/tmp/star_index}"
 HOST_STAR_INDEX_DIR="${HOST_STAR_INDEX_DIR:-$WORK_DIR/star_index}"
+# Minimal paired reads used for the align smoke.
 HOST_LEFT_FASTQ="${HOST_LEFT_FASTQ:-$HOST_PROJECT_DIR/data/transcriptomics/ref-based/reads_1.fq.gz}"
 HOST_RIGHT_FASTQ="${HOST_RIGHT_FASTQ:-$HOST_PROJECT_DIR/data/transcriptomics/ref-based/reads_2.fq.gz}"
 
@@ -42,6 +48,7 @@ case "$MODE" in
     ;;
 
   align)
+    # Reuse the host scratch STAR index generated in the index step.
     HOST_GENOME_DIR="${HOST_GENOME_DIR:-$HOST_STAR_INDEX_DIR}"
     GENOME_DIR="${GENOME_DIR:-$STAR_INDEX_DIR}"
     LEFT_FASTQ="${LEFT_FASTQ:-$HOST_LEFT_FASTQ}"

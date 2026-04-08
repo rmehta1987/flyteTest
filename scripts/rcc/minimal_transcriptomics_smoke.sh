@@ -3,12 +3,14 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# Top-level scratch tree for the whole smoke workflow.
 SMOKE_ROOT="${SMOKE_ROOT:-$REPO_ROOT/temp/minimal_transcriptomics_smoke}"
 
 mkdir -p "$SMOKE_ROOT"
 
 bash "$SCRIPT_DIR/check_minimal_fixtures.sh"
 
+# Separate stage directories keep the Trinity, STAR, and StringTie outputs easy to inspect.
 TRINITY_SMOKE_DIR="$SMOKE_ROOT/trinity"
 STAR_SMOKE_DIR="$SMOKE_ROOT/star"
 STRINGTIE_SMOKE_DIR="$SMOKE_ROOT/stringtie"
@@ -19,9 +21,12 @@ TRINITY_CPU="${TRINITY_CPU:-2}"
 TRINITY_MAX_MEMORY_GB="${TRINITY_MAX_MEMORY_GB:-4}"
 STAR_THREADS="${STAR_THREADS:-2}"
 STRINGTIE_THREADS="${STRINGTIE_THREADS:-2}"
+# Minimal paired reads used by Trinity and STAR alignment.
 LEFT_FASTQ="${LEFT_FASTQ:-$REPO_ROOT/data/transcriptomics/ref-based/reads_1.fq.gz}"
 RIGHT_FASTQ="${RIGHT_FASTQ:-$REPO_ROOT/data/transcriptomics/ref-based/reads_2.fq.gz}"
+# Minimal reference genome for STAR indexing.
 HOST_GENOME_FASTA="${HOST_GENOME_FASTA:-$REPO_ROOT/data/braker3/reference/genome.fa}"
+# Minimal merged RNA-seq BAM used by StringTie.
 INPUT_BAM="${INPUT_BAM:-$REPO_ROOT/data/braker3/rnaseq/RNAseq.bam}"
 
 echo "transcriptomics smoke root: $SMOKE_ROOT"

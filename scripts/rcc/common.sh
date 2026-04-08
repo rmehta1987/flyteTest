@@ -25,6 +25,40 @@ require_dir() {
   mkdir -p "$path"
 }
 
+resolve_univec_reference() {
+  local candidate="$1"
+  if [[ -f "$candidate" ]]; then
+    printf '%s\n' "$candidate"
+    return 0
+  fi
+
+  if [[ -d "$candidate" ]]; then
+    # RCC may publish UniVec as a directory containing one of several file names.
+    local path
+    for path in \
+      "$candidate/UniVec.txt" \
+      "$candidate/UniVec" \
+      "$candidate/UniVec_Core.txt" \
+      "$candidate/UniVec_Core"; do
+      if [[ -f "$path" ]]; then
+        printf '%s\n' "$path"
+        return 0
+      fi
+    done
+
+    shopt -s nullglob
+    local matches=("$candidate"/UniVec*.txt "$candidate"/UniVec*)
+    shopt -u nullglob
+    if [[ ${#matches[@]} -eq 1 && -f "${matches[0]}" ]]; then
+      printf '%s\n' "${matches[0]}"
+      return 0
+    fi
+  fi
+
+  echo "Unable to resolve a UniVec FASTA file from: $candidate" >&2
+  exit 1
+}
+
 runtime_exec() {
   local image_path="$1"
   shift

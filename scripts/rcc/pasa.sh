@@ -5,8 +5,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/rcc/common.sh
 source "$SCRIPT_DIR/common.sh"
 
+# Host project root for the cluster-side PASA layout.
 HOST_PROJECT_DIR="${HOST_PROJECT_DIR:-/project/rcc/hyadav/genomes}"
+# Container bind target for the same project tree.
 CONTAINER_PROJECT_DIR="${CONTAINER_PROJECT_DIR:-/workspace}"
+# Host scratch area for PASA temp files and outputs.
 WORK_DIR="${WORK_DIR:-$PWD/temp}"
 MODE="${MODE:-seqclean}" # seqclean | align_assemble | accession_extract
 
@@ -15,20 +18,29 @@ SEQCLEAN_THREADS="${SEQCLEAN_THREADS:-16}"
 PASA_CPU="${PASA_CPU:-4}"
 PASA_MAX_INTRON_LENGTH="${PASA_MAX_INTRON_LENGTH:-100000}"
 PASA_ALIGNERS="${PASA_ALIGNERS:-gmap,blat,minimap2}"
+# Host PASA workspace that receives the staged transcripts, config, and results.
 HOST_PASA_WORK_DIR="${HOST_PASA_WORK_DIR:-$HOST_PROJECT_DIR/transcript_data/pasa}"
+# Container PASA workspace, matching the host bind target above.
 CONTAINER_PASA_WORK_DIR="${CONTAINER_PASA_WORK_DIR:-$CONTAINER_PROJECT_DIR/transcript_data/pasa}"
+# Untrimmed Trinity transcript FASTA consumed by PASA seqclean.
 HOST_TRANSCRIPTS_UNTRIMMED_PATH="${HOST_TRANSCRIPTS_UNTRIMMED_PATH:-$HOST_PROJECT_DIR/transcript_data/pasa/trinity_transcripts.fa}"
 CONTAINER_TRANSCRIPTS_UNTRIMMED_PATH="${CONTAINER_TRANSCRIPTS_UNTRIMMED_PATH:-$CONTAINER_PROJECT_DIR/transcript_data/pasa/trinity_transcripts.fa}"
+# Cleaned transcript FASTA produced by seqclean and consumed by align/assemble.
 HOST_TRANSCRIPTS_CLEAN_PATH="${HOST_TRANSCRIPTS_CLEAN_PATH:-$HOST_PROJECT_DIR/transcript_data/pasa/trinity_transcripts.fa.clean}"
 CONTAINER_TRANSCRIPTS_CLEAN_PATH="${CONTAINER_TRANSCRIPTS_CLEAN_PATH:-$CONTAINER_PROJECT_DIR/transcript_data/pasa/trinity_transcripts.fa.clean}"
-HOST_VECTOR_SEQUENCE_PATH="${HOST_VECTOR_SEQUENCE_PATH:-$HOST_PROJECT_DIR/scripts/RCC/PASA/UniVec}"
-CONTAINER_VECTOR_SEQUENCE_PATH="${CONTAINER_VECTOR_SEQUENCE_PATH:-$CONTAINER_PROJECT_DIR/scripts/RCC/PASA/UniVec}"
+# UniVec may be supplied as a file or a directory containing UniVec.txt.
+HOST_VECTOR_SEQUENCE_PATH="$(resolve_univec_reference "${HOST_VECTOR_SEQUENCE_PATH:-$HOST_PROJECT_DIR/scripts/RCC/PASA/UniVec}")"
+CONTAINER_VECTOR_SEQUENCE_PATH="${CONTAINER_VECTOR_SEQUENCE_PATH:-${HOST_VECTOR_SEQUENCE_PATH//$HOST_PROJECT_DIR/$CONTAINER_PROJECT_DIR}}"
+# PASA align/assemble template config rewritten to point at a local SQLite DB.
 HOST_PASA_CONFIG="${HOST_PASA_CONFIG:-$HOST_PROJECT_DIR/transcript_data/pasa/sqlite.confs/alignAssembly.config}"
 CONTAINER_PASA_CONFIG="${CONTAINER_PASA_CONFIG:-$CONTAINER_PROJECT_DIR/transcript_data/pasa/sqlite.confs/alignAssembly.config}"
+# Reference genome used by PASA align/assemble.
 HOST_GENOME_FASTA="${HOST_GENOME_FASTA:-$HOST_PROJECT_DIR/transcript_data/yeast_genome/Scer_genome.fa}"
 CONTAINER_GENOME_FASTA="${CONTAINER_GENOME_FASTA:-$CONTAINER_PROJECT_DIR/transcript_data/yeast_genome/Scer_genome.fa}"
+# StringTie GTF passed into PASA align/assemble.
 HOST_TRANS_GTF_PATH="${HOST_TRANS_GTF_PATH:-$HOST_PROJECT_DIR/transcript_data/stringtie/stringtie_yeast.gtf}"
 CONTAINER_TRANS_GTF_PATH="${CONTAINER_TRANS_GTF_PATH:-$CONTAINER_PROJECT_DIR/transcript_data/stringtie/stringtie_yeast.gtf}"
+# TDN accession list produced from the Trinity FASTA.
 HOST_TDN_FILE="${HOST_TDN_FILE:-$HOST_PROJECT_DIR/transcript_data/pasa/tdn.accs}"
 CONTAINER_TDN_FILE="${CONTAINER_TDN_FILE:-$CONTAINER_PROJECT_DIR/transcript_data/pasa/tdn.accs}"
 

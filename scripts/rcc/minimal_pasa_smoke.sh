@@ -6,17 +6,26 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# Host checkout root used to locate the Trinity smoke output and stage PASA files.
 HOST_PROJECT_DIR="${HOST_PROJECT_DIR:-$REPO_ROOT}"
+# Container bind target for the checkout root.
 CONTAINER_PROJECT_DIR="${CONTAINER_PROJECT_DIR:-/workspace}"
+# Transcriptomics smoke output tree that PASA reuses.
 TRANSCRIPTOMICS_SMOKE_ROOT="${TRANSCRIPTOMICS_SMOKE_ROOT:-$REPO_ROOT/temp/minimal_transcriptomics_smoke}"
+# PASA smoke workspace on the host.
 PASA_SMOKE_ROOT="${PASA_SMOKE_ROOT:-$REPO_ROOT/temp/minimal_pasa_smoke}"
+# Scratch area for PASA temp files inside the host workspace.
 WORK_DIR="${WORK_DIR:-$PASA_SMOKE_ROOT/runtime}"
+# Host directory that receives staged Trinity inputs and PASA outputs.
 HOST_PASA_WORK_DIR="${HOST_PASA_WORK_DIR:-$PASA_SMOKE_ROOT/pasa}"
+# Matching container workspace for the staged PASA run.
 CONTAINER_PASA_WORK_DIR="${CONTAINER_PASA_WORK_DIR:-$CONTAINER_PROJECT_DIR/temp/minimal_pasa_smoke/pasa}"
 PASA_SIF="${PASA_SIF:-/project/rcc/hyadav/genomes/software/PASA.sif}"
 SEQCLEAN_THREADS="${SEQCLEAN_THREADS:-4}"
-HOST_VECTOR_SEQUENCE_PATH="${HOST_VECTOR_SEQUENCE_PATH:-/project/rcc/hyadav/genomes/scripts/RCC/PASA/UniVec}"
-CONTAINER_VECTOR_SEQUENCE_PATH="${CONTAINER_VECTOR_SEQUENCE_PATH:-/project/rcc/hyadav/genomes/scripts/RCC/PASA/UniVec}"
+# UniVec may live as a file or as a directory containing UniVec.txt.
+HOST_VECTOR_SEQUENCE_PATH="$(resolve_univec_reference "${HOST_VECTOR_SEQUENCE_PATH:-/project/rcc/hyadav/genomes/scripts/RCC/PASA/UniVec}")"
+CONTAINER_VECTOR_SEQUENCE_PATH="${CONTAINER_VECTOR_SEQUENCE_PATH:-${HOST_VECTOR_SEQUENCE_PATH//$HOST_PROJECT_DIR/$CONTAINER_PROJECT_DIR}}"
+# PASA accession list written alongside the staged Trinity input.
 HOST_TDN_FILE="${HOST_TDN_FILE:-$HOST_PASA_WORK_DIR/tdn.accs}"
 CONTAINER_TDN_FILE="${CONTAINER_TDN_FILE:-$CONTAINER_PASA_WORK_DIR/tdn.accs}"
 
@@ -36,13 +45,13 @@ find_trinity_fasta() {
 
   for candidate in \
     "$trinity_dir/Trinity.fasta" \
-    "$trinity_dir/Trinity.tmp.fasta" \
     "$trinity_dir/trinity_out_dir.Trinity.fasta" \
+    "$trinity_dir/Trinity.tmp.fasta" \
     "$trinity_dir/trinity_denovo.Trinity.fasta" \
     "$trinity_dir/Trinity-GG.fasta" \
     "$trinity_dir/../Trinity.fasta" \
-    "$trinity_dir/../Trinity.tmp.fasta" \
-    "$trinity_dir/../trinity_out_dir.Trinity.fasta"; do
+    "$trinity_dir/../trinity_out_dir.Trinity.fasta" \
+    "$trinity_dir/../Trinity.tmp.fasta"; do
     if [[ -f "$candidate" ]]; then
       printf '%s\n' "$candidate"
       return 0
@@ -75,6 +84,37 @@ find_trinity_fasta() {
   exit 1
 }
 
+find_trinity_gene_trans_map() {
+  local trinity_dir="$1"
+  local candidate
+
+  for candidate in \
+    "$trinity_dir/trinity_out_dir.Trinity.fasta.gene_trans_map" \
+    "$trinity_dir/Trinity.fasta.gene_trans_map" \
+    "$trinity_dir/Trinity.tmp.fasta.gene_trans_map" \
+    "$trinity_dir/trinity_denovo.Trinity.fasta.gene_trans_map" \
+    "$trinity_dir/Trinity-GG.fasta.gene_trans_map" \
+    "$trinity_dir/../trinity_out_dir.Trinity.fasta.gene_trans_map" \
+    "$trinity_dir/../Trinity.fasta.gene_trans_map" \
+    "$trinity_dir/../Trinity.tmp.fasta.gene_trans_map"; do
+    if [[ -f "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+
+  shopt -s nullglob
+  local map_candidates=("$trinity_dir"/*.gene_trans_map)
+  shopt -u nullglob
+
+  if [[ ${#map_candidates[@]} -eq 1 ]]; then
+    printf '%s\n' "${map_candidates[0]}"
+    return 0
+  fi
+
+  return 1
+}
+
 require_dir "$WORK_DIR"
 require_dir "$HOST_PASA_WORK_DIR"
 require_file "$PASA_SIF"
@@ -87,17 +127,18 @@ TRINITY_OUTPUT_DIR="${TRINITY_OUTPUT_DIR:-$TRANSCRIPTOMICS_SMOKE_ROOT/trinity/tr
 }
 
 TRINITY_FASTA="$(find_trinity_fasta "$TRINITY_OUTPUT_DIR")"
-TRINITY_GENE_TRANS_MAP="${TRINITY_FASTA}.gene_trans_map"
+# Keep the Trinity gene-to-transcript map with the PASA staging bundle when it exists.
+TRINITY_GENE_TRANS_MAP="$(find_trinity_gene_trans_map "$TRINITY_OUTPUT_DIR" || true)"
 STAGED_TRINITY_FASTA="$HOST_PASA_WORK_DIR/trinity_transcripts.fa"
-STAGED_TRINITY_GENE_TRANS_MAP="$HOST_PASA_WORK_DIR/$(basename "$TRINITY_GENE_TRANS_MAP")"
 echo "PASA Trinity FASTA selected: $TRINITY_FASTA"
 cp -f "$TRINITY_FASTA" "$STAGED_TRINITY_FASTA"
-if [[ -f "$TRINITY_GENE_TRANS_MAP" ]]; then
+if [[ -n "$TRINITY_GENE_TRANS_MAP" && -f "$TRINITY_GENE_TRANS_MAP" ]]; then
+  STAGED_TRINITY_GENE_TRANS_MAP="$HOST_PASA_WORK_DIR/$(basename "$TRINITY_GENE_TRANS_MAP")"
   cp -f "$TRINITY_GENE_TRANS_MAP" "$STAGED_TRINITY_GENE_TRANS_MAP"
   echo "PASA Trinity gene-transcript map selected: $TRINITY_GENE_TRANS_MAP"
   echo "PASA staged gene-transcript map: $STAGED_TRINITY_GENE_TRANS_MAP"
 else
-  echo "PASA Trinity gene-transcript map not found: $TRINITY_GENE_TRANS_MAP"
+  echo "PASA Trinity gene-transcript map not found under $TRINITY_OUTPUT_DIR"
 fi
 
 echo "PASA smoke root: $PASA_SMOKE_ROOT"

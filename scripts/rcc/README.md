@@ -183,6 +183,8 @@ cluster PASA `UniVec` path.
   corresponding `*_SIF` environment variable before running the wrapper.
 - The PASA wrapper treats the script-defined host files as the source of truth.
   It does not guess container paths beyond the documented bind mount.
+- The PASA wrapper resolves the UniVec reference from either a file or a
+  directory and prefers `UniVec.txt` when the RCC path is a folder.
 - The PASA prep smoke stages `temp/minimal_transcriptomics_smoke/trinity/
   trinity_out_dir/Trinity.fasta` into its own smoke workspace before running
   `seqclean` and `accession_extract`. When present, it also copies the matching
