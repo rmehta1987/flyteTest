@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem-per-cpu=1M
 #SBATCH --account=rcc-staff
-#SBATCH --partition=broadwl
+#SBATCH --partition=caslake
 #SBATCH --output=/scratch/midway3/mehta5/flyteTest/FlyteTest/%j.out
 #SBATCH --error=/scratch/midway3/mehta5/flyteTest/FlyteTest/%j.err
 

@@ -97,7 +97,7 @@ Out of scope:
   - `python3 -m unittest tests.test_spec_executor_slurm_smoke`
   - This test is skipped unless `sbatch` is available and only checks that a
     minimal submission succeeds with the explicit `rcc-staff` account and
-    `broadwl` partition policy.
+    `caslake` partition policy.
 - Run `git diff --check`.
 - Expand coverage if the implementation touches shared planner or MCP
   contracts.

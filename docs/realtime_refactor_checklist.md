@@ -840,7 +840,7 @@ Status: Complete
 - [x] Add synthetic tests for script determinism, `sbatch` parsing, run-record
       persistence, and MCP wiring.
 - [x] Keep an optional live smoke test separate from milestone 13 synthesis;
-      it submits a tiny script with explicit `rcc-staff` / `broadwl` Slurm
+      it submits a tiny script with explicit `rcc-staff` / `caslake` Slurm
       policy and stays skipped unless `sbatch` is available.
 - [x] Update README, `docs/mcp_showcase.md`, `docs/capability_maturity.md`,
       and the handoff prompt after the behavior lands.
