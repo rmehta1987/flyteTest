@@ -178,7 +178,8 @@ cluster PASA `UniVec` path.
 ## Notes
 
 - The Slurm smoke job writes stdout and stderr under
-  `/scratch/midway3/mehta5/flyteTest/FlyteTest/`.
+  `/scratch/midway3/mehta5/flyteTest/FlyteTest/` using filenames that include
+  the job name and job id, such as `minimal-transcriptomics-smoke.<jobid>.out`.
 - If your checkout stores the SIF files somewhere else, override the
   corresponding `*_SIF` environment variable before running the wrapper.
 - The PASA wrapper treats the script-defined host files as the source of truth.
