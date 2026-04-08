@@ -9,6 +9,7 @@ Use this guide when adding or modifying workflow entrypoints in `src/flytetest/w
 
 In FLyteTest, workflows represent biological intent.
 Tasks hold tool-level detail.
+Workflows should stay reusable enough to support future pipeline families, not just the current annotation path.
 
 ## Read First
 
@@ -26,6 +27,7 @@ Before changing workflow code, read:
 - workflows should preserve the actual pipeline order from the notes
 - workflows should expose meaningful stage-level entrypoints that users can request directly
 - compatibility exports in `flyte_rnaseq_workflow.py` must stay intact
+- `flyte_rnaseq_workflow.py` should remain a compatibility surface, not a place for new workflow logic
 
 ## What A Good Workflow Looks Like
 
@@ -171,6 +173,7 @@ The registry entry should match the real workflow signature exactly:
 - do not collapse multiple major annotation stages into one milestone unless the milestone explicitly calls for it
 - avoid adding runtime code generation or autonomous graph rewriting
 - prefer deterministic local-first behavior over generalized orchestration cleverness
+- keep room for future workflow families by composing narrow tasks and keeping stage boundaries clear
 
 ## Assumptions
 

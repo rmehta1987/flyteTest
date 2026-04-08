@@ -4,6 +4,10 @@ This directory is a local, manual tool-reference set for FLyteTest task authors 
 
 If you know the biological stage you want but not the exact tool file yet, start with [stage_index.md](/home/rmeht/Projects/flyteTest/docs/tool_refs/stage_index.md).
 
+Use these files as stage context, not as proof that a feature is currently
+runnable. For implemented-vs-deferred status, check `README.md`,
+`src/flytetest/registry.py`, and the relevant task or workflow module.
+
 It is similar in spirit to Stargazer-style tool reference directories, but this repo is intentionally taking a staged approach:
 
 - these files are static markdown checked into the repo
@@ -24,6 +28,21 @@ Each reference file captures:
 - repo-oriented Apptainer command context
 - a per-tool prompt template for future sessions
 - important caveats or implementation notes
+
+Human-readable role:
+
+- explain what a bioinformatics tool contributes to the biological pipeline
+- show the input and output shapes FLyteTest cares about
+- make assumptions visible without turning the file into a full external manual
+
+Coding-agent role:
+
+- help select the right task or workflow boundary before editing code
+- provide repo-oriented command context for implementation or smoke-test plans
+- supply prompt scaffolding while still requiring registry/code checks for exact
+  supported names and current scope
+- keep dynamic workflow generation grounded in typed, replayable plans rather
+  than invented one-off tool chains
 
 These notes are concise working references, not replacements for official manuals. When pipeline notes are incomplete, this directory should say so explicitly rather than filling in undocumented details.
 
@@ -61,4 +80,4 @@ Current milestone note:
 - the EVM-related docs now split the boundary into input preparation and explicit EVidenceModeler execution
 - the repeat-filtering docs now split RepeatMasker conversion, gffread protein extraction, and funannotate cleanup into explicit task-stage references
 - see `evidencemodeler.md` for the consensus-stage reference, the new repeat-filtering tool refs for the post-PASA cleanup stage, and the main README for the implemented workflow surfaces
-- see `stage_index.md` for the stage-oriented entrypoint that groups prompt templates by transcript evidence, PASA, protein evidence, BRAKER3, EVM, repeat filtering, QC, and submission-prep intent
+- see `stage_index.md` for the stage-oriented entrypoint that groups prompt templates by transcript evidence, PASA, protein evidence, BRAKER3, EVM, repeat filtering, QC, functional annotation, AGAT, and submission-prep intent

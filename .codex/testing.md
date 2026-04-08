@@ -7,6 +7,8 @@ This file is a repo-specific guide for validation and testing work in FLyteTest.
 Use this guide when validating new tasks, workflows, manifests, helper scripts, or registry wiring.
 
 This repo often depends on external bioinformatics tools that may not be available in the current environment, so good testing work includes both executable checks and honest limits.
+Default validation should stay local and offline-friendly unless the change truly depends on a cluster or real tool run.
+When a new bioinformatics tool is introduced, look first for a small tutorial-backed dataset, mirrored fixture set, or similar ground-truth smoke test before relying on synthetic-only validation.
 
 ## Read First
 
@@ -47,6 +49,12 @@ When real binaries are present, add:
 - local workflow smoke runs
 - container-image command checks through `scripts/test_singularity_images.sh`
 
+When writing or updating tests, keep them readable:
+
+- add a short module docstring when the test file is not obvious from its path
+- add concise test method docstrings when the test name does not fully explain the intent
+- add inline comments for fixture setup, path handling, biological assumptions, and any shortcut that would otherwise be surprising
+
 ## Real-Data Fixtures
 
 This repo now includes a lightweight real-data fixture set derived from the Galaxy Training Network Braker3 tutorial:
@@ -68,7 +76,9 @@ Guidelines:
 - keep fixture-backed tests short and stage-focused
 - use the fixture set to validate path discovery, command wiring, and output collection on realistic file shapes
 - keep synthetic tests as the primary safety net for deterministic logic and no-binary environments
+- if a tutorial-backed dataset or mirrored fixture exists, prefer it for the first smoke test over inventing new synthetic inputs
 - if a stage needs larger or tool-specific fixtures later, document that gap explicitly instead of silently expanding scope
+- prefer fixture-backed or synthetic tests over real cluster tests unless the new behavior truly requires Slurm
 
 ## Synthetic Testing Pattern
 
@@ -99,6 +109,8 @@ Every testing handoff should separate:
 - verified directly
 - verified synthetically
 - not verified because the environment lacks dependencies
+
+If the change touched docs, mention whether the README, DESIGN, or change logs were updated too.
 
 Be explicit. “Untested” is better than implied confidence.
 

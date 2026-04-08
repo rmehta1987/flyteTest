@@ -34,6 +34,28 @@ if find_spec("flytetest.workflows.functional") is not None:
 else:
     _functional_workflows = ()
 
+if find_spec("flytetest.workflows.eggnog") is not None:
+    from flytetest.workflows.eggnog import annotation_functional_eggnog
+
+    _eggnog_workflows = ("annotation_functional_eggnog",)
+else:
+    _eggnog_workflows = ()
+
+if find_spec("flytetest.workflows.agat") is not None:
+    from flytetest.workflows.agat import (
+        annotation_postprocess_agat,
+        annotation_postprocess_agat_cleanup,
+        annotation_postprocess_agat_conversion,
+    )
+
+    _agat_workflows = (
+        "annotation_postprocess_agat",
+        "annotation_postprocess_agat_cleanup",
+        "annotation_postprocess_agat_conversion",
+    )
+else:
+    _agat_workflows = ()
+
 from flytetest.workflows.pasa import annotation_refinement_pasa, pasa_transcript_alignment
 from flytetest.workflows.rnaseq_qc_quant import rnaseq_qc_quant
 from flytetest.workflows.transdecoder import transdecoder_from_pasa
@@ -51,6 +73,8 @@ __all__ = [
     *_consensus_workflows,
     *_filtering_workflows,
     *_functional_workflows,
+    *_eggnog_workflows,
+    *_agat_workflows,
     "annotation_refinement_pasa",
     "pasa_transcript_alignment",
     "rnaseq_qc_quant",

@@ -19,7 +19,7 @@ Assign functional annotations, orthology-informed names, and related annotation 
 ## Key Inputs
 
 - predicted proteins or other supported sequence inputs
-- EggNOG databases and runtime configuration
+- a locally staged EggNOG database directory and runtime configuration
 
 ## Key Outputs
 
@@ -39,7 +39,7 @@ Assign functional annotations, orthology-informed names, and related annotation 
 
 ## Apptainer Command Context
 
-- FLyteTest does not implement this stage yet; any container command here is a usage sketch, not a shipped workflow claim
+- FLyteTest implements this stage as the `annotation_functional_eggnog` workflow and `eggnog_map` task; any container command here should mirror that shipped boundary
 - the direct container form should mirror the native CLI, for example `apptainer exec <image> emapper.py ...`
 - bind the EggNOG data directory and output directory explicitly so database lookups and reports stay on persistent storage
 - exact image names, environment variables, and helper paths are environment-specific and should be documented by the eventual implementation
@@ -50,12 +50,12 @@ Assign functional annotations, orthology-informed names, and related annotation 
 Use docs/tool_refs/eggnog-mapper.md as the reference for the EggNOG stage.
 
 Goal:
-Plan or implement `eggnog_map` for functional annotation of predicted proteins.
+Plan or refine `annotation_functional_eggnog` and `eggnog_map` for functional annotation of predicted proteins.
 
 Inputs:
 - protein FASTA from the cleaned annotation stage
 - output directory for EggNOG tabular and annotation products
-- optional database location and `eggnog_mapper_sif` image
+- local database location and `eggnog_mapper_sif` image
 
 Constraints:
 - keep this stage downstream of structural annotation and cleanup
@@ -70,6 +70,6 @@ Deliver:
 
 ## Notes And Caveats
 
-- EggNOG-mapper is deferred in FLyteTest for now.
+- EggNOG-mapper is implemented in FLyteTest as a downstream functional-annotation milestone.
 - The design notes treat functional annotation as a later-stage enrichment step, not part of primary gene model generation.
-- Future implementation should keep database staging separate from the actual mapping run where practical.
+- The repo keeps database staging separate from the actual mapping run and records the tx2gene bridge plus annotated GFF3 propagation explicitly.

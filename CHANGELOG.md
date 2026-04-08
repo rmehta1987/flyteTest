@@ -31,6 +31,45 @@ Entry template:
 
 ## Unreleased
 
+### AGAT post-processing milestone
+
+- added:
+  - implemented the AGAT statistics slice as `agat_statistics` plus the
+    `annotation_postprocess_agat` workflow wrapper
+  - implemented the AGAT conversion slice as `agat_convert_sp_gxf2gxf` plus
+    the `annotation_postprocess_agat_conversion` workflow wrapper
+  - implemented the AGAT cleanup slice as `agat_cleanup_gff3` plus the
+    `annotation_postprocess_agat_cleanup` workflow wrapper
+  - added synthetic AGAT coverage in `tests/test_agat.py`
+  - updated the AGAT tool reference, stage index, capability snapshot,
+    registry, compatibility exports, and prompt handoff docs to reflect the
+    new post-EggNOG boundary
+- changed:
+  - advanced the implemented biological scope from EggNOG functional
+    annotation into the AGAT post-processing slices on the
+    EggNOG-annotated and AGAT-converted GFF3 bundles
+- deferred:
+  - `table2asn` remains a downstream stage outside these slices
+
+### EggNOG functional annotation milestone
+
+- added:
+  - implemented the `annotation_functional_eggnog` workflow for the
+    post-BUSCO functional-annotation milestone
+  - added the EggNOG task family: `eggnog_map` and `collect_eggnog_results`
+  - added synthetic EggNOG coverage in `tests/test_eggnog.py`
+  - updated the EggNOG tool reference, stage index, capability matrix, tutorial
+    context, and milestone checklist to track the new boundary
+- changed:
+  - advanced the implemented biological scope from BUSCO-based annotation QC
+    into EggNOG functional annotation while keeping AGAT and `table2asn`
+    deferred
+  - updated the registry, compatibility exports, README milestone tables,
+    planning adapters, and prompt handoff docs to expose the new boundary
+    explicitly
+- deferred:
+  - AGAT and `table2asn` remain downstream stages outside this milestone
+
 ### BUSCO annotation QC milestone
 
 - added:

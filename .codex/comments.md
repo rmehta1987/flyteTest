@@ -30,10 +30,11 @@ Before making readability edits, read:
 In this repo:
 
 - every Python file should start with a short module docstring that explains the file's purpose and pipeline position
-- every top-level function should have a concise docstring
+- every top-level function and class should have a concise docstring
 - every task and workflow function should document its biological or architectural boundary
 - private helpers should still have short docstrings when they resolve paths, normalize outputs, discover files, or encode assumptions
 - inline comments should be used sparingly and only when the logic is not obvious from the code itself
+- if a function uses a shortcut, condensed path, or repo-specific workaround, add a brief inline comment that explains why it is safe
 
 This applies to both current and future code.
 When touching an existing file, bring the touched functions and the module header up to this standard.
@@ -93,6 +94,7 @@ Good uses:
 - clarifying a repo-specific Flyte workaround
 - marking where an assumption from the notes is being implemented conservatively
 - explaining a normalization rule that is not obvious from the code
+- explaining a shortcut or abbreviated code path that would otherwise surprise a future reader
 
 Avoid:
 
@@ -136,6 +138,7 @@ Before finishing readability work, ask:
 - don't state unsupported biology as fact in comments
 - don't duplicate the same explanation in a module docstring, function docstring, inline comment, manifest, and README unless each copy serves a different audience
 - don't skip docstrings for helpers just because they are private if they encode meaningful behavior
+- don't use shortcuts without enough comment context for a future reader to understand why the shortcut is acceptable
 
 ## Handoff
 

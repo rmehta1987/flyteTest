@@ -15,9 +15,10 @@ Context:
 - The source of truth is the updated `docs/braker3_evm_notes.md`.
 - Do not treat a workflow as complete just because it exists; use the checklist
   acceptance criteria.
-- Do not begin EggNOG, AGAT, or `table2asn` work until
-  Milestones 0 through 7 in `docs/refactor_completion_checklist.md` are
-  complete.
+- EggNOG is now implemented; the AGAT statistics, conversion, and cleanup
+  slices are implemented, and `table2asn` remains the remaining deferred stage
+  until Milestones 0 through 9 in
+  `docs/refactor_completion_checklist.md` are complete.
 - Preserve the current stop rule and avoid broadening scope.
 - Use `docs/tutorial_context.md` for Galaxy tutorial references, local fixture
   paths, prompt structure, and Apptainer/task-planning guidance.

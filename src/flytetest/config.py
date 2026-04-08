@@ -50,6 +50,18 @@ repeat_filter_env = flyte.TaskEnvironment(name=REPEAT_FILTER_WORKFLOW_NAME)
 FUNCTIONAL_QC_WORKFLOW_NAME = "annotation_qc_busco"
 FUNCTIONAL_QC_RESULTS_PREFIX = "busco_qc_results"
 functional_qc_env = flyte.TaskEnvironment(name=FUNCTIONAL_QC_WORKFLOW_NAME)
+EGGNOG_WORKFLOW_NAME = "annotation_functional_eggnog"
+EGGNOG_RESULTS_PREFIX = "eggnog_results"
+eggnog_env = flyte.TaskEnvironment(name=EGGNOG_WORKFLOW_NAME)
+AGAT_WORKFLOW_NAME = "annotation_postprocess_agat"
+AGAT_RESULTS_PREFIX = "agat_results"
+agat_env = flyte.TaskEnvironment(name=AGAT_WORKFLOW_NAME)
+AGAT_CONVERSION_WORKFLOW_NAME = "annotation_postprocess_agat_conversion"
+AGAT_CONVERSION_RESULTS_PREFIX = "agat_conversion_results"
+agat_conversion_env = flyte.TaskEnvironment(name=AGAT_CONVERSION_WORKFLOW_NAME)
+AGAT_CLEANUP_WORKFLOW_NAME = "annotation_postprocess_agat_cleanup"
+AGAT_CLEANUP_RESULTS_PREFIX = "agat_cleanup_results"
+agat_cleanup_env = flyte.TaskEnvironment(name=AGAT_CLEANUP_WORKFLOW_NAME)
 
 
 def run(

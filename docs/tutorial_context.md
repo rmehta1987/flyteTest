@@ -1,3 +1,5 @@
+# Tutorial Context
+
 Use this document as the canonical prompt-planning reference for Galaxy-backed
 tutorial context in FLyteTest.
 
@@ -22,6 +24,19 @@ This file is intentionally prompt-oriented. It complements:
 - `src/flytetest/registry.py` for exact task and workflow names
 - `docs/tool_refs/*.md` for concise stage notes
 - `docs/braker3_evm_notes.md` for the biological source of truth
+
+Human-readable role:
+
+- explain why specific tutorial datasets or local fixtures are useful
+- show which biological stage a tutorial supports
+- make clear when a tutorial is only context rather than implemented behavior
+
+Coding-agent role:
+
+- choose fixture paths and smoke-test scope before editing tasks or workflows
+- avoid inventing unsupported tool steps from tutorial material alone
+- keep prompt-driven workflow generation tied to explicit local inputs, typed
+  plans, and saved replayable artifacts when a new workflow shape is needed
 
 ## Core Rule
 
@@ -82,7 +97,7 @@ In practice:
 - use the reference-based RNA-seq tutorial for the older QC and quant baseline
 - use the de novo transcriptomics tutorial for transcript-evidence prompts
 - use the RepeatMasker tutorial for repeat-filtering prompts, especially when planning how to generate a local `.out` file for the implemented downstream cleanup workflow
-- use the functional-annotation tutorial for later EggNOG or protein-annotation prompts
+- use the functional-annotation tutorial for EggNOG or protein-annotation prompts
 
 Additional GTN references that are useful at the tool level:
 

@@ -1,310 +1,183 @@
 # FLyteTest Development Guide
 
-This repository is evolving from a single Flyte v2 RNA-seq example into a prompt-driven genome annotation workflow system.
-The intended user experience is:
-
-- users describe the analysis they want in natural language
-- the system maps that request to prebuilt Flyte tasks and workflows
-- the pipeline executes without the user editing Python code
-
-This file defines how agents and developers should work in the repo.
-
-## Current State
-
-- Current workflow entrypoint: `flyte_rnaseq_workflow.py`
-- Current implemented scope: RNA-seq QC/quantification, transcript evidence generation, PASA transcript alignment/assembly, and TransDecoder coding prediction from PASA outputs
-- Current target scope from the working Markdown companion: RNA-seq evidence generation through consensus annotation, post-processing, QC, and submission preparation
-- `README.md` should include a stage-by-stage notes-alignment table, and milestone work should update it whenever a stage changes status
-
-## Pipeline Source Notes
-
-The working Markdown companion at `docs/braker3_evm_notes.md` describes a concrete annotation pipeline with the following major stages:
-
-- transcript evidence generation with Trinity, STAR, samtools, and StringTie
-- PASA transcript alignment and assembly refinement
-- TransDecoder coding region prediction from PASA assemblies
-- protein evidence alignment with Exonerate against UniProt and RefSeq proteins
-- consensus gene model creation with EVidenceModeler
-- PASA-based gene model updates to add UTRs and alternative transcripts
-- transposable-element filtering with RepeatMasker output and funannotate repeat filtering
-- annotation QC with BUSCO
-- functional annotation with EggNOG-mapper
-- final statistics and format conversion with AGAT
-- optional NCBI submission preparation with `table2asn`
-
-Important constraint:
-
-- the notes clearly use `braker.gff3` as an ab initio input to EVM, but they do not spell out every BRAKER3 execution detail
-- therefore, treat BRAKER3 as a required upstream task family and EVM input source, but do not invent unsupported BRAKER3 substeps without documenting the assumption
-
-## Core Principles
-
-### 1. Prefer composition over runtime code generation
-
-The system should satisfy user requests by selecting and composing pre-registered tasks and workflows.
-
-Good:
-
-- "Run transcript evidence generation from RNA-seq reads."
-- "Create a consensus annotation using BRAKER3, PASA, protein evidence, and EVM."
-- "Assess the final annotation with BUSCO and EggNOG."
-
-Avoid as the default:
-
-- generating new task code at runtime for end users
-- changing workflow source code to satisfy ordinary user requests
-
-### 2. Keep tasks narrow and pipeline-faithful
-
-Each task should represent one meaningful tool invocation or one deterministic transformation.
-
-Examples drawn from the attached pipeline:
-
-- `trinity_denovo_assemble`
-- `star_genome_index`
-- `star_align_sample`
-- `samtools_merge_bams`
-- `trinity_genome_guided_assemble`
-- `stringtie_assemble`
-- `pasa_accession_extract`
-- `pasa_seqclean`
-- `pasa_align_assemble`
-- `transdecoder_train_from_pasa`
-- `exonerate_align_chunk`
-- `exonerate_to_evm_gff3`
-- `braker3_predict`
-- `evm_partition_inputs`
-- `evm_write_commands`
-- `evm_recombine_outputs`
-- `pasa_update_gene_models`
-- `repeatmasker_out_to_bed`
-- `funannotate_remove_bad_models`
-- `funannotate_repeat_blast`
-- `gffread_proteins`
-- `busco_assess_proteins`
-- `eggnog_map`
-- `add_eggnog_names_to_gff3`
-- `agat_statistics`
-- `table2asn_prepare`
-
-Avoid large opaque tasks that combine multiple biological stages.
-
-### 3. Workflows should map to biological intent
-
-Tasks capture tool-level execution details.
-Workflows should represent analysis stages that users can request.
-
-Examples:
-
-- `rnaseq_qc_quant`
-- `transcript_evidence_generation`
-- `protein_evidence_alignment`
-- `consensus_annotation_evm`
-- `annotation_refinement_pasa`
-- `annotation_repeat_filtering`
-- `annotation_functional_qc`
-- `ncbi_submission_prep`
-- `end_to_end_genome_annotation`
-
-### 4. Preserve the actual pipeline order
-
-The attached notes imply the following dependency structure:
-
-1. raw RNA-seq reads and genome setup
-2. Trinity de novo assembly
-3. STAR index and RNA-seq alignment
-4. merged BAM generation
-5. Trinity genome-guided assembly and StringTie assembly
-6. PASA transcript preparation and alignment/assembly
-7. TransDecoder training set generation from PASA assemblies
-8. protein evidence alignment with Exonerate
-9. BRAKER3 ab initio predictions
-10. EVM consensus annotation
-11. PASA gene model update rounds
-12. repeat/TE filtering
-13. BUSCO and EggNOG functional annotation
-14. AGAT statistics and optional NCBI submission preparation
-
-When adding tasks and workflows, keep this ordering explicit.
-
-### 5. Be honest about assumptions
-
-If a tool step is not explicitly described in the pipeline notes, document that it is inferred.
-This especially applies to:
-
-- exact BRAKER3 invocation details
-- any inferred protein database preprocessing
-- cluster-specific module loading details that may need abstraction
-
-### 6. Reproducibility matters more than novelty
-
-Prefer stable, inspectable, and repeatable execution over clever autonomous behavior.
-
-## Recommended Repo Direction
-
-As the project grows, move from one workflow file to a package layout like:
-
-```text
-src/flytetest/
-  config.py
-  registry.py
-  marshal.py
-  tasks/
-    qc.py
-    transcript_evidence.py
-    protein_evidence.py
-    annotation.py
-    filtering.py
-    functional.py
-    submission.py
-  workflows/
-    rnaseq_qc_quant.py
-    transcript_evidence.py
-    consensus_annotation.py
-    annotation_postprocess.py
-    end_to_end_annotation.py
-```
-
-## Flyte Conventions
-
-- Use Flyte v2 APIs
-- Prefer `flyte.TaskEnvironment`
-- Prefer `flyte.io.File` and `flyte.io.Dir`
-- Keep task signatures explicit and typed
-- Keep helper functions deterministic and reusable
-- Return structured artifacts and lightweight summaries where possible
-
-## Local Environment
-
-- the project Python environment lives in `.venv/`
-- prefer `.venv/bin/python`, `.venv/bin/pip`, and `.venv/bin/flyte` instead of assuming global installs
-- when a command depends on project packages or the Flyte CLI, run it through the `.venv` interpreter or executable path
-- do not rely on shell activation state persisting across commands; use explicit `.venv/bin/...` paths in command examples and validation steps
-
-## Code Readability Expectations
-
-- every Python module should start with a short module docstring that explains the file's purpose and pipeline position
-- every top-level function should have a concise docstring, including private helpers when they encode meaningful path resolution, normalization, or pipeline assumptions
-- inline comments should explain non-obvious biological, runtime, or filesystem logic rather than restating simple code
-- when touching an existing file, bring the touched functions and module header closer to this standard
-
-Readable code is part of reproducibility in this repo.
-Future contributors and delegated agents should be able to understand a stage boundary from the file and function docstrings without reconstructing the whole call graph.
-
-## Required Repo-Local Guides
-
-After reading this file and `DESIGN.md`, agents should also read the relevant repo-local guide under `.codex/` before making changes.
-
-Use:
-
-- `.codex/tasks.md` for task-module work in `src/flytetest/tasks/`
-- `.codex/workflows.md` for workflow work in `src/flytetest/workflows/` and `flyte_rnaseq_workflow.py`
-- `.codex/documentation.md` for `README.md`, docs, manifests, and user-facing milestone explanations
-- `.codex/comments.md` for module docstrings, function docstrings, and inline comment/readability work across the codebase
-- `.codex/testing.md` for validation strategy and verification expectations
-- `.codex/code-review.md` when doing review or audit work
-
-If a change spans multiple areas, read all relevant `.codex` guides.
-These guides refine repo workflow and implementation style, but they do not override the biological and architectural constraints in `AGENTS.md` and `DESIGN.md`.
-
-## Prompt-Driven System Conventions
-
-The future prompt layer should rely on a registry of supported entities.
-
-Catalog entries should include:
-
-- name
-- category: `task` or `workflow`
-- short description
-- biological stage
-- inputs
-- outputs
-- runtime requirements
-- container/HPC constraints
-
-Ordinary user requests should be handled by:
-
-1. parse prompt into an intent and requested endpoint
-2. match that request to supported workflows
-3. bind required assets and scalar parameters
-4. run the selected Flyte workflow
-5. summarize outputs in a stable manifest
-
-## Pipeline-Specific Task Families
-
-### Transcript evidence
-
-- de novo Trinity assembly
-- STAR genome indexing and mapping
-- BAM merge/sort/index
-- genome-guided Trinity
-- StringTie assembly
-- PASA transcript preparation and PASA alignment/assembly
-- TransDecoder from PASA outputs
-
-### Protein evidence
-
-- protein dataset staging
-- Exonerate chunked alignment
-- Exonerate output conversion and concatenation for EVM
-
-### Ab initio annotation
-
-- BRAKER3 execution
-- normalization of BRAKER3 outputs for EVM
-
-### Consensus annotation and refinement
-
-- EVM input construction
-- EVM partitioning, command generation, execution, and recombination
-- PASA gene model update rounds
-
-### Repeat filtering and cleanup
-
-- RepeatMasker output conversion
-- GFF-to-protein extraction with `gffread`
-- funannotate overlap-based repeat filtering
-- funannotate repeat blast filtering
-- final repeat-free GFF3 and protein FASTA creation
-
-### Functional annotation and QC
-
-- BUSCO runs across one or more lineages
-- EggNOG-mapper annotation
-- transcript-to-gene mapping generation
-- annotation-name propagation into gene features
-- AGAT statistics and format conversion
-
-### Submission preparation
-
-- CDS product propagation for NCBI
-- GFF cleanup for `table2asn`
-- `table2asn` packaging
-
-## Validation Expectations
-
-Before considering a task or workflow complete:
-
-- Python should compile cleanly
-- task inputs and outputs should be documented
-- the workflow should state where it sits in the larger annotation graph
-- README usage examples should match code
-- result directories should contain predictable artifacts
-- local execution path and HPC/container path should both be considered
-
-## Good Near-Term Milestones
-
-1. Split the current single file into `tasks` and `workflows` modules
-2. Add a registry with transcript-evidence, protein-evidence, annotation, filtering, and QC categories
-3. Implement transcript evidence workflows from the notes
-4. Implement the EVM consensus workflow around `braker.gff3`, PASA, and protein evidence
-5. Implement the post-processing workflows for PASA updates, TE filtering, BUSCO, and EggNOG
-6. Add a prompt-to-plan layer that selects from registered workflows
-7. Add an MCP server only if client/tool interoperability becomes important
-
-## Decision Rule
-
-When choosing between a simple deterministic design and a more autonomous agentic design:
-
-- choose the deterministic design first
-- add autonomy only where it clearly improves user outcomes without reducing reproducibility
+## 1. Purpose
+
+FLyteTest is a prompt-driven biology workflow platform for composing, validating,
+and executing curated bioinformatics pipelines from natural-language requests.
+This guide tells contributors and agents how to work in the repository without
+drifting from the architecture in `DESIGN.md`.
+
+The default approach is to compose supported workflows from registered tasks
+and workflows, keep biological steps faithful to the pipeline notes, and keep
+planning, input resolution, and execution records explicit. Changes should stay
+reproducible while the project grows toward broader workflow composition,
+saved run recipes, and Slurm-oriented job handling.
+
+This guide is the working rulebook for implementation discipline. `DESIGN.md`
+describes the target architecture; when the two diverge, follow the biological
+and architectural rules in `DESIGN.md`.
+
+## 2. Current State
+
+The repository is still an in-place evolution of the original Flyte RNA-seq
+example, not a clean-slate rewrite. The current checked-in work should be
+treated as the starting point for the broader prompt-driven annotation system.
+
+What currently exists:
+
+- a current workflow entrypoint in `flyte_rnaseq_workflow.py`
+- a local-first execution model built around Flyte tasks and manifest-bearing
+  result bundles
+- an implemented baseline that covers RNA-seq QC, transcript evidence
+  generation, PASA transcript alignment and assembly, and TransDecoder coding
+  prediction from PASA outputs
+- typed planner, resolver, registry, spec, and saved-spec executor modules that
+  support the new design direction
+- a small MCP showcase for a limited runnable surface
+- README, docs, manifests, and tests that must stay aligned when behavior changes
+
+What is still a target or in progress:
+
+- broader genome annotation workflows beyond the current baseline
+- more complete saved run recipe generation and replay
+- Slurm-oriented submission, scheduling, monitoring, and cancellation
+- prompt-driven planning that selects from registered workflows for the broader
+  annotation path
+- stronger validation around the notes-faithful pipeline boundaries
+
+When working in the repo, treat the current code as a supported baseline and the
+new design as the direction of travel. Do not silently rewrite the existing
+baseline unless the change is explicitly needed to support the target design.
+
+## 3. Working Rules
+
+- Read `DESIGN.md` before making architecture or behavior changes.
+- Read the relevant `.codex/*.md` guide before editing code, docs, or tests.
+- Prefer registered tasks, workflows, planners, and manifest helpers over new
+  one-off runtime logic for ordinary user requests.
+- Keep biological steps narrow and faithful to `docs/braker3_evm_notes.md`.
+- Keep prompt planning, input resolution, and execution records explicit and inspectable.
+- Preserve `flyte_rnaseq_workflow.py` as a compatibility entrypoint until the
+  repo no longer needs the old `flyte run` surface, and keep new business logic
+  out of that shim.
+- Treat Slurm as a real execution target: submit, schedule, monitor, and cancel
+  jobs from frozen run records rather than from ad hoc shell behavior.
+- Use the Flyte Slurm plugin or `sbatch` for submission, `squeue` / `scontrol
+  show job` / `sacct` for observation, and `scancel` for cancellation.
+- Update the docs, manifests, and tests that describe a behavior when that
+  behavior changes.
+- Make changes as small as possible while still solving the problem cleanly.
+- Avoid broad refactors unless the requested change truly depends on them.
+- If a change affects the biological pipeline order or supported workflow
+  families, call that out explicitly in the change notes.
+
+## 4. What To Update When Behavior Changes
+
+When code changes behavior, update the docs and records that describe that
+behavior instead of leaving them stale.
+
+At minimum, consider the following:
+
+- `README.md` when the user-facing workflow, examples, or supported scope
+  change
+- `DESIGN.md` when the architecture, execution model, or planning model changes
+- `CHANGELOG.md` when the change is worth preserving as a visible project
+  history note
+- `docs/realtime_refactor_checklist.md` when a refactor milestone changes status
+- `docs/realtime_refactor_plans/archive/` when a milestone is completed and
+  should be kept as historical context
+- `AGENTS.md` and this guide when the working rules themselves change
+- manifests and result records when runtime output shapes change
+- tests when the behavior, supported workflow family, or validation path
+  changes
+
+The rule is simple: if a change would surprise a future reader, update the
+document in a user-friendly way so it helps that reader understand what
+changed.
+
+## 5. Validation Expectations
+
+Validation should happen early and stay small enough to run often.
+
+Default tests should be local and offline-friendly. Use real tool runs, Slurm,
+or cluster-specific checks only when the change truly depends on them.
+
+Before considering a change complete, check that:
+
+- touched Python files still compile cleanly
+- the relevant unit tests pass
+- fixture-backed tests cover the behavior when real tools are too heavy or too
+  slow for everyday validation
+- when a new bioinformatics tool is introduced, look first for a small
+  tutorial-backed dataset, mirrored fixture set, or similar ground-truth smoke
+  test before expanding scope
+- the README examples still match the supported entrypoints and arguments
+- manifests and result directories still have the expected shape
+- any behavioral change has a matching documentation update
+
+Tests should also be readable on their own. New or modified tests should
+include:
+
+- a short module docstring when the file is not obvious from its path
+- concise test method docstrings when the name alone does not explain the
+  intent
+- inline comments for non-obvious setup, path handling, biological assumptions,
+  or fixture choices
+
+The goal is not to comment every line. The goal is to make it clear why the
+test exists and what it is proving.
+
+## 6. Biological Guardrails
+
+The current notes-faithful genome annotation pipeline is the baseline, but it is
+not the only pipeline this repo may ever support.
+
+When adding new biological workflows or tools:
+
+- keep the current pipeline order intact unless a change is explicitly needed
+  to support the new workflow family
+- do not invent tool behavior that is not supported by the notes, source code,
+  or an explicitly documented assumption
+- add new tasks and workflows only when they represent a real biological step or
+  a clear stage boundary
+- give every new task a typed dataclass input or output when it represents a
+  real biological object or stage boundary
+- reuse an existing dataclass when the same biological meaning already exists
+- add a new dataclass only when the workflow family needs a new biological
+  concept that is not already covered
+- allow future pipeline families to grow from the same pattern of registered
+  tasks, typed planning, saved run recipes, and explicit execution records
+- document when a new workflow family shares code with the current baseline and
+  when it introduces a genuinely new biological path
+
+The guiding rule is to preserve the current annotation path while leaving room
+for more workflows, more tools, and more supported biology over time.
+
+## 7. Prompt / MCP / Slurm Rules
+
+- Treat natural-language prompts as requests for supported workflows, not as a
+  license to invent new biology or new runtime behavior.
+- Use the prompt layer to identify the biological goal, the workflow family,
+  the needed inputs, and any resource request the user made.
+- Freeze the chosen plan into a saved run recipe before execution starts.
+- Keep prompt interpretation separate from execution so the same saved plan can
+  be inspected and replayed later.
+- Use MCP as the user-facing interface layer for planning, recipe preparation,
+  validation, result inspection, and status reporting.
+- Keep MCP responses structured and machine-readable so clients do not need to
+  guess what the system meant.
+- Treat Slurm as a real execution target: submit jobs from frozen run records,
+  monitor job state, collect logs, and support cancellation.
+- Use the Flyte Slurm plugin or `sbatch` for submission, `squeue` / `scontrol
+  show job` / `sacct` for observation, and `scancel` for cancellation.
+- Record the scheduler job ID as soon as a job is accepted.
+- Track the job through the scheduler lifecycle, including pending, running,
+  completed, failed, and cancelled states.
+- Record stdout and stderr log paths in the run record.
+- Preserve the final scheduler state and any exit code or cancellation reason.
+- Check offline compute-node assumptions before submission when the job depends
+  on staged containers, databases, or inputs.
+- Do not submit a Slurm job from vague resource language if the plan still
+  needs clarification or confirmation.
+- Prefer explicit resource choices over hidden defaults when the user asks for
+  CPUs, memory, walltime, or partitioning.

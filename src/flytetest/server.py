@@ -1,29 +1,26 @@
-"""Narrow stdio MCP server for the FLyteTest showcase planner.
+"""Stdio MCP server for recipe-backed FLyteTest planning and execution.
 
-This module exposes exactly two prebuilt workflows and one task through
-FastMCP-backed tools, plus a tiny read-only resource surface that documents
-the current showcase contract. The conversational client owns the chat; this
-server only lists the supported showcase entries, serves static scope
-resources, plans prompt-contained local paths, and runs the matched workflow
-or task when the prompt is runnable.
+This module exposes a recipe-first MCP surface: prompts are planned into typed
+workflow specs, saved as inspectable artifacts, and then executed locally
+through explicit node handlers.
 """
 
 from __future__ import annotations
 
+import hashlib
 import shlex
 import shutil
 import subprocess
 import sys
 from contextlib import asynccontextmanager
 from dataclasses import asdict
+from datetime import UTC, datetime
 from io import TextIOWrapper
 from pathlib import Path
 from typing import Any
 
 from flytetest.mcp_contract import (
     DECLINE_CATEGORY_CODES,
-    DECLINED_DOWNSTREAM_STAGE_NAMES,
-    DECLINED_PROMPT_EXAMPLE,
     EXAMPLE_PROMPT_REQUIREMENTS,
     LIST_ENTRIES_LIMITATIONS,
     MCP_RESOURCE_URIS,
@@ -31,7 +28,6 @@ from flytetest.mcp_contract import (
     PRIMARY_TOOL_NAME,
     PROMPT_REQUIREMENTS,
     PROTEIN_WORKFLOW_EXAMPLE_PROMPT,
-    RESULT_CODE_DECLINED_DOWNSTREAM_SCOPE,
     RESULT_CODE_DECLINED_MISSING_INPUTS,
     RESULT_CODE_DECLINED_UNSUPPORTED_REQUEST,
     RESULT_CODE_DEFINITIONS,
@@ -41,7 +37,6 @@ from flytetest.mcp_contract import (
     REASON_CODE_COMPLETED,
     REASON_CODE_MISSING_REQUIRED_INPUTS,
     REASON_CODE_NONZERO_EXIT_STATUS,
-    REASON_CODE_REQUESTED_DOWNSTREAM_STAGE,
     REASON_CODE_UNSUPPORTED_EXECUTION_TARGET,
     REASON_CODE_UNSUPPORTED_OR_AMBIGUOUS_REQUEST,
     SHOWCASE_SERVER_NAME,
@@ -55,16 +50,19 @@ from flytetest.mcp_contract import (
     supported_runnable_targets_payload,
 )
 from flytetest.planning import (
-    plan_request as plan_prompt,
+    plan_typed_request,
     showcase_limitations,
     split_entry_inputs,
     supported_entry_parameters,
 )
 from flytetest.registry import RegistryEntry, get_entry
+from flytetest.spec_artifacts import artifact_from_typed_plan, save_workflow_spec_artifact
+from flytetest.spec_executor import LocalNodeExecutionRequest, LocalSpecExecutionResult, LocalWorkflowSpecExecutor
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ENTRYPOINT = REPO_ROOT / "flyte_rnaseq_workflow.py"
+DEFAULT_RECIPE_DIR = REPO_ROOT / ".runtime" / "specs"
 SERVER_TOOL_NAMES = MCP_TOOL_NAMES
 SERVER_RESOURCE_URIS = MCP_RESOURCE_URIS
 
@@ -123,7 +121,7 @@ def _extract_output_paths(*streams: str) -> list[str]:
 
 
 def list_entries() -> dict[str, object]:
-    """List the exact workflow and task supported by this MCP showcase."""
+    """List the day-one MCP recipe execution targets."""
     return {
         "entries": _supported_entry_payloads(),
         "server_tools": list(SERVER_TOOL_NAMES),
@@ -132,7 +130,7 @@ def list_entries() -> dict[str, object]:
 
 
 def resource_scope() -> dict[str, object]:
-    """Describe the narrow MCP showcase contract for read-only client discovery."""
+    """Describe the MCP recipe contract for read-only client discovery."""
     return {
         "server_name": SHOWCASE_SERVER_NAME,
         "transport": "stdio",
@@ -140,13 +138,13 @@ def resource_scope() -> dict[str, object]:
         "tool_surface": list(SERVER_TOOL_NAMES),
         "supported_runnable_targets": _supported_runnable_targets(),
         "prompt_requirements": list(PROMPT_REQUIREMENTS),
-        "declined_downstream_stages": list(DECLINED_DOWNSTREAM_STAGE_NAMES),
+        "recipe_artifact_directory": str(DEFAULT_RECIPE_DIR),
         "limitations": list(showcase_limitations()),
     }
 
 
 def resource_supported_targets() -> dict[str, object]:
-    """Expose the exact runnable target metadata for the narrow showcase."""
+    """Expose the exact day-one recipe target metadata."""
     return {
         "primary_tool": PRIMARY_TOOL_NAME,
         "entries": _supported_entry_payloads(),
@@ -155,35 +153,50 @@ def resource_supported_targets() -> dict[str, object]:
 
 
 def resource_example_prompts() -> dict[str, object]:
-    """Provide small prompt examples that match the current showcase surface."""
+    """Provide small prompt examples that match the day-one recipe surface."""
     return {
         "primary_tool": PRIMARY_TOOL_NAME,
         "workflow_prompt": WORKFLOW_EXAMPLE_PROMPT,
         "protein_workflow_prompt": PROTEIN_WORKFLOW_EXAMPLE_PROMPT,
         "task_prompt": TASK_EXAMPLE_PROMPT,
-        "declined_prompt_example": DECLINED_PROMPT_EXAMPLE,
         "prompt_requirements": list(EXAMPLE_PROMPT_REQUIREMENTS),
     }
 
 
 def resource_prompt_and_run_contract() -> dict[str, object]:
-    """Document the stable `prompt_and_run` summary contract for MCP clients."""
+    """Document the recipe-backed `prompt_and_run` summary contract."""
     return {
         "primary_tool": PRIMARY_TOOL_NAME,
         "supported_tools": list(SERVER_TOOL_NAMES),
         "supported_runnable_targets": _supported_runnable_targets(),
         "prompt_requirements": list(PROMPT_REQUIREMENTS),
-        "declined_downstream_stages": list(DECLINED_DOWNSTREAM_STAGE_NAMES),
+        "recipe_artifact_directory": str(DEFAULT_RECIPE_DIR),
         "result_summary_fields": list(RESULT_SUMMARY_FIELDS),
+        "typed_planning_fields": [
+            "planning_outcome",
+            "candidate_outcome",
+            "biological_goal",
+            "matched_entry_names",
+            "workflow_spec",
+            "binding_plan",
+        ],
         "result_codes": RESULT_CODE_DEFINITIONS,
         "decline_categories": DECLINE_CATEGORY_CODES,
-        "limitations": list(showcase_limitations()),
+        "limitations": [
+            *showcase_limitations(),
+            "Execution uses saved WorkflowSpec artifacts and explicit local node handlers.",
+        ],
     }
 
 
+def _typed_planning_preview(prompt: str) -> dict[str, object]:
+    """Return additive typed-planning metadata for MCP responses."""
+    return plan_typed_request(prompt)
+
+
 def plan_request(prompt: str) -> dict[str, object]:
-    """Plan one natural-language request for the supported showcase targets."""
-    return plan_prompt(prompt)
+    """Plan one request through the typed recipe planner."""
+    return _typed_planning_preview(prompt)
 
 
 def run_workflow(
@@ -384,17 +397,223 @@ def run_task(task_name: str, inputs: dict[str, object]) -> dict[str, object]:
         }
 
 
+def _jsonable(value: Any) -> Any:
+    """Convert paths and nested containers into JSON-compatible values."""
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(item) for item in value]
+    return value
+
+
+def _first_output_path(execution_result: dict[str, object]) -> str:
+    """Return the first output path from an execution payload when present."""
+    output_paths = execution_result.get("output_paths", [])
+    if isinstance(output_paths, list) and output_paths:
+        return str(output_paths[0])
+    return ""
+
+
+def _local_node_handlers(
+    *,
+    workflow_runner: Any = run_workflow,
+    task_runner: Any = run_task,
+) -> dict[str, Any]:
+    """Build explicit node handlers for the day-one MCP execution targets."""
+
+    def workflow_handler(request: LocalNodeExecutionRequest) -> dict[str, object]:
+        execution_result = workflow_runner(
+            workflow_name=request.node.reference_name,
+            inputs=dict(request.inputs),
+        )
+        if not execution_result.get("supported", False) or execution_result.get("exit_status") != 0:
+            raise RuntimeError(_summary_failure_reason(execution_result) or "Local workflow execution failed.")
+        output_name = get_entry(request.node.reference_name).outputs[0].name
+        return {
+            output_name: _first_output_path(execution_result),
+            "execution_result": execution_result,
+        }
+
+    def task_handler(request: LocalNodeExecutionRequest) -> dict[str, object]:
+        execution_result = task_runner(
+            task_name=request.node.reference_name,
+            inputs=dict(request.inputs),
+        )
+        if not execution_result.get("supported", False) or execution_result.get("exit_status") != 0:
+            raise RuntimeError(_summary_failure_reason(execution_result) or "Local task execution failed.")
+        output_name = get_entry(request.node.reference_name).outputs[0].name
+        return {
+            output_name: _first_output_path(execution_result),
+            "execution_result": execution_result,
+        }
+
+    return {
+        SUPPORTED_WORKFLOW_NAME: workflow_handler,
+        SUPPORTED_PROTEIN_WORKFLOW_NAME: workflow_handler,
+        SUPPORTED_TASK_NAME: task_handler,
+    }
+
+
+def _created_at() -> str:
+    """Return a stable UTC timestamp for saved recipe metadata."""
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _recipe_artifact_destination(prompt: str, *, recipe_dir: Path | None = None) -> Path:
+    """Build a readable unique path for one frozen recipe artifact."""
+    created = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    digest = hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:12]
+    return (recipe_dir or DEFAULT_RECIPE_DIR) / f"{created}-{digest}.json"
+
+
+def _limitations_from_typed_plan(plan: dict[str, object]) -> list[str]:
+    """Return concise limitations for unsupported typed-plan payloads."""
+    missing = plan.get("missing_requirements", [])
+    if isinstance(missing, list) and missing:
+        return [str(item) for item in missing]
+    rationale = plan.get("rationale", [])
+    if isinstance(rationale, list) and rationale:
+        return [str(item) for item in rationale]
+    return ["The request is not supported by the current MCP recipe planner."]
+
+
+def _result_from_local_spec_execution(result: LocalSpecExecutionResult) -> dict[str, object]:
+    """Serialize local spec execution into the MCP execution-result shape."""
+    node_results = [
+        {
+            "node_name": node.node_name,
+            "reference_name": node.reference_name,
+            "outputs": _jsonable(dict(node.outputs)),
+            "manifest_paths": _jsonable(dict(node.manifest_paths)),
+        }
+        for node in result.node_results
+    ]
+    output_paths = [
+        str(value)
+        for value in result.final_outputs.values()
+        if value not in (None, "")
+    ]
+    entry_name = result.node_results[-1].reference_name if result.node_results else result.workflow_name
+    try:
+        entry_category = get_entry(entry_name).category
+    except KeyError:
+        entry_category = "workflow"
+    return {
+        "supported": result.supported,
+        "entry_name": entry_name,
+        "entry_category": entry_category,
+        "workflow_name": result.workflow_name,
+        "execution_mode": "local-workflow-spec-executor",
+        "exit_status": 0 if result.supported else 1,
+        "stdout": "",
+        "stderr": "",
+        "output_paths": output_paths,
+        "resolved_planner_inputs": _jsonable(dict(result.resolved_planner_inputs)),
+        "node_results": node_results,
+        "final_outputs": _jsonable(dict(result.final_outputs)),
+        "assumptions": list(result.assumptions),
+        "limitations": list(result.limitations),
+    }
+
+
+def _prepare_run_recipe_impl(prompt: str, *, recipe_dir: Path | None = None) -> dict[str, object]:
+    """Plan and freeze one prompt as a local workflow-spec artifact."""
+    typed_plan = plan_typed_request(prompt)
+    if not typed_plan.get("supported", False):
+        return {
+            "supported": False,
+            "original_request": prompt,
+            "typed_plan": typed_plan,
+            "artifact_path": None,
+            "limitations": _limitations_from_typed_plan(typed_plan),
+        }
+
+    created_at = _created_at()
+    artifact = artifact_from_typed_plan(
+        typed_plan,
+        created_at=created_at,
+        replay_metadata={"mcp_tool": "prepare_run_recipe"},
+    )
+    artifact_path = save_workflow_spec_artifact(
+        artifact,
+        _recipe_artifact_destination(prompt, recipe_dir=recipe_dir),
+    )
+    return {
+        "supported": True,
+        "original_request": prompt,
+        "typed_plan": typed_plan,
+        "artifact_path": str(artifact_path),
+        "created_at": created_at,
+        "limitations": [],
+    }
+
+
+def prepare_run_recipe(prompt: str) -> dict[str, object]:
+    """Plan one prompt and save a frozen workflow-spec recipe artifact."""
+    return _prepare_run_recipe_impl(prompt)
+
+
+def _run_local_recipe_impl(
+    artifact_path: str | Path,
+    *,
+    handlers: dict[str, Any] | None = None,
+) -> dict[str, object]:
+    """Execute one frozen workflow-spec recipe through local node handlers."""
+    try:
+        result = LocalWorkflowSpecExecutor(handlers or _local_node_handlers()).execute(Path(artifact_path))
+    except Exception as exc:
+        execution_supported = isinstance(exc, RuntimeError)
+        return {
+            "supported": False,
+            "artifact_path": str(artifact_path),
+            "execution_result": {
+                "supported": execution_supported,
+                "execution_mode": "local-workflow-spec-executor",
+                "exit_status": 1,
+                "stdout": "",
+                "stderr": str(exc),
+                "output_paths": [],
+                "limitations": [str(exc)],
+                "error_type": type(exc).__name__,
+            },
+            "limitations": [str(exc)],
+        }
+
+    execution_result = _result_from_local_spec_execution(result)
+    return {
+        "supported": bool(result.supported),
+        "artifact_path": str(artifact_path),
+        "execution_result": execution_result,
+        "limitations": list(result.limitations),
+    }
+
+
+def run_local_recipe(artifact_path: str) -> dict[str, object]:
+    """Run a previously frozen workflow-spec recipe artifact."""
+    return _run_local_recipe_impl(artifact_path)
+
+
 def _supported_target_names() -> list[str]:
-    """Return the exact runnable target names exposed by this showcase."""
+    """Return the exact day-one recipe target names exposed through MCP."""
     return list(SUPPORTED_TARGET_NAMES)
 
 
 def _summary_used_inputs(plan: dict[str, object]) -> dict[str, object]:
-    """Return only the explicit prompt-derived inputs used for execution planning."""
+    """Return the prompt-derived or frozen runtime inputs used for execution."""
     extracted_inputs = plan.get("extracted_inputs", {})
     if not isinstance(extracted_inputs, dict):
-        return {}
-    return {name: value for name, value in extracted_inputs.items() if value not in (None, "")}
+        extracted_inputs = {}
+    if extracted_inputs:
+        return {name: value for name, value in extracted_inputs.items() if value not in (None, "")}
+
+    binding_plan = plan.get("binding_plan", {})
+    if isinstance(binding_plan, dict):
+        runtime_bindings = binding_plan.get("runtime_bindings", {})
+        if isinstance(runtime_bindings, dict):
+            return {name: value for name, value in runtime_bindings.items() if value not in (None, "")}
+    return {}
 
 
 def _summary_failure_reason(execution_result: dict[str, object] | None) -> str | None:
@@ -428,22 +647,16 @@ def _summary_message(
 ) -> str:
     """Build one short client-facing sentence for the prompt-and-run result."""
     if status == "declined":
-        if declined_stages:
-            stage_text = ", ".join(f"`{stage}`" for stage in declined_stages)
-            return (
-                "Declined the request because it mentions downstream stages "
-                f"{stage_text}, which are outside this MCP showcase."
-            )
         if decline_reason and "missing explicit required inputs" in decline_reason.lower():
             return (
                 f"Declined `{target_name}` because the prompt omitted explicit inputs "
-                f"needed to run this showcase target: {', '.join(used_inputs) or 'required inputs'}."
+                f"needed to prepare this recipe: {', '.join(used_inputs) or 'required inputs'}."
             )
         if target_name and decline_reason:
             return f"Declined `{target_name}` because {decline_reason.rstrip('.')}."
         if decline_reason:
             return f"Declined the request because {decline_reason.rstrip('.')}."
-        return "Declined the request because it falls outside the MCP showcase boundary."
+        return "Declined the request because it falls outside the current MCP recipe surface."
 
     input_names = list(used_inputs)
     if input_names:
@@ -476,15 +689,15 @@ def _summary_codes(
     execution_result: dict[str, object] | None,
 ) -> tuple[str, str]:
     """Return stable machine-readable result and reason codes for one run."""
-    declined_stages = plan.get("declined_downstream_stages", [])
-    if isinstance(declined_stages, list) and declined_stages:
-        return RESULT_CODE_DECLINED_DOWNSTREAM_SCOPE, REASON_CODE_REQUESTED_DOWNSTREAM_STAGE
-
     missing_inputs = plan.get("missing_required_inputs", [])
     if isinstance(missing_inputs, list) and missing_inputs:
         return RESULT_CODE_DECLINED_MISSING_INPUTS, REASON_CODE_MISSING_REQUIRED_INPUTS
 
     if not plan.get("supported", False):
+        missing_requirements = plan.get("missing_requirements", [])
+        candidate_outcome = plan.get("candidate_outcome")
+        if isinstance(missing_requirements, list) and missing_requirements and candidate_outcome:
+            return RESULT_CODE_DECLINED_MISSING_INPUTS, REASON_CODE_MISSING_REQUIRED_INPUTS
         return RESULT_CODE_DECLINED_UNSUPPORTED_REQUEST, REASON_CODE_UNSUPPORTED_OR_AMBIGUOUS_REQUEST
 
     if execution_result and execution_result.get("supported", False) and execution_result.get("exit_status") == 0:
@@ -504,9 +717,13 @@ def _build_result_summary(
     """Build the compact prompt-and-run summary for MCP client presentation."""
     target_name = plan.get("matched_entry_name")
     target_category = plan.get("matched_entry_category")
+    if not isinstance(target_name, str):
+        matched_entry_names = plan.get("matched_entry_names", [])
+        if isinstance(matched_entry_names, list) and matched_entry_names:
+            target_name = str(matched_entry_names[0])
+            target_category = get_entry(target_name).category
     used_inputs = _summary_used_inputs(plan)
     output_paths = execution_result.get("output_paths", []) if execution_result else []
-    declined_stages = plan.get("declined_downstream_stages", [])
     decline_reason = None
     result_code, reason_code = _summary_codes(plan, execution_result)
 
@@ -515,6 +732,10 @@ def _build_result_summary(
         limitations = plan.get("limitations", [])
         if isinstance(limitations, list) and limitations:
             decline_reason = str(limitations[0])
+        else:
+            missing_requirements = plan.get("missing_requirements", [])
+            if isinstance(missing_requirements, list) and missing_requirements:
+                decline_reason = str(missing_requirements[0])
         exit_status = None
     else:
         exit_status = execution_result.get("exit_status") if execution_result else None
@@ -534,8 +755,11 @@ def _build_result_summary(
         "output_paths": output_paths if isinstance(output_paths, list) else [],
         "exit_status": exit_status,
         "decline_reason": decline_reason,
-        "declined_downstream_stages": declined_stages if isinstance(declined_stages, list) else [],
         "supported_targets": _supported_target_names(),
+        "typed_planning_available": bool(
+            plan.get("workflow_spec")
+            or (isinstance(plan.get("typed_planning"), dict) and plan["typed_planning"].get("workflow_spec"))
+        ),
         "message": _summary_message(
             status=status,
             target_name=target_name if isinstance(target_name, str) else None,
@@ -543,7 +767,7 @@ def _build_result_summary(
             used_inputs=used_inputs,
             execution_result=execution_result,
             decline_reason=decline_reason,
-            declined_stages=declined_stages if isinstance(declined_stages, list) else [],
+            declined_stages=[],
         ),
     }
 
@@ -552,54 +776,62 @@ def _prompt_and_run_impl(
     prompt: str,
     workflow_runner: Any = run_workflow,
     task_runner: Any = run_task,
+    recipe_dir: Path | None = None,
 ) -> dict[str, object]:
-    """Plan one prompt and execute the matched supported target when runnable."""
-    plan = plan_request(prompt)
-    if not plan["supported"]:
+    """Prepare a frozen recipe and execute it through the local spec executor."""
+    recipe = _prepare_run_recipe_impl(prompt, recipe_dir=recipe_dir)
+    plan = recipe["typed_plan"]
+    if not recipe["supported"]:
+        result_summary = _build_result_summary(
+            plan=plan,
+            execution_attempted=False,
+            execution_result=None,
+        )
+        result_summary["artifact_path"] = None
         return {
             "supported": False,
             "original_request": prompt,
             "plan": plan,
             "execution_attempted": False,
             "execution_result": None,
-            "result_summary": _build_result_summary(
-                plan=plan,
-                execution_attempted=False,
-                execution_result=None,
-            ),
-            "limitations": list(plan["limitations"]),
+            "typed_planning": plan,
+            "artifact_path": None,
+            "result_summary": result_summary,
+            "limitations": list(recipe["limitations"]),
         }
 
-    entry_name = str(plan["matched_entry_name"])
-    extracted_inputs = dict(plan["extracted_inputs"])
-    if entry_name in {SUPPORTED_WORKFLOW_NAME, SUPPORTED_PROTEIN_WORKFLOW_NAME}:
-        execution_result = workflow_runner(workflow_name=entry_name, inputs=extracted_inputs)
-    elif entry_name == SUPPORTED_TASK_NAME:
-        execution_result = task_runner(task_name=entry_name, inputs=extracted_inputs)
-    else:
-        execution_result = {
-            "supported": False,
-            "exit_status": None,
-            "limitations": [f"Unsupported planned target `{entry_name}`."],
-        }
+    artifact_path = str(recipe["artifact_path"])
+    run_result = _run_local_recipe_impl(
+        artifact_path,
+        handlers=_local_node_handlers(workflow_runner=workflow_runner, task_runner=task_runner),
+    )
+    execution_result = dict(run_result["execution_result"])
+    result_summary = _build_result_summary(
+        plan=plan,
+        execution_attempted=True,
+        execution_result=execution_result,
+    )
+    result_summary["artifact_path"] = artifact_path
 
     return {
-        "supported": bool(plan["supported"] and execution_result["supported"]),
+        "supported": bool(
+            recipe["supported"]
+            and execution_result["supported"]
+            and execution_result.get("exit_status") == 0
+        ),
         "original_request": prompt,
         "plan": plan,
         "execution_attempted": True,
         "execution_result": execution_result,
-        "result_summary": _build_result_summary(
-            plan=plan,
-            execution_attempted=True,
-            execution_result=execution_result,
-        ),
-        "limitations": list(dict.fromkeys([*plan["limitations"], *execution_result.get("limitations", [])])),
+        "typed_planning": plan,
+        "artifact_path": artifact_path,
+        "result_summary": result_summary,
+        "limitations": list(dict.fromkeys([*recipe["limitations"], *execution_result.get("limitations", [])])),
     }
 
 
 def prompt_and_run(prompt: str) -> dict[str, object]:
-    """Plan one prompt and run the matched supported showcase target."""
+    """Plan one prompt and run it through the recipe-backed execution flow."""
     return _prompt_and_run_impl(prompt)
 
 
@@ -671,12 +903,14 @@ async def _filtered_stdio_server():
 
 
 def create_mcp_server(fastmcp_cls: Any | None = None) -> Any:
-    """Build the narrow FastMCP server for stdio execution."""
+    """Build the recipe-backed FastMCP server for stdio execution."""
     fastmcp = _load_fastmcp() if fastmcp_cls is None else fastmcp_cls
     mcp = fastmcp(SHOWCASE_SERVER_NAME)
 
     mcp.tool()(list_entries)
     mcp.tool()(plan_request)
+    mcp.tool()(prepare_run_recipe)
+    mcp.tool()(run_local_recipe)
     mcp.tool()(prompt_and_run)
     mcp.resource(SERVER_RESOURCE_URIS[0])(resource_scope)
     mcp.resource(SERVER_RESOURCE_URIS[1])(resource_supported_targets)

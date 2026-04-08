@@ -16,7 +16,9 @@ Context:
 - The source of truth is `docs/braker3_evm_notes.md`.
 - The repo now implements transcript evidence, PASA, TransDecoder, protein evidence, BRAKER3, pre-EVM assembly, EVM, PASA post-EVM refinement, repeat filtering, and BUSCO QC.
 - The current BUSCO boundary starts from the repeat-filtered protein FASTA collected in `annotation_repeat_filtering`.
-- Preserve the current stop rule and do not broaden into EggNOG, AGAT, or `table2asn` unless the new task explicitly changes milestone scope.
+- EggNOG is now implemented; preserve the current stop rule and do not broaden
+  into AGAT or `table2asn` unless the new task explicitly changes milestone
+  scope.
 - Use `README.md` and `src/flytetest/registry.py` as the public contract for names, inputs, outputs, and current scope language.
 
 Task:

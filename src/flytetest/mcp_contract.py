@@ -1,8 +1,8 @@
-"""Shared contract data for the narrow FLyteTest MCP showcase.
+"""Shared contract data for the FLyteTest MCP recipe surface.
 
-This module centralizes the exact stdio MCP surface exposed by the current
-showcase: runnable targets, tool and resource names, example prompts,
-downstream-scope decline labels, and stable prompt-and-run result codes.
+This module centralizes the stdio MCP surface exposed by the recipe-backed
+server: day-one runnable targets, tool and resource names, example prompts,
+stable prompt-and-run result codes, and typed-planning fields.
 """
 
 from __future__ import annotations
@@ -25,7 +25,9 @@ class ShowcaseTarget:
 
 SHOWCASE_SERVER_NAME = "FLyteTest"
 PRIMARY_TOOL_NAME = "prompt_and_run"
-MCP_TOOL_NAMES = ("list_entries", "plan_request", PRIMARY_TOOL_NAME)
+PREPARE_RECIPE_TOOL_NAME = "prepare_run_recipe"
+RUN_RECIPE_TOOL_NAME = "run_local_recipe"
+MCP_TOOL_NAMES = ("list_entries", "plan_request", PREPARE_RECIPE_TOOL_NAME, RUN_RECIPE_TOOL_NAME, PRIMARY_TOOL_NAME)
 MCP_RESOURCE_URIS = (
     "flytetest://scope",
     "flytetest://supported-targets",
@@ -77,42 +79,14 @@ TASK_EXAMPLE_PROMPT = (
     "Experiment with Exonerate protein-to-genome alignment using genome "
     "data/genome.fa and protein chunk data/proteins.fa"
 )
-DECLINED_PROMPT_EXAMPLE = (
-    "Run BRAKER3 with genome data/genome.fa and protein evidence "
-    "data/proteins.fa, then continue into EVM and BUSCO."
-)
-
-DECLINED_DOWNSTREAM_STAGE_NAMES = (
-    "EVM",
-    "PASA",
-    "repeat filtering",
-    "BUSCO",
-    "EggNOG",
-    "AGAT",
-    "table2asn",
-)
-DOWNSTREAM_STAGE_LABELS = (
-    ("agat", "AGAT"),
-    ("busco", "BUSCO"),
-    ("eggnog", "EggNOG"),
-    ("evm", "EVM"),
-    ("evidence modeler", "EVM"),
-    ("functional annotation", "EggNOG"),
-    ("pasa", "PASA"),
-    ("repeat filtering", "repeat filtering"),
-    ("repeatmasker", "repeat filtering"),
-    ("submission", "table2asn"),
-    ("table2asn", "table2asn"),
-)
-
 SHOWCASE_LIMITATIONS = (
-    "This showcase supports only the workflows `ab_initio_annotation_braker3`, `protein_evidence_alignment`, and the task `exonerate_align_chunk`.",
-    "The prompt must contain explicit local file paths; the planner does not search the filesystem or auto-discover `data/` files.",
-    "It does not imply EVM, PASA refinement, repeat filtering, BUSCO, EggNOG, AGAT, or `table2asn`.",
+    "The day-one MCP recipe surface executes only `ab_initio_annotation_braker3`, `protein_evidence_alignment`, and `exonerate_align_chunk`.",
+    "Prompt-contained local file paths are frozen into saved WorkflowSpec artifacts before execution.",
+    "Additional registered workflows require explicit local handlers before they are exposed as runnable MCP targets.",
 )
 LIST_ENTRIES_LIMITATIONS = (
-    "This showcase exposes only `ab_initio_annotation_braker3`, `protein_evidence_alignment`, and `exonerate_align_chunk` as runnable targets.",
-    "The primary MCP flow is `prompt_and_run(prompt)`, which plans and executes only prompt-contained explicit local paths.",
+    "The day-one MCP recipe surface exposes only `ab_initio_annotation_braker3`, `protein_evidence_alignment`, and `exonerate_align_chunk` as runnable targets.",
+    "The primary MCP flow is `prompt_and_run(prompt)`, which prepares and executes a saved WorkflowSpec artifact.",
 )
 PROMPT_REQUIREMENTS = (
     "Write explicit local file paths directly in the prompt.",
@@ -120,17 +94,15 @@ PROMPT_REQUIREMENTS = (
 )
 EXAMPLE_PROMPT_REQUIREMENTS = (
     "Include explicit local file paths in the prompt text.",
-    "Do not ask for EVM, PASA, repeat filtering, BUSCO, EggNOG, AGAT, or table2asn.",
+    "Use one of the day-one MCP recipe targets until additional local handlers are registered.",
 )
 
 RESULT_CODE_SUCCEEDED = "succeeded"
-RESULT_CODE_DECLINED_DOWNSTREAM_SCOPE = "declined_downstream_scope"
 RESULT_CODE_DECLINED_MISSING_INPUTS = "declined_missing_inputs"
 RESULT_CODE_DECLINED_UNSUPPORTED_REQUEST = "declined_unsupported_request"
 RESULT_CODE_FAILED_EXECUTION = "failed_execution"
 
 REASON_CODE_COMPLETED = "completed"
-REASON_CODE_REQUESTED_DOWNSTREAM_STAGE = "requested_downstream_stage"
 REASON_CODE_MISSING_REQUIRED_INPUTS = "missing_required_inputs"
 REASON_CODE_UNSUPPORTED_OR_AMBIGUOUS_REQUEST = "unsupported_or_ambiguous_request"
 REASON_CODE_NONZERO_EXIT_STATUS = "nonzero_exit_status"
@@ -147,18 +119,15 @@ RESULT_SUMMARY_FIELDS = (
     "output_paths",
     "exit_status",
     "decline_reason",
-    "declined_downstream_stages",
     "supported_targets",
+    "typed_planning_available",
+    "artifact_path",
     "message",
 )
 RESULT_CODE_DEFINITIONS = {
     RESULT_CODE_SUCCEEDED: {
         "status": "succeeded",
         "reason_codes": [REASON_CODE_COMPLETED],
-    },
-    RESULT_CODE_DECLINED_DOWNSTREAM_SCOPE: {
-        "status": "declined",
-        "reason_codes": [REASON_CODE_REQUESTED_DOWNSTREAM_STAGE],
     },
     RESULT_CODE_DECLINED_MISSING_INPUTS: {
         "status": "declined",
@@ -177,7 +146,6 @@ RESULT_CODE_DEFINITIONS = {
     },
 }
 DECLINE_CATEGORY_CODES = {
-    "downstream_scope": RESULT_CODE_DECLINED_DOWNSTREAM_SCOPE,
     "missing_inputs": RESULT_CODE_DECLINED_MISSING_INPUTS,
     "unsupported_or_ambiguous_request": RESULT_CODE_DECLINED_UNSUPPORTED_REQUEST,
 }

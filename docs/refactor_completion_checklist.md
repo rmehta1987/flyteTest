@@ -18,9 +18,8 @@ A milestone is only complete when:
 
 ## Current Stop Rule
 
-Do not begin EggNOG, AGAT, or `table2asn` work until
-Milestones 0 through 7 below are all complete against the notes-backed
-acceptance criteria.
+Do not begin `table2asn` work until Milestones 0 through 9 below are all
+complete against the notes-backed acceptance criteria.
 
 ## Milestone 0
 
@@ -292,8 +291,7 @@ Status: Complete
 
 - [x] Keep BUSCO strictly downstream of repeat filtering without reopening the
       validated transcript-to-PASA-to-EVM-to-post-EVM-to-repeat-filter path.
-- [x] Keep EggNOG, AGAT, and `table2asn` deferred until a later milestone opens
-      them explicitly.
+- [x] Keep `table2asn` deferred until a later milestone opens it explicitly.
 
 ### Acceptance evidence
 
@@ -306,6 +304,84 @@ Status: Complete
   - `docs/tool_refs/busco.md`
   - `docs/tool_refs/stage_index.md`
   - `tests/test_functional.py`
+
+## Milestone 9
+
+Goal: implement AGAT post-processing after EggNOG without moving into
+`table2asn`.
+
+Status: Complete
+
+### Planned
+
+- [x] Define the first AGAT task boundary around statistics and conversion on
+      the EggNOG-annotated GFF3 bundle.
+- [x] Expose the AGAT milestone as a small task family plus workflow wrappers.
+- [x] Add synthetic tests for the chosen AGAT command wiring and manifest
+      contract.
+- [x] Update README, registry, tool refs, stage index, and milestone prompt
+      docs so the AGAT boundary is explicit and reviewable.
+- [x] Implement the AGAT cleanup slice.
+- [x] Keep `table2asn` deferred until the AGAT milestone is complete.
+
+### Acceptance evidence
+
+- Source of truth: `docs/braker3_evm_notes.md`
+- Implementation surface:
+  - expected: `src/flytetest/tasks/agat.py`
+  - expected: `src/flytetest/workflows/agat.py`
+  - expected: `src/flytetest/registry.py`
+  - expected: `README.md`
+  - expected: `docs/tool_refs/agat.md`
+  - expected: `docs/tool_refs/stage_index.md`
+  - expected: `tests/`
+
+## Milestone 8
+
+Goal: add functional annotation with EggNOG downstream of BUSCO and repeat
+filtering.
+
+Status: Complete
+
+### Done
+
+- [x] Added the `eggnog_map` task to run EggNOG-mapper from the repeat-filtered
+      protein boundary while keeping the repeat-filtered GFF3 available for
+      review.
+- [x] Added `collect_eggnog_results` and the
+      `annotation_functional_eggnog` workflow to collect the EggNOG outputs
+      into a stable results bundle.
+- [x] Recorded the transcript-to-gene bridge and annotated GFF3 propagation as
+      explicit outputs instead of hiding the downstream annotation boundary.
+- [x] Added synthetic tests for EggNOG command wiring, annotation propagation,
+      workflow collection, registry exports, and planning selection.
+- [x] Updated README, tool references, tutorial context, capability maturity,
+      and changelog entries so EggNOG is documented as the current
+      post-BUSCO milestone.
+
+### Still required
+
+- [x] Keep AGAT and `table2asn` deferred until a later milestone opens them
+      explicitly.
+
+### Acceptance evidence
+
+- Source of truth: `docs/braker3_evm_notes.md`
+- Implementation surface:
+  - `src/flytetest/tasks/eggnog.py`
+  - `src/flytetest/workflows/eggnog.py`
+  - `src/flytetest/registry.py`
+  - `src/flytetest/planning.py`
+  - `src/flytetest/planner_adapters.py`
+  - `README.md`
+  - `docs/tool_refs/eggnog-mapper.md`
+  - `docs/tool_refs/stage_index.md`
+  - `docs/tutorial_context.md`
+  - `docs/capability_maturity.md`
+  - `tests/test_eggnog.py`
+  - `tests/test_planning.py`
+  - `tests/test_registry.py`
+  - `tests/test_compatibility_exports.py`
 
 ## Verification Commands
 

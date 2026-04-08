@@ -13,11 +13,76 @@ from unittest import TestCase
 SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(SRC_DIR))
 
-from flytetest.registry import get_entry
+from flytetest.registry import REGISTRY_ENTRIES, RegistryCompatibilityMetadata, get_entry, list_entries
 
 
 class RegistryTests(TestCase):
     """Basic registry coverage for the active milestone-facing catalog surface."""
+
+    def test_list_entries_returns_declared_registry_order(self) -> None:
+        """Preserve the full registry listing behavior while richer metadata lands later."""
+        self.assertEqual(list_entries(), REGISTRY_ENTRIES)
+
+    def test_list_entries_filters_by_category_without_rewriting_entries(self) -> None:
+        """Keep category filtering as a pure view over the declared registry entries."""
+        expected_workflows = tuple(entry for entry in REGISTRY_ENTRIES if entry.category == "workflow")
+
+        self.assertEqual(list_entries("workflow"), expected_workflows)
+        self.assertTrue(all(entry.category == "workflow" for entry in list_entries("workflow")))
+
+    def test_entries_expose_default_compatibility_metadata_without_breaking_old_fields(self) -> None:
+        """Keep task entries usable while compatibility graph metadata is added."""
+        entry = get_entry("trinity_denovo_assemble")
+
+        self.assertIsInstance(entry.compatibility, RegistryCompatibilityMetadata)
+        self.assertEqual(entry.compatibility.biological_stage, "unspecified")
+        self.assertEqual(entry.compatibility.supported_execution_profiles, ("local",))
+        self.assertEqual(entry.inputs[0].name, "left")
+
+    def test_current_workflows_have_backfilled_compatibility_metadata(self) -> None:
+        """Describe all current workflows with planner type and reference-workflow metadata."""
+        for entry in list_entries("workflow"):
+            with self.subTest(entry=entry.name):
+                self.assertNotEqual(entry.compatibility.biological_stage, "unspecified")
+                self.assertTrue(entry.compatibility.reusable_as_reference)
+                self.assertIn("local", entry.compatibility.supported_execution_profiles)
+                self.assertEqual(entry.compatibility.execution_defaults["result_manifest"], "run_manifest.json")
+
+    def test_current_workflow_compatibility_metadata_is_composition_ready(self) -> None:
+        """Keep reference-workflow graph metadata populated without changing signatures."""
+        for entry in list_entries("workflow"):
+            with self.subTest(entry=entry.name):
+                self.assertTrue(entry.compatibility.accepted_planner_types)
+                self.assertTrue(entry.compatibility.composition_constraints)
+                if entry.name == "rnaseq_qc_quant":
+                    self.assertEqual(entry.compatibility.produced_planner_types, ())
+                    self.assertIn(
+                        "does not produce genome-annotation evidence",
+                        entry.compatibility.composition_constraints[0],
+                    )
+                    continue
+                self.assertTrue(entry.compatibility.produced_planner_types)
+
+    def test_protein_workflow_metadata_links_planner_input_and_output_types(self) -> None:
+        """Expose protein evidence workflow compatibility edges without changing signatures."""
+        entry = get_entry("protein_evidence_alignment")
+
+        self.assertEqual(entry.compatibility.biological_stage, "protein evidence alignment")
+        self.assertEqual(entry.compatibility.accepted_planner_types, ("ReferenceGenome", "ProteinEvidenceSet"))
+        self.assertEqual(entry.compatibility.produced_planner_types, ("ProteinEvidenceSet",))
+        self.assertTrue(entry.compatibility.synthesis_eligible)
+        self.assertEqual(
+            [field.name for field in entry.inputs],
+            ["genome", "protein_fastas", "proteins_per_chunk", "exonerate_sif", "exonerate_model"],
+        )
+
+    def test_evm_workflow_metadata_records_consensus_annotation_edge(self) -> None:
+        """Expose the pre-EVM-to-consensus planner type edge for later composition."""
+        entry = get_entry("consensus_annotation_evm")
+
+        self.assertEqual(entry.compatibility.accepted_planner_types, ("AnnotationEvidenceSet",))
+        self.assertEqual(entry.compatibility.produced_planner_types, ("ConsensusAnnotation",))
+        self.assertIn("pre-EVM bundle", entry.compatibility.composition_constraints[0])
 
     def test_trinity_denovo_task_entry_is_registered(self) -> None:
         """Expose the de novo Trinity task as a first-class transcript-evidence boundary."""
@@ -66,6 +131,61 @@ class RegistryTests(TestCase):
             ["proteins_fasta", "lineage_dataset", "busco_sif", "busco_cpu", "busco_mode"],
         )
         self.assertEqual([field.name for field in entry.outputs], ["busco_run_dir"])
+
+    def test_eggnog_task_entry_is_registered(self) -> None:
+        """Expose the EggNOG functional-annotation task boundary in the catalog."""
+        entry = get_entry("eggnog_map")
+
+        self.assertEqual(entry.category, "task")
+        self.assertIn("EggNOG-mapper", entry.description)
+        self.assertEqual(
+            [field.name for field in entry.inputs],
+            [
+                "repeat_filter_results",
+                "eggnog_data_dir",
+                "eggnog_sif",
+                "eggnog_cpu",
+                "eggnog_database",
+                "eggnog_mode",
+            ],
+        )
+        self.assertEqual([field.name for field in entry.outputs], ["eggnog_run_dir"])
+
+    def test_agat_task_entry_is_registered(self) -> None:
+        """Expose the AGAT statistics slice in the catalog."""
+        entry = get_entry("agat_statistics")
+
+        self.assertEqual(entry.category, "task")
+        self.assertIn("AGAT statistics", entry.description)
+        self.assertEqual(
+            [field.name for field in entry.inputs],
+            ["eggnog_results", "annotation_fasta_path", "agat_sif"],
+        )
+        self.assertEqual([field.name for field in entry.outputs], ["results_dir"])
+
+    def test_agat_conversion_task_entry_is_registered(self) -> None:
+        """Expose the AGAT conversion slice in the catalog."""
+        entry = get_entry("agat_convert_sp_gxf2gxf")
+
+        self.assertEqual(entry.category, "task")
+        self.assertIn("AGAT conversion", entry.description)
+        self.assertEqual(
+            [field.name for field in entry.inputs],
+            ["eggnog_results", "agat_sif"],
+        )
+        self.assertEqual([field.name for field in entry.outputs], ["results_dir"])
+
+    def test_agat_cleanup_task_entry_is_registered(self) -> None:
+        """Expose the AGAT cleanup slice in the catalog."""
+        entry = get_entry("agat_cleanup_gff3")
+
+        self.assertEqual(entry.category, "task")
+        self.assertIn("post-AGAT GFF3 attribute cleanup", entry.description)
+        self.assertEqual(
+            [field.name for field in entry.inputs],
+            ["agat_conversion_results"],
+        )
+        self.assertEqual([field.name for field in entry.outputs], ["results_dir"])
 
     def test_consensus_prep_workflow_entry_uses_corrected_pre_evm_inputs(self) -> None:
         """Expose the corrected pre-EVM workflow contract in the registry."""
@@ -203,6 +323,54 @@ class RegistryTests(TestCase):
         self.assertEqual(
             [field.name for field in entry.inputs],
             ["repeat_filter_results", "busco_lineages_text", "busco_sif", "busco_cpu"],
+        )
+        self.assertEqual([field.name for field in entry.outputs], ["results_dir"])
+
+    def test_annotation_functional_eggnog_workflow_entry_is_registered(self) -> None:
+        """Expose EggNOG functional annotation as the next workflow boundary after BUSCO."""
+        entry = get_entry("annotation_functional_eggnog")
+
+        self.assertEqual(entry.category, "workflow")
+        self.assertIn("EggNOG functional-annotation", entry.description)
+        self.assertEqual(
+            [field.name for field in entry.inputs],
+            ["repeat_filter_results", "eggnog_data_dir", "eggnog_sif", "eggnog_cpu", "eggnog_database"],
+        )
+        self.assertEqual([field.name for field in entry.outputs], ["results_dir"])
+
+    def test_agat_workflow_entry_is_registered(self) -> None:
+        """Expose the AGAT post-processing workflow boundary in the catalog."""
+        entry = get_entry("annotation_postprocess_agat")
+
+        self.assertEqual(entry.category, "workflow")
+        self.assertIn("EggNOG-annotated GFF3", entry.description)
+        self.assertEqual(
+            [field.name for field in entry.inputs],
+            ["eggnog_results", "annotation_fasta_path", "agat_sif"],
+        )
+        self.assertEqual([field.name for field in entry.outputs], ["results_dir"])
+
+    def test_agat_conversion_workflow_entry_is_registered(self) -> None:
+        """Expose the AGAT conversion workflow boundary in the catalog."""
+        entry = get_entry("annotation_postprocess_agat_conversion")
+
+        self.assertEqual(entry.category, "workflow")
+        self.assertIn("normalized GFF3 slice", entry.description)
+        self.assertEqual(
+            [field.name for field in entry.inputs],
+            ["eggnog_results", "agat_sif"],
+        )
+        self.assertEqual([field.name for field in entry.outputs], ["results_dir"])
+
+    def test_agat_cleanup_workflow_entry_is_registered(self) -> None:
+        """Expose the AGAT cleanup workflow boundary in the catalog."""
+        entry = get_entry("annotation_postprocess_agat_cleanup")
+
+        self.assertEqual(entry.category, "workflow")
+        self.assertIn("cleaned GFF3 slice", entry.description)
+        self.assertEqual(
+            [field.name for field in entry.inputs],
+            ["agat_conversion_results"],
         )
         self.assertEqual([field.name for field in entry.outputs], ["results_dir"])
 

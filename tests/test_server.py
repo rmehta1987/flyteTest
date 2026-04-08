@@ -1,13 +1,14 @@
-"""Synthetic tests for the narrow FLyteTest MCP showcase server.
+"""Synthetic tests for the FLyteTest MCP recipe-backed server.
 
-These checks keep the server transport MCP-shaped while preserving the hard
-scope limit of two workflows and one task.
+These checks keep the server transport MCP-shaped while preserving the day-one
+execution target set of two workflows and one task.
 """
 
 from __future__ import annotations
 
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from unittest import TestCase
 
@@ -23,8 +24,6 @@ install_flyte_stub()
 
 from flytetest.mcp_contract import (
     DECLINE_CATEGORY_CODES,
-    DECLINED_DOWNSTREAM_STAGE_NAMES,
-    DECLINED_PROMPT_EXAMPLE,
     MCP_RESOURCE_URIS,
     MCP_TOOL_NAMES,
     PRIMARY_TOOL_NAME,
@@ -44,14 +43,18 @@ from flytetest.server import (
     _prompt_and_run_impl,
     _resolve_flyte_cli,
     _should_skip_stdio_line,
+    _prepare_run_recipe_impl,
+    _run_local_recipe_impl,
     create_mcp_server,
     list_entries,
     plan_request,
     prompt_and_run,
+    prepare_run_recipe,
     resource_example_prompts,
     resource_prompt_and_run_contract,
     resource_scope,
     resource_supported_targets,
+    run_local_recipe,
     run_workflow,
 )
 
@@ -92,7 +95,7 @@ class FakeFastMCP:
 
 
 class ServerTests(TestCase):
-    """Coverage for the FastMCP surface and narrow showcase behavior."""
+    """Coverage for the FastMCP surface and recipe-backed behavior."""
 
     def test_create_mcp_server_registers_only_the_required_tools(self) -> None:
         """Keep the MCP tool surface limited to list, plan, and prompt-and-run."""
@@ -115,23 +118,23 @@ class ServerTests(TestCase):
         self.assertFalse(_should_skip_stdio_line('{"jsonrpc":"2.0"}\n'))
 
     def test_list_entries_exposes_only_the_supported_targets(self) -> None:
-        """List exactly the two workflows and one task in scope for the showcase."""
+        """List exactly the two workflows and one task in day-one scope."""
         payload = list_entries()
 
         self.assertEqual([entry["name"] for entry in payload["entries"]], EXPECTED_TARGET_NAMES)
         self.assertEqual(payload["server_tools"], list(MCP_TOOL_NAMES))
-        self.assertIn(f"only `{SUPPORTED_WORKFLOW_NAME}`", payload["limitations"][0])
+        self.assertIn(f"`{SUPPORTED_WORKFLOW_NAME}`", payload["limitations"][0])
         self.assertIn(f"`{SUPPORTED_PROTEIN_WORKFLOW_NAME}`", payload["limitations"][0])
         self.assertIn(f"`{SUPPORTED_TASK_NAME}`", payload["limitations"][0])
 
-    def test_scope_resource_describes_the_hard_mcp_limit(self) -> None:
-        """Describe the stdio showcase contract without implying broader support."""
+    def test_scope_resource_describes_the_recipe_surface(self) -> None:
+        """Describe the stdio recipe contract without implying broader support."""
         payload = resource_scope()
 
         self.assertEqual(payload["transport"], "stdio")
         self.assertEqual(payload["primary_tool"], PRIMARY_TOOL_NAME)
         self.assertEqual(payload["supported_runnable_targets"], EXPECTED_RUNNABLE_TARGETS)
-        self.assertEqual(payload["declined_downstream_stages"], list(DECLINED_DOWNSTREAM_STAGE_NAMES))
+        self.assertIn(".runtime/specs", payload["recipe_artifact_directory"])
 
     def test_supported_targets_resource_matches_the_exact_showcase_entries(self) -> None:
         """Keep the resource target list aligned with the tool-facing entry list."""
@@ -148,7 +151,6 @@ class ServerTests(TestCase):
         self.assertEqual(payload["workflow_prompt"], WORKFLOW_EXAMPLE_PROMPT)
         self.assertEqual(payload["protein_workflow_prompt"], PROTEIN_WORKFLOW_EXAMPLE_PROMPT)
         self.assertEqual(payload["task_prompt"], TASK_EXAMPLE_PROMPT)
-        self.assertEqual(payload["declined_prompt_example"], DECLINED_PROMPT_EXAMPLE)
         self.assertIn("explicit local file paths", payload["prompt_requirements"][0])
 
     def test_prompt_and_run_contract_resource_matches_enforced_summary_behavior(self) -> None:
@@ -161,19 +163,18 @@ class ServerTests(TestCase):
         self.assertIn("result_code", payload["result_summary_fields"])
         self.assertIn("reason_code", payload["result_summary_fields"])
         self.assertEqual(
-            payload["result_codes"]["declined_downstream_scope"]["reason_codes"],
-            RESULT_CODE_DEFINITIONS["declined_downstream_scope"]["reason_codes"],
-        )
-        self.assertEqual(
             payload["result_codes"]["failed_execution"]["reason_codes"],
             RESULT_CODE_DEFINITIONS["failed_execution"]["reason_codes"],
         )
         self.assertEqual(payload["decline_categories"], DECLINE_CATEGORY_CODES)
-        self.assertEqual(payload["declined_downstream_stages"], list(DECLINED_DOWNSTREAM_STAGE_NAMES))
+        self.assertIn(".runtime/specs", payload["recipe_artifact_directory"])
         self.assertIn("explicit local file paths", payload["prompt_requirements"][0])
+        self.assertIn("typed_planning_available", payload["result_summary_fields"])
+        self.assertIn("artifact_path", payload["result_summary_fields"])
+        self.assertIn("workflow_spec", payload["typed_planning_fields"])
 
-    def test_plan_request_extracts_workflow_paths_from_prompt(self) -> None:
-        """Classify the BRAKER3 prompt and bind only its explicit local paths."""
+    def test_plan_request_builds_workflow_recipe_plan_from_prompt_paths(self) -> None:
+        """Classify the BRAKER3 prompt and freeze explicit local paths."""
         prompt = (
             "Annotate the genome sequence of a small eukaryote using BRAKER3 "
             "with genome data/genome.fa, RNA-seq evidence data/RNAseq.bam, "
@@ -183,18 +184,26 @@ class ServerTests(TestCase):
         payload = plan_request(prompt)
 
         self.assertTrue(payload["supported"])
-        self.assertEqual(payload["matched_entry_name"], SUPPORTED_WORKFLOW_NAME)
+        self.assertEqual(payload["matched_entry_names"], [SUPPORTED_WORKFLOW_NAME])
         self.assertEqual(
-            payload["extracted_inputs"],
+            payload["binding_plan"]["runtime_bindings"],
             {
                 "genome": "data/genome.fa",
                 "rnaseq_bam_path": "data/RNAseq.bam",
                 "protein_fasta_path": "data/proteins.fa",
             },
         )
-        self.assertEqual(payload["declined_downstream_stages"], [])
 
-    def test_plan_request_extracts_protein_workflow_paths_from_prompt(self) -> None:
+    def test_plan_request_still_reports_broader_typed_specs(self) -> None:
+        """Expose broader typed planning data without executing it."""
+        payload = plan_request("Create a generated WorkflowSpec for repeat filtering and BUSCO QC.")
+
+        self.assertFalse(payload["supported"])
+        self.assertEqual(payload["candidate_outcome"], "generated_workflow_spec")
+        self.assertEqual(payload["biological_goal"], "repeat_filter_then_busco_qc")
+        self.assertIsNotNone(payload["workflow_spec"])
+
+    def test_plan_request_builds_protein_workflow_recipe_plan(self) -> None:
         """Classify the protein-evidence prompt and preserve protein FASTA order."""
         prompt = (
             "Run protein evidence alignment with genome data/genome.fa, "
@@ -204,14 +213,40 @@ class ServerTests(TestCase):
         payload = plan_request(prompt)
 
         self.assertTrue(payload["supported"])
-        self.assertEqual(payload["matched_entry_name"], SUPPORTED_PROTEIN_WORKFLOW_NAME)
+        self.assertEqual(payload["matched_entry_names"], [SUPPORTED_PROTEIN_WORKFLOW_NAME])
         self.assertEqual(
-            payload["extracted_inputs"],
+            payload["binding_plan"]["runtime_bindings"],
             {
                 "genome": "data/genome.fa",
                 "protein_fastas": ["data/proteins.fa", "data/proteins_extra.fa"],
             },
         )
+
+    def test_prepare_and_run_local_recipe_round_trips_saved_artifact(self) -> None:
+        """Prepare a frozen recipe and execute it through explicit local handlers."""
+        prompt = (
+            "Run protein evidence alignment with genome data/genome.fa and "
+            "protein evidence data/proteins.fa"
+        )
+        calls: list[dict[str, object]] = []
+
+        def handler(request):  # type: ignore[no-untyped-def]
+            calls.append(dict(request.inputs))
+            return {"results_dir": "/tmp/protein_evidence_results"}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            prepared = _prepare_run_recipe_impl(prompt, recipe_dir=Path(tmp))
+            self.assertTrue(prepared["supported"])
+            self.assertTrue(Path(str(prepared["artifact_path"])).exists())
+
+            executed = _run_local_recipe_impl(
+                str(prepared["artifact_path"]),
+                handlers={SUPPORTED_PROTEIN_WORKFLOW_NAME: handler},
+            )
+
+        self.assertTrue(executed["supported"])
+        self.assertEqual(calls[0], {"genome": "data/genome.fa", "protein_fastas": ["data/proteins.fa"]})
+        self.assertEqual(executed["execution_result"]["output_paths"], ["/tmp/protein_evidence_results"])
 
     def test_prompt_and_run_workflow_prompt_uses_extracted_inputs(self) -> None:
         """Plan and dispatch the BRAKER3 example prompt through the workflow runner."""
@@ -237,10 +272,17 @@ class ServerTests(TestCase):
                 "limitations": [],
             }
 
-        payload = _prompt_and_run_impl(prompt, workflow_runner=fake_workflow_runner)
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = _prompt_and_run_impl(
+                prompt,
+                workflow_runner=fake_workflow_runner,
+                recipe_dir=Path(tmp),
+            )
+            artifact_exists = Path(str(payload["artifact_path"])).exists()
 
         self.assertTrue(payload["supported"])
         self.assertTrue(payload["execution_attempted"])
+        self.assertTrue(artifact_exists)
         self.assertEqual(captured["workflow_name"], SUPPORTED_WORKFLOW_NAME)
         self.assertEqual(
             captured["inputs"],
@@ -255,6 +297,7 @@ class ServerTests(TestCase):
         self.assertEqual(payload["result_summary"]["result_code"], "succeeded")
         self.assertEqual(payload["result_summary"]["reason_code"], "completed")
         self.assertEqual(payload["result_summary"]["target_name"], SUPPORTED_WORKFLOW_NAME)
+        self.assertEqual(payload["execution_result"]["execution_mode"], "local-workflow-spec-executor")
         self.assertEqual(
             payload["result_summary"]["used_inputs"],
             {
@@ -264,7 +307,20 @@ class ServerTests(TestCase):
             },
         )
         self.assertEqual(payload["result_summary"]["output_paths"], ["/tmp/braker3_results"])
+        self.assertTrue(payload["result_summary"]["typed_planning_available"])
+        self.assertEqual(payload["result_summary"]["artifact_path"], payload["artifact_path"])
         self.assertIn("execution succeeded", payload["result_summary"]["message"])
+
+    def test_prompt_and_run_reports_typed_preview_without_executing_broader_request(self) -> None:
+        """Layer broader typed planning into prompt-and-run without changing runnable targets."""
+        payload = prompt_and_run("Create a generated WorkflowSpec for repeat filtering and BUSCO QC.")
+
+        self.assertFalse(payload["supported"])
+        self.assertFalse(payload["execution_attempted"])
+        self.assertEqual(payload["result_summary"]["status"], "declined")
+        self.assertTrue(payload["result_summary"]["typed_planning_available"])
+        self.assertEqual(payload["typed_planning"]["candidate_outcome"], "generated_workflow_spec")
+        self.assertIsNotNone(payload["typed_planning"]["workflow_spec"])
 
     def test_prompt_and_run_protein_workflow_prompt_uses_extracted_inputs(self) -> None:
         """Plan and dispatch the protein-evidence example prompt through the workflow runner."""
@@ -289,10 +345,17 @@ class ServerTests(TestCase):
                 "limitations": [],
             }
 
-        payload = _prompt_and_run_impl(prompt, workflow_runner=fake_workflow_runner)
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = _prompt_and_run_impl(
+                prompt,
+                workflow_runner=fake_workflow_runner,
+                recipe_dir=Path(tmp),
+            )
+            artifact_exists = Path(str(payload["artifact_path"])).exists()
 
         self.assertTrue(payload["supported"])
         self.assertTrue(payload["execution_attempted"])
+        self.assertTrue(artifact_exists)
         self.assertEqual(captured["workflow_name"], SUPPORTED_PROTEIN_WORKFLOW_NAME)
         self.assertEqual(
             captured["inputs"],
@@ -337,10 +400,17 @@ class ServerTests(TestCase):
                 "limitations": [],
             }
 
-        payload = _prompt_and_run_impl(prompt, task_runner=fake_task_runner)
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = _prompt_and_run_impl(
+                prompt,
+                task_runner=fake_task_runner,
+                recipe_dir=Path(tmp),
+            )
+            artifact_exists = Path(str(payload["artifact_path"])).exists()
 
         self.assertTrue(payload["supported"])
         self.assertTrue(payload["execution_attempted"])
+        self.assertTrue(artifact_exists)
         self.assertEqual(captured["task_name"], SUPPORTED_TASK_NAME)
         self.assertEqual(
             captured["inputs"],
@@ -363,24 +433,38 @@ class ServerTests(TestCase):
         )
         self.assertEqual(payload["result_summary"]["output_paths"], ["/tmp/exonerate_results"])
 
-    def test_prompt_and_run_declines_downstream_prompt(self) -> None:
-        """Decline prompts that ask for downstream stages beyond the showcase scope."""
+    def test_prompt_and_run_no_longer_blocks_downstream_terms(self) -> None:
+        """Execute the day-one target without the old downstream term blocklist."""
         prompt = (
             "Run protein evidence alignment with genome data/genome.fa and protein evidence data/proteins.fa, "
             "then continue into EVM and BUSCO."
         )
 
-        payload = prompt_and_run(prompt)
+        def fake_workflow_runner(workflow_name: str, inputs: dict[str, object]) -> dict[str, object]:
+            self.assertEqual(workflow_name, SUPPORTED_PROTEIN_WORKFLOW_NAME)
+            return {
+                "supported": True,
+                "entry_name": workflow_name,
+                "entry_category": "workflow",
+                "execution_mode": "synthetic-test",
+                "exit_status": 0,
+                "stdout": "",
+                "stderr": "",
+                "output_paths": ["/tmp/protein_evidence_results"],
+                "limitations": [],
+            }
 
-        self.assertFalse(payload["supported"])
-        self.assertFalse(payload["execution_attempted"])
-        self.assertIn("downstream stages", payload["plan"]["limitations"][0])
-        self.assertEqual(payload["plan"]["declined_downstream_stages"], ["EVM", "BUSCO"])
-        self.assertEqual(payload["result_summary"]["status"], "declined")
-        self.assertEqual(payload["result_summary"]["result_code"], "declined_downstream_scope")
-        self.assertEqual(payload["result_summary"]["reason_code"], "requested_downstream_stage")
-        self.assertEqual(payload["result_summary"]["declined_downstream_stages"], ["EVM", "BUSCO"])
-        self.assertIn("outside this MCP showcase", payload["result_summary"]["message"])
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = _prompt_and_run_impl(
+                prompt,
+                workflow_runner=fake_workflow_runner,
+                recipe_dir=Path(tmp),
+            )
+
+        self.assertTrue(payload["supported"])
+        self.assertTrue(payload["execution_attempted"])
+        self.assertEqual(payload["result_summary"]["status"], "succeeded")
+        self.assertEqual(payload["result_summary"]["target_name"], SUPPORTED_PROTEIN_WORKFLOW_NAME)
 
     def test_prompt_and_run_declines_missing_inputs(self) -> None:
         """Decline supported language when the prompt omits explicit runnable paths."""
@@ -390,13 +474,12 @@ class ServerTests(TestCase):
 
         self.assertFalse(payload["supported"])
         self.assertFalse(payload["execution_attempted"])
-        self.assertEqual(payload["plan"]["matched_entry_name"], SUPPORTED_TASK_NAME)
-        self.assertEqual(payload["plan"]["missing_required_inputs"], ["genome", "protein_chunk"])
+        self.assertEqual(payload["plan"]["matched_entry_names"], [SUPPORTED_TASK_NAME])
+        self.assertIn("genome", payload["plan"]["missing_requirements"][0])
         self.assertEqual(payload["result_summary"]["status"], "declined")
         self.assertEqual(payload["result_summary"]["result_code"], "declined_missing_inputs")
         self.assertEqual(payload["result_summary"]["reason_code"], "missing_required_inputs")
         self.assertEqual(payload["result_summary"]["target_name"], SUPPORTED_TASK_NAME)
-        self.assertIn("prompt omitted explicit inputs", payload["result_summary"]["message"])
 
     def test_prompt_and_run_declines_unsupported_request_with_codes(self) -> None:
         """Return stable unsupported-request codes when the prompt does not map cleanly."""
@@ -404,7 +487,7 @@ class ServerTests(TestCase):
 
         self.assertFalse(payload["supported"])
         self.assertFalse(payload["execution_attempted"])
-        self.assertIsNone(payload["plan"]["matched_entry_name"])
+        self.assertEqual(payload["plan"]["matched_entry_names"], [])
         self.assertEqual(payload["result_summary"]["status"], "declined")
         self.assertEqual(payload["result_summary"]["result_code"], "declined_unsupported_request")
         self.assertEqual(payload["result_summary"]["reason_code"], "unsupported_or_ambiguous_request")
@@ -439,14 +522,19 @@ class ServerTests(TestCase):
                 ],
             }
 
-        payload = _prompt_and_run_impl(prompt, workflow_runner=fake_workflow_runner)
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = _prompt_and_run_impl(
+                prompt,
+                workflow_runner=fake_workflow_runner,
+                recipe_dir=Path(tmp),
+            )
 
-        self.assertTrue(payload["supported"])
+        self.assertFalse(payload["supported"])
         self.assertTrue(payload["execution_attempted"])
         self.assertEqual(payload["result_summary"]["status"], "failed")
         self.assertEqual(payload["result_summary"]["result_code"], "failed_execution")
         self.assertEqual(payload["result_summary"]["reason_code"], "nonzero_exit_status")
-        self.assertEqual(payload["result_summary"]["exit_status"], 2)
+        self.assertEqual(payload["result_summary"]["exit_status"], 1)
         self.assertEqual(
             payload["result_summary"]["used_inputs"],
             {

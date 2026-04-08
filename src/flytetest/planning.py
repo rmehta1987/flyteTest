@@ -15,11 +15,13 @@ import argparse
 import inspect
 import json
 import re
-from dataclasses import asdict, dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import asdict, dataclass, field
 from importlib import import_module
+from pathlib import Path
+from typing import Any, Literal
 
 from flytetest.mcp_contract import (
-    DOWNSTREAM_STAGE_LABELS,
     SHOWCASE_LIMITATIONS,
     SHOWCASE_TARGETS_BY_NAME,
     SUPPORTED_PROTEIN_WORKFLOW_NAME,
@@ -27,11 +29,28 @@ from flytetest.mcp_contract import (
     SUPPORTED_WORKFLOW_NAME,
 )
 from flytetest.registry import InterfaceField, RegistryEntry, get_entry
+from flytetest.resolver import AssetResolver, LocalManifestAssetResolver, ResolutionResult
+from flytetest.specs import (
+    BindingPlan,
+    GeneratedEntityRecord,
+    TypedFieldSpec,
+    WorkflowEdgeSpec,
+    WorkflowNodeSpec,
+    WorkflowOutputBinding,
+    WorkflowSpec,
+)
 
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _PATH_RE = re.compile(r"(?P<path>(?:\.{1,2}/|/|[A-Za-z0-9_-]+/)[A-Za-z0-9_./-]+)")
 _FASTA_SUFFIXES = (".fa", ".faa", ".fasta", ".fna", ".fas")
+TypedPlanningOutcome = Literal[
+    "registered_task",
+    "registered_workflow",
+    "registered_stage_composition",
+    "generated_workflow_spec",
+    "declined",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +76,22 @@ class PromptPath:
 
     value: str
     context: str
+
+
+@dataclass(frozen=True, slots=True)
+class TypedPlanningGoal:
+    """One biology-level target selected before resolver and registry matching."""
+
+    name: str
+    outcome: TypedPlanningOutcome
+    target_entry_names: tuple[str, ...]
+    required_planner_types: tuple[str, ...]
+    produced_planner_types: tuple[str, ...]
+    rationale: tuple[str, ...]
+    analysis_goal: str
+    generated_entity_id: str | None = None
+    unresolved_runtime_requirements: tuple[str, ...] = field(default_factory=tuple)
+    runtime_bindings: dict[str, object] = field(default_factory=dict)
 
 
 def _normalize(text: str) -> str:
@@ -376,22 +411,580 @@ def _missing_required_inputs(name: str, extracted_inputs: dict[str, object]) -> 
     return missing
 
 
-def declined_downstream_stages(request: str) -> tuple[str, ...]:
-    """Return the stable declined-stage labels mentioned in one prompt."""
-    normalized_request = _normalize(request)
-    positions: dict[str, int] = {}
-    for keyword, label in DOWNSTREAM_STAGE_LABELS:
-        index = normalized_request.find(keyword)
-        if index == -1:
-            continue
-        if label not in positions or index < positions[label]:
-            positions[label] = index
-    return tuple(label for label, _ in sorted(positions.items(), key=lambda item: item[1]))
+def declined_downstream_stages(_request: str) -> tuple[str, ...]:
+    """Return no downstream blocklist hits after the MCP recipe cutover."""
+    return ()
 
 
 def showcase_limitations() -> tuple[str, ...]:
     """Return the hard interface limits for the showcase planner."""
     return SHOWCASE_LIMITATIONS
+
+
+def _typed_field(name: str, planner_type_name: str, description: str) -> TypedFieldSpec:
+    """Build one planner-facing field for a typed workflow spec preview."""
+    return TypedFieldSpec(
+        name=name,
+        type_name=planner_type_name,
+        description=description,
+        planner_type_names=(planner_type_name,),
+    )
+
+
+def _planning_goal_for_typed_request(request: str) -> TypedPlanningGoal | None:
+    """Classify a prompt into one broader typed-planning goal when possible."""
+    normalized_request = _normalize(request)
+
+    if any(keyword in normalized_request for keyword in ("variant calling", "snv", "snp", "vcf")):
+        return None
+
+    matched_name, _, _ = _classify_target(normalized_request)
+    if matched_name is not None:
+        prompt_paths = _extract_prompt_paths(request)
+        if matched_name == SUPPORTED_WORKFLOW_NAME:
+            extracted_inputs = _extract_braker_workflow_inputs(request, prompt_paths)
+        elif matched_name == SUPPORTED_PROTEIN_WORKFLOW_NAME:
+            extracted_inputs = _extract_protein_workflow_inputs(request, prompt_paths)
+        else:
+            extracted_inputs = _extract_task_inputs(request, prompt_paths)
+        if not _missing_required_inputs(matched_name, extracted_inputs):
+            entry = get_entry(matched_name)
+            target_kind = "registered_task" if entry.category == "task" else "registered_workflow"
+            produced_types = entry.compatibility.produced_planner_types or tuple(field.type for field in entry.outputs)
+            return TypedPlanningGoal(
+                name=matched_name,
+                outcome=target_kind,
+                target_entry_names=(matched_name,),
+                required_planner_types=(),
+                produced_planner_types=produced_types,
+                rationale=(
+                    f"The prompt maps to the day-one MCP target `{matched_name}`.",
+                    "Prompt-contained local paths are frozen as runtime bindings in the saved recipe.",
+                ),
+                analysis_goal=f"Run the registered {entry.category} `{matched_name}` from a frozen recipe.",
+                runtime_bindings=dict(extracted_inputs),
+            )
+
+    asks_for_generated_spec = "workflow spec" in normalized_request or "generated spec" in normalized_request
+    asks_for_repeat_then_qc = (
+        ("repeat" in normalized_request or "repeat filtering" in normalized_request)
+        and ("busco" in normalized_request or "quality" in normalized_request or "qc" in normalized_request)
+    )
+    if asks_for_generated_spec or asks_for_repeat_then_qc:
+        return TypedPlanningGoal(
+            name="repeat_filter_then_busco_qc",
+            outcome="generated_workflow_spec",
+            target_entry_names=("annotation_repeat_filtering", "annotation_qc_busco"),
+            required_planner_types=("ConsensusAnnotation",),
+            produced_planner_types=("QualityAssessmentTarget",),
+            rationale=(
+                "The prompt asks for a multi-stage repeat-filtering and QC bundle that is not a checked-in single workflow.",
+                "The planner can describe a saved generated WorkflowSpec preview from existing registered stages.",
+            ),
+            analysis_goal="Prepare a generated spec preview for repeat filtering followed by BUSCO QC.",
+            generated_entity_id="generated::repeat_filter_then_busco_qc::preview",
+            unresolved_runtime_requirements=(
+                "`repeatmasker_out` must still be supplied before execution.",
+                "`busco_lineages_text` must still be supplied before execution.",
+                "Milestone 5 creates a metadata-only spec preview and does not persist or execute it yet.",
+            ),
+        )
+
+    if "consensus" in normalized_request and ("evm" in normalized_request or "annotation" in normalized_request):
+        return TypedPlanningGoal(
+            name="consensus_annotation_from_registered_stages",
+            outcome="registered_stage_composition",
+            target_entry_names=("consensus_annotation_evm_prep", "consensus_annotation_evm"),
+            required_planner_types=("TranscriptEvidenceSet", "ProteinEvidenceSet", "AnnotationEvidenceSet"),
+            produced_planner_types=("ConsensusAnnotation",),
+            rationale=(
+                "The prompt asks for consensus annotation through the EVM boundary.",
+                "The registered pre-EVM preparation and EVM execution workflows form the reviewed composition path.",
+            ),
+            analysis_goal="Compose reviewed pre-EVM preparation and EVM execution stages.",
+            unresolved_runtime_requirements=(
+                "EVM script paths and optional weights remain normal runtime bindings.",
+            ),
+        )
+
+    if "agat" in normalized_request and any(
+        keyword in normalized_request
+        for keyword in ("cleanup", "clean up", "cleaned", "submission cleanup", "ncbi")
+    ):
+        return TypedPlanningGoal(
+            name="annotation_postprocess_agat_cleanup",
+            outcome="registered_workflow",
+            target_entry_names=("annotation_postprocess_agat_cleanup",),
+            required_planner_types=("QualityAssessmentTarget",),
+            produced_planner_types=("QualityAssessmentTarget",),
+            rationale=(
+                "The prompt asks for AGAT cleanup on the post-conversion GFF3 boundary.",
+                "That maps to the registered deterministic cleanup workflow while keeping table2asn deferred.",
+            ),
+            analysis_goal="Run the registered AGAT cleanup workflow.",
+        )
+
+    if "agat" in normalized_request and any(
+        keyword in normalized_request
+        for keyword in ("convert", "conversion", "normalize", "standardize", "gxf2gxf")
+    ):
+        return TypedPlanningGoal(
+            name="annotation_postprocess_agat_conversion",
+            outcome="registered_workflow",
+            target_entry_names=("annotation_postprocess_agat_conversion",),
+            required_planner_types=("QualityAssessmentTarget",),
+            produced_planner_types=("QualityAssessmentTarget",),
+            rationale=(
+                "The prompt asks for AGAT conversion or normalization on the EggNOG-annotated GFF3 boundary.",
+                "That maps to the registered AGAT conversion workflow while keeping cleanup as a separate follow-on slice before table2asn.",
+            ),
+            analysis_goal="Run the registered AGAT conversion workflow.",
+        )
+
+    if "agat" in normalized_request and any(
+        keyword in normalized_request for keyword in ("statistics", "statistic", "stats")
+    ):
+        return TypedPlanningGoal(
+            name="annotation_postprocess_agat",
+            outcome="registered_workflow",
+            target_entry_names=("annotation_postprocess_agat",),
+            required_planner_types=("QualityAssessmentTarget",),
+            produced_planner_types=("QualityAssessmentTarget",),
+            rationale=(
+                "The prompt asks for AGAT post-processing on the EggNOG-annotated GFF3 boundary.",
+                "That maps to the registered AGAT statistics workflow while keeping conversion and cleanup as explicit separate slices.",
+            ),
+            analysis_goal="Run the registered AGAT post-processing workflow.",
+        )
+
+    if "eggnog" in normalized_request or "functional annotation" in normalized_request:
+        return TypedPlanningGoal(
+            name="annotation_functional_eggnog",
+            outcome="registered_workflow",
+            target_entry_names=("annotation_functional_eggnog",),
+            required_planner_types=("QualityAssessmentTarget",),
+            produced_planner_types=("QualityAssessmentTarget",),
+            rationale=(
+                "The prompt asks for post-BUSCO functional annotation.",
+                "That maps to the registered EggNOG functional-annotation workflow when a reviewable quality target can be resolved.",
+            ),
+            analysis_goal="Run the registered EggNOG functional-annotation workflow.",
+            unresolved_runtime_requirements=(
+                "`eggnog_data_dir` must still be supplied before execution.",
+                "`eggnog_database` should be selected explicitly for the chosen taxonomic scope.",
+            ),
+        )
+
+    if "busco" in normalized_request or "quality assessment" in normalized_request:
+        return TypedPlanningGoal(
+            name="annotation_qc_busco",
+            outcome="registered_workflow",
+            target_entry_names=("annotation_qc_busco",),
+            required_planner_types=("QualityAssessmentTarget",),
+            produced_planner_types=("QualityAssessmentTarget",),
+            rationale=(
+                "The prompt asks for BUSCO annotation quality assessment.",
+                "That maps to the registered BUSCO QC workflow when a QC target can be resolved.",
+            ),
+            analysis_goal="Run the registered BUSCO QC workflow from a repeat-filtered annotation target.",
+        )
+
+    if "protein evidence alignment" in normalized_request or (
+        "protein evidence" in normalized_request and "alignment" in normalized_request
+    ):
+        return TypedPlanningGoal(
+            name="protein_evidence_alignment",
+            outcome="registered_workflow",
+            target_entry_names=("protein_evidence_alignment",),
+            required_planner_types=("ReferenceGenome", "ProteinEvidenceSet"),
+            produced_planner_types=("ProteinEvidenceSet",),
+            rationale=(
+                "The prompt asks for the protein-evidence alignment stage.",
+                "That maps to the registered protein_evidence_alignment workflow.",
+            ),
+            analysis_goal="Run the registered protein-evidence alignment workflow.",
+        )
+
+    if "transcript evidence" in normalized_request:
+        return TypedPlanningGoal(
+            name="transcript_evidence_generation",
+            outcome="registered_workflow",
+            target_entry_names=("transcript_evidence_generation",),
+            required_planner_types=("ReferenceGenome", "ReadSet"),
+            produced_planner_types=("TranscriptEvidenceSet",),
+            rationale=(
+                "The prompt asks for transcript evidence generation.",
+                "That maps to the registered transcript_evidence_generation workflow when reads and genome resolve.",
+            ),
+            analysis_goal="Run the registered transcript-evidence generation workflow.",
+        )
+
+    return None
+
+
+def _serialized_resolved_value(result: ResolutionResult) -> object:
+    """Return a JSON-compatible representation of one resolved planner value."""
+    value = result.resolved_value
+    if hasattr(value, "to_dict"):
+        return value.to_dict()
+    return str(value)
+
+
+def _resolve_typed_goal_inputs(
+    goal: TypedPlanningGoal,
+    *,
+    explicit_bindings: Mapping[str, Any],
+    manifest_sources: Sequence[Path | Mapping[str, Any]],
+    result_bundles: Sequence[Any],
+    resolver: AssetResolver,
+) -> tuple[dict[str, object], dict[str, object], tuple[str, ...], tuple[str, ...]]:
+    """Resolve the planner-facing inputs required by one typed goal."""
+    resolved_inputs: dict[str, object] = {}
+    source_labels: dict[str, object] = {}
+    unresolved_requirements: list[str] = []
+    assumptions: list[str] = []
+
+    for planner_type_name in goal.required_planner_types:
+        result = resolver.resolve(
+            planner_type_name,
+            explicit_bindings=explicit_bindings,
+            manifest_sources=manifest_sources,
+            result_bundles=result_bundles,
+        )
+        assumptions.extend(assumption for assumption in result.assumptions if assumption not in assumptions)
+        if result.is_resolved:
+            resolved_inputs[planner_type_name] = _serialized_resolved_value(result)
+            source_labels[planner_type_name] = {
+                "kind": result.selected_source.kind,
+                "label": result.selected_source.label,
+            }
+            continue
+        unresolved_requirements.extend(result.unresolved_requirements)
+
+    return resolved_inputs, source_labels, tuple(unresolved_requirements), tuple(assumptions)
+
+
+def _workflow_spec_for_typed_goal(goal: TypedPlanningGoal, *, source_prompt: str) -> WorkflowSpec | None:
+    """Build a metadata-only workflow spec preview for one typed planning goal."""
+    entries = tuple(get_entry(entry_name) for entry_name in goal.target_entry_names)
+    inputs = tuple(
+        _typed_field(planner_type_name, planner_type_name, f"Resolved planner input `{planner_type_name}`.")
+        for planner_type_name in goal.required_planner_types
+    )
+    outputs = tuple(
+        _typed_field(planner_type_name, planner_type_name, f"Planned output `{planner_type_name}`.")
+        for planner_type_name in goal.produced_planner_types
+    )
+
+    if goal.outcome in {"registered_task", "registered_workflow"}:
+        entry = entries[0]
+        selection_mode = "registered_task" if goal.outcome == "registered_task" else "registered_workflow"
+        return WorkflowSpec(
+            name=f"select_{entry.name}",
+            analysis_goal=goal.analysis_goal,
+            inputs=inputs,
+            outputs=outputs,
+            nodes=(
+                WorkflowNodeSpec(
+                    name=entry.name,
+                    kind=entry.category,
+                    reference_name=entry.name,
+                    description=f"Direct selection of registered {entry.category} `{entry.name}`.",
+                    output_names=tuple(field.name for field in entry.outputs),
+                ),
+            ),
+            edges=(),
+            reusable_registered_refs=(entry.name,),
+            final_output_bindings=(
+                WorkflowOutputBinding(
+                    output_name=entry.outputs[0].name,
+                    source_node=entry.name,
+                    source_output=entry.outputs[0].name,
+                    description="Pass through the registered workflow output bundle.",
+                ),
+            ),
+            default_execution_profile=entry.compatibility.execution_defaults.get("profile", "local"),
+            replay_metadata={"selection_mode": selection_mode},
+        )
+
+    if goal.outcome == "registered_stage_composition":
+        prep_entry, execute_entry = entries
+        return WorkflowSpec(
+            name=goal.name,
+            analysis_goal=goal.analysis_goal,
+            inputs=inputs,
+            outputs=outputs,
+            nodes=(
+                WorkflowNodeSpec(
+                    name="prep",
+                    kind="workflow",
+                    reference_name=prep_entry.name,
+                    description=f"Run registered stage `{prep_entry.name}`.",
+                    input_bindings={
+                        "pasa_results": "inputs.TranscriptEvidenceSet",
+                        "protein_evidence_results": "inputs.ProteinEvidenceSet",
+                        "transdecoder_results": "inputs.AnnotationEvidenceSet",
+                        "braker3_results": "inputs.AnnotationEvidenceSet",
+                    },
+                    output_names=tuple(field.name for field in prep_entry.outputs),
+                ),
+                WorkflowNodeSpec(
+                    name="execute",
+                    kind="workflow",
+                    reference_name=execute_entry.name,
+                    description=f"Run registered stage `{execute_entry.name}` from the prepared EVM bundle.",
+                    input_bindings={"evm_prep_results": "prep.results_dir"},
+                    output_names=tuple(field.name for field in execute_entry.outputs),
+                ),
+            ),
+            edges=(
+                WorkflowEdgeSpec(
+                    source_node="prep",
+                    source_output=prep_entry.outputs[0].name,
+                    target_node="execute",
+                    target_input=execute_entry.inputs[0].name,
+                ),
+            ),
+            ordering_constraints=("prep before execute",),
+            reusable_registered_refs=goal.target_entry_names,
+            final_output_bindings=(
+                WorkflowOutputBinding(
+                    output_name=execute_entry.outputs[0].name,
+                    source_node="execute",
+                    source_output=execute_entry.outputs[0].name,
+                    description="Final consensus annotation result bundle.",
+                ),
+            ),
+            default_execution_profile="local",
+            replay_metadata={"selection_mode": "registered_stage_composition"},
+        )
+
+    if goal.outcome == "generated_workflow_spec":
+        generated_record = GeneratedEntityRecord(
+            generated_entity_id=goal.generated_entity_id or f"generated::{goal.name}",
+            source_prompt=source_prompt,
+            assumptions=(
+                "This is a metadata-only generated spec preview in Milestone 5.",
+                "The preview references registered stages and does not generate new task code.",
+            ),
+            selected_execution_profile="local",
+            referenced_registered_building_blocks=goal.target_entry_names,
+            created_at="not_persisted_in_milestone_5",
+            replay_metadata={"workflow_spec_version": "preview-v1"},
+        )
+        repeat_entry, qc_entry = entries
+        return WorkflowSpec(
+            name=goal.name,
+            analysis_goal=goal.analysis_goal,
+            inputs=inputs,
+            outputs=outputs,
+            nodes=(
+                WorkflowNodeSpec(
+                    name="repeat_filtering",
+                    kind="workflow",
+                    reference_name=repeat_entry.name,
+                    description=f"Run registered stage `{repeat_entry.name}`.",
+                    input_bindings={"pasa_update_results": "inputs.ConsensusAnnotation"},
+                    output_names=tuple(field.name for field in repeat_entry.outputs),
+                ),
+                WorkflowNodeSpec(
+                    name="busco_qc",
+                    kind="workflow",
+                    reference_name=qc_entry.name,
+                    description=f"Run registered stage `{qc_entry.name}` from repeat-filtered outputs.",
+                    input_bindings={"repeat_filter_results": "repeat_filtering.results_dir"},
+                    output_names=tuple(field.name for field in qc_entry.outputs),
+                ),
+            ),
+            edges=(
+                WorkflowEdgeSpec(
+                    source_node="repeat_filtering",
+                    source_output=repeat_entry.outputs[0].name,
+                    target_node="busco_qc",
+                    target_input=qc_entry.inputs[0].name,
+                ),
+            ),
+            ordering_constraints=("repeat_filtering before busco_qc",),
+            reusable_registered_refs=goal.target_entry_names,
+            final_output_bindings=(
+                WorkflowOutputBinding(
+                    output_name=qc_entry.outputs[0].name,
+                    source_node="busco_qc",
+                    source_output=qc_entry.outputs[0].name,
+                    description="BUSCO QC result bundle from the generated spec preview.",
+                ),
+            ),
+            default_execution_profile="local",
+            replay_metadata={"selection_mode": "generated_workflow_spec_preview"},
+            generated_entity_record=generated_record,
+        )
+
+    return None
+
+
+def _binding_plan_for_typed_goal(
+    goal: TypedPlanningGoal,
+    *,
+    resolved_inputs: Mapping[str, object],
+    source_labels: Mapping[str, object],
+    unresolved_requirements: tuple[str, ...],
+    assumptions: tuple[str, ...],
+) -> BindingPlan:
+    """Build the metadata-only binding record for a typed planning result."""
+    if goal.outcome == "generated_workflow_spec":
+        target_kind = "generated_workflow"
+    elif goal.outcome == "registered_task":
+        target_kind = "task"
+    else:
+        target_kind = "workflow"
+    return BindingPlan(
+        target_name=goal.name,
+        target_kind=target_kind,
+        resolved_prior_assets=dict(source_labels),
+        manifest_derived_paths={
+            planner_type_name: source
+            for planner_type_name, source in source_labels.items()
+            if isinstance(source, Mapping) and source.get("kind") == "manifest"
+        },
+        execution_profile="local",
+        runtime_bindings=dict(goal.runtime_bindings),
+        unresolved_requirements=unresolved_requirements,
+        assumptions=assumptions,
+    )
+
+
+def _unsupported_typed_plan(request: str, reason: str, rationale: tuple[str, ...]) -> dict[str, object]:
+    """Build an honest typed-planning decline without falling back to guessing."""
+    return {
+        "supported": False,
+        "original_request": request,
+        "planning_outcome": "declined",
+        "biological_goal": None,
+        "matched_entry_names": [],
+        "required_planner_types": [],
+        "produced_planner_types": [],
+        "resolved_inputs": {},
+        "missing_requirements": [reason],
+        "runtime_requirements": [],
+        "assumptions": [
+            "Typed planning is additive in Milestone 5 and does not replace the narrow showcase planner yet.",
+        ],
+        "rationale": list(rationale),
+        "candidate_outcome": None,
+        "workflow_spec": None,
+        "binding_plan": None,
+        "metadata_only": True,
+    }
+
+
+def _unsupported_day_one_typed_plan(request: str) -> dict[str, object] | None:
+    """Build a decline for recognized day-one targets missing prompt paths."""
+    normalized_request = _normalize(request)
+    matched_name, _, rationale = _classify_target(normalized_request)
+    if matched_name is None:
+        return None
+    prompt_paths = _extract_prompt_paths(request)
+    if matched_name == SUPPORTED_WORKFLOW_NAME:
+        extracted_inputs = _extract_braker_workflow_inputs(request, prompt_paths)
+    elif matched_name == SUPPORTED_PROTEIN_WORKFLOW_NAME:
+        extracted_inputs = _extract_protein_workflow_inputs(request, prompt_paths)
+    else:
+        extracted_inputs = _extract_task_inputs(request, prompt_paths)
+    missing_inputs = _missing_required_inputs(matched_name, extracted_inputs)
+    if not missing_inputs:
+        return None
+    entry = get_entry(matched_name)
+    candidate_outcome = "registered_task" if entry.category == "task" else "registered_workflow"
+    return {
+        "supported": False,
+        "original_request": request,
+        "planning_outcome": "declined",
+        "biological_goal": matched_name,
+        "matched_entry_names": [matched_name],
+        "required_planner_types": [],
+        "produced_planner_types": list(entry.compatibility.produced_planner_types or tuple(field.type for field in entry.outputs)),
+        "resolved_inputs": {},
+        "missing_requirements": [
+            f"The prompt is missing explicit required inputs for `{matched_name}`: {', '.join(missing_inputs)}."
+        ],
+        "runtime_requirements": [],
+        "assumptions": [
+            "Day-one MCP recipe execution freezes prompt-contained local paths into runtime bindings.",
+        ],
+        "rationale": list(rationale),
+        "candidate_outcome": candidate_outcome,
+        "workflow_spec": None,
+        "binding_plan": None,
+        "metadata_only": True,
+    }
+
+
+def plan_typed_request(
+    request: str,
+    *,
+    explicit_bindings: Mapping[str, Any] | None = None,
+    manifest_sources: Sequence[Path | Mapping[str, Any]] = (),
+    result_bundles: Sequence[Any] = (),
+    resolver: AssetResolver | None = None,
+) -> dict[str, object]:
+    """Plan a prompt through the Milestone 5 typed resolver and registry path.
+
+    This entrypoint is additive: it previews the broader `realtime` planning
+    flow while `plan_request(...)` continues to preserve the current MCP
+    showcase payload and explicit-path behavior.
+    """
+    goal = _planning_goal_for_typed_request(request)
+    if goal is None:
+        if day_one_decline := _unsupported_day_one_typed_plan(request):
+            return day_one_decline
+        return _unsupported_typed_plan(
+            request,
+            reason="The request does not map to a supported typed biology goal, so the planner declines instead of inventing steps.",
+            rationale=(
+                "Milestone 5 only recognizes a small set of registered workflow and registered-stage planning goals.",
+            ),
+        )
+
+    resolver = resolver or LocalManifestAssetResolver()
+    resolved_inputs, source_labels, missing_requirements, assumptions = _resolve_typed_goal_inputs(
+        goal,
+        explicit_bindings=explicit_bindings or {},
+        manifest_sources=manifest_sources,
+        result_bundles=result_bundles,
+        resolver=resolver,
+    )
+    workflow_spec = _workflow_spec_for_typed_goal(goal, source_prompt=request)
+    binding_plan = _binding_plan_for_typed_goal(
+        goal,
+        resolved_inputs=resolved_inputs,
+        source_labels=source_labels,
+        unresolved_requirements=missing_requirements + goal.unresolved_runtime_requirements,
+        assumptions=assumptions
+        + (
+            "Typed planning uses resolver and registry metadata before any future execution step.",
+            "WorkflowSpec and BindingPlan outputs are metadata-only in Milestone 5.",
+        ),
+    )
+
+    supported = not missing_requirements
+    return {
+        "supported": supported,
+        "original_request": request,
+        "planning_outcome": goal.outcome if supported else "declined",
+        "candidate_outcome": goal.outcome,
+        "biological_goal": goal.name,
+        "matched_entry_names": list(goal.target_entry_names),
+        "required_planner_types": list(goal.required_planner_types),
+        "produced_planner_types": list(goal.produced_planner_types),
+        "resolved_inputs": resolved_inputs,
+        "missing_requirements": list(missing_requirements),
+        "runtime_requirements": list(goal.unresolved_runtime_requirements),
+        "assumptions": list(binding_plan.assumptions),
+        "rationale": list(goal.rationale),
+        "workflow_spec": workflow_spec.to_dict() if workflow_spec is not None else None,
+        "binding_plan": binding_plan.to_dict(),
+        "metadata_only": True,
+    }
 
 
 def _assumptions_for_target(name: str) -> tuple[str, ...]:
@@ -447,17 +1040,6 @@ def _unsupported_plan(
 def plan_request(request: str) -> dict[str, object]:
     """Plan one prompt for the narrow workflow-or-task showcase."""
     normalized_request = _normalize(request)
-    downstream_hits = declined_downstream_stages(request)
-    if downstream_hits:
-        quoted_hits = ", ".join(f"`{stage}`" for stage in downstream_hits)
-        return _unsupported_plan(
-            request,
-            reason=f"The prompt mentions downstream stages {quoted_hits}, which this showcase must decline explicitly.",
-            rationale=(
-                "The request goes beyond the supported BRAKER3 workflow, protein-evidence workflow, and Exonerate chunk task boundary.",
-            ),
-            declined_stages=downstream_hits,
-        )
 
     matched_name, confidence, rationale = _classify_target(normalized_request)
     if matched_name is None:
