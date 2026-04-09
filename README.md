@@ -429,6 +429,9 @@ reconciles the record with `squeue`, `scontrol show job`, and `sacct`, while
 remain later milestones. On the RCC cluster the frozen Slurm recipe carries an
 account setting through to the generated script so submission does not depend
 on a manual `sbatch --account=...` override.
+The cluster helper scripts under `scripts/rcc/` now include a protein-evidence
+Slurm lifecycle launcher plus monitor and cancellation wrappers that default to
+the same account and queue policy.
 
 ## Assumptions
 

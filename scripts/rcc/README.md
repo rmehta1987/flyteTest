@@ -31,6 +31,14 @@ The local smoke scripts can still use `data/images/*.sif`.
   `hello from slurm`
 - `run_hello_from_slurm.sh`: convenience launcher that creates the output
   directory and submits the hello-world Slurm job
+- `run_protein_evidence_slurm.sh`: prepares and submits the protein-evidence
+  FLyteTest recipe with cluster defaults for the Slurm account, partition,
+  walltime, CPU, and memory
+- `monitor_protein_evidence_slurm.sh`: reconciles the latest protein-evidence
+  Slurm run record, or a run record path that you pass explicitly
+- `cancel_protein_evidence_slurm.sh`: requests cancellation for the latest
+  protein-evidence Slurm run record, or a run record path that you pass
+  explicitly
 - `check_minimal_fixtures.sh`: verifies the lightweight tutorial-backed
   fixture set is present under `data/`
 - `minimal_transcriptomics_smoke.sh`: runs Trinity, STAR, and StringTie against
@@ -172,6 +180,28 @@ Submit the hello-world Slurm smoke job:
 ```bash
 bash scripts/rcc/run_hello_from_slurm.sh
 ```
+
+Run the protein-evidence Slurm lifecycle smoke from the top:
+
+```bash
+bash scripts/rcc/run_protein_evidence_slurm.sh
+bash scripts/rcc/monitor_protein_evidence_slurm.sh
+```
+
+The protein-evidence launcher freezes the Slurm recipe with the cluster
+defaults used by this repo:
+
+- account: `rcc-staff` unless `FLYTETEST_SLURM_ACCOUNT` is already set
+- partition: `batch` unless `FLYTETEST_SLURM_QUEUE` is already set
+- walltime: `02:00:00` unless `FLYTETEST_SLURM_WALLTIME` is already set
+- CPU count: `8` unless `FLYTETEST_SLURM_CPU` is already set
+- memory: `32Gi` unless `FLYTETEST_SLURM_MEMORY` is already set
+
+The submit helper writes the latest durable run-record path to
+`.runtime/runs/latest_protein_evidence_slurm_run_record.txt` and the matching
+saved recipe artifact path to
+`.runtime/runs/latest_protein_evidence_slurm_artifact.txt` so the monitor and
+cancel helpers can follow the run without manual copy/paste.
 
 Run the transcriptomics smoke suite:
 
