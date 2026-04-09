@@ -360,9 +360,10 @@ to restore the core local smoke images under `data/images/`. The additional
 repo-local images `data/images/braker3.sif` and
 `data/images/busco_v6.0.0_cv1.sif` are expected to be staged separately when
 those stages are exercised. The cluster wrappers keep using the shared RCC
-`/project/rcc/hyadav/genomes` image paths for Trinity, STAR, and StringTie, and
-you can point `PASA_SIF` at the PASA image path you scp to the cluster when you
-run that smoke there.
+`/project/rcc/hyadav/genomes` image paths for Trinity and STAR, use the shared
+StringTie install at `/project/rcc/hyadav/genomes/software/stringtie`, and you
+can point `PASA_SIF` at the PASA image path you scp to the cluster when you run
+that smoke there.
 Use [scripts/rcc/build_pasa_image.sh](/home/rmeht/Projects/flyteTest/scripts/rcc/build_pasa_image.sh)
 to build the experimental PASA image recipe when you need to inspect the
 container itself. The preferred source is the local

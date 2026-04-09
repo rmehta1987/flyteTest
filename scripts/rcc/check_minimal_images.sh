@@ -15,7 +15,7 @@ check_file() {
   fi
 
   if [[ ! -e "$abs_path" ]]; then
-    echo "missing image: $label" >&2
+    echo "missing artifact: $label" >&2
     missing=1
   fi
 }
@@ -38,7 +38,7 @@ check_file "${PASA_SIF:-data/images/pasa_2.5.3.sif}" "PASA image (${PASA_SIF:-da
 if [[ -d "$PROJECT_IMAGE_ROOT" ]]; then
   check_file "$PROJECT_IMAGE_ROOT/trinityrnaseq.v2.15.2.simg" "cluster Trinity image ($PROJECT_IMAGE_ROOT/trinityrnaseq.v2.15.2.simg)"
   check_file "$PROJECT_IMAGE_ROOT/STAR.sif" "cluster STAR image ($PROJECT_IMAGE_ROOT/STAR.sif)"
-  check_file "$PROJECT_IMAGE_ROOT/StringTie.sif" "cluster StringTie image ($PROJECT_IMAGE_ROOT/StringTie.sif)"
+  check_file "$PROJECT_IMAGE_ROOT/stringtie" "cluster StringTie install ($PROJECT_IMAGE_ROOT/stringtie)"
 else
   echo "skipping cluster image checks; $PROJECT_IMAGE_ROOT is not present" >&2
 fi
@@ -48,4 +48,4 @@ if [[ "$missing" -ne 0 ]]; then
   exit 1
 fi
 
-echo "all minimal smoke images are present"
+echo "all minimal smoke artifacts are present"

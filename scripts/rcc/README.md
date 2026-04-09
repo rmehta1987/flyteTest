@@ -14,10 +14,10 @@ tool boundary with the same command shape used in FLyteTest.
 
 The minimal smoke wrappers default their input files to the repo-local `data/`
 tree. For images, the cluster wrappers keep using the shared RCC
-`/project/rcc/hyadav/genomes` paths for Trinity, STAR, and StringTie unless you
-override the `*_SIF` environment variables. The local smoke scripts can still
-use `data/images/*.sif`, and the PASA image is the one you may scp to the
-cluster and point `PASA_SIF` at explicitly.
+`/project/rcc/hyadav/genomes` paths for Trinity and STAR, use the shared
+StringTie install at `/project/rcc/hyadav/genomes/software/stringtie`, and
+scp the PASA image to the cluster and point `PASA_SIF` at it explicitly. The
+local smoke scripts can still use `data/images/*.sif`.
 
 ## Scripts
 
@@ -61,8 +61,9 @@ cluster and point `PASA_SIF` at explicitly.
 - `download_minimal_images.sh`: restores the small smoke images into
   `data/images/`
 - `check_minimal_images.sh`: verifies the smoke images are present under
-  `data/images/` and also checks the shared cluster Trinity/STAR/StringTie
-  defaults under `/project/rcc/hyadav/genomes/software` when available
+  `data/images/` and also checks the shared cluster Trinity/STAR defaults plus
+  the StringTie install under `/project/rcc/hyadav/genomes/software` when
+  available
 - `build_pasa_image.sh`: builds a PASA image that adds legacy BLAST support
   from the local
   [containers/pasa/Dockerfile](/home/rmeht/Projects/flyteTest/containers/pasa/Dockerfile),
@@ -123,7 +124,7 @@ bash scripts/rcc/stringtie.sh
 
 The StringTie wrapper defaults to the repo-local minimal fixture layout:
 
-- image: `/project/rcc/hyadav/genomes/software/StringTie.sif`
+- install: `/project/rcc/hyadav/genomes/software/stringtie`
 - input BAM: `data/braker3/rnaseq/RNAseq.bam`
 - output GTF: `temp/stringtie/stringtie_yeast.gtf`
 - abundance table:
