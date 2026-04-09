@@ -202,6 +202,8 @@ The submit helper writes the latest durable run-record path to
 saved recipe artifact path to
 `.runtime/runs/latest_protein_evidence_slurm_artifact.txt` so the monitor and
 cancel helpers can follow the run without manual copy/paste.
+When the cluster module system is available, the helper loads
+`python/3.11.9` and then activates `.venv/` if it exists in the checkout.
 
 Run the transcriptomics smoke suite:
 

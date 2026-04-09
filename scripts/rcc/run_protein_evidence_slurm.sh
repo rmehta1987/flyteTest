@@ -18,10 +18,18 @@ RUN_RECORD_POINTER="$REPO_ROOT/.runtime/runs/latest_protein_evidence_slurm_run_r
 ARTIFACT_POINTER="$REPO_ROOT/.runtime/runs/latest_protein_evidence_slurm_artifact.txt"
 mkdir -p "$(dirname "$RUN_RECORD_POINTER")"
 
-PYTHON_BIN="${PYTHON_BIN:-$REPO_ROOT/.venv/bin/python}"
-if [[ ! -x "$PYTHON_BIN" ]]; then
-  PYTHON_BIN="$(command -v python3)"
+if command -v module >/dev/null 2>&1; then
+  module load python/3.11.9
 fi
+
+if [[ -f "$REPO_ROOT/.venv/bin/activate" ]]; then
+  # Activate the repo environment when it exists so the cluster run uses the
+  # same pinned dependencies as the local workspace.
+  # shellcheck disable=SC1091
+  source "$REPO_ROOT/.venv/bin/activate"
+fi
+
+PYTHON_BIN="${PYTHON_BIN:-$(command -v python3)}"
 
 "$PYTHON_BIN" - <<'PY'
 from __future__ import annotations
