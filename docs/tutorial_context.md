@@ -255,7 +255,7 @@ Practical rule:
 
 - use stage-local read, genome, BAM, and protein files under `data/` for direct tool smoke tests
 - use `data/images/*.sif` when you want a local Apptainer-backed smoke run without relying on the RCC `/project` image paths
-- use the RCC `/project/rcc/hyadav/genomes` image paths for the standard Trinity and STAR cluster wrappers, and the shared StringTie install at `/project/rcc/hyadav/genomes/software/stringtie`
+- use the RCC `/project/rcc/hyadav/genomes` image paths for the standard Trinity and STAR cluster wrappers, and the shared StringTie binary at `/project/rcc/hyadav/genomes/software/stringtie/stringtie`
 - use `data/images/pasa_2.5.3.sif` for the local PASA Apptainer image smoke, or scp the PASA image to the cluster and point `PASA_SIF` at that cluster path
 - the PASA Apptainer image smoke does not currently support the legacy
   `seqclean` path; see

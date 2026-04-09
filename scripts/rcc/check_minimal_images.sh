@@ -40,7 +40,7 @@ check_file "${PASA_SIF:-data/images/pasa_2.5.3.sif}" "PASA image (${PASA_SIF:-da
 if [[ -d "$PROJECT_IMAGE_ROOT" ]]; then
   check_file "$PROJECT_IMAGE_ROOT/trinityrnaseq.v2.15.2.simg" "cluster Trinity image ($PROJECT_IMAGE_ROOT/trinityrnaseq.v2.15.2.simg)"
   check_file "$PROJECT_IMAGE_ROOT/STAR.sif" "cluster STAR image ($PROJECT_IMAGE_ROOT/STAR.sif)"
-  check_file "$PROJECT_IMAGE_ROOT/stringtie" "cluster StringTie install ($PROJECT_IMAGE_ROOT/stringtie)"
+  check_file "$PROJECT_IMAGE_ROOT/stringtie/stringtie" "cluster StringTie binary ($PROJECT_IMAGE_ROOT/stringtie/stringtie)"
 else
   echo "skipping cluster image checks; $PROJECT_IMAGE_ROOT is not present" >&2
 fi
