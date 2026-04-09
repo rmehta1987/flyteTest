@@ -90,7 +90,7 @@ bundled PASA instructions under:
   ${PASA_HOME}/seqclean
 
 Later, for PASA workflow runs, you will also need:
-  - a UniVec FASTA
+  - a UniVec_Core FASTA
   - a PASA alignAssembly template config file
 
 Later, for BRAKER3 workflow runs, this helper does not install BRAKER3 itself.

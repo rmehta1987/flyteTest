@@ -49,7 +49,7 @@ class SlurmSpecExecutorSmokeTests(unittest.TestCase):
                     #SBATCH --mem-per-cpu=1M
                     #SBATCH --job-name=FlyteTest
                     #SBATCH --account=rcc-staff
-                    #SBATCH --partition=broadwl
+                    #SBATCH --partition=caslake
                     #SBATCH --output=FlyteTest/%j.out
                     #SBATCH --error=FlyteTest/%j.err
 

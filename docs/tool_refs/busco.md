@@ -40,7 +40,9 @@ Assess annotation or protein-set completeness against lineage-specific conserved
 - A containerized run should call the BUSCO CLI inside an Apptainer image with the workspace and lineage data mounted read-write as needed.
 - Keep output paths, temporary files, and lineage datasets explicit so the run is reproducible outside the container.
 - This repo now supports optional BUSCO Apptainer execution through the `busco_sif` workflow and task inputs.
-- A repo-local runtime was smoke-tested with `tools/busco/busco_v6.0.0_cv1.sif` plus explicit lineage directories under `data/busco_downloads/lineages/`.
+- A repo-local runtime was smoke-tested with `data/images/busco_v6.0.0_cv1.sif` plus explicit lineage directories under `data/busco_downloads/lineages/`.
+- Image provenance from `apptainer inspect`:
+  - `org.label-schema.usage.singularity.deffile.from: ezlabgva/busco:v6.0.0_cv1`
 
 ## Prompt Template
 

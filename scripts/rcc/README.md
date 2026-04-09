@@ -13,8 +13,9 @@ tool boundary with the same command shape used in FLyteTest.
 - An Apptainer or Singularity runtime is available on `PATH`
 
 The minimal smoke wrappers default their input files to the repo-local `data/`
-tree, while their SIF images continue to use the shared RCC image paths unless
-you override the `*_SIF` environment variables.
+tree. For images, they prefer `data/images/*.sif` when present, then fall back
+to the shared RCC image paths unless you override the `*_SIF` environment
+variables.
 
 ## Scripts
 
@@ -36,15 +37,33 @@ you override the `*_SIF` environment variables.
   smoke runner
 - `run_minimal_transcriptomics_smoke.sh`: convenience launcher that creates the
   output directory and submits the transcriptomics smoke job
-- `minimal_pasa_smoke.sh`: reuses the Trinity smoke FASTA and runs PASA
-  `seqclean` plus `accession_extract`
-- `check_minimal_pasa_smoke.sh`: verifies the Trinity-to-PASA smoke artifacts
+- `minimal_pasa_align_smoke.sh`: wiki-shaped PASA align/assemble smoke that
+  reuses the Trinity smoke FASTA and the genome fixture on the host-installed
+  PASA pipeline
+- `check_minimal_pasa_align_smoke.sh`: verifies the wiki-shaped PASA
+  align/assemble smoke artifacts are present
+- `minimal_pasa_align_smoke.sbatch`: Slurm wrapper for the PASA align/assemble
+  smoke runner
+- `run_minimal_pasa_align_smoke.sh`: convenience launcher that creates the
+  output directory and submits the PASA align/assemble smoke job
+- `minimal_pasa_image_smoke.sh`: Apptainer-backed PASA image smoke that
+  exercises the local `data/images/pasa_2.5.3.sif` image
+- `check_minimal_pasa_image_smoke.sh`: verifies the PASA image smoke artifacts
   are present
-- `minimal_pasa_smoke.sbatch`: Slurm wrapper for the PASA prep smoke runner
-- `run_minimal_pasa_smoke.sh`: convenience launcher that creates the output
-  directory and submits the PASA prep smoke job
+- `minimal_pasa_image_smoke.sbatch`: Slurm wrapper for the PASA image smoke
+  runner
+- `run_minimal_pasa_image_smoke.sh`: convenience launcher that creates the
+  output directory and submits the PASA image smoke job
 - `download_minimal_fixtures.sh`: restores the small tutorial-backed smoke
-  fixtures into `data/`
+  fixtures into `data/`, including the PASA `UniVec_Core` vector FASTA
+- `download_minimal_images.sh`: restores the small smoke images into
+  `data/images/`
+- `check_minimal_images.sh`: verifies the smoke images are present under
+  `data/images/`
+- `build_pasa_image.sh`: builds a PASA image that adds legacy BLAST support
+  from the local
+  [containers/pasa/Dockerfile](/home/rmeht/Projects/flyteTest/containers/pasa/Dockerfile),
+  then exports it to a SIF with Apptainer when available
 
 ## Examples
 
@@ -107,30 +126,42 @@ The StringTie wrapper defaults to the repo-local minimal fixture layout:
 - abundance table:
   `temp/stringtie/stringtie_yeast_abundances.txt`
 
-Run PASA seqclean:
+Run the wiki-shaped PASA align/assemble smoke:
 
 ```bash
-PASA_SIF=/project/rcc/hyadav/genomes/software/PASA.sif \
-bash scripts/rcc/pasa.sh
+bash scripts/rcc/check_minimal_pasa_align_smoke.sh
+bash scripts/rcc/run_minimal_pasa_align_smoke.sh
 ```
 
-The PASA wrapper defaults to the RCC script layout:
+The wiki-shaped PASA smoke defaults to the repo-local fixture layout:
 
-- image: `/project/rcc/hyadav/genomes/software/PASA.sif`
-- work directory: `/project/rcc/hyadav/genomes/transcript_data/pasa`
-- untrimmed transcripts: `/project/rcc/hyadav/genomes/transcript_data/pasa/trinity_transcripts.fa`
-- cleaned transcripts: `/project/rcc/hyadav/genomes/transcript_data/pasa/trinity_transcripts.fa.clean`
-- UniVec path: `/project/rcc/hyadav/genomes/scripts/RCC/PASA/UniVec`
-- PASA config: `/project/rcc/hyadav/genomes/transcript_data/pasa/sqlite.confs/alignAssembly.config`
-- genome FASTA: `/project/rcc/hyadav/genomes/transcript_data/yeast_genome/Scer_genome.fa`
-- StringTie GTF: `/project/rcc/hyadav/genomes/transcript_data/stringtie/stringtie_yeast.gtf`
-- TDN accession file: `/project/rcc/hyadav/genomes/transcript_data/pasa/tdn.accs`
+- work directory: `temp/minimal_pasa_align_smoke/pasa`
+- Trinity FASTA: `temp/minimal_transcriptomics_smoke/trinity/trinity_out_dir.Trinity.fasta`
+- genome FASTA: `data/braker3/reference/genome.fa`
+- PASA config: `temp/minimal_pasa_align_smoke/pasa/config/pasa.alignAssembly.config`
+- host PASA entrypoint: `Launch_PASA_pipeline.pl`
+- host aligners: `blat,gmap` when `pblat` is available, otherwise `gmap`
 
-The wrapper supports:
+Run the Apptainer-backed PASA image smoke:
 
-- `MODE=seqclean`
-- `MODE=accession_extract`
-- `MODE=align_assemble`
+```bash
+bash scripts/rcc/check_minimal_pasa_image_smoke.sh
+bash scripts/rcc/run_minimal_pasa_image_smoke.sh
+```
+
+The Apptainer-backed PASA smoke uses the same Trinity FASTA and genome
+fixture pair as the host smoke, but runs inside the repo-local image-backed
+fixture layout:
+
+- image: `data/images/pasa_2.5.3.sif`
+- work directory: `temp/minimal_pasa_image_smoke/pasa`
+- Trinity FASTA: `temp/minimal_transcriptomics_smoke/trinity/trinity_out_dir.Trinity.fasta`
+- genome FASTA: `data/braker3/reference/genome.fa`
+- PASA config: `temp/minimal_pasa_image_smoke/pasa/config/alignAssembly.conf`
+- container PASA entrypoint: `/usr/local/src/PASApipeline/Launch_PASA_pipeline.pl`
+- The PASA Apptainer image smoke does not currently support the legacy
+  `seqclean` path; see
+  https://github.com/PASApipeline/PASApipeline/issues/73.
 
 Submit the hello-world Slurm smoke job:
 
@@ -142,13 +173,6 @@ Run the transcriptomics smoke suite:
 
 ```bash
 bash scripts/rcc/run_minimal_transcriptomics_smoke.sh
-```
-
-Run the PASA prep smoke suite:
-
-```bash
-bash scripts/rcc/check_minimal_pasa_smoke.sh
-bash scripts/rcc/run_minimal_pasa_smoke.sh
 ```
 
 Restore the minimal tutorial-backed fixtures:
@@ -171,9 +195,35 @@ tests and cluster validation:
   - `data/braker3/protein_data/fastas/proteins.fa`
   - `data/braker3/protein_data/fastas/proteins_extra.fa`
 
-The PASA prep smoke is intentionally left out of the download helper because it
-reuses the Trinity FASTA emitted by the transcriptomics smoke and the existing
-cluster PASA `UniVec` path.
+The wiki-shaped align/assemble smoke reuses the Trinity FASTA emitted by the
+transcriptomics smoke, stages it under its original basename, and runs the
+host-installed `Launch_PASA_pipeline.pl` directly with the genome FASTA and a
+minimal SQLite config.
+
+Restore the minimal smoke images:
+
+```bash
+bash scripts/rcc/download_minimal_images.sh
+```
+
+That helper downloads:
+
+- `data/images/trinity_2.13.2.sif`
+- `data/images/star_2.7.10b.sif`
+- `data/images/stringtie_2.2.3.sif`
+- `data/images/pasa_2.5.3.sif`
+
+The repo-local `data/images/braker3.sif` and `data/images/busco_v6.0.0_cv1.sif`
+images are managed separately when those stages are needed.
+
+Image provenance:
+
+- `data/images/trinity_2.13.2.sif` was pulled from `docker://quay.io/biocontainers/trinity:2.13.2--h15cb65e_2`
+- `data/images/star_2.7.10b.sif` was pulled from `docker://quay.io/biocontainers/star:2.7.10b--h9ee0642_0`
+- `data/images/stringtie_2.2.3.sif` was pulled from `docker://quay.io/biocontainers/stringtie:2.2.3--h43eeafb_0`
+- `data/images/pasa_2.5.3.sif` was pulled from `docker://pasapipeline/pasapipeline:2.5.3`
+- `data/images/braker3.sif` was built from `teambraker/braker3:latest`
+- `data/images/busco_v6.0.0_cv1.sif` was built from `ezlabgva/busco:v6.0.0_cv1`
 
 ## Notes
 
@@ -182,14 +232,17 @@ cluster PASA `UniVec` path.
   the job name and job id, such as `minimal-transcriptomics-smoke.<jobid>.out`.
 - If your checkout stores the SIF files somewhere else, override the
   corresponding `*_SIF` environment variable before running the wrapper.
-- The PASA wrapper treats the script-defined host files as the source of truth.
-  It does not guess container paths beyond the documented bind mount.
-- The PASA wrapper resolves the UniVec reference from either a file or a
-  directory and prefers `UniVec.txt` when the RCC path is a folder.
-- The PASA prep smoke stages `temp/minimal_transcriptomics_smoke/trinity/
-  trinity_out_dir/Trinity.fasta` into its own smoke workspace before running
-  `seqclean` and `accession_extract`. When present, it also copies the matching
-  `Trinity.fasta.gene_trans_map` provenance file into the PASA workspace.
-- The PASA smoke checker verifies the Trinity FASTA, the seqclean `.clean`
-  output, the extracted `tdn.accs` file, and the staged gene-transcript map
-  when one exists.
+- The wiki-shaped PASA host smoke stages the Trinity FASTA emitted by the
+  transcriptomics smoke under its original basename, writes a minimal SQLite
+  config, and runs `Launch_PASA_pipeline.pl` directly with the genome FASTA.
+- The Apptainer-backed PASA image smoke uses the same Trinity FASTA, writes a
+  matching config, and runs `Launch_PASA_pipeline.pl` from
+  `data/images/pasa_2.5.3.sif`.
+- The `run_minimal_*_smoke.sh` launchers submit with `sbatch` when it is
+  available and fall back to running the local smoke script directly when they
+  are on a machine without Slurm.
+- The wiki-shaped smoke checker verifies the staged Trinity FASTA, the staged
+  genome FASTA, the config, and the PASA assemblies GFF3, FASTA, and GTF
+  outputs produced by the align run.
+- For upstream PASA context, the repo also links the generated PASA docs index
+  at `https://raw.githubusercontent.com/PASApipeline/PASApipeline/refs/heads/master/docs/index.asciidoc`.

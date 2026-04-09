@@ -13,7 +13,11 @@ CONTAINER_PROJECT_DIR="${CONTAINER_PROJECT_DIR:-/workspace}"
 # Host scratch area for StringTie outputs.
 WORK_DIR="${WORK_DIR:-$PWD/temp}"
 
-STRINGTIE_SIF="${STRINGTIE_SIF:-/project/rcc/hyadav/genomes/software/StringTie.sif}"
+# StringTie prefers the repo-local smoke image, then the shared RCC cluster image.
+STRINGTIE_SIF="$(resolve_smoke_image \
+  STRINGTIE_SIF \
+  "$REPO_ROOT/data/images/stringtie_2.2.3.sif" \
+  "/project/rcc/hyadav/genomes/software/StringTie.sif")"
 STRINGTIE_THREADS="${STRINGTIE_THREADS:-4}"
 # STAR merged BAM used as StringTie input.
 INPUT_BAM="${INPUT_BAM:-$HOST_PROJECT_DIR/data/braker3/rnaseq/RNAseq.bam}"

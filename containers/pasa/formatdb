@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+set -euo pipefail
+exec /usr/bin/perl /usr/local/src/PASApipeline/blast-legacy-bridge/legacy_blast formatdb --path /usr/local/src/PASApipeline/blast-legacy-bridge "$@"

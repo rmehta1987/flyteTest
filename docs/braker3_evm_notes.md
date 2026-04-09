@@ -1,7 +1,8 @@
 **BRAKER3 \+ Evidence Modeler pipeline** \- Ayse Tenger-Trolander  
 Adapted into Markdown for FLyteTest from the original annotation notes
 
-This Markdown file is the source of truth for repo work. The pipeline figure remains as the visual companion.
+This Markdown file is the canonical reference for repo work; the pipeline
+figure remains the visual companion.
 
 ## Pipeline Diagram
 
@@ -107,7 +108,7 @@ Dependencies:
 
 Pasa requires the relational database mySQL or SQLite to be installed in order to store and manage its data (think big blast searches). It also requires samtools, BioPerl, minimap2, BLAT, and gmap.
 
-Setting up data for Pasa run:
+Setting up data for a PASA run:
 
 1. Run ‘accession\_extract\_Pasa.sh’ to get de novo transcript accessions. You will need this file to run pasa (step 5).  
      
@@ -120,13 +121,25 @@ Setting up data for Pasa run:
    trinity\_transcripts.fa
 
      
-3. Clean transcripts with seqclean perl file in the PASA directory (see command below). Use the UniVec fasta file from ftp://[ftp.ncbi.nih.gov/pub/UniVec/](http://ftp.ncbi.nih.gov/pub/UniVec/) or get it from my ./scripts folder. **UniVec** is a non-redundant database of sequences commonly attached to cDNA or genomic DNA during the cloning process. It was developed by staff at NCBI. UniVec\_Core is a subset of the full UniVec database.UniVec primarily consists of unique segments from a large number of vectors but also includes many linker, adapter, and primer sequences. Redundant sub-sequences have been eliminated from the database to make searches more efficient and to simplify the interpretation of the results.
+3. Clean transcripts with seqclean perl file in the PASA directory (see command below). Use the UniVec_Core fasta file from ftp://ftp.ncbi.nlm.nih.gov/pub/UniVec/UniVec_Core or get it from my ./scripts folder. **UniVec** is a non-redundant database of sequences commonly attached to cDNA or genomic DNA during the cloning process. It was developed by staff at NCBI. UniVec\_Core is a subset of the full UniVec database. UniVec primarily consists of unique segments from a large number of vectors but also includes many linker, adapter, and primer sequences. Redundant sub-sequences have been eliminated from the database to make searches more efficient and to simplify the interpretation of the results.
 
    Run the seqclean\_pasa.sh script:
 
-   /apps/software/gcc-12.1.0/pasapipeline/2.5.3/bin/seqclean trinity\_transcripts.fa \-v UniVec.txt \-c 16
+   /apps/software/gcc-12.1.0/pasapipeline/2.5.3/bin/seqclean trinity\_transcripts.fa \-v UniVec\_Core \-c 16
 
-   This should leave you with a fasta file trimmed of adapters called trinity\_transcripts.fa.clean. You will need this file to run pasa (step 5). You can find my files in /transcript\_data/pasa/trinity\_combined. 
+   Note: the original PASA notes call for `seqclean`, but the current FLyteTest
+   wiki-shaped smoke can run directly from Trinity FASTA inputs. The PASA
+   Apptainer image smoke does not currently support the legacy `seqclean`
+   path; see
+   https://github.com/PASApipeline/PASApipeline/issues/73. Use
+   `scripts/rcc/minimal_pasa_align_smoke.sh` for the host-installed
+   `Launch_PASA_pipeline.pl` smoke, or
+   `scripts/rcc/minimal_pasa_image_smoke.sh` for the Apptainer-backed image
+   smoke.
+
+   This should leave you with a trimmed FASTA file called
+   `trinity_transcripts.fa.clean`. You will need this file to run PASA in step
+   5. You can find my files in `/transcript_data/pasa/trinity_combined`.
 
 4. You will now need to edit the config file supplied with PASA for alignment and assembly, found in $PASA/pasa\_conf/pasa.alignAssembly.TEMPLATE.txt. To point it to the correct database. I created the database with the program sqlite which is installed under gcc/12.1.0. Below I describe how to create the database in sqlite. You can name it whatever you want. This is how pasa manages its data.
 
@@ -718,6 +731,11 @@ module load gcc/12.1.0
 module load python/3.10.5
 
 busco \-i ./Megaselia\_abdita.repeats\_removed.proteins.fa \-o busco\_output\_eukaryota \-l eukaryota\_odb10 \-m prot \-c 8
+
+Note for the current FLyteTest repo: the checked-in BUSCO image is
+`data/images/busco_v6.0.0_cv1.sif`, and the checked-in BRAKER3 image is
+`data/images/braker3.sif`. The top-level README records the image provenance
+for both.
 
 **Get Genes Names with EggNOG-mapper** 
 

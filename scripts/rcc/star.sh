@@ -14,7 +14,11 @@ CONTAINER_PROJECT_DIR="${CONTAINER_PROJECT_DIR:-/workspace}"
 WORK_DIR="${WORK_DIR:-$PWD/temp}"
 MODE="${MODE:-index}" # index | align
 
-STAR_SIF="${STAR_SIF:-/project/rcc/hyadav/genomes/software/STAR.sif}"
+# STAR prefers the repo-local smoke image, then the shared RCC cluster image.
+STAR_SIF="$(resolve_smoke_image \
+  STAR_SIF \
+  "$REPO_ROOT/data/images/star_2.7.10b.sif" \
+  "/project/rcc/hyadav/genomes/software/STAR.sif")"
 STAR_THREADS="${STAR_THREADS:-4}"
 # Reference genome used to build the STAR genome index.
 HOST_GENOME_FASTA="${HOST_GENOME_FASTA:-$HOST_PROJECT_DIR/data/braker3/reference/genome.fa}"

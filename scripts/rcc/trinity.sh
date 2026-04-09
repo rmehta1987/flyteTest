@@ -14,7 +14,11 @@ CONTAINER_PROJECT_DIR="${CONTAINER_PROJECT_DIR:-/workspace}"
 WORK_DIR="${WORK_DIR:-$PWD/temp}"
 MODE="${MODE:-denovo}" # denovo | genome_guided
 
-TRINITY_SIF="${TRINITY_SIF:-/project/rcc/hyadav/genomes/software/trinityrnaseq.v2.15.2.simg}"
+# Trinity prefers the repo-local smoke image, then the shared RCC cluster image.
+TRINITY_SIF="$(resolve_smoke_image \
+  TRINITY_SIF \
+  "$REPO_ROOT/data/images/trinity_2.13.2.sif" \
+  "/project/rcc/hyadav/genomes/software/trinityrnaseq.v2.15.2.simg")"
 TRINITY_CPU="${TRINITY_CPU:-4}"
 TRINITY_MAX_MEMORY_GB="${TRINITY_MAX_MEMORY_GB:-8}"
 GENOME_GUIDED_MAX_INTRON="${GENOME_GUIDED_MAX_INTRON:-100000}"

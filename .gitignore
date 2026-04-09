@@ -23,6 +23,9 @@ results/
 # Local container images and archives
 *.sif
 *.sqsh
+/containers/*
+!/containers/pasa/
+!/containers/pasa/**
 
 # Editor and OS files
 .DS_Store

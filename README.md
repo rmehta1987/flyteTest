@@ -59,7 +59,7 @@ the registry and current code define what is actually implemented and runnable.
 
 ## Pipeline Story
 
-The working biological source notes describe this genome-annotation path:
+The working biological source notes describe the genome-annotation path below:
 
 ```mermaid
 flowchart TD
@@ -337,13 +337,53 @@ Canonical lightweight fixture roots:
 - `data/braker3/rnaseq/RNAseq.bam`
 - `data/braker3/protein_data/fastas/proteins.fa`
 - `data/braker3/protein_data/fastas/proteins_extra.fa`
+- `data/pasa/UniVec_Core`
+- `data/images/trinity_2.13.2.sif`
+- `data/images/star_2.7.10b.sif`
+- `data/images/stringtie_2.2.3.sif`
+- `data/images/pasa_2.5.3.sif`
+- `data/images/braker3.sif`
+- `data/images/busco_v6.0.0_cv1.sif`
+
+Image provenance:
+
+- `data/images/trinity_2.13.2.sif` was pulled from `docker://quay.io/biocontainers/trinity:2.13.2--h15cb65e_2`
+- `data/images/star_2.7.10b.sif` was pulled from `docker://quay.io/biocontainers/star:2.7.10b--h9ee0642_0`
+- `data/images/stringtie_2.2.3.sif` was pulled from `docker://quay.io/biocontainers/stringtie:2.2.3--h43eeafb_0`
+- `data/images/pasa_2.5.3.sif` was pulled from `docker://pasapipeline/pasapipeline:2.5.3`
+- `data/images/braker3.sif` was built from `teambraker/braker3:latest`
+- `data/images/busco_v6.0.0_cv1.sif` was built from `ezlabgva/busco:v6.0.0_cv1`
 
 Use [scripts/rcc/download_minimal_fixtures.sh](/home/rmeht/Projects/flyteTest/scripts/rcc/download_minimal_fixtures.sh)
-to restore the lightweight tutorial-backed smoke files on a cluster checkout.
-Use [scripts/rcc/run_minimal_pasa_smoke.sh](/home/rmeht/Projects/flyteTest/scripts/rcc/run_minimal_pasa_smoke.sh)
-to reuse the Trinity smoke FASTA for the PASA prep smoke path on the cluster.
-Use [scripts/rcc/check_minimal_pasa_smoke.sh](/home/rmeht/Projects/flyteTest/scripts/rcc/check_minimal_pasa_smoke.sh)
-to verify the PASA prep smoke artifacts after the job finishes.
+to restore the lightweight tutorial-backed smoke files on a cluster checkout,
+including the repo-local PASA `UniVec_Core` smoke fixture.
+Use [scripts/rcc/download_minimal_images.sh](/home/rmeht/Projects/flyteTest/scripts/rcc/download_minimal_images.sh)
+to restore the core local smoke images under `data/images/`. The additional
+repo-local images `data/images/braker3.sif` and
+`data/images/busco_v6.0.0_cv1.sif` are expected to be staged separately when
+those stages are exercised.
+Use [scripts/rcc/build_pasa_image.sh](/home/rmeht/Projects/flyteTest/scripts/rcc/build_pasa_image.sh)
+to build the experimental PASA image recipe when you need to inspect the
+container itself. The preferred source is the local
+[containers/pasa/Dockerfile](/home/rmeht/Projects/flyteTest/containers/pasa/Dockerfile),
+which serves as the maintenance recipe. The helper then exports that recipe
+through Apptainer when possible.
+Use [scripts/rcc/check_minimal_images.sh](/home/rmeht/Projects/flyteTest/scripts/rcc/check_minimal_images.sh)
+to verify that the smoke images are present under `data/images/`.
+Use [scripts/rcc/run_minimal_pasa_align_smoke.sh](/home/rmeht/Projects/flyteTest/scripts/rcc/run_minimal_pasa_align_smoke.sh)
+to run the wiki-shaped PASA align/assemble smoke from the tiny Trinity FASTA
+and genome fixture on the host-installed PASA pipeline. The launcher uses
+`sbatch` when it is available and otherwise runs locally.
+Use [scripts/rcc/check_minimal_pasa_align_smoke.sh](/home/rmeht/Projects/flyteTest/scripts/rcc/check_minimal_pasa_align_smoke.sh)
+to verify the wiki-shaped PASA smoke artifacts after the job finishes.
+Use [scripts/rcc/run_minimal_pasa_image_smoke.sh](/home/rmeht/Projects/flyteTest/scripts/rcc/run_minimal_pasa_image_smoke.sh)
+to run the Apptainer-backed PASA image smoke against the same Trinity FASTA
+and genome fixture pair. The launcher uses `sbatch` when it is available and
+otherwise runs locally. The PASA Apptainer image smoke does not currently
+support the legacy `seqclean` path; see
+https://github.com/PASApipeline/PASApipeline/issues/73.
+Use [scripts/rcc/check_minimal_pasa_image_smoke.sh](/home/rmeht/Projects/flyteTest/scripts/rcc/check_minimal_pasa_image_smoke.sh)
+to verify the PASA image smoke artifacts after the job finishes.
 Use [docs/tutorial_context.md](/home/rmeht/Projects/flyteTest/docs/tutorial_context.md)
 for Galaxy tutorial mappings, fixture provenance, and smoke-test planning.
 Use synthetic tests when external binaries or lineage datasets are unavailable.

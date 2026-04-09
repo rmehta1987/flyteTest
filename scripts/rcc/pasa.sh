@@ -13,7 +13,12 @@ CONTAINER_PROJECT_DIR="${CONTAINER_PROJECT_DIR:-/workspace}"
 WORK_DIR="${WORK_DIR:-$PWD/temp}"
 MODE="${MODE:-seqclean}" # seqclean | align_assemble | accession_extract
 
-PASA_SIF="${PASA_SIF:-$HOST_PROJECT_DIR/software/PASA.sif}"
+# PASA prefers the repo-local smoke image, then the shared RCC cluster image.
+PASA_SIF="$(resolve_smoke_image \
+  PASA_SIF \
+  "$HOST_PROJECT_DIR/data/images/pasa_2.5.3.legacyblast.sif" \
+  "$HOST_PROJECT_DIR/data/images/pasa_2.5.3.sif" \
+  "$HOST_PROJECT_DIR/software/PASA.sif")"
 SEQCLEAN_THREADS="${SEQCLEAN_THREADS:-16}"
 PASA_CPU="${PASA_CPU:-4}"
 PASA_MAX_INTRON_LENGTH="${PASA_MAX_INTRON_LENGTH:-100000}"
@@ -28,9 +33,20 @@ CONTAINER_TRANSCRIPTS_UNTRIMMED_PATH="${CONTAINER_TRANSCRIPTS_UNTRIMMED_PATH:-$C
 # Cleaned transcript FASTA produced by seqclean and consumed by align/assemble.
 HOST_TRANSCRIPTS_CLEAN_PATH="${HOST_TRANSCRIPTS_CLEAN_PATH:-$HOST_PROJECT_DIR/transcript_data/pasa/trinity_transcripts.fa.clean}"
 CONTAINER_TRANSCRIPTS_CLEAN_PATH="${CONTAINER_TRANSCRIPTS_CLEAN_PATH:-$CONTAINER_PROJECT_DIR/transcript_data/pasa/trinity_transcripts.fa.clean}"
-# UniVec may be supplied as a file or a directory containing UniVec.txt.
-HOST_VECTOR_SEQUENCE_PATH="$(resolve_univec_reference "${HOST_VECTOR_SEQUENCE_PATH:-$HOST_PROJECT_DIR/scripts/RCC/PASA/UniVec}")"
+# UniVec_Core is the preferred PASA seqclean vector reference; a directory fallback is allowed.
+HOST_VECTOR_SEQUENCE_PATH="$(resolve_univec_reference "${HOST_VECTOR_SEQUENCE_PATH:-$HOST_PROJECT_DIR/scripts/RCC/PASA/UniVec_Core}")"
 CONTAINER_VECTOR_SEQUENCE_PATH="${CONTAINER_VECTOR_SEQUENCE_PATH:-${HOST_VECTOR_SEQUENCE_PATH//$HOST_PROJECT_DIR/$CONTAINER_PROJECT_DIR}}"
+# Legacy PASA seqclean expects blastall/formatdb on PATH, so stage a tiny
+# wrapper directory in the PASA workspace that carries the host legacy-BLAST
+# shims, the helper binaries, and the small mbedTLS runtime libs they need.
+HOST_BLAST_WRAPPER_DIR="${HOST_BLAST_WRAPPER_DIR:-$HOST_PASA_WORK_DIR/blast-bin}"
+CONTAINER_BLAST_WRAPPER_DIR="${CONTAINER_BLAST_WRAPPER_DIR:-$CONTAINER_PASA_WORK_DIR/blast-bin}"
+HOST_BLAST_LIB_DIR="${HOST_BLAST_LIB_DIR:-/usr/lib/ncbi-blast+}"
+CONTAINER_BLAST_DIR="${CONTAINER_BLAST_DIR:-/host_blast}"
+CONTAINER_BLAST_LIB_DIR="${CONTAINER_BLAST_LIB_DIR:-/host_blast_lib}"
+BIND_MOUNTS_EXTRA="${BIND_MOUNTS_EXTRA:-}"
+BIND_MOUNTS_EXTRA="$(append_bind_mounts "$BIND_MOUNTS_EXTRA" "$HOST_BLAST_WRAPPER_DIR:$CONTAINER_BLAST_WRAPPER_DIR")"
+BIND_MOUNTS_EXTRA="$(append_bind_mounts "$BIND_MOUNTS_EXTRA" "$HOST_BLAST_LIB_DIR:$CONTAINER_BLAST_LIB_DIR")"
 # PASA align/assemble template config rewritten to point at a local SQLite DB.
 HOST_PASA_CONFIG="${HOST_PASA_CONFIG:-$HOST_PROJECT_DIR/transcript_data/pasa/sqlite.confs/alignAssembly.config}"
 CONTAINER_PASA_CONFIG="${CONTAINER_PASA_CONFIG:-$CONTAINER_PROJECT_DIR/transcript_data/pasa/sqlite.confs/alignAssembly.config}"
@@ -47,19 +63,45 @@ CONTAINER_TDN_FILE="${CONTAINER_TDN_FILE:-$CONTAINER_PROJECT_DIR/transcript_data
 require_dir "$WORK_DIR"
 require_file "$PASA_SIF"
 
+stage_sanitized_fasta() {
+  local source="$1"
+  local dest="$2"
+  # PASA seqclean is happier with simple FASTA headers than with Trinity's full
+  # descriptive annotations, so keep only the accession token before the first
+  # space when staging the input into the PASA workspace.
+  awk 'BEGIN { OFS = "" } /^>/ { sub(/ .*/, "") } { print }' "$source" >"$dest"
+}
+
 case "$MODE" in
   seqclean)
     require_file "$HOST_TRANSCRIPTS_UNTRIMMED_PATH"
     require_file "$HOST_VECTOR_SEQUENCE_PATH"
     require_dir "$HOST_PASA_WORK_DIR"
+    # Stage the vector FASTA into the PASA workspace so seqclean can resolve it
+    # by basename inside the container, regardless of whether the source came
+    # from the repo-local fixture tree or the shared RCC path.
+    HOST_VECTOR_SEQUENCE_BASENAME="$(basename "$HOST_VECTOR_SEQUENCE_PATH")"
+    HOST_STAGED_VECTOR_SEQUENCE_PATH="$HOST_PASA_WORK_DIR/$HOST_VECTOR_SEQUENCE_BASENAME"
+    cp -f "$HOST_VECTOR_SEQUENCE_PATH" "$HOST_STAGED_VECTOR_SEQUENCE_PATH"
+    ensure_formatdb_index "$HOST_STAGED_VECTOR_SEQUENCE_PATH"
+    ensure_legacy_blast_bridge "$HOST_BLAST_WRAPPER_DIR" "$CONTAINER_BLAST_DIR"
+    CONTAINER_VECTOR_SEQUENCE_PATH="$HOST_VECTOR_SEQUENCE_BASENAME"
+    # Stage the Trinity FASTA alongside the vector file and strip the Trinity
+    # header suffixes so seqclean sees stable accession-style FASTA headers.
+    HOST_STAGE_TRINITY_FASTA="$HOST_PASA_WORK_DIR/$(basename "$HOST_TRANSCRIPTS_UNTRIMMED_PATH")"
+    stage_sanitized_fasta "$HOST_TRANSCRIPTS_UNTRIMMED_PATH" "$HOST_STAGE_TRINITY_FASTA"
+    CONTAINER_TRANSCRIPTS_UNTRIMMED_PATH="$CONTAINER_PASA_WORK_DIR/$(basename "$HOST_STAGE_TRINITY_FASTA")"
 
     runtime_exec "$PASA_SIF" bash -lc \
-      "cd '$CONTAINER_PASA_WORK_DIR' && /usr/local/src/PASApipeline/bin/seqclean '$CONTAINER_TRANSCRIPTS_UNTRIMMED_PATH' -v '$CONTAINER_VECTOR_SEQUENCE_PATH' -c '$SEQCLEAN_THREADS'"
+      "export PATH='$CONTAINER_BLAST_WRAPPER_DIR:/usr/bin:/bin'; export LD_LIBRARY_PATH='$CONTAINER_BLAST_WRAPPER_DIR:$CONTAINER_BLAST_LIB_DIR'; cd '$CONTAINER_PASA_WORK_DIR' && /usr/local/src/PASApipeline/bin/seqclean '$CONTAINER_TRANSCRIPTS_UNTRIMMED_PATH' -v '$CONTAINER_VECTOR_SEQUENCE_PATH' -c '$SEQCLEAN_THREADS'"
     ;;
 
   accession_extract)
     require_file "$HOST_TRANSCRIPTS_UNTRIMMED_PATH"
     require_dir "$HOST_PASA_WORK_DIR"
+    HOST_STAGE_TRINITY_FASTA="$HOST_PASA_WORK_DIR/$(basename "$HOST_TRANSCRIPTS_UNTRIMMED_PATH")"
+    stage_sanitized_fasta "$HOST_TRANSCRIPTS_UNTRIMMED_PATH" "$HOST_STAGE_TRINITY_FASTA"
+    CONTAINER_TRANSCRIPTS_UNTRIMMED_PATH="$CONTAINER_PASA_WORK_DIR/$(basename "$HOST_STAGE_TRINITY_FASTA")"
 
     runtime_exec "$PASA_SIF" bash -lc \
       "cd '$CONTAINER_PASA_WORK_DIR' && /usr/local/src/PASApipeline/misc_utilities/accession_extractor.pl < '$CONTAINER_TRANSCRIPTS_UNTRIMMED_PATH' > '$CONTAINER_TDN_FILE'"

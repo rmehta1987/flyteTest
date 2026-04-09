@@ -51,10 +51,13 @@ braker.pl --genome=genome.fa --bam=RNAseq.bam --prot_seq=proteins.fa --gff3
 
 - Use Apptainer when the BRAKER runtime is containerized, but keep the data flow local and explicit.
 - Bind the working directory and input directories into the container so `braker.pl` can read and write repo-local artifacts.
+- The repo-local smoke image is `data/images/braker3.sif`.
+- Image provenance from `apptainer inspect`:
+  - `org.label-schema.usage.singularity.deffile.from: teambraker/braker3:latest`
 - Apptainer bind-mount reference: https://apptainer.org/user-docs/3.7/bind_paths_and_mounts.html
 
 ```bash
-apptainer exec --bind "$PWD:$PWD" braker.sif braker.pl --genome=genome.fa --bam=RNAseq.bam --prot_seq=proteins.fa --gff3
+apptainer exec --bind "$PWD:$PWD" data/images/braker3.sif braker.pl --genome=genome.fa --bam=RNAseq.bam --prot_seq=proteins.fa --gff3
 ```
 
 ## At A Glance

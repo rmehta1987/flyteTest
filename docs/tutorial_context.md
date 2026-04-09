@@ -71,6 +71,8 @@ Current canonical roots:
 - `data/braker3/reference/`
 - `data/braker3/rnaseq/`
 - `data/braker3/protein_data/fastas/`
+- `data/pasa/`
+- `data/images/`
 
 Use the stage-specific subdirectories for lightweight smoke tests and clearer
 provenance. Prefer the stage-local paths listed below unless a prompt
@@ -245,6 +247,7 @@ Current directly usable local files:
 - `data/braker3/rnaseq/RNAseq.bam`
 - `data/braker3/protein_data/fastas/proteins.fa`
 - `data/braker3/protein_data/fastas/proteins_extra.fa`
+- `data/pasa/UniVec_Core`
 
 The extra protein FASTA is a tiny synthetic helper used to keep
 multi-input protein-evidence and planner tests realistic.
@@ -252,9 +255,25 @@ multi-input protein-evidence and planner tests realistic.
 Practical rule:
 
 - use stage-local read, genome, BAM, and protein files under `data/` for direct tool smoke tests
+- use `data/pasa/UniVec_Core` as the repo-local seqclean vector reference for older PASA prep workflows
+- use `data/images/*.sif` when you want a local Apptainer-backed smoke run without relying on the RCC `/project` image paths
+- use `data/images/pasa_2.5.3.sif` when you want the PASA Apptainer image smoke
+- the PASA Apptainer image smoke does not currently support the legacy
+  `seqclean` path; see
+  https://github.com/PASApipeline/PASApipeline/issues/73
 - use stage result bundles or synthetic fixtures for PASA, TransDecoder, and EVM work
-- use `temp/minimal_transcriptomics_smoke/trinity/trinity_out_dir/Trinity.fasta`
-  as the Trinity source for PASA `seqclean` and accession-extraction smoke
+- use the Trinity FASTA emitted under `temp/minimal_transcriptomics_smoke/
+  trinity/` as the source for the wiki-shaped PASA host smoke; the host-based
+  helper stages that FASTA under its original basename and runs
+  `Launch_PASA_pipeline.pl` directly against the genome FASTA, and the
+  selected basename is often `trinity_out_dir.Trinity.fasta` or
+  `Trinity.tmp.fasta`
+- use the same Trinity FASTA and genome FASTA with `data/images/pasa_2.5.3.sif`
+  when you want the Apptainer-backed PASA image smoke
+- use the checked-in cleaned Trinity fixture from
+  `results/pasa_update_results_20260402_120000/finalized/transcripts/`
+  when you want to study the older align/assemble staging shape in the result
+  bundles, not as the current smoke path
 - prefer the stage-specific subdirectories unless a prompt explicitly needs
   another stage-local tutorial asset
 

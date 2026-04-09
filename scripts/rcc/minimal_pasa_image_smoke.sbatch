@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#SBATCH --job-name=minimal-pasa-smoke
+#SBATCH --job-name=minimal-pasa-image-smoke
 #SBATCH --time=00:20:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -12,5 +12,8 @@
 
 set -euo pipefail
 
-REPO_ROOT="${SLURM_SUBMIT_DIR:-$PWD}"
-exec "$REPO_ROOT/scripts/rcc/minimal_pasa_smoke.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="${SLURM_SUBMIT_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
+
+cd "$REPO_ROOT"
+exec bash scripts/rcc/minimal_pasa_image_smoke.sh
