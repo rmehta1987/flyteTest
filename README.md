@@ -337,7 +337,6 @@ Canonical lightweight fixture roots:
 - `data/braker3/rnaseq/RNAseq.bam`
 - `data/braker3/protein_data/fastas/proteins.fa`
 - `data/braker3/protein_data/fastas/proteins_extra.fa`
-- `data/pasa/UniVec_Core`
 - `data/images/trinity_2.13.2.sif`
 - `data/images/star_2.7.10b.sif`
 - `data/images/stringtie_2.2.3.sif`
@@ -356,12 +355,14 @@ Image provenance:
 
 Use [scripts/rcc/download_minimal_fixtures.sh](/home/rmeht/Projects/flyteTest/scripts/rcc/download_minimal_fixtures.sh)
 to restore the lightweight tutorial-backed smoke files on a cluster checkout,
-including the repo-local PASA `UniVec_Core` smoke fixture.
 Use [scripts/rcc/download_minimal_images.sh](/home/rmeht/Projects/flyteTest/scripts/rcc/download_minimal_images.sh)
 to restore the core local smoke images under `data/images/`. The additional
 repo-local images `data/images/braker3.sif` and
 `data/images/busco_v6.0.0_cv1.sif` are expected to be staged separately when
-those stages are exercised.
+those stages are exercised. The cluster wrappers keep using the shared RCC
+`/project/rcc/hyadav/genomes` image paths for Trinity, STAR, and StringTie, and
+you can point `PASA_SIF` at the PASA image path you scp to the cluster when you
+run that smoke there.
 Use [scripts/rcc/build_pasa_image.sh](/home/rmeht/Projects/flyteTest/scripts/rcc/build_pasa_image.sh)
 to build the experimental PASA image recipe when you need to inspect the
 container itself. The preferred source is the local
@@ -369,7 +370,11 @@ container itself. The preferred source is the local
 which serves as the maintenance recipe. The helper then exports that recipe
 through Apptainer when possible.
 Use [scripts/rcc/check_minimal_images.sh](/home/rmeht/Projects/flyteTest/scripts/rcc/check_minimal_images.sh)
-to verify that the smoke images are present under `data/images/`.
+to verify that the smoke images are present under `data/images/` and that the
+shared cluster Trinity/STAR/StringTie defaults exist under
+`/project/rcc/hyadav/genomes/software` when that mount is available. Set
+`PASA_SIF` first if you want the checker to validate a scp'd PASA image path
+instead of the repo-local one.
 Use [scripts/rcc/run_minimal_pasa_align_smoke.sh](/home/rmeht/Projects/flyteTest/scripts/rcc/run_minimal_pasa_align_smoke.sh)
 to run the wiki-shaped PASA align/assemble smoke from the tiny Trinity FASTA
 and genome fixture on the host-installed PASA pipeline. The launcher uses

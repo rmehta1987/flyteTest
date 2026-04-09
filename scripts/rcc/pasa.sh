@@ -33,8 +33,8 @@ CONTAINER_TRANSCRIPTS_UNTRIMMED_PATH="${CONTAINER_TRANSCRIPTS_UNTRIMMED_PATH:-$C
 # Cleaned transcript FASTA produced by seqclean and consumed by align/assemble.
 HOST_TRANSCRIPTS_CLEAN_PATH="${HOST_TRANSCRIPTS_CLEAN_PATH:-$HOST_PROJECT_DIR/transcript_data/pasa/trinity_transcripts.fa.clean}"
 CONTAINER_TRANSCRIPTS_CLEAN_PATH="${CONTAINER_TRANSCRIPTS_CLEAN_PATH:-$CONTAINER_PROJECT_DIR/transcript_data/pasa/trinity_transcripts.fa.clean}"
-# UniVec_Core is the preferred PASA seqclean vector reference; a directory fallback is allowed.
-HOST_VECTOR_SEQUENCE_PATH="$(resolve_univec_reference "${HOST_VECTOR_SEQUENCE_PATH:-$HOST_PROJECT_DIR/scripts/RCC/PASA/UniVec_Core}")"
+# A vector reference path or directory may be supplied for the legacy seqclean mode.
+HOST_VECTOR_SEQUENCE_PATH="$(resolve_univec_reference "${HOST_VECTOR_SEQUENCE_PATH:-$HOST_PROJECT_DIR/scripts/RCC/PASA/vector_reference}")"
 CONTAINER_VECTOR_SEQUENCE_PATH="${CONTAINER_VECTOR_SEQUENCE_PATH:-${HOST_VECTOR_SEQUENCE_PATH//$HOST_PROJECT_DIR/$CONTAINER_PROJECT_DIR}}"
 # Legacy PASA seqclean expects blastall/formatdb on PATH, so stage a tiny
 # wrapper directory in the PASA workspace that carries the host legacy-BLAST

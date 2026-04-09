@@ -81,11 +81,6 @@ download_and_unzip \
   "https://zenodo.org/record/3709188/files/transcriptome.fa.gz" \
   "$TRANSCRIPTOMICS_DIR/transcriptome.fa"
 
-# PASA seqclean vector reference used by the PASA smoke helper.
-download_file \
-  "https://ftp.ncbi.nlm.nih.gov/pub/UniVec/UniVec_Core" \
-  "$PASA_DIR/UniVec_Core"
-
 # Genome annotation / StringTie / protein-evidence smoke fixtures from the Braker3 tutorial.
 download_file \
   "https://zenodo.org/records/14770765/files/genome.fasta" \

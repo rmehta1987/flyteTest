@@ -247,7 +247,6 @@ Current directly usable local files:
 - `data/braker3/rnaseq/RNAseq.bam`
 - `data/braker3/protein_data/fastas/proteins.fa`
 - `data/braker3/protein_data/fastas/proteins_extra.fa`
-- `data/pasa/UniVec_Core`
 
 The extra protein FASTA is a tiny synthetic helper used to keep
 multi-input protein-evidence and planner tests realistic.
@@ -255,9 +254,9 @@ multi-input protein-evidence and planner tests realistic.
 Practical rule:
 
 - use stage-local read, genome, BAM, and protein files under `data/` for direct tool smoke tests
-- use `data/pasa/UniVec_Core` as the repo-local seqclean vector reference for older PASA prep workflows
 - use `data/images/*.sif` when you want a local Apptainer-backed smoke run without relying on the RCC `/project` image paths
-- use `data/images/pasa_2.5.3.sif` when you want the PASA Apptainer image smoke
+- use the RCC `/project/rcc/hyadav/genomes` image paths for the standard Trinity, STAR, and StringTie cluster wrappers
+- use `data/images/pasa_2.5.3.sif` for the local PASA Apptainer image smoke, or scp the PASA image to the cluster and point `PASA_SIF` at that cluster path
 - the PASA Apptainer image smoke does not currently support the legacy
   `seqclean` path; see
   https://github.com/PASApipeline/PASApipeline/issues/73

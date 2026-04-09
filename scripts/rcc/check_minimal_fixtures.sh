@@ -8,7 +8,6 @@ required_files=(
   "data/transcriptomics/ref-based/reads_1.fq.gz"
   "data/transcriptomics/ref-based/reads_2.fq.gz"
   "data/transcriptomics/ref-based/transcriptome.fa"
-  "data/pasa/UniVec_Core"
   "data/braker3/reference/genome.fa"
   "data/braker3/rnaseq/RNAseq.bam"
   "data/braker3/protein_data/fastas/proteins.fa"

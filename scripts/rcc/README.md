@@ -13,9 +13,11 @@ tool boundary with the same command shape used in FLyteTest.
 - An Apptainer or Singularity runtime is available on `PATH`
 
 The minimal smoke wrappers default their input files to the repo-local `data/`
-tree. For images, they prefer `data/images/*.sif` when present, then fall back
-to the shared RCC image paths unless you override the `*_SIF` environment
-variables.
+tree. For images, the cluster wrappers keep using the shared RCC
+`/project/rcc/hyadav/genomes` paths for Trinity, STAR, and StringTie unless you
+override the `*_SIF` environment variables. The local smoke scripts can still
+use `data/images/*.sif`, and the PASA image is the one you may scp to the
+cluster and point `PASA_SIF` at explicitly.
 
 ## Scripts
 
@@ -55,11 +57,12 @@ variables.
 - `run_minimal_pasa_image_smoke.sh`: convenience launcher that creates the
   output directory and submits the PASA image smoke job
 - `download_minimal_fixtures.sh`: restores the small tutorial-backed smoke
-  fixtures into `data/`, including the PASA `UniVec_Core` vector FASTA
+  fixtures into `data/`
 - `download_minimal_images.sh`: restores the small smoke images into
   `data/images/`
 - `check_minimal_images.sh`: verifies the smoke images are present under
-  `data/images/`
+  `data/images/` and also checks the shared cluster Trinity/STAR/StringTie
+  defaults under `/project/rcc/hyadav/genomes/software` when available
 - `build_pasa_image.sh`: builds a PASA image that adds legacy BLAST support
   from the local
   [containers/pasa/Dockerfile](/home/rmeht/Projects/flyteTest/containers/pasa/Dockerfile),
