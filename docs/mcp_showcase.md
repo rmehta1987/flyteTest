@@ -114,7 +114,9 @@ runtime bindings before any local execution starts.
 `run_slurm_recipe(artifact_path)` loads a saved artifact whose execution profile
 is `slurm`, renders a deterministic `sbatch` script under `.runtime/runs/`,
 submits it with `sbatch`, and records the accepted Slurm job ID in
-`slurm_run_record.json`.
+`slurm_run_record.json`. On the RCC cluster the frozen recipe also carries the
+Slurm account setting into the generated script so manual `sbatch --account=...`
+overrides are not required for submission.
 
 `monitor_slurm_job(run_record_path)` reloads that durable record and reconciles
 it with `squeue`, `scontrol show job`, and `sacct`. When Slurm returns concrete

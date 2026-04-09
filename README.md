@@ -426,7 +426,9 @@ generated script path, stdout and stderr log patterns, selected execution
 profile, and resource spec under `.runtime/runs/`. `monitor_slurm_job`
 reconciles the record with `squeue`, `scontrol show job`, and `sacct`, while
 `cancel_slurm_job` records explicit `scancel` requests. Retry and resumability
-remain later milestones.
+remain later milestones. On the RCC cluster the frozen Slurm recipe carries an
+account setting through to the generated script so submission does not depend
+on a manual `sbatch --account=...` override.
 
 ## Assumptions
 

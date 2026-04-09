@@ -124,6 +124,7 @@ class ResourceSpec(SpecSerializable):
     memory: str | None = None
     gpu: str | None = None
     queue: str | None = None
+    account: str | None = None
     walltime: str | None = None
     execution_class: str | None = None
     notes: tuple[str, ...] = field(default_factory=tuple)

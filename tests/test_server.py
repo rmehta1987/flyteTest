@@ -367,6 +367,7 @@ class ServerTests(TestCase):
         self.assertEqual(captured["args"][0], "sbatch")
         self.assertEqual(submitted["execution_result"]["execution_mode"], "slurm-workflow-spec-executor")
         self.assertEqual(submitted["execution_result"]["run_record"]["resource_spec"]["queue"], "batch")
+        self.assertEqual(submitted["execution_result"]["run_record"]["resource_spec"]["account"], "rcc-staff")
 
     def test_run_slurm_recipe_rejects_local_profile_artifact(self) -> None:
         """Require Slurm recipes to be explicitly frozen with the Slurm profile."""

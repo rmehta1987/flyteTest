@@ -6,6 +6,7 @@ containerized subprocess execution helpers used across pipeline stages.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -62,6 +63,7 @@ agat_conversion_env = flyte.TaskEnvironment(name=AGAT_CONVERSION_WORKFLOW_NAME)
 AGAT_CLEANUP_WORKFLOW_NAME = "annotation_postprocess_agat_cleanup"
 AGAT_CLEANUP_RESULTS_PREFIX = "agat_cleanup_results"
 agat_cleanup_env = flyte.TaskEnvironment(name=AGAT_CLEANUP_WORKFLOW_NAME)
+DEFAULT_SLURM_ACCOUNT = os.environ.get("FLYTETEST_SLURM_ACCOUNT", "rcc-staff")
 
 
 def run(

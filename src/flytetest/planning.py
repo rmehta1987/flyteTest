@@ -21,6 +21,7 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any, Literal
 
+from flytetest.config import DEFAULT_SLURM_ACCOUNT
 from flytetest.mcp_contract import (
     SHOWCASE_LIMITATIONS,
     SHOWCASE_TARGETS_BY_NAME,
@@ -335,7 +336,7 @@ def _coerce_resource_spec(value: Mapping[str, Any] | ResourceSpec | None) -> Res
     if isinstance(value, ResourceSpec):
         return value
 
-    allowed_fields = {"cpu", "memory", "gpu", "queue", "walltime", "execution_class", "notes"}
+    allowed_fields = {"cpu", "memory", "gpu", "queue", "account", "walltime", "execution_class", "notes"}
     kwargs: dict[str, Any] = {}
     for key in allowed_fields:
         if key not in value or value[key] in (None, ""):
@@ -391,6 +392,7 @@ def _merge_resource_specs(base: ResourceSpec | None, override: ResourceSpec | No
         memory=override.memory or base.memory,
         gpu=override.gpu or base.gpu,
         queue=override.queue or base.queue,
+        account=override.account or base.account,
         walltime=override.walltime or base.walltime,
         execution_class=override.execution_class or base.execution_class,
         notes=(*base.notes, *override.notes),
@@ -402,6 +404,7 @@ def _extract_resource_spec_from_prompt(request: str) -> ResourceSpec | None:
     cpu: str | None = None
     memory: str | None = None
     queue: str | None = None
+    account: str | None = None
     walltime: str | None = None
 
     cpu_match = re.search(r"\b(\d+)\s*(?:cpu|cpus|cores?)\b", request, flags=re.IGNORECASE)
@@ -420,6 +423,10 @@ def _extract_resource_spec_from_prompt(request: str) -> ResourceSpec | None:
     if queue_match:
         queue = queue_match.group(1)
 
+    account_match = re.search(r"\baccount\s*[:=]?\s*([A-Za-z0-9_.-]+)\b", request, flags=re.IGNORECASE)
+    if account_match:
+        account = account_match.group(1)
+
     walltime_match = re.search(
         r"\b(?:walltime|wall time|time limit)\s*[:=]?\s*([0-9]+(?::[0-9]{2}){1,2}|[0-9]+[hm])\b",
         request,
@@ -428,12 +435,23 @@ def _extract_resource_spec_from_prompt(request: str) -> ResourceSpec | None:
     if walltime_match:
         walltime = walltime_match.group(1)
 
-    if not any((cpu, memory, queue, walltime)):
+    if not any((cpu, memory, queue, account, walltime)):
         return None
     notes = (
         "Scheduler-oriented fields are frozen for review and replay before an executor consumes the recipe.",
     )
-    return ResourceSpec(cpu=cpu, memory=memory, queue=queue, walltime=walltime, notes=notes)
+    return ResourceSpec(cpu=cpu, memory=memory, queue=queue, account=account, walltime=walltime, notes=notes)
+
+
+def _slurm_resource_spec_defaults(resource_spec: ResourceSpec | None) -> ResourceSpec | None:
+    """Attach cluster-specific Slurm defaults to a selected resource spec."""
+    if resource_spec is None:
+        return ResourceSpec(account=DEFAULT_SLURM_ACCOUNT)
+    if resource_spec.execution_class not in (None, "", "slurm"):
+        return resource_spec
+    if resource_spec.account:
+        return resource_spec
+    return replace(resource_spec, account=DEFAULT_SLURM_ACCOUNT)
 
 
 def _extract_execution_profile_from_prompt(request: str) -> str | None:
@@ -500,6 +518,8 @@ def _select_execution_policy(
     selected_resources = _merge_resource_specs(_merge_resource_specs(registry_default, prompt_resources), caller_resources)
     if selected_resources is not None and selected_profile != (selected_resources.execution_class or selected_profile):
         selected_resources = replace(selected_resources, execution_class=selected_profile)
+    if selected_profile == "slurm":
+        selected_resources = _slurm_resource_spec_defaults(selected_resources)
 
     selected_image = _coerce_runtime_image_spec(runtime_image) or _extract_runtime_image_from_prompt(request)
     if selected_resources is not None:

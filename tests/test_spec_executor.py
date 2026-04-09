@@ -431,6 +431,7 @@ class SpecExecutorTests(TestCase):
 
         self.assertEqual(first, second)
         self.assertIn("#SBATCH --partition=batch", first)
+        self.assertIn("#SBATCH --account=rcc-staff", first)
         self.assertIn("#SBATCH --cpus-per-task=20", first)
         self.assertIn("#SBATCH --mem=80G", first)
         self.assertIn("run_local_recipe", first)
@@ -463,12 +464,14 @@ class SpecExecutorTests(TestCase):
         self.assertEqual(result.run_record.job_id, "98765")
         self.assertEqual(result.run_record.execution_profile, "slurm")
         self.assertEqual(result.run_record.resource_spec.queue, "batch")
+        self.assertEqual(result.run_record.resource_spec.account, "rcc-staff")
         self.assertTrue(script_exists)
         self.assertTrue(record_exists)
         self.assertEqual(Path(captured["args"][1]), result.run_record.script_path)
         self.assertEqual(record_payload["schema_version"], "slurm-run-record-v1")
         self.assertEqual(record_payload["job_id"], "98765")
         self.assertEqual(record_payload["resource_spec"]["memory"], "80Gi")
+        self.assertEqual(record_payload["resource_spec"]["account"], "rcc-staff")
         self.assertEqual(result.run_record.run_record_path.name, DEFAULT_SLURM_RUN_RECORD_FILENAME)
 
     def test_slurm_reconcile_updates_running_job_record(self) -> None:

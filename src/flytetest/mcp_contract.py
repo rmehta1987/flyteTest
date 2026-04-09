@@ -143,7 +143,7 @@ RECIPE_INPUT_RUNTIME_RULES = (
     "BUSCO runtime bindings begin with `busco_lineages_text`, optional `busco_sif`, and `busco_cpu`.",
     "EggNOG runtime bindings are `eggnog_data_dir`, optional `eggnog_sif`, `eggnog_cpu`, and `eggnog_database`.",
     "AGAT runtime bindings are `annotation_fasta_path` and optional `agat_sif` for statistics, and optional `agat_sif` for conversion.",
-    "Resource requests use structured `ResourceSpec` fields such as `cpu`, `memory`, `queue`, and `walltime`.",
+    "Resource requests use structured `ResourceSpec` fields such as `cpu`, `memory`, `queue`, `account`, and `walltime`.",
     "`local` recipes run through explicit local handlers; `slurm` recipes can be submitted with `run_slurm_recipe` after they are frozen.",
     "`monitor_slurm_job` and `cancel_slurm_job` operate from durable `.runtime/runs/` Slurm run records.",
     "Runtime image policy can be frozen as `RuntimeImageSpec` metadata, while existing workflow SIF inputs remain explicit runtime bindings.",

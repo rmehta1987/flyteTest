@@ -296,6 +296,7 @@ class PlanningTests(TestCase):
         self.assertEqual(payload["execution_profile"], "slurm")
         self.assertEqual(payload["binding_plan"]["execution_profile"], "slurm")
         self.assertEqual(payload["resource_spec"]["execution_class"], "slurm")
+        self.assertEqual(payload["resource_spec"]["account"], "rcc-staff")
 
     def test_typed_plan_reports_ambiguous_busco_manifest_sources(self) -> None:
         """Decline BUSCO planning when multiple manifests could satisfy the QC target."""

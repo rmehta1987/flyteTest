@@ -546,6 +546,8 @@ def _slurm_directives(
         directives.append(f"#SBATCH --mem={memory}")
     if resource_spec.queue:
         directives.append(f"#SBATCH --partition={resource_spec.queue}")
+    if resource_spec.account:
+        directives.append(f"#SBATCH --account={resource_spec.account}")
     if resource_spec.walltime:
         directives.append(f"#SBATCH --time={resource_spec.walltime}")
     if resource_spec.gpu:
