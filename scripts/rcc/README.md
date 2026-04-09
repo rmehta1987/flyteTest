@@ -39,6 +39,9 @@ The local smoke scripts can still use `data/images/*.sif`.
 - `cancel_protein_evidence_slurm.sh`: requests cancellation for the latest
   protein-evidence Slurm run record, or a run record path that you pass
   explicitly
+- `debug_protein_evidence_workflow.sbatch`: runs the protein-evidence workflow
+  probe directly under Slurm and prints a full JSON traceback if the workflow
+  fails
 - `check_minimal_fixtures.sh`: verifies the lightweight tutorial-backed
   fixture set is present under `data/`
 - `minimal_transcriptomics_smoke.sh`: runs Trinity, STAR, and StringTie against
@@ -186,6 +189,12 @@ Run the protein-evidence Slurm lifecycle smoke from the top:
 ```bash
 bash scripts/rcc/run_protein_evidence_slurm.sh
 bash scripts/rcc/monitor_protein_evidence_slurm.sh
+```
+
+Run the protein-evidence workflow probe directly on Slurm:
+
+```bash
+sbatch scripts/rcc/debug_protein_evidence_workflow.sbatch
 ```
 
 The protein-evidence launcher freezes the Slurm recipe with the cluster
