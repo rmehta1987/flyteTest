@@ -85,7 +85,7 @@ print(json.dumps({
     "artifact_path": str(artifact_path),
     "job_id": submitted["job_id"],
     "run_record_path": str(run_record_path),
-    "scheduler_stdout": submitted["execution_result"]["scheduler_stdout"],
-    "scheduler_stderr": submitted["execution_result"]["scheduler_stderr"],
+    "stdout": submitted["execution_result"].get("stdout", ""),
+    "stderr": submitted["execution_result"].get("stderr", ""),
 }, indent=2, sort_keys=True))
 PY
