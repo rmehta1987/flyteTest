@@ -74,6 +74,7 @@ stage_sanitized_fasta() {
 
 case "$MODE" in
   seqclean)
+    # Legacy mode keeps the old vector-cleaning path available for compatibility.
     require_file "$HOST_TRANSCRIPTS_UNTRIMMED_PATH"
     require_file "$HOST_VECTOR_SEQUENCE_PATH"
     require_dir "$HOST_PASA_WORK_DIR"
@@ -97,6 +98,7 @@ case "$MODE" in
     ;;
 
   accession_extract)
+    # Extract Trinity accessions when the workflow needs a TDN file.
     require_file "$HOST_TRANSCRIPTS_UNTRIMMED_PATH"
     require_dir "$HOST_PASA_WORK_DIR"
     HOST_STAGE_TRINITY_FASTA="$HOST_PASA_WORK_DIR/$(basename "$HOST_TRANSCRIPTS_UNTRIMMED_PATH")"
@@ -108,6 +110,7 @@ case "$MODE" in
     ;;
 
   align_assemble)
+    # Run the align/assemble stage against the staged transcripts and genome.
     require_file "$HOST_PASA_CONFIG"
     require_file "$HOST_TRANSCRIPTS_UNTRIMMED_PATH"
     require_file "$HOST_TRANSCRIPTS_CLEAN_PATH"

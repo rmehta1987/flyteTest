@@ -31,6 +31,7 @@ fi
 PASA_TRANSCRIBED_IS_ALIGNED_ORIENT="${PASA_TRANSCRIBED_IS_ALIGNED_ORIENT:-0}"
 WORK_DIR="${WORK_DIR:-$ALIGN_SMOKE_ROOT/runtime}"
 
+# Pick the single Trinity FASTA emitted by the transcriptomics smoke.
 find_trinity_fasta() {
   local trinity_dir="$1"
   local candidate
@@ -75,6 +76,7 @@ find_trinity_fasta() {
   exit 1
 }
 
+# Validate the source inputs before staging the PASA workspace.
 require_dir "$TRINITY_OUTPUT_DIR"
 require_file "$HOST_GENOME_FASTA"
 require_dir "$HOST_PASA_WORK_DIR"
@@ -83,6 +85,7 @@ command -v Launch_PASA_pipeline.pl >/dev/null 2>&1 || {
   exit 1
 }
 
+# Rebuild the smoke workspace from scratch on each run.
 rm -rf "$ALIGN_SMOKE_ROOT"
 mkdir -p "$WORK_DIR"
 mkdir -p "$HOST_PASA_WORK_DIR/transcripts" "$HOST_PASA_WORK_DIR/reference" \
@@ -95,6 +98,7 @@ STAGED_GENOME_FASTA="$HOST_PASA_WORK_DIR/reference/$(basename "$HOST_GENOME_FAST
 cp -f "$TRINITY_FASTA" "$STAGED_TRINITY_FASTA"
 cp -f "$HOST_GENOME_FASTA" "$STAGED_GENOME_FASTA"
 
+# Keep the SQLite database local to the smoke workspace.
 DATABASE_PATH="$HOST_PASA_WORK_DIR/minimal_pasa_align.sqlite"
 cat >"$HOST_PASA_CONFIG" <<EOF
 DATABASE=$DATABASE_PATH
@@ -114,6 +118,7 @@ echo "Genome FASTA: $STAGED_GENOME_FASTA"
 echo "PASA config: $HOST_PASA_CONFIG"
 echo "PASA binary: $(command -v Launch_PASA_pipeline.pl)"
 
+# Run the wiki-shaped PASA command directly on the host-installed binary.
 cd "$HOST_PASA_WORK_DIR"
 Launch_PASA_pipeline.pl \
   -c "$HOST_PASA_CONFIG" \

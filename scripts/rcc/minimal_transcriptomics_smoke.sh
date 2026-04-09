@@ -8,6 +8,7 @@ SMOKE_ROOT="${SMOKE_ROOT:-$REPO_ROOT/temp/minimal_transcriptomics_smoke}"
 
 mkdir -p "$SMOKE_ROOT"
 
+# The transcriptomics smoke must run first because PASA reuses the Trinity FASTA it emits.
 bash "$SCRIPT_DIR/check_minimal_fixtures.sh"
 
 # Separate stage directories keep the Trinity, STAR, and StringTie outputs easy to inspect.
@@ -35,6 +36,7 @@ echo "trinity reads: $RIGHT_FASTQ"
 echo "star genome: $HOST_GENOME_FASTA"
 echo "stringtie bam: $INPUT_BAM"
 
+# Run Trinity first to produce the transcript FASTA consumed later by PASA.
 WORK_DIR="$TRINITY_SMOKE_DIR" \
 LEFT_FASTQ="$LEFT_FASTQ" \
 RIGHT_FASTQ="$RIGHT_FASTQ" \
@@ -42,12 +44,14 @@ TRINITY_CPU="$TRINITY_CPU" \
 TRINITY_MAX_MEMORY_GB="$TRINITY_MAX_MEMORY_GB" \
 bash "$SCRIPT_DIR/trinity.sh"
 
+# Build the STAR genome index in the same smoke scratch tree.
 WORK_DIR="$STAR_SMOKE_DIR" \
 HOST_GENOME_FASTA="$HOST_GENOME_FASTA" \
 STAR_THREADS="$STAR_THREADS" \
 MODE=index \
 bash "$SCRIPT_DIR/star.sh"
 
+# Reuse the STAR index for the alignment run.
 WORK_DIR="$STAR_SMOKE_DIR" \
 HOST_GENOME_FASTA="$HOST_GENOME_FASTA" \
 LEFT_FASTQ="$LEFT_FASTQ" \
@@ -56,6 +60,7 @@ STAR_THREADS="$STAR_THREADS" \
 MODE=align \
 bash "$SCRIPT_DIR/star.sh"
 
+# Run StringTie against the merged BAM fixture.
 WORK_DIR="$STRINGTIE_SMOKE_DIR" \
 INPUT_BAM="$INPUT_BAM" \
 STRINGTIE_THREADS="$STRINGTIE_THREADS" \

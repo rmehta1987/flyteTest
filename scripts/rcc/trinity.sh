@@ -38,6 +38,7 @@ to_container_path() {
 
 case "$MODE" in
   denovo)
+    # De novo mode consumes paired reads from the minimal transcriptomics fixture.
     [[ -d "$HOST_FASTQ_DIR" ]] || { echo "missing Trinity FASTQ directory: $HOST_FASTQ_DIR" >&2; exit 1; }
     LEFT_FASTQ="${LEFT_FASTQ:-}"
     RIGHT_FASTQ="${RIGHT_FASTQ:-}"
@@ -71,6 +72,7 @@ case "$MODE" in
     CONTAINER_OUT_DIR="${CONTAINER_OUT_DIR:-/tmp/trinity_out_dir}"
     require_dir "$HOST_OUTPUT_DIR"
 
+    # Run Trinity inside the selected image with the host scratch output mount.
     runtime_exec "$TRINITY_SIF" Trinity \
       --seqType fq \
       --left "$LEFT_FASTQ" \
@@ -84,7 +86,7 @@ case "$MODE" in
     ;;
 
   genome_guided)
-    # Genome-guided Trinity writes into a separate mounted scratch directory.
+    # Genome-guided mode reuses the STAR BAM and writes to a separate scratch dir.
     HOST_OUTPUT_DIR="${HOST_OUTPUT_DIR:-${OUT_DIR:-$WORK_DIR/trinity_gg}}"
     CONTAINER_OUT_DIR="${CONTAINER_OUT_DIR:-/tmp/trinity_gg}"
     MERGED_BAM="${MERGED_BAM:-$HOST_MERGED_BAM}"

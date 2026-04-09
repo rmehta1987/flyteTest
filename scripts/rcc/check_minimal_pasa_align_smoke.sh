@@ -35,6 +35,7 @@ require_dir() {
   }
 }
 
+# Return the only file matching the requested pattern under a directory.
 find_unique_file() {
   local root="$1"
   local pattern="$2"
@@ -49,6 +50,7 @@ find_unique_file() {
   return 1
 }
 
+# Find the first output artifact matching a pattern in the smoke workspace.
 find_output_file() {
   local root="$1"
   local pattern="$2"
@@ -61,6 +63,7 @@ find_output_file() {
   return 1
 }
 
+# Confirm the smoke workspace and expected staged inputs exist.
 require_dir "$HOST_PASA_WORK_DIR"
 STAGED_TRINITY_FASTA="$(find_unique_file "$HOST_PASA_WORK_DIR/transcripts" '*.fasta' || true)"
 if [[ -z "$STAGED_TRINITY_FASTA" ]]; then

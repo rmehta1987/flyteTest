@@ -35,6 +35,7 @@ PASA_CPU="${PASA_CPU:-2}"
 PASA_ALIGNER="${PASA_ALIGNER:-gmap}"
 WORK_DIR="${WORK_DIR:-$IMAGE_SMOKE_ROOT/runtime}"
 
+# Pick the single Trinity FASTA emitted by the transcriptomics smoke.
 find_trinity_fasta() {
   local trinity_dir="$1"
   local candidate
@@ -79,6 +80,7 @@ find_trinity_fasta() {
   exit 1
 }
 
+# Remove Trinity header annotations so PASA sees a simple accession-style FASTA.
 stage_sanitized_fasta() {
   local source="$1"
   local dest="$2"
@@ -86,11 +88,13 @@ stage_sanitized_fasta() {
   awk 'BEGIN { OFS = "" } /^>/ { sub(/ .*/, "") } { print }' "$source" >"$dest"
 }
 
+# Validate the source inputs before staging the PASA workspace.
 require_dir "$TRINITY_OUTPUT_DIR"
 require_file "$HOST_GENOME_FASTA"
 require_file "$PASA_SIF"
 require_dir "$HOST_PASA_WORK_DIR"
 
+# Rebuild the smoke workspace from scratch on each run.
 rm -rf "$IMAGE_SMOKE_ROOT"
 mkdir -p "$WORK_DIR"
 mkdir -p "$HOST_PASA_WORK_DIR/transcripts" "$HOST_PASA_WORK_DIR/reference" \
@@ -103,6 +107,7 @@ STAGED_GENOME_FASTA="$HOST_PASA_WORK_DIR/reference/genome.fa"
 cp -f "$HOST_GENOME_FASTA" "$STAGED_GENOME_FASTA"
 stage_sanitized_fasta "$TRINITY_FASTA" "$STAGED_TRANSCRIPTS_FASTA"
 
+# Keep the SQLite database inside the container-visible PASA workspace.
 CONTAINER_DATABASE_PATH="$CONTAINER_PASA_WORK_DIR/minimal_pasa_image.sqlite"
 cat >"$HOST_PASA_CONFIG" <<EOF
 DATABASE=$CONTAINER_DATABASE_PATH
@@ -117,6 +122,7 @@ echo "Genome FASTA: $STAGED_GENOME_FASTA"
 echo "PASA config: $HOST_PASA_CONFIG"
 echo "PASA image: $PASA_SIF"
 
+# Run the same PASA entrypoint inside the Apptainer image.
 runtime_exec "$PASA_SIF" bash -lc \
   "cd '$CONTAINER_PASA_WORK_DIR' && /usr/local/src/PASApipeline/Launch_PASA_pipeline.pl -c '$CONTAINER_PASA_CONFIG' -C -R --ALIGNERS '$PASA_ALIGNER' --CPU '$PASA_CPU' -g '$CONTAINER_GENOME_FASTA' -t '$CONTAINER_TRANSCRIPTS_FASTA'"
 

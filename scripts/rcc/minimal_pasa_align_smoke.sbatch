@@ -9,6 +9,7 @@
 
 set -euo pipefail
 
+# Load the cluster toolchain needed by the smoke wrappers and Apptainer runtime.
 module load gcc/13.2.0
 module load apptainer/1.4.1
 

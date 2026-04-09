@@ -10,6 +10,7 @@ OUTPUT_DIR="${SBATCH_OUTPUT_DIR:-/scratch/midway3/mehta5/flyteTest/FlyteTest}"
 # shellcheck source=scripts/rcc/common.sh
 source "$SCRIPT_DIR/common.sh"
 
+# Create the Slurm output directory only when we are about to submit to Slurm.
 if command -v sbatch >/dev/null 2>&1; then
   mkdir -p "$OUTPUT_DIR"
 fi

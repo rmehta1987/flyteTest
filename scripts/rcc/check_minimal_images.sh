@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 PROJECT_IMAGE_ROOT="/project/rcc/hyadav/genomes/software"
 
+# Check a repo-local file or a cluster-mounted absolute path.
 check_file() {
   local path="$1"
   local label="${2:-$1}"
@@ -22,6 +23,7 @@ check_file() {
   fi
 }
 
+# Repo-local smoke images that should exist in every checkout.
 required_files=(
   "data/images/trinity_2.13.2.sif"
   "data/images/star_2.7.10b.sif"
@@ -35,9 +37,11 @@ for rel_path in "${required_files[@]}"; do
   check_file "$rel_path"
 done
 
+# Allow the PASA image path to be overridden for a scp'd cluster copy.
 check_file "${PASA_SIF:-data/images/pasa_2.5.3.sif}" "PASA image (${PASA_SIF:-data/images/pasa_2.5.3.sif})"
 
 if [[ -d "$PROJECT_IMAGE_ROOT" ]]; then
+# Verify the shared cluster Trinity and STAR image defaults plus the StringTie binary.
   check_file "$PROJECT_IMAGE_ROOT/trinityrnaseq.v2.15.2.simg" "cluster Trinity image ($PROJECT_IMAGE_ROOT/trinityrnaseq.v2.15.2.simg)"
   check_file "$PROJECT_IMAGE_ROOT/STAR.sif" "cluster STAR image ($PROJECT_IMAGE_ROOT/STAR.sif)"
   check_file "$PROJECT_IMAGE_ROOT/stringtie/stringtie" "cluster StringTie binary ($PROJECT_IMAGE_ROOT/stringtie/stringtie)"

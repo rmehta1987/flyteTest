@@ -39,6 +39,7 @@ to_container_path() {
 
 case "$MODE" in
   index)
+    # Build the genome index that the align step will reuse.
     require_file "$HOST_GENOME_FASTA"
     require_dir "$HOST_STAR_INDEX_DIR"
     echo "STAR index input genome: $HOST_GENOME_FASTA"

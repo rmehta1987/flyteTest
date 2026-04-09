@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Resolve the container runtime used for smoke execution.
 detect_runtime() {
   for candidate in apptainer singularity; do
     if command -v "$candidate" >/dev/null 2>&1; then
@@ -12,6 +13,7 @@ detect_runtime() {
   exit 1
 }
 
+# Submit the Slurm wrapper when available, otherwise run the local smoke script.
 submit_or_run_smoke() {
   local repo_root="$1"
   local sbatch_script="$2"
@@ -26,6 +28,7 @@ submit_or_run_smoke() {
   bash "$local_script"
 }
 
+# Fail fast when a required file is missing.
 require_file() {
   local path="$1"
   [[ -f "$path" ]] || {
@@ -34,11 +37,13 @@ require_file() {
   }
 }
 
+# Create the working directory tree used by the smoke.
 require_dir() {
   local path="$1"
   mkdir -p "$path"
 }
 
+# Build the comma-separated bind list expected by Apptainer/Singularity.
 append_bind_mounts() {
   local existing="$1"
   local addition="$2"
@@ -49,6 +54,7 @@ append_bind_mounts() {
   fi
 }
 
+# Resolve a UniVec-style vector reference from either a file or a directory.
 resolve_univec_reference() {
   local candidate="$1"
   if [[ -f "$candidate" ]]; then
@@ -83,6 +89,7 @@ resolve_univec_reference() {
   exit 1
 }
 
+# Find the legacy BLAST tools directory when seqclean compatibility is needed.
 resolve_legacy_blast_tools_dir() {
   local blastall_path
   local formatdb_path
@@ -98,6 +105,7 @@ resolve_legacy_blast_tools_dir() {
   exit 1
 }
 
+# Create the BLAST index files needed by legacy seqclean paths.
 ensure_formatdb_index() {
   local fasta_path="$1"
   local formatdb_path
@@ -115,6 +123,7 @@ ensure_formatdb_index() {
   "$formatdb_path" -i "$fasta_path" -p F >/dev/null
 }
 
+# Stage host-side wrappers and compatibility libraries for seqclean in a container.
 ensure_legacy_blast_bridge() {
   local wrapper_dir="$1"
   local container_blast_dir="$2"
@@ -191,6 +200,7 @@ EOF
   chmod 0755 "$wrapper_dir/blastall" "$wrapper_dir/formatdb"
 }
 
+# Stage a simpler legacy-BLAST bridge when the tools are provided by Conda/host paths.
 ensure_conda_legacy_blast_bridge() {
   local wrapper_dir="$1"
   local container_prefix="$2"
@@ -236,6 +246,7 @@ EOF
   chmod 0755 "$wrapper_dir/blastall" "$wrapper_dir/formatdb"
 }
 
+# Stage the minimal legacy-BLAST bridge inside an image workspace.
 ensure_image_legacy_blast_bridge() {
   local wrapper_dir="$1"
   mkdir -p "$wrapper_dir"
@@ -280,6 +291,7 @@ EOF
   chmod 0755 "$wrapper_dir/blastall" "$wrapper_dir/formatdb"
 }
 
+# Prefer an override, then a repo-local image, then the shared cluster path.
 resolve_smoke_image() {
   local env_var_name="$1"
   local local_candidate="$2"
@@ -300,6 +312,7 @@ resolve_smoke_image() {
   printf '%s\n' "$cluster_candidate"
 }
 
+# Run a command inside the resolved image with the repo and scratch bind mounts.
 runtime_exec() {
   local image_path="$1"
   shift

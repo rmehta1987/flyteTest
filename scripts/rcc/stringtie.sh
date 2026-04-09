@@ -43,6 +43,7 @@ else
 fi
 
 if [[ -n "$STRINGTIE_BIN_PATH" ]]; then
+  # Prefer the host-installed binary when the cluster exposes it.
   echo "StringTie binary: $STRINGTIE_BIN_PATH"
   "$STRINGTIE_BIN_PATH" "$INPUT_BAM" \
     -p "$STRINGTIE_THREADS" \
@@ -53,6 +54,7 @@ if [[ -n "$STRINGTIE_BIN_PATH" ]]; then
     -c 3 \
     -j 3
 else
+  # Fall back to the repo-local image when the host binary is unavailable.
   require_file "$STRINGTIE_SIF"
   echo "StringTie image fallback: $STRINGTIE_SIF"
   runtime_exec "$STRINGTIE_SIF" stringtie "$CONTAINER_INPUT_BAM" \
