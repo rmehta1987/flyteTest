@@ -245,6 +245,8 @@ Image provenance:
 - The `run_minimal_*_smoke.sh` launchers submit with `sbatch` when it is
   available and fall back to running the local smoke script directly when they
   are on a machine without Slurm.
+- The Slurm smoke wrappers load `gcc/13.2.0` and `apptainer/1.4.1` before
+  running the corresponding smoke scripts.
 - The wiki-shaped smoke checker verifies the staged Trinity FASTA, the staged
   genome FASTA, the config, and the PASA assemblies GFF3, FASTA, and GTF
   outputs produced by the align run.

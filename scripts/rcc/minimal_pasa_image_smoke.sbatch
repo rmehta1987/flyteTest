@@ -12,6 +12,9 @@
 
 set -euo pipefail
 
+module load gcc/13.2.0
+module load apptainer/1.4.1
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${SLURM_SUBMIT_DIR:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
 

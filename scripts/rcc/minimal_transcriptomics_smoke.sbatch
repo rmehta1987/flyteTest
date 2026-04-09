@@ -12,5 +12,8 @@
 
 set -euo pipefail
 
+module load gcc/13.2.0
+module load apptainer/1.4.1
+
 REPO_ROOT="${SLURM_SUBMIT_DIR:-$PWD}"
 exec "$REPO_ROOT/scripts/rcc/minimal_transcriptomics_smoke.sh"
