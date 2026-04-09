@@ -532,7 +532,8 @@ def _slurm_directives(
     resource_spec: ResourceSpec | None,
 ) -> list[str]:
     """Build deterministic `#SBATCH` directives from the frozen resource spec."""
-    job_name = _slug(f"flytetest-{workflow_name}-{run_id}", max_length=64)
+    job_prefix = "pe" if workflow_name == "protein_evidence_alignment" else "flytetest"
+    job_name = _slug(f"{job_prefix}-{run_id}", max_length=32)
     directives = [
         f"#SBATCH --job-name={job_name}",
         f"#SBATCH --output={stdout_path}",
@@ -587,8 +588,15 @@ def render_slurm_script(
             *directives,
             "set -euo pipefail",
             f"cd {shlex.quote(str(repo_root))}",
+            "if command -v module >/dev/null 2>&1; then",
+            "  module load python/3.11.9",
+            "fi",
+            f"if [[ -f {shlex.quote(str(repo_root / '.venv/bin/activate'))} ]]; then",
+            f"  source {shlex.quote(str(repo_root / '.venv/bin/activate'))}",
+            "fi",
             f"export PYTHONPATH={shlex.quote(str(repo_root / 'src'))}${{PYTHONPATH:+:$PYTHONPATH}}",
-            f"{shlex.quote(python_executable)} -c {shlex.quote(python_code)}",
+            "PYTHON_BIN=\"${PYTHON_BIN:-$(command -v python3)}\"",
+            f"$PYTHON_BIN -c {shlex.quote(python_code)}",
             "",
         ]
     )

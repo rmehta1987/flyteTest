@@ -192,7 +192,7 @@ The protein-evidence launcher freezes the Slurm recipe with the cluster
 defaults used by this repo:
 
 - account: `rcc-staff` unless `FLYTETEST_SLURM_ACCOUNT` is already set
-- partition: `batch` unless `FLYTETEST_SLURM_QUEUE` is already set
+- partition: `caslake` unless `FLYTETEST_SLURM_QUEUE` is already set
 - walltime: `02:00:00` unless `FLYTETEST_SLURM_WALLTIME` is already set
 - CPU count: `8` unless `FLYTETEST_SLURM_CPU` is already set
 - memory: `32Gi` unless `FLYTETEST_SLURM_MEMORY` is already set
@@ -204,6 +204,8 @@ saved recipe artifact path to
 cancel helpers can follow the run without manual copy/paste.
 When the cluster module system is available, the helper loads
 `python/3.11.9` and then activates `.venv/` if it exists in the checkout.
+The generated Slurm payload does the same bootstrap on the compute node before
+invoking the frozen recipe.
 
 Run the transcriptomics smoke suite:
 

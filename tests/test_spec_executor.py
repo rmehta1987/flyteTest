@@ -434,6 +434,8 @@ class SpecExecutorTests(TestCase):
         self.assertIn("#SBATCH --account=rcc-staff", first)
         self.assertIn("#SBATCH --cpus-per-task=20", first)
         self.assertIn("#SBATCH --mem=80G", first)
+        self.assertIn("module load python/3.11.9", first)
+        self.assertIn("source", first)
         self.assertIn("run_local_recipe", first)
         self.assertIn(str(artifact_path), first)
 
