@@ -17,6 +17,8 @@ check_file() {
   if [[ ! -e "$abs_path" ]]; then
     echo "missing artifact: $label" >&2
     missing=1
+  else
+    echo "found artifact: $label"
   fi
 }
 
