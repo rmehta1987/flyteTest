@@ -42,6 +42,9 @@ The local smoke scripts can still use `data/images/*.sif`.
 - `debug_protein_evidence_workflow.sbatch`: runs the protein-evidence workflow
   probe directly under Slurm and prints a full JSON traceback if the workflow
   fails
+- `debug_protein_evidence_chunk_align.sbatch`: stages and chunks the protein
+  FASTA, then calls the underlying Exonerate chunk-alignment Python callable
+  directly so the real exception is visible in the Slurm output
 - `check_minimal_fixtures.sh`: verifies the lightweight tutorial-backed
   fixture set is present under `data/`
 - `minimal_transcriptomics_smoke.sh`: runs Trinity, STAR, and StringTie against
@@ -195,6 +198,12 @@ Run the protein-evidence workflow probe directly on Slurm:
 
 ```bash
 sbatch scripts/rcc/debug_protein_evidence_workflow.sbatch
+```
+
+Run the chunk-alignment debug probe directly on Slurm:
+
+```bash
+sbatch scripts/rcc/debug_protein_evidence_chunk_align.sbatch
 ```
 
 The protein-evidence launcher freezes the Slurm recipe with the cluster
