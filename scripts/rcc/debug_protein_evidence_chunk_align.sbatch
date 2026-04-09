@@ -33,6 +33,8 @@ python3 - <<'PY'
 from __future__ import annotations
 
 import json
+import os
+import shutil
 import traceback
 from pathlib import Path
 
@@ -53,6 +55,16 @@ def _emit(payload: dict[str, object]) -> None:
 try:
     genome = File(path="data/braker3/reference/genome.fa")
     protein_fastas = [File(path="data/braker3/protein_data/fastas/proteins.fa")]
+    exonerate_sif = os.environ.get("EXONERATE_SIF", "")
+    local_exonerate_sif = Path("data/images/exonerate_2.2.0--1.sif")
+    if not exonerate_sif and local_exonerate_sif.exists():
+        exonerate_sif = str(local_exonerate_sif)
+    exonerate_binary = shutil.which("exonerate")
+    if not exonerate_sif and not exonerate_binary:
+        raise FileNotFoundError(
+            "No exonerate executable found on PATH and EXONERATE_SIF is not set. "
+            "Load an exonerate module or point EXONERATE_SIF at a container image that provides it."
+        )
 
     staged = stage_protein_fastas.func(protein_fastas=protein_fastas)
     staged_dir = Path(staged.download_sync())
@@ -67,7 +79,7 @@ try:
     chunk_alignment = exonerate_align_chunk.func(
         genome=genome,
         protein_chunk=File(path=str(chunk_path)),
-        exonerate_sif="",
+        exonerate_sif=exonerate_sif,
         exonerate_model="protein2genome",
     )
     alignment_dir = Path(chunk_alignment.download_sync())
@@ -79,6 +91,7 @@ try:
             "chunk_path": str(chunk_path),
             "alignment_dir": str(alignment_dir),
             "manifest_path": str(alignment_dir / "run_manifest.json"),
+            "exonerate_source": "EXONERATE_SIF" if exonerate_sif else "PATH",
         }
     )
 except Exception as exc:

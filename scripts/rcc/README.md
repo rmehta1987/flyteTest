@@ -44,7 +44,9 @@ The local smoke scripts can still use `data/images/*.sif`.
   fails
 - `debug_protein_evidence_chunk_align.sbatch`: stages and chunks the protein
   FASTA, then calls the underlying Exonerate chunk-alignment Python callable
-  directly so the real exception is visible in the Slurm output
+  directly so the real exception is visible in the Slurm output; set
+  `EXONERATE_SIF` if the cluster does not provide a native `exonerate`
+  binary
 - `check_minimal_fixtures.sh`: verifies the lightweight tutorial-backed
   fixture set is present under `data/`
 - `minimal_transcriptomics_smoke.sh`: runs Trinity, STAR, and StringTie against
@@ -206,6 +208,13 @@ Run the chunk-alignment debug probe directly on Slurm:
 sbatch scripts/rcc/debug_protein_evidence_chunk_align.sbatch
 ```
 
+If the cluster login or compute node does not have a native `exonerate`
+binary, set `EXONERATE_SIF` to a container image that provides it before
+submitting the debug job. A current BioContainers reference is
+`docker://quay.io/biocontainers/exonerate:2.2.0--1`.
+The helper also prefers the repo-local
+`data/images/exonerate_2.2.0--1.sif` when it is present.
+
 The protein-evidence launcher freezes the Slurm recipe with the cluster
 defaults used by this repo:
 
@@ -268,6 +277,7 @@ That helper downloads:
 - `data/images/star_2.7.10b.sif`
 - `data/images/stringtie_2.2.3.sif`
 - `data/images/pasa_2.5.3.sif`
+- `data/images/exonerate_2.2.0--1.sif`
 
 The repo-local `data/images/braker3.sif` and `data/images/busco_v6.0.0_cv1.sif`
 images are managed separately when those stages are needed.
@@ -278,6 +288,7 @@ Image provenance:
 - `data/images/star_2.7.10b.sif` was pulled from `docker://quay.io/biocontainers/star:2.7.10b--h9ee0642_0`
 - `data/images/stringtie_2.2.3.sif` was pulled from `docker://quay.io/biocontainers/stringtie:2.2.3--h43eeafb_0`
 - `data/images/pasa_2.5.3.sif` was pulled from `docker://pasapipeline/pasapipeline:2.5.3`
+- `data/images/exonerate_2.2.0--1.sif` was pulled from `docker://quay.io/biocontainers/exonerate:2.2.0--1`
 - `data/images/braker3.sif` was built from `teambraker/braker3:latest`
 - `data/images/busco_v6.0.0_cv1.sif` was built from `ezlabgva/busco:v6.0.0_cv1`
 

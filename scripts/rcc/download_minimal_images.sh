@@ -47,6 +47,10 @@ pull_image \
   "$IMAGE_DIR/pasa_2.5.3.sif" \
   "docker://pasapipeline/pasapipeline:2.5.3"
 
+pull_image \
+  "$IMAGE_DIR/exonerate_2.2.0--1.sif" \
+  "docker://quay.io/biocontainers/exonerate:2.2.0--1"
+
 cat <<'EOF'
 Done.
 

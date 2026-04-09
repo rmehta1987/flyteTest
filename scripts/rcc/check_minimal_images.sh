@@ -30,6 +30,7 @@ required_files=(
   "data/images/stringtie_2.2.3.sif"
   "data/images/braker3.sif"
   "data/images/busco_v6.0.0_cv1.sif"
+  "data/images/exonerate_2.2.0--1.sif"
 )
 
 missing=0
