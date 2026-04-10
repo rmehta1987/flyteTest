@@ -37,6 +37,7 @@ surfaces evolve.
 | EggNOG functional annotation | Current | `src/flytetest/tasks/eggnog.py` and `src/flytetest/workflows/eggnog.py` now expose the post-BUSCO functional-annotation boundary, preserve the EggNOG annotations and decorated GFF3 outputs, and keep the local EggNOG database directory explicit. |
 | AGAT post-processing | Current | The statistics, conversion, and deterministic cleanup slices after EggNOG functional annotation are wired through task and workflow boundaries, while `table2asn` remains deferred. |
 | Prompt-to-spec generation | Current | Typed planning can produce metadata-only `WorkflowSpec` and `BindingPlan` previews from supported natural-language requests. This is controlled dynamic generation from registered biological building blocks, not arbitrary Python code generation. |
+| Ad hoc task execution | Close | The current MCP/server surface can already execute `exonerate_align_chunk` directly for stage-level experimentation, but a broader bounded task-execution policy with explicit eligibility and input binding rules is still future Milestone 21 work. |
 | Runtime creation of new task code | Far | The design deliberately avoids opaque runtime task-code generation. Future expansion should prefer registered stages, valid compositions, and saved specs before adding any broader synthesis behavior. |
 | Resource-aware execution planning | Current | The recipe-backed planner now freezes a selected execution profile plus structured `ResourceSpec` and optional `RuntimeImageSpec` metadata into saved `BindingPlan` artifacts and local or Slurm submission results. Registry workflow metadata exposes resource defaults for current workflow targets, and Slurm lifecycle reconciliation records the observed scheduler state. |
 | Container/dependency handling | Close | Optional `*.sif` inputs and `run_tool()` are real, but they are user-supplied and local-first rather than centrally managed runtime environments. |
@@ -63,6 +64,8 @@ surfaces evolve.
 - Start using the new registry compatibility metadata in planner and resolver work while preserving the older listing helpers.
 - Keep dynamic workflow generation replayable by routing new workflow shapes
   through `WorkflowSpec`, `BindingPlan`, provenance, and explicit assumptions.
+- Define a bounded ad hoc task execution policy before widening the current
+  single-task MCP task surface.
 - Migrate internal callers and manifest emitters toward the generic asset
   vocabulary while keeping legacy aliases available.
 - Keep registry-driven composition bounded, typed, and approval-gated before

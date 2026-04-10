@@ -1239,6 +1239,61 @@ Status: Not started
 - Losing compatibility with current filesystem-backed result bundles
 - Making asset references opaque instead of inspectable through manifests
 
+## Milestone 21
+
+Goal: support bounded ad hoc task execution through MCP and local execution
+without weakening the recipe-first workflow model.
+
+Status: Not started
+
+### Still required
+
+- [ ] Define which registered tasks are eligible for user-facing ad hoc
+      execution and which helper tasks must remain internal-only.
+- [ ] Add an explicit task-execution contract that keeps ad hoc task runs
+      distinct from saved workflow recipe execution.
+- [ ] Support explicit task input binding for scalar values plus local
+      `File` / `Dir` and collection-shaped task inputs when those shapes are
+      part of the registered task signature.
+- [ ] Preserve structured result summaries, explicit assumptions, and stable
+      manifest or output-path reporting for ad hoc task runs.
+- [ ] Add tests for task eligibility, task input coercion, structured
+      declines, and successful direct task execution.
+- [ ] Update README, `docs/mcp_showcase.md`, `docs/capability_maturity.md`,
+      and the handoff prompt after the behavior lands.
+
+### Milestone 21 implementation note
+
+- This slice should broaden the current narrow task surface deliberately, not
+  expose every registered task automatically.
+- Ad hoc task execution is for bounded experimentation and stage debugging; it
+  does not replace the saved-recipe workflow path for reproducible multi-stage
+  runs.
+- Eligible tasks should have a clear biological or stage boundary, explicit
+  input and output contracts, and result reporting that stays machine-readable.
+- Input binding rules should stay explicit and inspectable rather than
+  reintroducing hidden shell glue or prompt-only inference.
+
+### Acceptance evidence
+
+- `docs/realtime_refactor_plans/2026-04-10-milestone-21-ad-hoc-task-execution-surface.md`
+- `docs/realtime_refactor_milestone_21_submission_prompt.md`
+- Tests likely to include `tests/test_server.py`, `tests/test_planning.py`,
+  `tests/test_registry.py`, and any focused ad hoc task execution coverage
+- `README.md`, `docs/mcp_showcase.md`, `docs/capability_maturity.md`, and MCP
+  contract docs stay aligned with the landed behavior
+
+### Compatibility risks
+
+- Exposing internal helper tasks as user-facing execution targets without a
+  clear biological boundary
+- Letting ad hoc task execution drift into a shadow workflow engine that
+  bypasses saved recipe provenance
+- Making task input binding inconsistent across scalar, local-path, and
+  collection-shaped Flyte I/O inputs
+- Reintroducing hidden ad hoc shell behavior instead of explicit direct task
+  execution policy
+
 ## Verification Matrix
 
 | Area | Minimum verification |

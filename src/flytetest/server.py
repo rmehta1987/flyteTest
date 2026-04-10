@@ -8,6 +8,8 @@ through explicit node handlers.
 from __future__ import annotations
 
 import hashlib
+import inspect
+from importlib import import_module
 import os
 import shlex
 import shutil
@@ -19,7 +21,7 @@ from datetime import UTC, datetime
 from collections.abc import Mapping, Sequence
 from io import TextIOWrapper
 from pathlib import Path
-from typing import Any
+from typing import Any, get_args, get_origin, get_type_hints
 
 from flytetest.mcp_contract import (
     DECLINE_CATEGORY_CODES,
@@ -223,6 +225,178 @@ def _extract_output_paths(*streams: str) -> list[str]:
     return seen
 
 
+def _workflow_requires_direct_python(inputs: Mapping[str, object]) -> bool:
+    """Return whether one workflow input payload should bypass `flyte run`.
+
+    Flyte 2.1.2 treats collection and map CLI inputs as JSON values. The repo's
+    local runner used repeated flags for lists, and the installed CLI still does
+    not hydrate nested `File`/`Dir` members inside collection values. Direct
+    Python invocation keeps the saved-recipe local executor usable for those
+    collection-shaped workflow inputs.
+    """
+    return any(isinstance(value, (list, tuple, dict)) for value in inputs.values())
+
+
+def _is_flyte_file_annotation(annotation: Any) -> bool:
+    """Return whether one annotation represents `flyte.io.File`."""
+    from flyte.io import File
+
+    return annotation is File or get_origin(annotation) is File
+
+
+def _is_flyte_dir_annotation(annotation: Any) -> bool:
+    """Return whether one annotation represents `flyte.io.Dir`."""
+    from flyte.io import Dir
+
+    return annotation is Dir or get_origin(annotation) is Dir
+
+
+def _coerce_direct_workflow_input(annotation: Any, value: Any) -> Any:
+    """Convert local runner inputs into the objects expected by direct workflow calls."""
+    from flyte.io import Dir, File
+
+    if value in (None, ""):
+        return value
+
+    if annotation in (Any, inspect._empty):
+        return value
+
+    if _is_flyte_file_annotation(annotation):
+        return value if isinstance(value, File) else File(path=str(value))
+
+    if _is_flyte_dir_annotation(annotation):
+        return value if isinstance(value, Dir) else Dir(path=str(value))
+
+    origin = get_origin(annotation)
+    if origin in (list, tuple):
+        inner_type = get_args(annotation)[0] if get_args(annotation) else Any
+        converted = [_coerce_direct_workflow_input(inner_type, item) for item in value]
+        return converted if origin is list else tuple(converted)
+
+    if origin is dict:
+        args = get_args(annotation)
+        key_type = args[0] if len(args) > 0 else Any
+        value_type = args[1] if len(args) > 1 else Any
+        return {
+            _coerce_direct_workflow_input(key_type, key): _coerce_direct_workflow_input(value_type, item)
+            for key, item in value.items()
+        }
+
+    union_args = tuple(arg for arg in get_args(annotation) if arg is not type(None))
+    if union_args and len(union_args) == 1:
+        return _coerce_direct_workflow_input(union_args[0], value)
+
+    return value
+
+
+def _load_showcase_workflow_callable(workflow_name: str) -> Any:
+    """Import one runnable showcase workflow by name."""
+    from flytetest.mcp_contract import SHOWCASE_TARGETS_BY_NAME
+
+    target = SHOWCASE_TARGETS_BY_NAME.get(workflow_name)
+    if target is None or target.category != "workflow":
+        raise ValueError(f"No runnable showcase workflow metadata is registered for `{workflow_name}`.")
+
+    module = import_module(target.module_name)
+    workflow = getattr(module, workflow_name, None)
+    if workflow is None:
+        raise AttributeError(f"Workflow `{workflow_name}` is not exported from `{target.module_name}`.")
+    return workflow
+
+
+def _prepare_direct_workflow_inputs(workflow: Any, inputs: Mapping[str, object]) -> dict[str, object]:
+    """Build one direct-call argument payload from plain local runner values."""
+    target = getattr(workflow, "func", workflow)
+    parameters = inspect.signature(target).parameters
+    type_hints = get_type_hints(target)
+    prepared: dict[str, object] = {}
+    for name, value in inputs.items():
+        annotation = type_hints.get(
+            name,
+            parameters.get(name, inspect.Parameter(name, inspect.Parameter.POSITIONAL_OR_KEYWORD)).annotation,
+        )
+        prepared[name] = _coerce_direct_workflow_input(annotation, value)
+    return prepared
+
+
+def _collect_workflow_output_paths(value: Any) -> list[str]:
+    """Extract stable output paths from one direct workflow return value."""
+    if value in (None, ""):
+        return []
+    if isinstance(value, dict):
+        paths: list[str] = []
+        for item in value.values():
+            paths.extend(_collect_workflow_output_paths(item))
+        return list(dict.fromkeys(paths))
+    if isinstance(value, (list, tuple)):
+        paths: list[str] = []
+        for item in value:
+            paths.extend(_collect_workflow_output_paths(item))
+        return list(dict.fromkeys(paths))
+
+    if hasattr(value, "download_sync"):
+        try:
+            downloaded = value.download_sync()
+        except Exception:
+            downloaded = getattr(value, "path", "")
+        if downloaded:
+            return [str(downloaded)]
+
+    if hasattr(value, "path") and getattr(value, "path") not in (None, ""):
+        return [str(getattr(value, "path"))]
+
+    if isinstance(value, Path):
+        return [str(value)]
+
+    return []
+
+
+def _run_workflow_direct(workflow_name: str, inputs: Mapping[str, object]) -> dict[str, object]:
+    """Execute one supported workflow through a direct Python call."""
+    try:
+        workflow = _load_showcase_workflow_callable(workflow_name)
+        prepared_inputs = _prepare_direct_workflow_inputs(workflow, inputs)
+        result = workflow(**prepared_inputs)
+        return {
+            "supported": True,
+            "entry_name": workflow_name,
+            "entry_category": "workflow",
+            "execution_mode": "direct-python-call",
+            "command": [],
+            "command_text": "",
+            "exit_status": 0,
+            "stdout": "",
+            "stderr": "",
+            "output_paths": _collect_workflow_output_paths(result),
+            "limitations": [
+                (
+                    "Direct Python workflow invocation is used for collection-shaped inputs because "
+                    "the installed Flyte CLI does not reliably deserialize nested File/Dir values."
+                ),
+            ],
+        }
+    except Exception as exc:
+        return {
+            "supported": True,
+            "entry_name": workflow_name,
+            "entry_category": "workflow",
+            "execution_mode": "direct-python-call",
+            "command": [],
+            "command_text": "",
+            "exit_status": 1,
+            "stdout": "",
+            "stderr": str(exc),
+            "output_paths": [],
+            "error_type": type(exc).__name__,
+            "limitations": [
+                (
+                    "The server attempted a direct Python workflow call because the current Flyte CLI "
+                    "serialization path does not reliably support collection-shaped workflow inputs."
+                ),
+            ],
+        }
+
+
 def list_entries() -> dict[str, object]:
     """List the day-one MCP recipe execution targets."""
     return {
@@ -318,7 +492,7 @@ def run_workflow(
     inputs: dict[str, object],
     runner: Any = subprocess.run,
 ) -> dict[str, object]:
-    """Execute one supported workflow through `flyte run --local`."""
+    """Execute one supported workflow through `flyte run` or direct Python."""
     if workflow_name not in SUPPORTED_WORKFLOW_NAMES:
         return {
             "supported": False,
@@ -388,6 +562,9 @@ def run_workflow(
                 "BRAKER3 requires at least one evidence input in practice: `rnaseq_bam_path`, `protein_fasta_path`, or both.",
             ],
         }
+
+    if _workflow_requires_direct_python(inputs):
+        return _run_workflow_direct(workflow_name, inputs)
 
     cmd = [_resolve_flyte_cli(), "run", "--local", ENTRYPOINT.name, workflow_name]
     for name in allowed_inputs:

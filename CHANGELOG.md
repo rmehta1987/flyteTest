@@ -31,6 +31,16 @@ Entry template:
 
 ## Unreleased
 
+### Local recipe execution robustness
+
+- changed:
+  - collection-shaped workflow inputs such as `protein_fastas: list[File]`
+    now bypass the local `flyte run --local` wrapper in MCP/server execution
+    and use direct Python workflow invocation instead
+  - this avoids the current Flyte 2.1.2 CLI serialization gap where
+    collection inputs are parsed as JSON but nested `File` / `Dir` values are
+    not rehydrated for workflow execution
+
 ### AGAT post-processing milestone
 
 - added:

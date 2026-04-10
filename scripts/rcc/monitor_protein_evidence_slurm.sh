@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+PYTHON_SCRIPT="$SCRIPT_DIR/monitor_protein_evidence_slurm.py"
 DEFAULT_POINTER="$REPO_ROOT/.runtime/runs/latest_protein_evidence_slurm_run_record.txt"
 RUN_RECORD_PATH="${1:-}"
 
@@ -21,6 +22,9 @@ fi
 export FLYTETEST_REPO_ROOT="$REPO_ROOT"
 export PYTHONPATH="$REPO_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
 
+# The shell wrapper is intentionally small: it resolves which durable run record
+# to inspect, bootstraps the repo Python environment, and then hands the real
+# reconciliation work to the Python helper.
 if command -v module >/dev/null 2>&1; then
   module load python/3.11.9
 fi
@@ -32,18 +36,8 @@ fi
 
 PYTHON_BIN="${PYTHON_BIN:-$(command -v python3)}"
 
-"$PYTHON_BIN" - "$RUN_RECORD_PATH" <<'PY'
-from __future__ import annotations
-
-import json
-import os
-import sys
-from pathlib import Path
-
-from flytetest.server import _monitor_slurm_job_impl
-
-repo_root = Path(os.environ["FLYTETEST_REPO_ROOT"])
-run_record_path = Path(sys.argv[1])
-result = _monitor_slurm_job_impl(run_record_path, run_dir=repo_root / ".runtime/runs")
-print(json.dumps(result, indent=2, sort_keys=True))
-PY
+# The Python helper prints one machine-readable JSON snapshot of the monitor
+# result. Expect fields such as the observed scheduler state, any stdout/stderr
+# log paths recorded in the durable run record, and reconciliation limits if
+# Slurm commands were unavailable or incomplete.
+"$PYTHON_BIN" "$PYTHON_SCRIPT" "$RUN_RECORD_PATH"

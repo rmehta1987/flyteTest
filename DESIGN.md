@@ -671,6 +671,8 @@ Target tools:
 
 - `list_entries`: list registered tasks and workflows.
 - `plan_request`: convert natural language into a structured plan.
+- `run_task`: run one explicitly supported registered task for bounded ad hoc
+  experimentation when the request is stage-scoped rather than workflow-scoped.
 - `prepare_run_recipe`: save an inspectable run recipe from a supported plan.
 - `validate_run_recipe`: check inputs, outputs, containers, resources, and
   offline-compute assumptions.
@@ -684,6 +686,8 @@ Target tools:
 
 The tool surface should remain stable and machine-readable. New tools should be
 additive unless an intentional compatibility migration is documented.
+Ad hoc task execution should remain a bounded, explicit surface and should not
+replace saved recipe generation for multi-stage reproducible workflow runs.
 
 ### 6.3 MCP Resources
 
@@ -731,6 +735,8 @@ machine.
 Local execution should:
 
 - run registered workflows through the Flyte entrypoint when possible
+- support bounded direct task execution for explicit registered task targets
+  when users need stage-level experimentation or debugging
 - support saved run recipes for composed workflows
 - write the same result bundle and manifest structure expected from other
   execution modes

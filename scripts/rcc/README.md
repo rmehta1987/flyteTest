@@ -34,11 +34,20 @@ The local smoke scripts can still use `data/images/*.sif`.
 - `run_protein_evidence_slurm.sh`: prepares and submits the protein-evidence
   FLyteTest recipe with cluster defaults for the Slurm account, partition,
   walltime, CPU, and memory
+- `run_protein_evidence_slurm.py`: Python helper called by the submit wrapper;
+  it freezes the recipe, submits it, updates the latest pointer files, and
+  prints the structured JSON submission summary
 - `monitor_protein_evidence_slurm.sh`: reconciles the latest protein-evidence
   Slurm run record, or a run record path that you pass explicitly
+- `monitor_protein_evidence_slurm.py`: Python helper called by the monitor
+  wrapper; it loads one durable run record, reconciles scheduler state, and
+  prints the structured JSON monitor summary
 - `cancel_protein_evidence_slurm.sh`: requests cancellation for the latest
   protein-evidence Slurm run record, or a run record path that you pass
   explicitly
+- `cancel_protein_evidence_slurm.py`: Python helper called by the cancel
+  wrapper; it loads one durable run record, requests cancellation, and prints
+  the structured JSON cancellation summary
 - `debug_protein_evidence_workflow.sbatch`: runs the protein-evidence workflow
   probe directly under Slurm and prints a full JSON traceback if the workflow
   fails
@@ -196,6 +205,20 @@ bash scripts/rcc/run_protein_evidence_slurm.sh
 bash scripts/rcc/monitor_protein_evidence_slurm.sh
 ```
 
+Both wrappers print small machine-readable JSON summaries:
+
+- submit JSON: the saved recipe artifact path, durable run-record path, Slurm
+  job ID, and the scheduler submission stdout/stderr captured by the server
+- monitor JSON: the current lifecycle reconciliation result, including observed
+  scheduler state, run-record updates, log paths when known, and any
+  reconciliation limitations
+
+The cancel wrapper also prints a small machine-readable JSON summary:
+
+- cancel JSON: whether the cancellation request was accepted, which durable
+  run record and scheduler job were targeted, and any cancellation limits or
+  scheduler-side errors reported by the server
+
 Run the protein-evidence workflow probe directly on Slurm:
 
 ```bash
@@ -229,6 +252,10 @@ The submit helper writes the latest durable run-record path to
 saved recipe artifact path to
 `.runtime/runs/latest_protein_evidence_slurm_artifact.txt` so the monitor and
 cancel helpers can follow the run without manual copy/paste.
+When the repo-local Exonerate image is present, the helper also freezes
+`exonerate_sif=data/images/exonerate_2.2.0--1.sif` into the recipe so the
+submitted workflow can use the same containerized Exonerate path proven by the
+chunk-alignment debug probe.
 When the cluster module system is available, the helper loads
 `python/3.11.9` and then activates `.venv/` if it exists in the checkout.
 The generated Slurm payload does the same bootstrap on the compute node before

@@ -12,6 +12,7 @@ import sys
 import tempfile
 from pathlib import Path
 from unittest import TestCase
+from unittest.mock import patch
 
 TESTS_DIR = Path(__file__).resolve().parent
 SRC_DIR = TESTS_DIR.parent / "src"
@@ -46,6 +47,7 @@ from flytetest.mcp_contract import (
 )
 from flytetest.server import (
     SERVER_RESOURCE_URIS,
+    _prepare_direct_workflow_inputs,
     _prompt_and_run_impl,
     _resolve_flyte_cli,
     _should_skip_stdio_line,
@@ -1118,23 +1120,14 @@ class ServerTests(TestCase):
         self.assertIn("--protein_fasta_path", command)
         self.assertEqual(response["exit_status"], 0)
 
-    def test_run_workflow_builds_expected_protein_evidence_command(self) -> None:
-        """Shell out through the compatibility entrypoint for the protein-evidence workflow."""
-        captured: dict[str, object] = {}
+    def test_prepare_direct_workflow_inputs_wraps_collection_file_values(self) -> None:
+        """Coerce collection-shaped workflow inputs into Flyte file artifacts for direct calls."""
+        from flyte.io import File
+        from flytetest.workflows.protein_evidence import protein_evidence_alignment
 
-        def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-            captured["args"] = args
-            captured.update(kwargs)
-            return subprocess.CompletedProcess(
-                args=args,
-                returncode=0,
-                stdout="workflow completed\n",
-                stderr="",
-            )
-
-        response = run_workflow(
-            workflow_name=SUPPORTED_PROTEIN_WORKFLOW_NAME,
-            inputs={
+        prepared = _prepare_direct_workflow_inputs(
+            protein_evidence_alignment,
+            {
                 "genome": "data/braker3/reference/genome.fa",
                 "protein_fastas": [
                     "data/braker3/protein_data/fastas/proteins.fa",
@@ -1142,19 +1135,65 @@ class ServerTests(TestCase):
                 ],
                 "proteins_per_chunk": 250,
             },
-            runner=fake_run,
         )
 
-        command = captured["args"]
+        self.assertIsInstance(prepared["genome"], File)
+        self.assertEqual(prepared["genome"].path, "data/braker3/reference/genome.fa")
+        self.assertEqual([artifact.path for artifact in prepared["protein_fastas"]], [
+            "data/braker3/protein_data/fastas/proteins.fa",
+            "data/braker3/protein_data/fastas/proteins_extra.fa",
+        ])
+        self.assertEqual(prepared["proteins_per_chunk"], 250)
+
+    def test_run_workflow_uses_direct_python_for_collection_inputs(self) -> None:
+        """Bypass the Flyte CLI when a workflow input includes collection-shaped values."""
+        captured: dict[str, object] = {}
+
+        def fake_direct(workflow_name: str, inputs: dict[str, object]) -> dict[str, object]:
+            captured["workflow_name"] = workflow_name
+            captured["inputs"] = inputs
+            return {
+                "supported": True,
+                "entry_name": workflow_name,
+                "entry_category": "workflow",
+                "execution_mode": "direct-python-call",
+                "command": [],
+                "command_text": "",
+                "exit_status": 0,
+                "stdout": "",
+                "stderr": "",
+                "output_paths": ["/tmp/protein_evidence_results"],
+                "limitations": [],
+            }
+
+        with patch("flytetest.server._run_workflow_direct", side_effect=fake_direct) as direct_runner:
+            response = run_workflow(
+                workflow_name=SUPPORTED_PROTEIN_WORKFLOW_NAME,
+                inputs={
+                    "genome": "data/braker3/reference/genome.fa",
+                    "protein_fastas": [
+                        "data/braker3/protein_data/fastas/proteins.fa",
+                        "data/braker3/protein_data/fastas/proteins_extra.fa",
+                    ],
+                    "proteins_per_chunk": 250,
+                },
+            )
+
+        self.assertEqual(direct_runner.call_count, 1)
         self.assertTrue(response["supported"])
+        self.assertEqual(response["execution_mode"], "direct-python-call")
+        self.assertEqual(captured["workflow_name"], SUPPORTED_PROTEIN_WORKFLOW_NAME)
         self.assertEqual(
-            command[:5],
-            [_resolve_flyte_cli(), "run", "--local", "flyte_rnaseq_workflow.py", SUPPORTED_PROTEIN_WORKFLOW_NAME],
+            captured["inputs"],
+            {
+                "genome": "data/braker3/reference/genome.fa",
+                "protein_fastas": [
+                    "data/braker3/protein_data/fastas/proteins.fa",
+                    "data/braker3/protein_data/fastas/proteins_extra.fa",
+                ],
+                "proteins_per_chunk": 250,
+            },
         )
-        self.assertEqual(command.count("--protein_fastas"), 2)
-        self.assertIn("data/braker3/protein_data/fastas/proteins.fa", command)
-        self.assertIn("data/braker3/protein_data/fastas/proteins_extra.fa", command)
-        self.assertIn("--proteins_per_chunk", command)
         self.assertEqual(response["exit_status"], 0)
 
     def test_resolve_flyte_cli_prefers_repo_local_virtualenv_binary(self) -> None:
