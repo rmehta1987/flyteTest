@@ -659,6 +659,7 @@ def render_slurm_script(
             f"cd {shlex.quote(str(repo_root))}",
             "if command -v module >/dev/null 2>&1; then",
             "  module load python/3.11.9",
+            "  module load apptainer/1.4.1",
             "fi",
             f"if [[ -f {shlex.quote(str(repo_root / '.venv/bin/activate'))} ]]; then",
             f"  source {shlex.quote(str(repo_root / '.venv/bin/activate'))}",

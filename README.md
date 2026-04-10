@@ -447,6 +447,8 @@ These Slurm tools are intended to run from an already-authenticated scheduler
 session such as a login-node shell, `tmux`, or `screen` session; outside that
 environment they report an explicit access limitation instead of pretending the
 scheduler is reachable.
+The generated `sbatch` scripts currently load both `python/3.11.9` and
+`apptainer/1.4.1` before invoking the frozen local-recipe runner on RCC.
 The cluster helper scripts under `scripts/rcc/` now include a protein-evidence
 Slurm lifecycle launcher plus monitor and cancellation wrappers that default to
 the same account and queue policy.
