@@ -50,7 +50,7 @@ class RegistryTests(TestCase):
                 self.assertEqual(entry.compatibility.execution_defaults["resources"]["execution_class"], "local")
 
     def test_runnable_workflows_expose_declarative_local_resource_defaults(self) -> None:
-        """Keep Milestone 12 resource defaults visible in registry metadata."""
+        """Keep declarative local resource defaults visible in registry metadata."""
         self.assertEqual(
             get_entry("annotation_qc_busco").compatibility.execution_defaults["resources"],
             {"cpu": "16", "memory": "64Gi", "execution_class": "local"},
@@ -237,7 +237,7 @@ class RegistryTests(TestCase):
         self.assertEqual([field.name for field in entry.outputs], ["evm_execution_inputs_dir"])
 
     def test_consensus_evm_workflow_entry_consumes_prep_bundle(self) -> None:
-        """Expose the Milestone 2 EVM workflow as downstream of the pre-EVM bundle."""
+        """Expose the EVM workflow as downstream of the pre-EVM bundle."""
         entry = get_entry("consensus_annotation_evm")
 
         self.assertEqual(entry.category, "workflow")
@@ -290,7 +290,7 @@ class RegistryTests(TestCase):
         self.assertEqual([field.name for field in entry.outputs], ["pasa_update_inputs_dir"])
 
     def test_annotation_refinement_pasa_workflow_entry_is_registered(self) -> None:
-        """Expose the Milestone 3 PASA refinement workflow as downstream of PASA and EVM bundles."""
+        """Expose the PASA refinement workflow as downstream of PASA and EVM bundles."""
         entry = get_entry("annotation_refinement_pasa")
 
         self.assertEqual(entry.category, "workflow")

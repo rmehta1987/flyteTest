@@ -14,6 +14,10 @@ filtering, plus the AGAT statistics, conversion, and cleanup slices around the
 EggNOG-annotated and AGAT-converted GFF3 bundles. `table2asn` submission
 preparation and broad Slurm orchestration remain deferred.
 
+Current artifact handling is local-path-only: task and workflow boundaries wrap
+filesystem paths directly, and ordinary execution does not depend on remote
+artifact upload semantics.
+
 ## Current Status
 
 - Active biological milestone: `AGAT post-processing after EggNOG`
@@ -232,8 +236,8 @@ Current architecture limits:
 - the runnable MCP surface executes only its explicit local handler targets
 - dynamic workflow creation currently stops at typed spec previews, saved spec
   artifacts, and controlled local saved-spec execution
-- the resolver is local and file-based; remote or indexed discovery remains
-  future work
+- the resolver is local and file-based; task and workflow artifact boundaries
+  stay local-path-only, and remote or indexed discovery remains future work
 - saved-spec execution is local and handler-based; it does not auto-load every
   checked-in Flyte workflow
 - Slurm/HPC support now has a deterministic `sbatch` submission path for frozen
@@ -267,6 +271,12 @@ Supported tools:
 - `cancel_slurm_job`
 - `prompt_and_run`
 
+The Slurm tools are supported only when the MCP server is running inside an
+already-authenticated scheduler-capable environment with `sbatch`, `squeue`,
+`scontrol`, `sacct`, and `scancel` available on `PATH`. Outside that boundary,
+the tools return explicit unsupported-environment limitations instead of
+guessing or silently falling back.
+
 Launch command:
 
 ```bash
@@ -281,12 +291,16 @@ Current MCP behavior:
   handlers
 - `run_slurm_recipe` submits a previously saved Slurm-profile recipe with
   `sbatch`, writes the generated script and a durable run record under
-  `.runtime/runs/`, and records the accepted Slurm job ID
+  `.runtime/runs/`, and records the accepted Slurm job ID when the server is
+  running inside an already-authenticated scheduler-capable environment
 - `monitor_slurm_job` reconciles the durable Slurm run record with `squeue`,
   `scontrol show job`, and `sacct`, then persists observed scheduler state,
-  stdout/stderr paths, exit code, and final state when available
+  stdout/stderr paths, exit code, and final state when available; if the server
+  is started outside that scheduler boundary, it returns an explicit
+  unsupported-environment limitation
 - `cancel_slurm_job` requests cancellation with `scancel` from the durable run
-  record and records the cancellation request for later reconciliation
+  record and records the cancellation request for later reconciliation when the
+  same authenticated scheduler boundary is available
 - `prompt_and_run` remains available as a compatibility alias over prepare then
   run
 - `prepare_run_recipe` and `prompt_and_run` accept optional `manifest_sources`,
@@ -429,6 +443,10 @@ reconciles the record with `squeue`, `scontrol show job`, and `sacct`, while
 remain later milestones. On the RCC cluster the frozen Slurm recipe carries an
 account setting through to the generated script so submission does not depend
 on a manual `sbatch --account=...` override.
+These Slurm tools are intended to run from an already-authenticated scheduler
+session such as a login-node shell, `tmux`, or `screen` session; outside that
+environment they report an explicit access limitation instead of pretending the
+scheduler is reachable.
 The cluster helper scripts under `scripts/rcc/` now include a protein-evidence
 Slurm lifecycle launcher plus monitor and cancellation wrappers that default to
 the same account and queue policy.
@@ -436,7 +454,9 @@ the same account and queue policy.
 ## Assumptions
 
 - The current SDK in this repo is `flyte==2.0.10`, and `TaskEnvironment`
-  exposes `@env.task` but not `@env.workflow`.
+  exposes `@env.task` but not `@env.workflow`; shared task defaults and a few
+  family-specific runtime overrides are centralized in
+  `src/flytetest/config.py`.
 - `flyte_rnaseq_workflow.py` remains a thin compatibility module for
   `flyte run`.
 - `src/flytetest/types/` is a local modeling layer, not a full remote asset

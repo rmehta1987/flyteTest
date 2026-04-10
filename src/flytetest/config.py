@@ -1,7 +1,8 @@
 """Shared runtime helpers and Flyte task environments for FLyteTest.
 
-This module centralizes workflow names, result-bundle prefixes, and local or
-containerized subprocess execution helpers used across pipeline stages.
+This module centralizes task-environment names, result-bundle prefixes, and
+local or containerized subprocess execution helpers used across pipeline
+stages.
 """
 
 from __future__ import annotations
@@ -9,60 +10,128 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import flyte
 
 
-WORKFLOW_NAME = "rnaseq_qc_quant"
+DEFAULT_TASK_ENV_VARS = {"PYTHONUNBUFFERED": "1"}
+DEFAULT_TASK_RESOURCES = flyte.Resources(cpu="1", memory="1Gi")
+
+
+@dataclass(frozen=True, slots=True)
+class TaskEnvironmentConfig:
+    """Declarative construction data for one task-family environment."""
+
+    name: str
+    kwargs: Mapping[str, object] = field(default_factory=dict)
+
+
+def make_task_environment(config: TaskEnvironmentConfig | str, **kwargs: object) -> flyte.TaskEnvironment:
+    """Create one Flyte `TaskEnvironment` with shared task defaults."""
+    if isinstance(config, str):
+        config = TaskEnvironmentConfig(name=config)
+
+    merged_kwargs: dict[str, object] = {
+        "env_vars": dict(DEFAULT_TASK_ENV_VARS),
+        "resources": DEFAULT_TASK_RESOURCES,
+    }
+    merged_kwargs.update(dict(config.kwargs))
+    merged_kwargs.update(kwargs)
+    return flyte.TaskEnvironment(name=config.name, **merged_kwargs)
+
+
+TASK_ENV_NAME = "rnaseq_qc_quant"
+# Keep the legacy name as a compatibility alias for older imports and manifests.
+WORKFLOW_NAME = TASK_ENV_NAME
 RESULTS_ROOT = "results"
 RESULTS_PREFIX = "rnaseq_results"
-env = flyte.TaskEnvironment(name=WORKFLOW_NAME)
 TRANSCRIPT_EVIDENCE_WORKFLOW_NAME = "transcript_evidence_generation"
 TRANSCRIPT_EVIDENCE_RESULTS_PREFIX = "transcript_evidence_results"
-transcript_evidence_env = flyte.TaskEnvironment(name=TRANSCRIPT_EVIDENCE_WORKFLOW_NAME)
 PASA_WORKFLOW_NAME = "pasa_transcript_alignment"
 PASA_RESULTS_PREFIX = "pasa_results"
-pasa_env = flyte.TaskEnvironment(name=PASA_WORKFLOW_NAME)
 PASA_UPDATE_WORKFLOW_NAME = "annotation_refinement_pasa"
 PASA_UPDATE_RESULTS_PREFIX = "pasa_update_results"
-pasa_update_env = flyte.TaskEnvironment(name=PASA_UPDATE_WORKFLOW_NAME)
 TRANSDECODER_WORKFLOW_NAME = "transdecoder_from_pasa"
 TRANSDECODER_RESULTS_PREFIX = "transdecoder_results"
-transdecoder_env = flyte.TaskEnvironment(name=TRANSDECODER_WORKFLOW_NAME)
 PROTEIN_EVIDENCE_WORKFLOW_NAME = "protein_evidence_alignment"
 PROTEIN_EVIDENCE_RESULTS_PREFIX = "protein_evidence_results"
-protein_evidence_env = flyte.TaskEnvironment(name=PROTEIN_EVIDENCE_WORKFLOW_NAME)
 ANNOTATION_WORKFLOW_NAME = "ab_initio_annotation_braker3"
 ANNOTATION_RESULTS_PREFIX = "braker3_results"
-annotation_env = flyte.TaskEnvironment(name=ANNOTATION_WORKFLOW_NAME)
 CONSENSUS_PREP_WORKFLOW_NAME = "consensus_annotation_evm_prep"
 CONSENSUS_PREP_RESULTS_PREFIX = "evm_prep_results"
-consensus_prep_env = flyte.TaskEnvironment(name=CONSENSUS_PREP_WORKFLOW_NAME)
 CONSENSUS_WORKFLOW_NAME = CONSENSUS_PREP_WORKFLOW_NAME
 CONSENSUS_RESULTS_PREFIX = CONSENSUS_PREP_RESULTS_PREFIX
-consensus_env = consensus_prep_env
 CONSENSUS_EVM_WORKFLOW_NAME = "consensus_annotation_evm"
 CONSENSUS_EVM_RESULTS_PREFIX = "evm_results"
-consensus_evm_env = flyte.TaskEnvironment(name=CONSENSUS_EVM_WORKFLOW_NAME)
 REPEAT_FILTER_WORKFLOW_NAME = "annotation_repeat_filtering"
 REPEAT_FILTER_RESULTS_PREFIX = "repeat_filter_results"
-repeat_filter_env = flyte.TaskEnvironment(name=REPEAT_FILTER_WORKFLOW_NAME)
 FUNCTIONAL_QC_WORKFLOW_NAME = "annotation_qc_busco"
 FUNCTIONAL_QC_RESULTS_PREFIX = "busco_qc_results"
-functional_qc_env = flyte.TaskEnvironment(name=FUNCTIONAL_QC_WORKFLOW_NAME)
 EGGNOG_WORKFLOW_NAME = "annotation_functional_eggnog"
 EGGNOG_RESULTS_PREFIX = "eggnog_results"
-eggnog_env = flyte.TaskEnvironment(name=EGGNOG_WORKFLOW_NAME)
 AGAT_WORKFLOW_NAME = "annotation_postprocess_agat"
 AGAT_RESULTS_PREFIX = "agat_results"
-agat_env = flyte.TaskEnvironment(name=AGAT_WORKFLOW_NAME)
 AGAT_CONVERSION_WORKFLOW_NAME = "annotation_postprocess_agat_conversion"
 AGAT_CONVERSION_RESULTS_PREFIX = "agat_conversion_results"
-agat_conversion_env = flyte.TaskEnvironment(name=AGAT_CONVERSION_WORKFLOW_NAME)
 AGAT_CLEANUP_WORKFLOW_NAME = "annotation_postprocess_agat_cleanup"
 AGAT_CLEANUP_RESULTS_PREFIX = "agat_cleanup_results"
-agat_cleanup_env = flyte.TaskEnvironment(name=AGAT_CLEANUP_WORKFLOW_NAME)
+
+TASK_ENVIRONMENT_CONFIGS: tuple[TaskEnvironmentConfig, ...] = (
+    TaskEnvironmentConfig(name=TASK_ENV_NAME),
+    TaskEnvironmentConfig(name=TRANSCRIPT_EVIDENCE_WORKFLOW_NAME),
+    TaskEnvironmentConfig(name=PASA_WORKFLOW_NAME),
+    TaskEnvironmentConfig(name=PASA_UPDATE_WORKFLOW_NAME),
+    TaskEnvironmentConfig(name=TRANSDECODER_WORKFLOW_NAME),
+    TaskEnvironmentConfig(name=PROTEIN_EVIDENCE_WORKFLOW_NAME),
+    TaskEnvironmentConfig(
+        name=ANNOTATION_WORKFLOW_NAME,
+        kwargs={
+            "resources": flyte.Resources(cpu="16", memory="64Gi"),
+            "description": "BRAKER3 ab initio annotation stage.",
+        },
+    ),
+    TaskEnvironmentConfig(name=CONSENSUS_PREP_WORKFLOW_NAME),
+    TaskEnvironmentConfig(name=CONSENSUS_EVM_WORKFLOW_NAME),
+    TaskEnvironmentConfig(name=REPEAT_FILTER_WORKFLOW_NAME),
+    TaskEnvironmentConfig(
+        name=FUNCTIONAL_QC_WORKFLOW_NAME,
+        kwargs={
+            "resources": flyte.Resources(cpu="4", memory="8Gi"),
+            "description": "BUSCO functional QC stage.",
+        },
+    ),
+    TaskEnvironmentConfig(name=EGGNOG_WORKFLOW_NAME),
+    TaskEnvironmentConfig(name=AGAT_WORKFLOW_NAME),
+    TaskEnvironmentConfig(name=AGAT_CONVERSION_WORKFLOW_NAME),
+    TaskEnvironmentConfig(name=AGAT_CLEANUP_WORKFLOW_NAME),
+)
+
+TASK_ENVIRONMENT_NAMES = tuple(config.name for config in TASK_ENVIRONMENT_CONFIGS)
+TASK_ENVIRONMENTS_BY_NAME = {
+    config.name: make_task_environment(config)
+    for config in TASK_ENVIRONMENT_CONFIGS
+}
+
+rnaseq_qc_quant_env = TASK_ENVIRONMENTS_BY_NAME[TASK_ENV_NAME]
+env = rnaseq_qc_quant_env
+transcript_evidence_env = TASK_ENVIRONMENTS_BY_NAME[TRANSCRIPT_EVIDENCE_WORKFLOW_NAME]
+pasa_env = TASK_ENVIRONMENTS_BY_NAME[PASA_WORKFLOW_NAME]
+pasa_update_env = TASK_ENVIRONMENTS_BY_NAME[PASA_UPDATE_WORKFLOW_NAME]
+transdecoder_env = TASK_ENVIRONMENTS_BY_NAME[TRANSDECODER_WORKFLOW_NAME]
+protein_evidence_env = TASK_ENVIRONMENTS_BY_NAME[PROTEIN_EVIDENCE_WORKFLOW_NAME]
+annotation_env = TASK_ENVIRONMENTS_BY_NAME[ANNOTATION_WORKFLOW_NAME]
+consensus_prep_env = TASK_ENVIRONMENTS_BY_NAME[CONSENSUS_PREP_WORKFLOW_NAME]
+consensus_env = consensus_prep_env
+consensus_evm_env = TASK_ENVIRONMENTS_BY_NAME[CONSENSUS_EVM_WORKFLOW_NAME]
+repeat_filter_env = TASK_ENVIRONMENTS_BY_NAME[REPEAT_FILTER_WORKFLOW_NAME]
+functional_qc_env = TASK_ENVIRONMENTS_BY_NAME[FUNCTIONAL_QC_WORKFLOW_NAME]
+eggnog_env = TASK_ENVIRONMENTS_BY_NAME[EGGNOG_WORKFLOW_NAME]
+agat_env = TASK_ENVIRONMENTS_BY_NAME[AGAT_WORKFLOW_NAME]
+agat_conversion_env = TASK_ENVIRONMENTS_BY_NAME[AGAT_CONVERSION_WORKFLOW_NAME]
+agat_cleanup_env = TASK_ENVIRONMENTS_BY_NAME[AGAT_CLEANUP_WORKFLOW_NAME]
 DEFAULT_SLURM_ACCOUNT = os.environ.get("FLYTETEST_SLURM_ACCOUNT", "rcc-staff")
 
 

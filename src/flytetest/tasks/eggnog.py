@@ -405,7 +405,7 @@ def eggnog_map(
         },
     }
     _write_json(work_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(work_dir))
+    return Dir(path=str(work_dir))
 
 
 @eggnog_env.task
@@ -493,7 +493,7 @@ def collect_eggnog_results(
         },
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 __all__ = [

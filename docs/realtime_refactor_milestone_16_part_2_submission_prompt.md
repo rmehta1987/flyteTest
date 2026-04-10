@@ -1,5 +1,12 @@
-Use this prompt when handing the Milestone 16 Part 2 authenticated-access slice
-off to another Codex session or when starting the next implementation pass.
+Historical note: Milestone 16 Part 2 landed on 2026-04-09 with explicit
+authenticated-environment diagnostics for `run_slurm_recipe`,
+`monitor_slurm_job`, and `cancel_slurm_job`, plus docs that describe the
+supported Slurm topology as a local MCP/server process running inside an
+already-authenticated scheduler-capable environment.
+
+Use this prompt only when reviewing or repairing the Milestone 16 Part 2
+authenticated-access slice. For new work, start from the next unchecked item in
+`docs/realtime_refactor_checklist.md`.
 
 ```text
 You are continuing the FLyteTest `realtime` architecture refactor under the rules in:

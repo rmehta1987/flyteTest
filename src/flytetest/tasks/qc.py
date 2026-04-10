@@ -11,10 +11,10 @@ from pathlib import Path
 
 from flyte.io import Dir, File
 
-from flytetest.config import env, require_path, run_tool
+from flytetest.config import require_path, rnaseq_qc_quant_env, run_tool
 
 
-@env.task
+@rnaseq_qc_quant_env.task
 def fastqc(left: File, right: File, fastqc_sif: str = "") -> Dir:
     """Run FastQC on one paired-end read set and return the report directory."""
     left_path = require_path(Path(left.download_sync()), "Read 1 FASTQ")
@@ -27,4 +27,4 @@ def fastqc(left: File, right: File, fastqc_sif: str = "") -> Dir:
         fastqc_sif,
         [left_path.parent, right_path.parent, out_dir.parent],
     )
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))

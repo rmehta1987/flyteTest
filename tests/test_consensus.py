@@ -1,8 +1,8 @@
 """Tests for the consensus-stage pre-EVM and EVM execution boundaries.
 
 The suite keeps deterministic staging, partitioning, command assembly, and
-result collection synthetic so Milestone 2 can be validated without requiring
-installed EVM utilities.
+result collection synthetic so these boundaries can be validated without
+requiring installed EVM utilities.
 """
 
 from __future__ import annotations
@@ -37,8 +37,8 @@ from flytetest.workflows.consensus import consensus_annotation_evm, consensus_an
 
 
 def _artifact_dir(path: Path) -> Dir:
-    """Create a stub Flyte directory artifact from a local path."""
-    return Dir.from_local_sync(str(path))
+    """Create a local Flyte directory wrapper from a filesystem path."""
+    return Dir(path=str(path))
 
 
 def _read_json(path: Path) -> dict[str, object]:
@@ -202,7 +202,7 @@ def _create_braker_results(
 
 
 def _create_pre_evm_results(tmp_path: Path) -> Path:
-    """Create the corrected Milestone 1 pre-EVM bundle used by Milestone 2."""
+    """Create the corrected pre-EVM bundle fixture used by the EVM tests."""
     results_dir = tmp_path / "evm_prep_results"
     reference_dir = results_dir / "reference"
     reference_dir.mkdir(parents=True, exist_ok=True)
@@ -456,7 +456,7 @@ class ConsensusPrepTaskTests(TestCase):
 
 
 class ConsensusEvmTaskTests(TestCase):
-    """Task-level coverage for the Milestone 2 downstream EVM execution boundary."""
+    """Task-level coverage for the downstream EVM execution boundary."""
 
     def test_prepare_evm_execution_inputs_infers_repo_local_weights_from_prep_bundle(self) -> None:
         """Infer a deterministic repo-local weights file from the staged source columns."""
@@ -729,7 +729,7 @@ class ConsensusEvmTaskTests(TestCase):
 
 
 class ConsensusEvmWorkflowTests(TestCase):
-    """Workflow-level coverage for the Milestone 2 EVM entrypoint contract."""
+    """Workflow-level coverage for the EVM entrypoint contract."""
 
     def test_consensus_annotation_evm_consumes_existing_prep_bundle_only(self) -> None:
         """Use the pre-EVM bundle as the sole upstream workflow input."""

@@ -1,9 +1,11 @@
-"""Local execution path for saved workflow-spec artifacts.
+"""Execution helpers for saved workflow-spec artifacts and Slurm run records.
 
-This Milestone 7 module executes saved `WorkflowSpec` artifacts over registered
-building blocks through explicit handlers. It keeps execution separate from the
-current Flyte entrypoints and uses the resolver plus saved `BindingPlan` data
-to prepare node inputs before any registered stage is called.
+This module executes saved `WorkflowSpec` artifacts over registered building
+blocks through explicit local handlers, and it also owns the repo's Slurm
+submission, reconciliation, and cancellation helpers for frozen recipe runs.
+It keeps execution separate from the current Flyte entrypoints and uses the
+resolver plus saved `BindingPlan` data to prepare node inputs before any
+registered stage is called.
 """
 
 from __future__ import annotations
@@ -13,6 +15,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 from collections.abc import Callable, Mapping, Sequence
@@ -447,12 +450,78 @@ _TERMINAL_SLURM_STATES = {
     "TIMEOUT",
 }
 
+_SLURM_AUTHENTICATED_ENVIRONMENT_GUIDANCE = (
+    "Start FLyteTest inside an already-authenticated scheduler environment such as "
+    "a login-node shell, `tmux`, or `screen` session."
+)
+_SLURM_REACHABILITY_PATTERNS = (
+    "unable to contact slurm controller",
+    "unable to establish configuration source",
+    "could not establish a configuration source",
+    "communication connection failure",
+    "connection refused",
+    "socket timed out",
+    "failed to connect",
+    "no route to host",
+)
+
 
 def _normalize_scheduler_state(value: str | None) -> str | None:
     """Normalize a scheduler state into a compact uppercase state name."""
     if value in (None, ""):
         return None
     return str(value).strip().split()[0].split("+")[0].split("(")[0].upper()
+
+
+def _command_is_available(command: str) -> bool:
+    """Return whether one command appears to be available on the current PATH."""
+    return shutil.which(command) is not None
+
+
+def _format_slurm_command_list(commands: Sequence[str]) -> str:
+    """Render a short backtick-wrapped command list for user-facing diagnostics."""
+    wrapped = [f"`{command}`" for command in commands]
+    if len(wrapped) == 1:
+        return wrapped[0]
+    if len(wrapped) == 2:
+        return f"{wrapped[0]} and {wrapped[1]}"
+    return f"{', '.join(wrapped[:-1])}, and {wrapped[-1]}"
+
+
+def _missing_slurm_command_limitation(*, action: str, commands: Sequence[str], require_all: bool = True) -> str:
+    """Describe a missing-command Slurm access boundary in one actionable sentence."""
+    requirement = (
+        f"requires {_format_slurm_command_list(commands)} on PATH"
+        if require_all
+        else f"requires at least one of {_format_slurm_command_list(commands)} on PATH"
+    )
+    return f"Slurm {action} {requirement}. {_SLURM_AUTHENTICATED_ENVIRONMENT_GUIDANCE}"
+
+
+def _partial_slurm_command_limitation(*, action: str, commands: Sequence[str]) -> str:
+    """Describe a degraded command set without failing the whole lifecycle action."""
+    return (
+        f"Slurm {action} cannot use {_format_slurm_command_list(commands)} in the current "
+        "environment and will rely on the remaining scheduler commands."
+    )
+
+
+def _looks_like_scheduler_reachability_issue(text: str) -> bool:
+    """Heuristically detect scheduler failures caused by the wrong execution context."""
+    lowered = text.lower()
+    return any(pattern in lowered for pattern in _SLURM_REACHABILITY_PATTERNS)
+
+
+def _slurm_command_failure_limitation(*, command: str, stderr: str, action: str) -> str:
+    """Turn one Slurm CLI failure into a user-facing limitation."""
+    detail = stderr.strip()
+    if _looks_like_scheduler_reachability_issue(detail):
+        return (
+            f"`{command}` is available, but the current environment could not reach the "
+            f"Slurm scheduler while attempting {action}: {detail}. "
+            f"{_SLURM_AUTHENTICATED_ENVIRONMENT_GUIDANCE}"
+        )
+    return f"{command} failed during Slurm {action}: {detail}"
 
 
 def _first_nonempty_line(value: str) -> str | None:
@@ -735,6 +804,7 @@ class SlurmWorkflowSpecExecutor:
         python_executable: str | None = None,
         sbatch_runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
         scheduler_runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+        command_available: Callable[[str], bool] = _command_is_available,
     ) -> None:
         """Create a Slurm executor with explicit filesystem and command policy."""
         self._run_root = run_root
@@ -742,6 +812,7 @@ class SlurmWorkflowSpecExecutor:
         self._python_executable = python_executable or sys.executable
         self._sbatch_runner = sbatch_runner
         self._scheduler_runner = scheduler_runner
+        self._command_available = command_available
 
     def _run_scheduler_command(self, args: list[str]) -> subprocess.CompletedProcess[str]:
         """Run one scheduler command with the executor's injectable runner."""
@@ -752,6 +823,10 @@ class SlurmWorkflowSpecExecutor:
             check=False,
         )
 
+    def _missing_commands(self, commands: Sequence[str]) -> tuple[str, ...]:
+        """Return the subset of commands that do not appear to be available."""
+        return tuple(command for command in commands if not self._command_available(command))
+
     def _scheduler_snapshot(self, record: SlurmRunRecord) -> SlurmSchedulerSnapshot:
         """Poll Slurm commands and merge their observed state into one snapshot."""
         limitations: list[str] = []
@@ -761,38 +836,79 @@ class SlurmWorkflowSpecExecutor:
         squeue_state: str | None = None
         scontrol_fields: dict[str, str] = {}
         sacct_fields: dict[str, str] = {}
+        missing_commands = self._missing_commands(("squeue", "scontrol", "sacct"))
+        if missing_commands:
+            if len(missing_commands) == 3:
+                limitations.append(
+                    _missing_slurm_command_limitation(
+                        action="monitoring",
+                        commands=("squeue", "scontrol", "sacct"),
+                        require_all=False,
+                    )
+                )
+            else:
+                limitations.append(
+                    _partial_slurm_command_limitation(action="monitoring", commands=missing_commands)
+                )
 
-        try:
-            squeue = self._run_scheduler_command(["squeue", "--noheader", "--jobs", record.job_id, "--format=%T"])
-            squeue_stdout = squeue.stdout or ""
-            if squeue.returncode == 0:
-                squeue_state = _parse_squeue_state(squeue_stdout)
-            elif squeue.stderr:
-                limitations.append(f"squeue failed: {squeue.stderr.strip()}")
-        except OSError as exc:
-            limitations.append(f"squeue could not be executed: {exc}")
+        if "squeue" not in missing_commands:
+            try:
+                squeue = self._run_scheduler_command(["squeue", "--noheader", "--jobs", record.job_id, "--format=%T"])
+                squeue_stdout = squeue.stdout or ""
+                if squeue.returncode == 0:
+                    squeue_state = _parse_squeue_state(squeue_stdout)
+                else:
+                    detail = squeue.stderr or squeue.stdout or ""
+                    if detail.strip():
+                        limitations.append(
+                            _slurm_command_failure_limitation(
+                                command="squeue",
+                                stderr=detail,
+                                action="monitoring",
+                            )
+                        )
+            except OSError as exc:
+                limitations.append(f"squeue could not be executed: {exc}")
 
-        try:
-            scontrol = self._run_scheduler_command(["scontrol", "show", "job", record.job_id])
-            scontrol_stdout = scontrol.stdout or ""
-            if scontrol.returncode == 0:
-                scontrol_fields = _parse_scontrol_fields(scontrol_stdout)
-            elif scontrol.stderr:
-                limitations.append(f"scontrol failed: {scontrol.stderr.strip()}")
-        except OSError as exc:
-            limitations.append(f"scontrol could not be executed: {exc}")
+        if "scontrol" not in missing_commands:
+            try:
+                scontrol = self._run_scheduler_command(["scontrol", "show", "job", record.job_id])
+                scontrol_stdout = scontrol.stdout or ""
+                if scontrol.returncode == 0:
+                    scontrol_fields = _parse_scontrol_fields(scontrol_stdout)
+                else:
+                    detail = scontrol.stderr or scontrol.stdout or ""
+                    if detail.strip():
+                        limitations.append(
+                            _slurm_command_failure_limitation(
+                                command="scontrol",
+                                stderr=detail,
+                                action="monitoring",
+                            )
+                        )
+            except OSError as exc:
+                limitations.append(f"scontrol could not be executed: {exc}")
 
-        try:
-            sacct = self._run_scheduler_command(
-                ["sacct", "-n", "-P", "-j", record.job_id, "--format=JobID,State,ExitCode"]
-            )
-            sacct_stdout = sacct.stdout or ""
-            if sacct.returncode == 0:
-                sacct_fields = _parse_sacct_fields(sacct_stdout, record.job_id)
-            elif sacct.stderr:
-                limitations.append(f"sacct failed: {sacct.stderr.strip()}")
-        except OSError as exc:
-            limitations.append(f"sacct could not be executed: {exc}")
+        if "sacct" not in missing_commands:
+            try:
+                sacct = self._run_scheduler_command(
+                    ["sacct", "-n", "-P", "-j", record.job_id, "--format=JobID,State,ExitCode"]
+                )
+                sacct_stdout = sacct.stdout or ""
+                if sacct.returncode == 0:
+                    sacct_fields = _parse_sacct_fields(sacct_stdout, record.job_id)
+                else:
+                    detail = sacct.stderr or sacct.stdout or ""
+                    if detail.strip():
+                        limitations.append(
+                            _slurm_command_failure_limitation(
+                                command="sacct",
+                                stderr=detail,
+                                action="monitoring",
+                            )
+                        )
+            except OSError as exc:
+                limitations.append(f"sacct could not be executed: {exc}")
 
         scontrol_state = _normalize_scheduler_state(scontrol_fields.get("JobState"))
         sacct_state = _normalize_scheduler_state(sacct_fields.get("State"))
@@ -875,6 +991,22 @@ class SlurmWorkflowSpecExecutor:
                 limitations=("Slurm submission requires a frozen recipe with execution_profile `slurm`.",),
             )
 
+        missing_commands = self._missing_commands(("sbatch",))
+        if missing_commands:
+            return SlurmSpecExecutionResult(
+                supported=False,
+                workflow_name=workflow_spec.name,
+                execution_profile=binding_plan.execution_profile,
+                resource_spec=binding_plan.resource_spec,
+                runtime_image=binding_plan.runtime_image,
+                limitations=(
+                    _missing_slurm_command_limitation(
+                        action="submission",
+                        commands=("sbatch",),
+                    ),
+                ),
+            )
+
         submitted_at = _created_at()
         run_id = _run_id_for_artifact(artifact, artifact_path, submitted_at)
         run_dir = self._run_root / run_id
@@ -902,8 +1034,25 @@ class SlurmWorkflowSpecExecutor:
                 ["sbatch", str(script_path)],
                 capture_output=True,
                 text=True,
-                check=True,
+                check=False,
             )
+            if submission.returncode != 0:
+                detail = submission.stderr or submission.stdout or "unknown sbatch error"
+                return SlurmSpecExecutionResult(
+                    supported=False,
+                    workflow_name=workflow_spec.name,
+                    execution_profile=binding_plan.execution_profile,
+                    resource_spec=binding_plan.resource_spec,
+                    runtime_image=binding_plan.runtime_image,
+                    script_text=script_text,
+                    limitations=(
+                        _slurm_command_failure_limitation(
+                            command="sbatch",
+                            stderr=detail,
+                            action="submission",
+                        ),
+                    ),
+                )
             job_id = parse_sbatch_job_id(submission.stdout or "", submission.stderr or "")
         except Exception as exc:
             return SlurmSpecExecutionResult(
@@ -934,8 +1083,9 @@ class SlurmWorkflowSpecExecutor:
             scheduler_stdout=submission.stdout or "",
             scheduler_stderr=submission.stderr or "",
             assumptions=(
-                "This Milestone 13 record captures accepted Slurm submission only; polling and cancellation are later slices.",
+                "This durable record captures accepted Slurm submission from a frozen recipe artifact.",
                 "Execution uses the frozen workflow-spec artifact and does not reinterpret the original prompt.",
+                "Submission assumes FLyteTest is running inside an already-authenticated scheduler environment.",
             ),
         )
         _write_json_atomically(run_record_path, record.to_dict())
@@ -1012,6 +1162,20 @@ class SlurmWorkflowSpecExecutor:
                 limitations=(str(exc),),
             )
 
+        missing_commands = self._missing_commands(("scancel",))
+        if missing_commands:
+            return SlurmLifecycleResult(
+                supported=False,
+                run_record=record,
+                action="cancel",
+                limitations=(
+                    _missing_slurm_command_limitation(
+                        action="cancellation",
+                        commands=("scancel",),
+                    ),
+                ),
+            )
+
         cancellation_requested_at = _created_at()
         try:
             cancellation = self._run_scheduler_command(["scancel", record.job_id])
@@ -1027,7 +1191,13 @@ class SlurmWorkflowSpecExecutor:
                 supported=False,
                 run_record=record,
                 action="cancel",
-                limitations=(f"scancel failed: {(cancellation.stderr or cancellation.stdout or '').strip()}",),
+                limitations=(
+                    _slurm_command_failure_limitation(
+                        command="scancel",
+                        stderr=cancellation.stderr or cancellation.stdout or "unknown scancel error",
+                        action="cancellation",
+                    ),
+                ),
             )
 
         updated_record = replace(

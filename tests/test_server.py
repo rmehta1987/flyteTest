@@ -359,6 +359,7 @@ class ServerTests(TestCase):
                 str(prepared["artifact_path"]),
                 run_dir=tmp_path / "runs",
                 sbatch_runner=fake_sbatch,
+                command_available=lambda command: True,
             )
             run_record_exists = Path(str(submitted["run_record_path"])).exists()
 
@@ -382,6 +383,7 @@ class ServerTests(TestCase):
                 str(prepared["artifact_path"]),
                 run_dir=Path(tmp) / "runs",
                 sbatch_runner=lambda *args, **kwargs: subprocess.CompletedProcess(args=args, returncode=0),
+                command_available=lambda command: True,
             )
 
         self.assertFalse(submitted["supported"])
@@ -408,6 +410,7 @@ class ServerTests(TestCase):
                 str(prepared["artifact_path"]),
                 run_dir=tmp_path / "runs",
                 sbatch_runner=fake_sbatch,
+                command_available=lambda command: True,
             )
 
             def fake_scheduler(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
@@ -428,6 +431,7 @@ class ServerTests(TestCase):
                 str(submitted["run_record_path"]),
                 run_dir=tmp_path / "runs",
                 scheduler_runner=fake_scheduler,
+                command_available=lambda command: True,
             )
 
         self.assertTrue(status["supported"])
@@ -455,6 +459,7 @@ class ServerTests(TestCase):
                 str(prepared["artifact_path"]),
                 run_dir=tmp_path / "runs",
                 sbatch_runner=fake_sbatch,
+                command_available=lambda command: True,
             )
             calls: list[list[str]] = []
 
@@ -466,6 +471,7 @@ class ServerTests(TestCase):
                 str(submitted["run_record_path"]),
                 run_dir=tmp_path / "runs",
                 scheduler_runner=fake_scheduler,
+                command_available=lambda command: True,
             )
 
         self.assertTrue(cancelled["supported"])
@@ -479,6 +485,60 @@ class ServerTests(TestCase):
 
         self.assertFalse(status["supported"])
         self.assertIn("No such file", status["limitations"][0])
+
+    def test_run_slurm_recipe_reports_missing_sbatch_as_unsupported_environment(self) -> None:
+        """Expose an authenticated-environment diagnostic when `sbatch` is unavailable."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result_dir = _repeat_filter_manifest_dir(tmp_path)
+            prepared = _prepare_run_recipe_impl(
+                "Run BUSCO quality assessment on the annotation.",
+                manifest_sources=(result_dir,),
+                runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                execution_profile="slurm",
+                recipe_dir=tmp_path,
+            )
+
+            submitted = _run_slurm_recipe_impl(
+                str(prepared["artifact_path"]),
+                run_dir=tmp_path / "runs",
+                command_available=lambda command: False,
+            )
+
+        self.assertFalse(submitted["supported"])
+        self.assertIn("already-authenticated scheduler environment", submitted["limitations"][0])
+
+    def test_monitor_slurm_job_reports_missing_scheduler_commands_as_unsupported_environment(self) -> None:
+        """Expose an authenticated-environment diagnostic when monitoring commands are unavailable."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result_dir = _repeat_filter_manifest_dir(tmp_path)
+            prepared = _prepare_run_recipe_impl(
+                "Run BUSCO quality assessment on the annotation.",
+                manifest_sources=(result_dir,),
+                runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                execution_profile="slurm",
+                recipe_dir=tmp_path,
+            )
+
+            def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 88888\n", stderr="")
+
+            submitted = _run_slurm_recipe_impl(
+                str(prepared["artifact_path"]),
+                run_dir=tmp_path / "runs",
+                sbatch_runner=fake_sbatch,
+                command_available=lambda command: command == "sbatch",
+            )
+            status = _monitor_slurm_job_impl(
+                str(submitted["run_record_path"]),
+                run_dir=tmp_path / "runs",
+                scheduler_runner=lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("scheduler runner should not be called")),
+                command_available=lambda command: False,
+            )
+
+        self.assertFalse(status["supported"])
+        self.assertIn("already-authenticated scheduler environment", status["limitations"][0])
 
     def test_prepare_run_recipe_accepts_busco_manifest_sources_and_runtime_bindings(self) -> None:
         """Freeze BUSCO recipe bindings from an explicit repeat-filter manifest source."""

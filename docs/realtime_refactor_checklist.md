@@ -1126,11 +1126,17 @@ Status: Complete
 - The MCP surface now exposes `monitor_slurm_job` and `cancel_slurm_job`.
 - Cancellation records an explicit `scancel` request and leaves final cancelled
   state to later reconciliation rather than inventing scheduler state.
+- The authenticated-access follow-up now makes the supported Slurm topology
+  explicit: the MCP/server process runs inside an already-authenticated
+  scheduler-capable environment, and unsupported environments return explicit
+  limitations instead of generic subprocess failures.
 
 ### Acceptance evidence
 
 - `docs/realtime_refactor_plans/2026-04-08-milestone-16-slurm-job-lifecycle-observability.md`
+- `docs/realtime_refactor_plans/2026-04-09-milestone-16-part-2-authenticated-slurm-access-boundary.md`
 - `docs/realtime_refactor_milestone_16_submission_prompt.md`
+- `docs/realtime_refactor_milestone_16_part_2_submission_prompt.md`
 - Tests:
   - `tests/test_spec_executor.py`
   - `tests/test_server.py`

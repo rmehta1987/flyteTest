@@ -1,8 +1,8 @@
 """Tests for PASA-to-TransDecoder discovery and collection boundaries.
 
 The suite keeps PASA-result discovery and TransDecoder output discovery
-synthetic so Milestone 6 can validate these contracts without external
-TransDecoder or PASA binaries.
+synthetic so these contracts can be validated without external TransDecoder or
+PASA binaries.
 """
 
 from __future__ import annotations
@@ -32,8 +32,8 @@ from flytetest.workflows.transdecoder import transdecoder_from_pasa
 
 
 def _artifact_dir(path: Path) -> Dir:
-    """Create a stub Flyte directory artifact from a local path."""
-    return Dir.from_local_sync(str(path))
+    """Create a local Flyte directory wrapper from a filesystem path."""
+    return Dir(path=str(path))
 
 
 def _read_json(path: Path) -> dict[str, object]:

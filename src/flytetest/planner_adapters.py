@@ -1,8 +1,8 @@
 """Adapters from current assets and manifests into planner-facing biology types.
 
-This module keeps Milestone 1 compatibility-safe by mapping today's lower-level
-asset layer and manifest-bearing result bundles into the new planner contract
-without changing any runnable Flyte task signatures yet.
+This module maps today's lower-level asset layer and manifest-bearing result
+bundles into the planner contract without changing any runnable Flyte task
+signatures yet.
 """
 
 from __future__ import annotations

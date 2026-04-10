@@ -14,10 +14,17 @@ from pathlib import Path
 
 from flyte.io import Dir, File
 
-from flytetest.config import RESULTS_PREFIX, RESULTS_ROOT, WORKFLOW_NAME, env, require_path, run_tool
+from flytetest.config import (
+    RESULTS_PREFIX,
+    RESULTS_ROOT,
+    WORKFLOW_NAME,
+    require_path,
+    rnaseq_qc_quant_env,
+    run_tool,
+)
 
 
-@env.task
+@rnaseq_qc_quant_env.task
 def salmon_index(ref: File, salmon_sif: str = "") -> Dir:
     """Build a Salmon index from a transcriptome FASTA."""
     ref_path = require_path(Path(ref.download_sync()), "Reference transcriptome")
@@ -29,10 +36,10 @@ def salmon_index(ref: File, salmon_sif: str = "") -> Dir:
         salmon_sif,
         [ref_path.parent, out_dir.parent],
     )
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
-@env.task
+@rnaseq_qc_quant_env.task
 def salmon_quant(
     index: Dir,
     left: File,
@@ -65,10 +72,10 @@ def salmon_quant(
         salmon_sif,
         [index_path.parent, left_path.parent, right_path.parent, out_dir.parent],
     )
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
-@env.task
+@rnaseq_qc_quant_env.task
 def collect_results(qc: Dir, quant: Dir) -> Dir:
     """Copy QC and quantification outputs into a stable manifest-bearing bundle."""
     qc_path = require_path(Path(qc.download_sync()), "FastQC output directory")
@@ -92,4 +99,4 @@ def collect_results(qc: Dir, quant: Dir) -> Dir:
         "quant_files": sorted(path.name for path in (out_dir / "quant").glob("*")),
     }
     (out_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2))
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))

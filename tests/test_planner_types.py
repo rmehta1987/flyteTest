@@ -1,7 +1,7 @@
 """Synthetic coverage for the planner-facing biology type layer.
 
-These tests keep Milestone 1 focused on planning-time dataclasses and adapter
-logic without changing any runnable Flyte task signatures.
+These tests cover planning-time dataclasses and adapter logic without changing
+any runnable Flyte task signatures.
 """
 
 from __future__ import annotations

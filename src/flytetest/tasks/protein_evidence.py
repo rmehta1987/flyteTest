@@ -182,7 +182,7 @@ def stage_protein_fastas(protein_fastas: list[File]) -> Dir:
         "staged_input_paths": [str(path) for path in staged_paths],
     }
     (out_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2))
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @protein_evidence_env.task
@@ -246,7 +246,7 @@ def chunk_protein_fastas(
         "chunks": chunk_metadata,
     }
     (out_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2))
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @protein_evidence_env.task
@@ -305,7 +305,7 @@ def exonerate_align_chunk(
         },
     }
     (out_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2))
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @protein_evidence_env.task
@@ -357,7 +357,7 @@ def exonerate_to_evm_gff3(
         "gff_line_count": gff_line_count,
     }
     (out_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2))
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @protein_evidence_env.task
@@ -562,4 +562,4 @@ def exonerate_concat_results(
         "converted_chunk_labels": [asset.chunk_label for asset in result_bundle.converted_chunk_results],
     }
     (out_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2))
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))

@@ -175,7 +175,7 @@ def trinity_denovo_assemble(
         trinity_sif,
         [left_path.parent, right_path.parent, out_dir.parent],
     )
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @transcript_evidence_env.task
@@ -204,7 +204,7 @@ def star_genome_index(
         star_sif,
         [genome_path.parent, out_dir.parent],
     )
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @transcript_evidence_env.task
@@ -245,7 +245,7 @@ def star_align_sample(
         star_sif,
         [index_path.parent, left_path.parent, right_path.parent, out_dir.parent],
     )
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @transcript_evidence_env.task
@@ -272,7 +272,7 @@ def samtools_merge_bams(
         samtools_sif,
         [*{bam.parent for bam in input_bams}, out_dir],
     )
-    return File.from_local_sync(str(merged_bam))
+    return File(path=str(merged_bam))
 
 
 @transcript_evidence_env.task
@@ -305,7 +305,7 @@ def trinity_genome_guided_assemble(
         trinity_sif,
         [merged_bam_path.parent, out_dir.parent],
     )
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @transcript_evidence_env.task
@@ -345,7 +345,7 @@ def stringtie_assemble(
         stringtie_sif,
         [merged_bam_path.parent, out_dir.parent],
     )
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @transcript_evidence_env.task
@@ -506,4 +506,4 @@ def collect_transcript_evidence_results(
         "stringtie_files": sorted(path.name for path in copied_stringtie_dir.glob("*")),
     }
     (out_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2))
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))

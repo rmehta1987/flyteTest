@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from flyte.io import Dir
 
-from flytetest.config import consensus_env
+from flytetest.config import consensus_prep_env
 from flytetest.tasks.consensus import (
     collect_evm_results,
     collect_evm_prep_results,
@@ -25,7 +25,7 @@ from flytetest.tasks.consensus import (
 
 # Flyte 2.0.10 in this repo exposes env.task but not env.workflow, so this
 # workflow entrypoint remains a composed task to preserve current behavior.
-@consensus_env.task
+@consensus_prep_env.task
 def consensus_annotation_evm_prep(
     pasa_results: Dir,
     transdecoder_results: Dir,
@@ -54,7 +54,7 @@ def consensus_annotation_evm_prep(
     )
 
 
-@consensus_env.task
+@consensus_prep_env.task
 def consensus_annotation_evm(
     evm_prep_results: Dir,
     evm_weights_text: str = "",

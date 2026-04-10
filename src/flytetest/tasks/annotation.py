@@ -188,7 +188,7 @@ def stage_braker3_inputs(
         },
     }
     (out_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2))
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @annotation_env.task
@@ -251,7 +251,7 @@ def braker3_predict(
         "command_inference": cmd,
     }
     (out_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2))
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @annotation_env.task
@@ -315,7 +315,7 @@ def normalize_braker3_for_evm(
         },
     }
     (out_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2))
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @annotation_env.task
@@ -441,4 +441,4 @@ def collect_braker3_results(
         "normalized_manifest": normalized_manifest,
     }
     (out_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2))
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))

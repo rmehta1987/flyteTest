@@ -1,9 +1,8 @@
 """Saved workflow-spec artifacts for replayable typed planning.
 
-This module is the Milestone 6 persistence layer for the `realtime` refactor.
-It saves metadata-only `WorkflowSpec` and `BindingPlan` pairs produced by typed
-planning so a later step can reload the selected workflow shape without
-re-parsing the original prompt.
+This module saves metadata-only `WorkflowSpec` and `BindingPlan` pairs
+produced by typed planning so a later step can reload the selected workflow
+shape without re-parsing the original prompt.
 """
 
 from __future__ import annotations

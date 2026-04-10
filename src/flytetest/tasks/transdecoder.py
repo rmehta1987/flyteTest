@@ -155,7 +155,7 @@ def transdecoder_train_from_pasa(
         stdout_path=genome_gff3_path,
     )
 
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @transdecoder_env.task
@@ -268,4 +268,4 @@ def collect_transdecoder_results(
         "transdecoder_files": sorted(path.name for path in copied_transdecoder_dir.glob("*")),
     }
     (out_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2))
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))

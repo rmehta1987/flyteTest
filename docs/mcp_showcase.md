@@ -116,16 +116,21 @@ is `slurm`, renders a deterministic `sbatch` script under `.runtime/runs/`,
 submits it with `sbatch`, and records the accepted Slurm job ID in
 `slurm_run_record.json`. On the RCC cluster the frozen recipe also carries the
 Slurm account setting into the generated script so manual `sbatch --account=...`
-overrides are not required for submission.
+overrides are not required for submission. This path is supported only when the
+MCP server is running inside an already-authenticated scheduler-capable
+environment where `sbatch` is available on `PATH`.
 
 `monitor_slurm_job(run_record_path)` reloads that durable record and reconciles
 it with `squeue`, `scontrol show job`, and `sacct`. When Slurm returns concrete
 state, the record is updated with scheduler state, stdout/stderr paths, exit
-code, and final state when terminal.
+code, and final state when terminal. If the server is started outside that
+scheduler boundary, monitoring returns an explicit unsupported-environment
+limitation instead of guessing.
 
 `cancel_slurm_job(run_record_path)` reloads the same durable record, requests
 `scancel <job-id>`, and records that cancellation was requested. Final cancelled
-state is confirmed by a later `monitor_slurm_job` reconciliation.
+state is confirmed by a later `monitor_slurm_job` reconciliation. Cancellation
+likewise requires the same already-authenticated scheduler environment.
 
 `prompt_and_run(prompt, manifest_sources=[], explicit_bindings={}, runtime_bindings={}, resource_request={}, execution_profile="local", runtime_image={})`
 remains available for existing clients. It performs the same prepare-then-run

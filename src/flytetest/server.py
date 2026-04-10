@@ -78,6 +78,7 @@ from flytetest.spec_executor import (
     SlurmLifecycleResult,
     SlurmSpecExecutionResult,
     SlurmWorkflowSpecExecutor,
+    _command_is_available,
 )
 from flytetest.specs import ResourceSpec, RuntimeImageSpec
 
@@ -252,7 +253,7 @@ def _is_flyte_dir_annotation(annotation: Any) -> bool:
 
 
 def _coerce_direct_workflow_input(annotation: Any, value: Any) -> Any:
-    """Convert local runner inputs into the objects expected by direct workflow calls."""
+    """Convert local path inputs into the objects expected by direct workflow calls."""
     from flyte.io import Dir, File
 
     if value in (None, ""):
@@ -305,7 +306,7 @@ def _load_showcase_workflow_callable(workflow_name: str) -> Any:
 
 
 def _prepare_direct_workflow_inputs(workflow: Any, inputs: Mapping[str, object]) -> dict[str, object]:
-    """Build one direct-call argument payload from plain local runner values."""
+    """Build one direct-call argument payload from plain local path values."""
     target = getattr(workflow, "func", workflow)
     parameters = inspect.signature(target).parameters
     type_hints = get_type_hints(target)
@@ -651,8 +652,8 @@ def run_task(task_name: str, inputs: dict[str, object]) -> dict[str, object]:
         from flytetest.tasks.protein_evidence import exonerate_align_chunk
 
         result = exonerate_align_chunk(
-            genome=File.from_local_sync(str(inputs["genome"])),
-            protein_chunk=File.from_local_sync(str(inputs["protein_chunk"])),
+            genome=File(path=str(inputs["genome"])),
+            protein_chunk=File(path=str(inputs["protein_chunk"])),
             exonerate_sif=str(inputs.get("exonerate_sif", "")),
             exonerate_model=str(inputs.get("exonerate_model", "protein2genome")),
         )
@@ -1008,12 +1009,14 @@ def _run_slurm_recipe_impl(
     *,
     run_dir: Path | None = None,
     sbatch_runner: Any = subprocess.run,
+    command_available: Any = None,
 ) -> dict[str, object]:
     """Submit one frozen workflow-spec recipe through `sbatch`."""
     result = SlurmWorkflowSpecExecutor(
         run_root=run_dir or DEFAULT_RUN_DIR,
         repo_root=REPO_ROOT,
         sbatch_runner=sbatch_runner,
+        command_available=command_available or _command_is_available,
     ).submit(Path(artifact_path))
     execution_result = _result_from_slurm_spec_execution(result)
     return {
@@ -1036,12 +1039,14 @@ def _monitor_slurm_job_impl(
     *,
     run_dir: Path | None = None,
     scheduler_runner: Any = subprocess.run,
+    command_available: Any = None,
 ) -> dict[str, object]:
     """Reconcile one Slurm job from its durable run record."""
     result = SlurmWorkflowSpecExecutor(
         run_root=run_dir or DEFAULT_RUN_DIR,
         repo_root=REPO_ROOT,
         scheduler_runner=scheduler_runner,
+        command_available=command_available or _command_is_available,
     ).reconcile(Path(run_record_path))
     return {
         "supported": bool(result.supported),
@@ -1061,12 +1066,14 @@ def _cancel_slurm_job_impl(
     *,
     run_dir: Path | None = None,
     scheduler_runner: Any = subprocess.run,
+    command_available: Any = None,
 ) -> dict[str, object]:
     """Cancel one Slurm job from its durable run record."""
     result = SlurmWorkflowSpecExecutor(
         run_root=run_dir or DEFAULT_RUN_DIR,
         repo_root=REPO_ROOT,
         scheduler_runner=scheduler_runner,
+        command_available=command_available or _command_is_available,
     ).cancel(Path(run_record_path))
     return {
         "supported": bool(result.supported),

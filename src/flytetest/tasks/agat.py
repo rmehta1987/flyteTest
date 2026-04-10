@@ -322,7 +322,7 @@ def agat_cleanup_gff3(
         },
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @agat_conversion_env.task
@@ -397,7 +397,7 @@ def agat_convert_sp_gxf2gxf(
         },
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @agat_env.task
@@ -477,7 +477,7 @@ def agat_statistics(
         },
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 __all__ = ["agat_cleanup_gff3", "agat_convert_sp_gxf2gxf", "agat_statistics"]

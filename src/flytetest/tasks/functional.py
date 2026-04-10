@@ -224,7 +224,7 @@ def busco_assess_proteins(
         },
     }
     _write_json(run_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(run_dir))
+    return Dir(path=str(run_dir))
 
 
 @functional_qc_env.task
@@ -316,7 +316,7 @@ def collect_busco_results(
         "stage_manifests": stage_manifests,
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 __all__ = [

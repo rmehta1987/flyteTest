@@ -25,7 +25,7 @@ from flytetest.config import (
     CONSENSUS_WORKFLOW_NAME,
     RESULTS_ROOT,
     consensus_evm_env,
-    consensus_env,
+    consensus_prep_env,
     require_path,
     run_tool,
 )
@@ -195,7 +195,7 @@ def _prepared_prediction_transdecoder_gff3(prepared_dir: Path, manifest: dict[st
     )
 
 
-@consensus_env.task
+@consensus_prep_env.task
 def prepare_evm_transcript_inputs(
     pasa_results: Dir,
 ) -> Dir:
@@ -234,10 +234,10 @@ def prepare_evm_transcript_inputs(
         "assets": _as_json_compatible({"evm_transcript_input_bundle": asdict(asset)}),
     }
     (out_dir / "run_manifest.json").write_text(json.dumps(run_manifest, indent=2))
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
-@consensus_env.task
+@consensus_prep_env.task
 def prepare_evm_protein_inputs(
     protein_evidence_results: Dir,
 ) -> Dir:
@@ -279,10 +279,10 @@ def prepare_evm_protein_inputs(
         "assets": _as_json_compatible({"evm_protein_input_bundle": asdict(asset)}),
     }
     (out_dir / "run_manifest.json").write_text(json.dumps(run_manifest, indent=2))
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
-@consensus_env.task
+@consensus_prep_env.task
 def prepare_evm_prediction_inputs(
     transdecoder_results: Dir,
     braker3_results: Dir,
@@ -370,10 +370,10 @@ def prepare_evm_prediction_inputs(
         "assets": _as_json_compatible({"evm_prediction_input_bundle": asdict(asset)}),
     }
     (out_dir / "run_manifest.json").write_text(json.dumps(run_manifest, indent=2))
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
-@consensus_env.task
+@consensus_prep_env.task
 def collect_evm_prep_results(
     transcript_inputs: Dir,
     protein_inputs: Dir,
@@ -578,7 +578,7 @@ def collect_evm_prep_results(
         "assets": _as_json_compatible({"evm_input_preparation_bundle": asdict(bundle_asset)}),
     }
     (out_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2))
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> Path:
@@ -822,7 +822,7 @@ def prepare_evm_execution_inputs(
         "assets": _as_json_compatible({"evm_execution_input_bundle": asdict(execution_asset)}),
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @consensus_evm_env.task
@@ -925,7 +925,7 @@ def evm_partition_inputs(
         "assets": _as_json_compatible({"evm_partition_bundle": asdict(partition_asset)}),
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @consensus_evm_env.task
@@ -1007,7 +1007,7 @@ def evm_write_commands(
         "assets": _as_json_compatible({"evm_command_set": asdict(command_asset)}),
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @consensus_evm_env.task
@@ -1065,7 +1065,7 @@ def evm_execute_commands(
         },
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @consensus_evm_env.task
@@ -1165,7 +1165,7 @@ def evm_recombine_outputs(
         "sorting_applied": bool(gff3sort_script.strip()),
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @consensus_evm_env.task
@@ -1349,7 +1349,7 @@ def collect_evm_results(
         "assets": _as_json_compatible({"evm_consensus_result_bundle": asdict(result_bundle)}),
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 __all__ = [

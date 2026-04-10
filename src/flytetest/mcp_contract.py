@@ -145,7 +145,8 @@ RECIPE_INPUT_RUNTIME_RULES = (
     "AGAT runtime bindings are `annotation_fasta_path` and optional `agat_sif` for statistics, and optional `agat_sif` for conversion.",
     "Resource requests use structured `ResourceSpec` fields such as `cpu`, `memory`, `queue`, `account`, and `walltime`.",
     "`local` recipes run through explicit local handlers; `slurm` recipes can be submitted with `run_slurm_recipe` after they are frozen.",
-    "`monitor_slurm_job` and `cancel_slurm_job` operate from durable `.runtime/runs/` Slurm run records.",
+    "Slurm recipe submission and lifecycle tools require FLyteTest to run inside an already-authenticated scheduler-capable environment with the needed Slurm CLI commands on PATH.",
+    "`monitor_slurm_job` and `cancel_slurm_job` operate from durable `.runtime/runs/` Slurm run records and return explicit unsupported-environment limitations when that scheduler boundary is unavailable.",
     "Runtime image policy can be frozen as `RuntimeImageSpec` metadata, while existing workflow SIF inputs remain explicit runtime bindings.",
 )
 

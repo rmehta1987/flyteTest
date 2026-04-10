@@ -63,13 +63,13 @@ def _read_json(path: Path) -> dict[str, object]:
 
 
 def _artifact_dir(path: Path) -> Dir:
-    """Create a stub Flyte directory artifact from a local path."""
-    return Dir.from_local_sync(str(path))
+    """Create a local Flyte directory wrapper from a filesystem path."""
+    return Dir(path=str(path))
 
 
 def _artifact_file(path: Path) -> File:
-    """Create a stub Flyte file artifact from a local path."""
-    return File.from_local_sync(str(path))
+    """Create a local Flyte file wrapper from a filesystem path."""
+    return File(path=str(path))
 
 
 def _fixed_datetime() -> type:

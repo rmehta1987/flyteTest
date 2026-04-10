@@ -1,10 +1,10 @@
 # Milestone 16 Part 2 Authenticated Slurm Access Boundary
 
 Date: 2026-04-09
-Status: Proposed
+Status: Complete
 
 Related checklist milestone:
-- `docs/realtime_refactor_checklist.md` Milestone 16 follow-up lane
+- `docs/realtime_refactor_checklist.md` Milestone 16
 
 Implementation note:
 - This follow-up should refine the Milestone 16 lifecycle boundary for HPC
@@ -34,6 +34,21 @@ Implementation note:
   server manually inside a login-node shell, `tmux` session, `screen` session,
   or another already-authenticated environment before Slurm tools should be
   advertised.
+
+## Landed Result
+
+- Slurm submission now checks explicitly for `sbatch` before attempting
+  submission and reports an unsupported-environment limitation when FLyteTest is
+  started outside an authenticated scheduler-capable environment.
+- Slurm monitoring now distinguishes missing scheduler query commands from
+  ordinary lifecycle state and reports an unsupported-environment limitation
+  when none of `squeue`, `scontrol`, or `sacct` are available.
+- Slurm cancellation now checks for `scancel` explicitly and reports the same
+  authenticated-environment boundary instead of returning only generic command
+  failures.
+- README, MCP showcase docs, capability notes, and MCP contract text now state
+  that the default supported topology is an MCP/server process running inside an
+  already-authenticated HPC session.
 
 ## Target State
 

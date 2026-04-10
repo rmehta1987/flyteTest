@@ -282,7 +282,7 @@ def repeatmasker_out_to_bed(
         },
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @repeat_filter_env.task
@@ -329,7 +329,7 @@ def gffread_proteins(
         },
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @repeat_filter_env.task
@@ -400,7 +400,7 @@ def funannotate_remove_bad_models(
         },
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @repeat_filter_env.task
@@ -431,7 +431,7 @@ def remove_overlap_repeat_models(
         },
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @repeat_filter_env.task
@@ -492,7 +492,7 @@ def funannotate_repeat_blast(
         },
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @repeat_filter_env.task
@@ -525,7 +525,7 @@ def remove_repeat_blast_hits(
         },
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @repeat_filter_env.task
@@ -698,7 +698,7 @@ def collect_repeat_filter_results(
         },
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 __all__ = [

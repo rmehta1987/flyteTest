@@ -1,7 +1,7 @@
 """Coverage for saved replayable workflow-spec artifacts.
 
-These tests keep Milestone 6 focused on metadata persistence and reloads. They
-do not execute saved specs and do not imply general runtime code generation.
+These tests cover metadata persistence and reloads. They do not execute saved
+specs and do not imply general runtime code generation.
 """
 
 from __future__ import annotations

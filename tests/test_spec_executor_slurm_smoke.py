@@ -1,4 +1,4 @@
-"""Optional live smoke tests for the Milestone 13 Slurm submission boundary.
+"""Optional live smoke tests for the Slurm submission boundary.
 
 The synthetic coverage in `tests/test_spec_executor.py` already checks script
 rendering, `sbatch` parsing, and durable run-record persistence with injected

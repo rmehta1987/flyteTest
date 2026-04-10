@@ -310,7 +310,7 @@ def star_align_sample(
         sif=star_sif,
         bind_paths=[index_dir, left_path.parent, right_path.parent, out_dir],
     )
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 ```
 
 ### 4.3 Workflow Example

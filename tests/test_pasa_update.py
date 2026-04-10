@@ -1,7 +1,7 @@
-"""Tests for the Milestone 3 PASA post-EVM refinement boundary.
+"""Tests for the PASA post-EVM refinement boundary.
 
 The suite keeps PASA update staging, round promotion, finalization, and
-collection synthetic so the milestone can be validated without PASA binaries.
+collection synthetic so the boundary can be validated without PASA binaries.
 """
 
 from __future__ import annotations
@@ -31,8 +31,8 @@ from flytetest.workflows.pasa import annotation_refinement_pasa
 
 
 def _artifact_dir(path: Path) -> Dir:
-    """Create a stub Flyte directory artifact from a local path."""
-    return Dir.from_local_sync(str(path))
+    """Create a local Flyte directory wrapper from a filesystem path."""
+    return Dir(path=str(path))
 
 
 def _read_json(path: Path) -> dict[str, object]:
@@ -70,7 +70,7 @@ def _fixed_datetime() -> type:
 
 
 def _create_pasa_results(tmp_path: Path) -> Path:
-    """Create a minimal PASA bundle with the fields Milestone 3 consumes."""
+    """Create a minimal PASA bundle with the fields the update path consumes."""
     results_dir = tmp_path / "pasa_results"
     seqclean_dir = results_dir / "seqclean"
     config_dir = results_dir / "config"
@@ -104,7 +104,7 @@ def _create_pasa_results(tmp_path: Path) -> Path:
 
 
 def _create_evm_results(tmp_path: Path) -> Path:
-    """Create a minimal EVM bundle with the fields Milestone 3 consumes."""
+    """Create a minimal EVM bundle with the fields the update path consumes."""
     results_dir = tmp_path / "evm_results"
     execution_dir = results_dir / "evm_execution_inputs"
     execution_dir.mkdir(parents=True, exist_ok=True)
@@ -128,7 +128,7 @@ def _create_evm_results(tmp_path: Path) -> Path:
 
 
 class PasaUpdateTaskTests(TestCase):
-    """Task-level coverage for the Milestone 3 PASA post-EVM boundary."""
+    """Task-level coverage for the PASA post-EVM boundary."""
 
     def test_prepare_pasa_update_inputs_stages_existing_pasa_and_evm_bundles(self) -> None:
         """Stage the PASA database state and sorted EVM GFF3 without rebuilding upstream evidence."""

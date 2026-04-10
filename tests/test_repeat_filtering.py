@@ -32,8 +32,8 @@ from flytetest.workflows.filtering import annotation_repeat_filtering
 
 
 def _artifact_dir(path: Path) -> Dir:
-    """Create a stub Flyte directory artifact from a local path."""
-    return Dir.from_local_sync(str(path))
+    """Create a local Flyte directory wrapper from a filesystem path."""
+    return Dir(path=str(path))
 
 
 def _read_json(path: Path) -> dict[str, object]:

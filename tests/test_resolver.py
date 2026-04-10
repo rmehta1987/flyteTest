@@ -1,7 +1,7 @@
 """Synthetic coverage for the first manifest-backed resolver layer.
 
-These tests keep Milestone 3 focused on local input resolution rules without
-changing the current prompt planner or execution paths.
+These tests cover local input resolution rules without changing the current
+prompt planner or execution paths.
 """
 
 from __future__ import annotations

@@ -1,7 +1,7 @@
 """Synthetic coverage for normalized planning and replay specs.
 
-These tests keep Milestone 2 focused on metadata contracts and serialization
-without implying that runtime generation or resolver behavior already exists.
+These tests cover metadata contracts and serialization without implying that
+runtime generation or resolver behavior already exists.
 """
 
 from __future__ import annotations
@@ -68,7 +68,7 @@ class SpecTests(TestCase):
             deterministic_execution=DeterministicExecutionContract(
                 result_boundary="One chunk-level Exonerate alignment directory.",
                 assumptions=("Chunk FASTA order remains deterministic.",),
-                limitations=("This spec is metadata-only in Milestone 2.",),
+                limitations=("This spec is metadata-only in this planning contract.",),
             ),
             resource_spec=ResourceSpec(cpu="8", memory="32Gi"),
             runtime_image=RuntimeImageSpec(
@@ -228,7 +228,7 @@ class SpecTests(TestCase):
             source_prompt="Assess the prepared consensus annotation with BUSCO after repeat filtering.",
             assumptions=(
                 "The generated artifact references only existing reviewed stages.",
-                "This record is metadata-only in Milestone 2.",
+                "This record is metadata-only in this saved-artifact contract.",
             ),
             selected_execution_profile="local",
             referenced_registered_building_blocks=("annotation_repeat_filtering", "annotation_qc_busco"),
@@ -293,7 +293,7 @@ class SpecTests(TestCase):
                 compatibility_notes=("Container usage remains future-facing metadata here.",),
             ),
             scheduler_profile="highmem",
-            notes=("Profiles remain policy only in Milestone 2.",),
+            notes=("Profiles remain policy-only metadata in this contract.",),
         )
 
         self.assertEqual(ExecutionProfile.from_dict(profile.to_dict()), profile)

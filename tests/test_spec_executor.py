@@ -1,9 +1,10 @@
-"""Synthetic coverage for local execution of saved workflow-spec artifacts.
+"""Synthetic coverage for saved workflow-spec executor behavior.
 
-These tests exercise Milestone 7 without requiring external bioinformatics
-tools. Registered stage handlers are fake, but the executor still uses the
-saved `BindingPlan`, resolver inputs, registry references, and manifest-shaped
-result directories.
+These tests cover the local saved-spec executor path plus the later Slurm
+submission, reconciliation, and cancellation helpers without requiring
+external bioinformatics tools. Registered stage handlers are fake, but the
+executors still use saved `BindingPlan` data, resolver inputs, registry
+references, durable run records, and manifest-shaped result directories.
 """
 
 from __future__ import annotations
@@ -414,6 +415,7 @@ class SpecExecutorTests(TestCase):
                 run_root=tmp_path / "runs",
                 repo_root=Path("/repo/flyteTest"),
                 python_executable="/repo/flyteTest/.venv/bin/python",
+                command_available=lambda command: True,
             )
 
             first = executor.render_script(
@@ -457,6 +459,7 @@ class SpecExecutorTests(TestCase):
                 repo_root=tmp_path,
                 python_executable="/usr/bin/python3",
                 sbatch_runner=fake_sbatch,
+                command_available=lambda command: True,
             ).submit(artifact_path)
             script_exists = result.run_record.script_path.exists()
             record_exists = result.run_record.run_record_path.exists()
@@ -508,6 +511,7 @@ class SpecExecutorTests(TestCase):
                 repo_root=tmp_path,
                 sbatch_runner=fake_sbatch,
                 scheduler_runner=fake_scheduler,
+                command_available=lambda command: True,
             )
             submitted = executor.submit(artifact_path)
             status = executor.reconcile(submitted.run_record.run_record_path)
@@ -546,6 +550,7 @@ class SpecExecutorTests(TestCase):
                 repo_root=tmp_path,
                 sbatch_runner=fake_sbatch,
                 scheduler_runner=fake_scheduler,
+                command_available=lambda command: True,
             )
             submitted = executor.submit(artifact_path)
             status = executor.reconcile(submitted.run_record.run_record_path)
@@ -577,6 +582,7 @@ class SpecExecutorTests(TestCase):
                 repo_root=tmp_path,
                 sbatch_runner=fake_sbatch,
                 scheduler_runner=fake_scheduler,
+                command_available=lambda command: True,
             )
             submitted = executor.submit(artifact_path)
             cancelled = executor.cancel(submitted.run_record.run_record_path)
@@ -598,3 +604,67 @@ class SpecExecutorTests(TestCase):
 
         self.assertFalse(result.supported)
         self.assertIn("No such file", result.limitations[0])
+
+    def test_slurm_submit_reports_missing_sbatch_as_unsupported_environment(self) -> None:
+        """Decline submission cleanly when `sbatch` is unavailable on PATH."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            artifact = _slurm_busco_artifact_with_runtime_bindings(tmp_path)
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+
+            result = SlurmWorkflowSpecExecutor(
+                run_root=tmp_path / "runs",
+                repo_root=tmp_path,
+                command_available=lambda command: False,
+            ).submit(artifact_path)
+
+        self.assertFalse(result.supported)
+        self.assertIn("already-authenticated scheduler environment", result.limitations[0])
+        self.assertIn("`sbatch`", result.limitations[0])
+
+    def test_slurm_reconcile_reports_missing_scheduler_commands_as_unsupported_environment(self) -> None:
+        """Decline monitoring cleanly when no scheduler query command is available."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            artifact = _slurm_busco_artifact_with_runtime_bindings(tmp_path)
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+
+            def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 66666\n", stderr="")
+
+            executor = SlurmWorkflowSpecExecutor(
+                run_root=tmp_path / "runs",
+                repo_root=tmp_path,
+                sbatch_runner=fake_sbatch,
+                scheduler_runner=lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("scheduler runner should not be called")),
+                command_available=lambda command: command == "sbatch",
+            )
+            submitted = executor.submit(artifact_path)
+            status = executor.reconcile(submitted.run_record.run_record_path)
+
+        self.assertFalse(status.supported)
+        self.assertIn("already-authenticated scheduler environment", status.limitations[0])
+        self.assertIn("`squeue`, `scontrol`, and `sacct`", status.limitations[0])
+
+    def test_slurm_cancel_reports_missing_scancel_as_unsupported_environment(self) -> None:
+        """Decline cancellation cleanly when `scancel` is unavailable on PATH."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            artifact = _slurm_busco_artifact_with_runtime_bindings(tmp_path)
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+
+            def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 77777\n", stderr="")
+
+            executor = SlurmWorkflowSpecExecutor(
+                run_root=tmp_path / "runs",
+                repo_root=tmp_path,
+                sbatch_runner=fake_sbatch,
+                command_available=lambda command: command == "sbatch",
+            )
+            submitted = executor.submit(artifact_path)
+            cancelled = executor.cancel(submitted.run_record.run_record_path)
+
+        self.assertFalse(cancelled.supported)
+        self.assertIn("already-authenticated scheduler environment", cancelled.limitations[0])
+        self.assertIn("`scancel`", cancelled.limitations[0])

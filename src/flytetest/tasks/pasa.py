@@ -218,7 +218,7 @@ def pasa_accession_extract(
         pasa_sif,
         [denovo_path.parent, out_dir],
     )
-    return File.from_local_sync(str(accession_path))
+    return File(path=str(accession_path))
 
 
 @pasa_env.task
@@ -240,7 +240,7 @@ def combine_trinity_fastas(
                 shutil.copyfileobj(input_handle, handle)
             handle.write(b"\n")
 
-    return File.from_local_sync(str(combined_path))
+    return File(path=str(combined_path))
 
 
 @pasa_env.task
@@ -272,7 +272,7 @@ def pasa_seqclean(
         [out_dir, univec_path.parent],
         cwd=out_dir,
     )
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @pasa_env.task
@@ -309,7 +309,7 @@ def pasa_create_sqlite_db(
         )
 
     config_path.write_text("\n".join(rendered_lines) + "\n")
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @pasa_env.task
@@ -378,7 +378,7 @@ def pasa_align_assemble(
     ]
 
     run_tool(cmd, pasa_sif, bind_paths, cwd=out_dir)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @pasa_env.task
@@ -574,7 +574,7 @@ def collect_pasa_results(
         "pasa_files": sorted(path.name for path in copied_pasa_dir.glob("*")),
     }
     (out_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2))
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -929,7 +929,7 @@ def prepare_pasa_update_inputs(
         },
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @pasa_update_env.task
@@ -982,7 +982,7 @@ def pasa_load_current_annotations(
         },
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @pasa_update_env.task
@@ -1102,7 +1102,7 @@ def pasa_update_gene_models(
         "assets": _as_json_compatible({"pasa_gene_model_update_round": asdict(round_asset)}),
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @pasa_update_env.task
@@ -1163,7 +1163,7 @@ def finalize_pasa_update_outputs(
         "sorting_applied": bool(gff3sort_script.strip()),
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @pasa_update_env.task
@@ -1353,7 +1353,7 @@ def collect_pasa_update_results(
         "finalized_manifest": _read_json(_manifest_path(copied_finalized_dir, "Copied PASA finalized outputs")),
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 __all__ = [

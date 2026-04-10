@@ -31,6 +31,32 @@ Entry template:
 
 ## Unreleased
 
+### Authenticated Slurm access boundary
+
+- changed:
+  - `run_slurm_recipe`, `monitor_slurm_job`, and `cancel_slurm_job` now report
+    explicit unsupported-environment limitations when FLyteTest is running
+    outside an already-authenticated scheduler-capable environment
+  - Slurm lifecycle diagnostics now distinguish missing CLI commands and
+    scheduler reachability issues from ordinary lifecycle state
+  - README, MCP showcase docs, capability notes, and the Milestone 16 Part 2
+    handoff docs now describe the supported Slurm topology as a local
+    MCP/server process running inside an authenticated HPC session
+
+### TaskEnvironment catalog refactor
+
+- added:
+  - centralized shared Flyte `TaskEnvironment` defaults in
+    `src/flytetest/config.py`
+  - introduced a declarative task-environment catalog plus compatibility
+    aliases for current task families
+  - added explicit per-family runtime overrides for BRAKER3 annotation and
+    BUSCO QC so the catalog reflects real workload differences
+  - added focused tests for the shared defaults and alias stability
+- changed:
+  - reduced repetition in the task-environment setup so future task families
+    can inherit shared runtime policy from one place
+
 ### Local recipe execution robustness
 
 - changed:
