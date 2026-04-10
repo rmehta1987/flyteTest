@@ -22,8 +22,12 @@ artifact upload semantics.
 
 - Active biological milestone: `AGAT post-processing after EggNOG`
 - Active architecture milestone: `realtime` refactor Milestones 0 through 14
-  and Milestone 16 are complete; Milestone 18 Slurm retry/resubmission is next
-  on the Slurm lane
+  and Milestone 16 are complete; the currently planned next sequence is
+  `17 -> 18 -> 15 -> 19`. Milestone 17 generic asset adoption is next on the
+  mainline path, Milestone 18 Slurm retry/resubmission is next on the Slurm
+  lane, Milestone 15 composition preview follows those two enabling slices,
+  and Milestone 19 caching/resumability comes after Milestone 15 to make
+  composed DAG execution safe
 - Implemented biological scope: transcript evidence, PASA align/assemble,
   TransDecoder, protein evidence, tutorial-backed BRAKER3, corrected pre-EVM
   contract assembly, deterministic EVM execution, PASA post-EVM refinement,
@@ -45,18 +49,18 @@ Important terminology:
 Use this README for the project story, current scope, and runnable entrypoints.
 Use the more specific docs when you need detail:
 
-- [AGENTS.md](/home/rmeht/Projects/flyteTest/AGENTS.md): repo rules, biological pipeline constraints, and agent behavior
-- [DESIGN.md](/home/rmeht/Projects/flyteTest/DESIGN.md): architecture target and terminology
-- [docs/braker3_evm_notes.md](/home/rmeht/Projects/flyteTest/docs/braker3_evm_notes.md): biological source notes and stage ordering
-- [docs/capability_maturity.md](/home/rmeht/Projects/flyteTest/docs/capability_maturity.md): current platform capability snapshot
-- [docs/refactor_completion_checklist.md](/home/rmeht/Projects/flyteTest/docs/refactor_completion_checklist.md): notes-faithful pipeline milestone gate
-- [docs/realtime_refactor_checklist.md](/home/rmeht/Projects/flyteTest/docs/realtime_refactor_checklist.md): architecture-refactor completion gate
-- [docs/realtime_refactor_submission_prompt.md](/home/rmeht/Projects/flyteTest/docs/realtime_refactor_submission_prompt.md): handoff prompt for future architecture work
-- [docs/realtime_refactor_plans/README.md](/home/rmeht/Projects/flyteTest/docs/realtime_refactor_plans/README.md): plan-history workspace, not current implementation status
-- [docs/tool_refs/README.md](/home/rmeht/Projects/flyteTest/docs/tool_refs/README.md): tool-stage context for implementation and prompt planning
-- [docs/tool_refs/stage_index.md](/home/rmeht/Projects/flyteTest/docs/tool_refs/stage_index.md): stage-oriented entrypoint into tool references
-- [docs/tutorial_context.md](/home/rmeht/Projects/flyteTest/docs/tutorial_context.md): Galaxy-backed fixture and smoke-test context
-- [src/flytetest/registry.py](/home/rmeht/Projects/flyteTest/src/flytetest/registry.py): exact supported task and workflow names
+- [AGENTS.md](AGENTS.md): repo rules, biological pipeline constraints, and agent behavior
+- [DESIGN.md](DESIGN.md): architecture target and terminology
+- [docs/braker3_evm_notes.md](docs/braker3_evm_notes.md): biological source notes and stage ordering
+- [docs/capability_maturity.md](docs/capability_maturity.md): current platform capability snapshot
+- [docs/refactor_completion_checklist.md](docs/refactor_completion_checklist.md): notes-faithful pipeline milestone gate
+- [docs/realtime_refactor_checklist.md](docs/realtime_refactor_checklist.md): architecture-refactor completion gate
+- [docs/realtime_refactor_submission_prompt.md](docs/realtime_refactor_submission_prompt.md): handoff prompt for future architecture work
+- [docs/realtime_refactor_plans/README.md](docs/realtime_refactor_plans/README.md): plan-history workspace, not current implementation status
+- [docs/tool_refs/README.md](docs/tool_refs/README.md): tool-stage context for implementation and prompt planning
+- [docs/tool_refs/stage_index.md](docs/tool_refs/stage_index.md): stage-oriented entrypoint into tool references
+- [docs/tutorial_context.md](docs/tutorial_context.md): Galaxy-backed fixture and smoke-test context
+- [src/flytetest/registry.py](src/flytetest/registry.py): exact supported task and workflow names
 
 Reading rule for agents: the notes define biological order and command context;
 the registry and current code define what is actually implemented and runnable.
@@ -101,9 +105,9 @@ intentionally out of scope.
 
 ## Current Workflows
 
-The original [flyte_rnaseq_workflow.py](/home/rmeht/Projects/flyteTest/flyte_rnaseq_workflow.py)
+The original [flyte_rnaseq_workflow.py](flyte_rnaseq_workflow.py)
 file remains the compatibility entrypoint for `flyte run`. The implementation
-now lives under [src/flytetest/](/home/rmeht/Projects/flyteTest/src/flytetest).
+now lives under [src/flytetest/](src/flytetest).
 
 | Workflow | Biological role | Current boundary |
 | --- | --- | --- |
@@ -221,15 +225,15 @@ natural-language prompt
 
 Implemented architecture layers:
 
-- [planner_types.py](/home/rmeht/Projects/flyteTest/src/flytetest/planner_types.py): biology-facing planner dataclasses
-- [planner_adapters.py](/home/rmeht/Projects/flyteTest/src/flytetest/planner_adapters.py): adapters from current assets and manifests into planner-facing types
-- [types/assets.py](/home/rmeht/Projects/flyteTest/src/flytetest/types/assets.py): local asset dataclasses with generic compatibility names and legacy aliases for replay
-- [specs.py](/home/rmeht/Projects/flyteTest/src/flytetest/specs.py): `TaskSpec`, `WorkflowSpec`, `BindingPlan`, runtime, resource, and generated-entity metadata
-- [resolver.py](/home/rmeht/Projects/flyteTest/src/flytetest/resolver.py): local manifest-backed resolution from explicit bindings, result directories, and result bundles
-- [registry.py](/home/rmeht/Projects/flyteTest/src/flytetest/registry.py): static registry plus additive compatibility metadata for current workflows
-- [planning.py](/home/rmeht/Projects/flyteTest/src/flytetest/planning.py): typed prompt planning plus explicit-path and explicit recipe input bindings
-- [spec_artifacts.py](/home/rmeht/Projects/flyteTest/src/flytetest/spec_artifacts.py): saved replayable `WorkflowSpec` plus `BindingPlan` JSON artifacts
-- [spec_executor.py](/home/rmeht/Projects/flyteTest/src/flytetest/spec_executor.py): local saved-spec execution through caller-provided registered handlers
+- [planner_types.py](src/flytetest/planner_types.py): biology-facing planner dataclasses
+- [planner_adapters.py](src/flytetest/planner_adapters.py): adapters from current assets and manifests into planner-facing types
+- [types/assets.py](src/flytetest/types/assets.py): local asset dataclasses with generic compatibility names and legacy aliases for replay
+- [specs.py](src/flytetest/specs.py): `TaskSpec`, `WorkflowSpec`, `BindingPlan`, runtime, resource, and generated-entity metadata
+- [resolver.py](src/flytetest/resolver.py): local manifest-backed resolution from explicit bindings, result directories, and result bundles
+- [registry.py](src/flytetest/registry.py): static registry plus additive compatibility metadata for current workflows
+- [planning.py](src/flytetest/planning.py): typed prompt planning plus explicit-path and explicit recipe input bindings
+- [spec_artifacts.py](src/flytetest/spec_artifacts.py): saved replayable `WorkflowSpec` plus `BindingPlan` JSON artifacts
+- [spec_executor.py](src/flytetest/spec_executor.py): local saved-spec execution through caller-provided registered handlers
 
 Current architecture limits:
 
@@ -283,6 +287,33 @@ Launch command:
 env PYTHONPATH=src .venv/bin/python -m flytetest.server
 ```
 
+## MCP Server And Client Setup
+
+The MCP server is a stdio process. A client such as Codex CLI or OpenCode
+launches it as a child command instead of attaching to an already-running
+interactive shell.
+
+Example Codex CLI setup:
+
+```bash
+codex mcp add flytetest \
+  --env FLYTETEST_REPO_ROOT=/path/to/flyteTest \
+  --env PYTHONPATH=/path/to/flyteTest/src \
+  -- bash -lc 'cd /path/to/flyteTest && module load python/3.11.9 && source .venv/bin/activate && python -m flytetest.server'
+```
+
+OpenCode uses either the default config path
+`~/.config/opencode/opencode.json` or an explicit shell export such as
+`OPENCODE_CONFIG=/path/to/opencode.json`.
+The full setup example in the MCP runbook uses `OPENCODE_INSTALL_DIR` for the
+installer so the `curl | bash` flow lands in the intended user-local bin path.
+
+Client examples and the full HPC runbook live in:
+
+- [docs/mcp_client_config.example.json](docs/mcp_client_config.example.json)
+- [docs/opencode.config.example.json](docs/opencode.config.example.json)
+- [docs/mcp_showcase.md](docs/mcp_showcase.md)
+
 Current MCP behavior:
 
 - `plan_request` returns the typed planning payload used for recipe preparation
@@ -309,6 +340,10 @@ Current MCP behavior:
 - when MCP clients pass `explicit_bindings`, `runtime_bindings`,
   `resource_request`, or `runtime_image` directly, those values must be real
   JSON/object mappings rather than stringified pseudo-dictionaries
+- if an LLM-driven MCP client does not preserve optional tool arguments
+  reliably, put critical execution policy such as `execution profile slurm`,
+  queue, CPU, memory, walltime, and account directly in the prompt text and
+  then verify the returned frozen recipe before submission
 - when freezing a Slurm recipe through an LLM-driven MCP client, check that the
   returned `typed_plan.execution_profile` and
   `typed_plan.binding_plan.execution_profile` are both `slurm` before calling
@@ -345,8 +380,8 @@ Current MCP behavior:
   are exposed as runnable MCP targets
 
 For the machine-readable server contract, see
-[mcp_contract.py](/home/rmeht/Projects/flyteTest/src/flytetest/mcp_contract.py)
-and [docs/mcp_showcase.md](/home/rmeht/Projects/flyteTest/docs/mcp_showcase.md).
+[mcp_contract.py](src/flytetest/mcp_contract.py)
+and [docs/mcp_showcase.md](docs/mcp_showcase.md).
 
 ## Fixtures And Tests
 
@@ -375,9 +410,9 @@ Image provenance:
 - `data/images/braker3.sif` was built from `teambraker/braker3:latest`
 - `data/images/busco_v6.0.0_cv1.sif` was built from `ezlabgva/busco:v6.0.0_cv1`
 
-Use [scripts/rcc/download_minimal_fixtures.sh](/home/rmeht/Projects/flyteTest/scripts/rcc/download_minimal_fixtures.sh)
+Use [scripts/rcc/download_minimal_fixtures.sh](scripts/rcc/download_minimal_fixtures.sh)
 to restore the lightweight tutorial-backed smoke files on a cluster checkout,
-Use [scripts/rcc/download_minimal_images.sh](/home/rmeht/Projects/flyteTest/scripts/rcc/download_minimal_images.sh)
+Use [scripts/rcc/download_minimal_images.sh](scripts/rcc/download_minimal_images.sh)
 to restore the core local smoke images under `data/images/`. The additional
 repo-local images `data/images/braker3.sif` and
 `data/images/busco_v6.0.0_cv1.sif` are expected to be staged separately when
@@ -386,33 +421,33 @@ those stages are exercised. The cluster wrappers keep using the shared RCC
 StringTie binary at `/project/rcc/hyadav/genomes/software/stringtie/stringtie`,
 and you can point `PASA_SIF` at the PASA image path you scp to the cluster when
 you run that smoke there.
-Use [scripts/rcc/build_pasa_image.sh](/home/rmeht/Projects/flyteTest/scripts/rcc/build_pasa_image.sh)
+Use [scripts/rcc/build_pasa_image.sh](scripts/rcc/build_pasa_image.sh)
 to build the experimental PASA image recipe when you need to inspect the
 container itself. The preferred source is the local
-[containers/pasa/Dockerfile](/home/rmeht/Projects/flyteTest/containers/pasa/Dockerfile),
+[containers/pasa/Dockerfile](containers/pasa/Dockerfile),
 which serves as the maintenance recipe. The helper then exports that recipe
 through Apptainer when possible.
-Use [scripts/rcc/check_minimal_images.sh](/home/rmeht/Projects/flyteTest/scripts/rcc/check_minimal_images.sh)
+Use [scripts/rcc/check_minimal_images.sh](scripts/rcc/check_minimal_images.sh)
 to verify that the smoke images are present under `data/images/` and that the
 shared cluster Trinity/STAR/StringTie defaults exist under
 `/project/rcc/hyadav/genomes/software` when that mount is available. Set
 `PASA_SIF` first if you want the checker to validate a scp'd PASA image path
 instead of the repo-local one.
-Use [scripts/rcc/run_minimal_pasa_align_smoke.sh](/home/rmeht/Projects/flyteTest/scripts/rcc/run_minimal_pasa_align_smoke.sh)
+Use [scripts/rcc/run_minimal_pasa_align_smoke.sh](scripts/rcc/run_minimal_pasa_align_smoke.sh)
 to run the wiki-shaped PASA align/assemble smoke from the tiny Trinity FASTA
 and genome fixture on the host-installed PASA pipeline. The launcher uses
 `sbatch` when it is available and otherwise runs locally.
-Use [scripts/rcc/check_minimal_pasa_align_smoke.sh](/home/rmeht/Projects/flyteTest/scripts/rcc/check_minimal_pasa_align_smoke.sh)
+Use [scripts/rcc/check_minimal_pasa_align_smoke.sh](scripts/rcc/check_minimal_pasa_align_smoke.sh)
 to verify the wiki-shaped PASA smoke artifacts after the job finishes.
-Use [scripts/rcc/run_minimal_pasa_image_smoke.sh](/home/rmeht/Projects/flyteTest/scripts/rcc/run_minimal_pasa_image_smoke.sh)
+Use [scripts/rcc/run_minimal_pasa_image_smoke.sh](scripts/rcc/run_minimal_pasa_image_smoke.sh)
 to run the Apptainer-backed PASA image smoke against the same Trinity FASTA
 and genome fixture pair. The launcher uses `sbatch` when it is available and
 otherwise runs locally. The PASA Apptainer image smoke does not currently
 support the legacy `seqclean` path; see
 https://github.com/PASApipeline/PASApipeline/issues/73.
-Use [scripts/rcc/check_minimal_pasa_image_smoke.sh](/home/rmeht/Projects/flyteTest/scripts/rcc/check_minimal_pasa_image_smoke.sh)
+Use [scripts/rcc/check_minimal_pasa_image_smoke.sh](scripts/rcc/check_minimal_pasa_image_smoke.sh)
 to verify the PASA image smoke artifacts after the job finishes.
-Use [docs/tutorial_context.md](/home/rmeht/Projects/flyteTest/docs/tutorial_context.md)
+Use [docs/tutorial_context.md](docs/tutorial_context.md)
 for Galaxy tutorial mappings, fixture provenance, and smoke-test planning.
 Use synthetic tests when external binaries or lineage datasets are unavailable.
 
@@ -464,9 +499,8 @@ the same account and queue policy.
 ## Assumptions
 
 - The current SDK in this repo is `flyte==2.0.10`, and `TaskEnvironment`
-  exposes `@env.task` but not `@env.workflow`; shared task defaults and a few
-  family-specific runtime overrides are centralized in
-  `src/flytetest/config.py`.
+  exposes `@env.task`; shared task defaults and a few family-specific runtime
+  overrides are centralized in `src/flytetest/config.py`.
 - `flyte_rnaseq_workflow.py` remains a thin compatibility module for
   `flyte run`.
 - `src/flytetest/types/` is a local modeling layer, not a full remote asset

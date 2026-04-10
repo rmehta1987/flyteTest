@@ -142,6 +142,7 @@ RECIPE_INPUT_BINDING_RULES = (
 RECIPE_INPUT_RUNTIME_RULES = (
     "Runtime bindings are frozen into the saved recipe and are not inferred from prompt text.",
     "Direct MCP clients must send `runtime_bindings`, `resource_request`, and `runtime_image` as real JSON/object mappings.",
+    "If an LLM-driven client drops optional tool arguments, encode the execution profile and resource choices in the prompt text and verify the returned frozen profile before Slurm submission.",
     "BUSCO runtime bindings begin with `busco_lineages_text`, optional `busco_sif`, and `busco_cpu`.",
     "EggNOG runtime bindings are `eggnog_data_dir`, optional `eggnog_sif`, `eggnog_cpu`, and `eggnog_database`.",
     "AGAT runtime bindings are `annotation_fasta_path` and optional `agat_sif` for statistics, and optional `agat_sif` for conversion.",
@@ -177,6 +178,7 @@ LIST_ENTRIES_LIMITATIONS = (
 PROMPT_REQUIREMENTS = (
     "Write explicit local file paths directly in the prompt when you want prompt-derived runtime bindings.",
     "Provide manifest sources, serialized planner bindings, runtime bindings, resource requests, execution profiles, and runtime-image policy explicitly when the prompt text does not already carry them.",
+    "When an LLM-driven client does not preserve optional tool arguments reliably, place critical execution policy such as `execution profile slurm` and resource choices directly in the prompt text and verify the returned frozen recipe.",
     "Keep the request to one supported target per prompt.",
 )
 EXAMPLE_PROMPT_REQUIREMENTS = (

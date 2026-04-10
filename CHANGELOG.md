@@ -42,6 +42,9 @@ Entry template:
   - README, MCP showcase docs, capability notes, and the Milestone 16 Part 2
     handoff docs now describe the supported Slurm topology as a local
     MCP/server process running inside an authenticated HPC session
+  - README and MCP showcase docs now include Codex CLI and OpenCode client
+    setup examples plus the validated prompt sequence for prepare, submit,
+    monitor, and cancel on the protein-evidence Slurm path
 
 ### TaskEnvironment catalog refactor
 

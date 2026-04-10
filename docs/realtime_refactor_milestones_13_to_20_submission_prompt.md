@@ -49,12 +49,12 @@ Task:
    - Milestone 13: deterministic Slurm submission with durable run records
    - Milestone 14: generic asset compatibility and legacy alias support
    - Milestone 16: Slurm job lifecycle reconciliation and cancellation
-   - Milestone 18: Slurm retry and resubmission policy
-   - Milestone 19: caching and resumability for frozen recipes
-   - Milestone 15: registry-driven dynamic composition preview and approval
-     only, with execution still gated on Milestone 19
    - Milestone 17: generic asset adoption across planner adapters and workflow
      outputs
+   - Milestone 18: Slurm retry and resubmission policy
+   - Milestone 15: registry-driven dynamic composition preview and approval
+     only, with execution still gated on Milestone 19
+   - Milestone 19: caching and resumability for frozen recipes
    - Milestone 20: storage-native durable asset return
 3. For each milestone, investigate the current implementation state in the
    code, docs, registry, planner, MCP server, and tests that the milestone

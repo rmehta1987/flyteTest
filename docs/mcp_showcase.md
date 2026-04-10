@@ -1,15 +1,51 @@
-# MCP Recipe Surface
+# MCP Tool Guide
 
-This page documents the current MCP stdio tool surface for FLyteTest. It is a
-tool-provider interface, not a chat agent and not the full workflow catalog.
+This page explains the MCP tools FLyteTest exposes over standard input and
+standard output. It is a tool interface, not a chat bot, and it only covers
+the workflow targets that are available today.
 
-The MCP-capable client owns the conversation. FLyteTest exposes tools that let
-the client inspect supported targets, prepare a frozen recipe from a prompt, or
-run a saved recipe locally or submit a frozen Slurm-profile recipe.
+Your MCP client controls the conversation. FLyteTest gives the client tools to
+check what can run, turn a prompt into a saved recipe, run that recipe locally,
+or submit a frozen Slurm recipe.
+
+Use this page as the general user guide for the MCP surface. It explains what
+the tools do, how to start the server from a client, what the read-only
+resources mean, and how to use the local and Slurm paths without guesswork.
+
+## Contents
+
+- [What This Doc Is For](#what-this-doc-is-for)
+- [Runnable Targets](#runnable-targets)
+- [Tools And Resources](#tools-and-resources)
+- [Server And Client Setup](#server-and-client-setup)
+- [Key Concepts](#key-concepts)
+- [First Successful Session](#first-successful-session)
+- [Prompt And Input Rules](#prompt-and-input-rules)
+- [Recipe Flow](#recipe-flow)
+- [Local Walkthrough](#local-walkthrough)
+- [Validated Slurm Walkthrough](#validated-slurm-walkthrough)
+- [Common Failure Modes](#common-failure-modes)
+- [Result Summary](#result-summary)
+- [Scope Boundary](#scope-boundary)
+
+## What This Doc Is For
+
+Use this page when you want to:
+
+- see what FLyteTest can run right now
+- connect a client such as Codex CLI or OpenCode
+- choose between a local run and a Slurm run
+- copy a known-good prompt or recipe call
+- spot common client setup issues before assuming the workflow broke
+
+This page is not the architecture source of truth. For architecture and longer
+term design direction, use [DESIGN.md](../DESIGN.md).
+For the machine-readable contract, use
+[mcp_contract.py](../src/flytetest/mcp_contract.py).
 
 ## Runnable Targets
 
-Current local recipe execution is intentionally limited to:
+The local recipe runner can currently handle:
 
 - workflow: `ab_initio_annotation_braker3`
 - workflow: `protein_evidence_alignment`
@@ -20,11 +56,11 @@ Current local recipe execution is intentionally limited to:
 - workflow: `annotation_postprocess_agat_conversion`
 - workflow: `annotation_postprocess_agat_cleanup`
 
-Other registered workflows may still be visible in the registry and typed
-planner, but they need explicit local node handlers before they become runnable
-MCP targets.
+Other registered workflows may still show up in the registry and typed planner,
+but they need explicit local node handlers before they can be run through this
+MCP surface.
 
-## Tools
+## Tools And Resources
 
 - `list_entries`
 - `plan_request`
@@ -42,29 +78,179 @@ Read-only resources:
 - `flytetest://example-prompts`
 - `flytetest://prompt-and-run-contract`
 
-## Launch
+What the tools do:
+
+- `list_entries`
+  - shows the currently runnable targets and their inputs and outputs
+- `plan_request`
+  - makes a plan without saving it yet
+- `prepare_run_recipe`
+  - turns a supported plan into a saved recipe under `.runtime/specs/`
+- `run_local_recipe`
+  - runs a previously saved local recipe
+- `run_slurm_recipe`
+  - submits a previously saved Slurm recipe and writes a run record
+- `monitor_slurm_job`
+  - checks a Slurm run record against the live scheduler state
+- `cancel_slurm_job`
+  - records that a scheduler cancellation was requested
+- `prompt_and_run`
+  - shortcut for older clients that prepares and then runs locally in one step
+
+What the resources are for:
+
+- `flytetest://scope`
+  - a plain-language summary of the MCP boundary
+- `flytetest://supported-targets`
+  - the exact runnable targets and their shape
+- `flytetest://example-prompts`
+  - small known-good prompt examples
+- `flytetest://prompt-and-run-contract`
+  - stable fields, result codes, and client-facing contract details
+
+When to read the resources:
+
+- read `flytetest://scope` when you are starting a new client session
+- read `flytetest://supported-targets` before choosing a workflow or task
+- read `flytetest://example-prompts` if you want a prompt to adapt
+- read `flytetest://prompt-and-run-contract` if you are building a client or
+  need to inspect returned fields in code
+
+## Server And Client Setup
+
+This section covers both pieces of the MCP connection:
+
+- start the FLyteTest server so it can listen over standard input and standard
+  output
+- point your MCP client at that server so the client can send tool requests
+
+### Start the server
+
+Run this when a client needs to talk to FLyteTest over standard input and
+standard output.
 
 ```bash
 env PYTHONPATH=src .venv/bin/python -m flytetest.server
 ```
 
-Example client configuration:
+Minimal generic client configuration:
 
 - command: `python3`
 - args: `-m flytetest.server`
 - env: `PYTHONPATH=src`
 
+### Connect a client
+
+This is how to connect your MCP client to FLyteTest. A client setup tells the
+client where the server is, which config file to use, and what environment
+variables it needs.
+
 Checked-in example:
 
-- [docs/mcp_client_config.example.json](/home/rmeht/Projects/flyteTest/docs/mcp_client_config.example.json)
+- [docs/mcp_client_config.example.json](docs/mcp_client_config.example.json)
+- [docs/opencode.config.example.json](docs/opencode.config.example.json)
 
-## Prompt Requirements
+### OpenCode
 
-Runnable prompts can still include explicit local file paths, but the recipe
-preparation tools now also accept explicit manifest sources, serialized planner
-bindings, and runtime bindings. The current MCP surface does not perform
-automatic path discovery, remote lookup, generic orchestration, or Slurm
-lifecycle management.
+Install OpenCode as a user-local binary:
+
+```bash
+mkdir -p "$HOME/.local/bin"
+export OPENCODE_INSTALL_DIR="$HOME/.local/bin"
+curl -fsSL https://opencode.ai/install | bash
+export PATH="$HOME/.local/bin:$PATH"
+opencode --version
+```
+
+Default config location:
+
+- `~/.config/opencode/opencode.json`
+
+Optional repo-local config location:
+
+- `/path/to/flyteTest/.config/opencode/opencode.json`
+
+If you keep an OpenCode config in a non-default location, launch it with:
+
+```bash
+export OPENCODE_CONFIG=/path/to/flyteTest/.config/opencode/opencode.json
+opencode
+```
+
+Example HPC shell setup:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+export OPENCODE_CONFIG=/scratch/midway3/$USER/flyteTest/.config/opencode/opencode.json
+opencode
+```
+
+### Codex CLI
+
+Example Codex CLI registration:
+
+```bash
+# Tell Codex where this repo lives.
+export FLYTETEST_REPO_ROOT=/path/to/flyteTest
+# Let Python import the local package code.
+export PYTHONPATH=/path/to/flyteTest/src
+# Register the FLyteTest MCP server with Codex.
+codex mcp add flytetest \
+  --env FLYTETEST_REPO_ROOT="$FLYTETEST_REPO_ROOT" \
+  --env PYTHONPATH="$PYTHONPATH" \
+  -- bash -lc 'cd /path/to/flyteTest && module load python/3.11.9 && source .venv/bin/activate && python -m flytetest.server'
+```
+
+## Key Concepts
+
+These terms show up often in the tool responses:
+
+- artifact
+  - the saved recipe JSON under `.runtime/specs/`
+- binding plan
+  - the saved execution plan, including inputs, runtime settings, execution
+    profile, and resource choices
+- manifest source
+  - either a `run_manifest.json` file or a result directory that contains one
+- runtime bindings
+  - explicit runtime values such as `exonerate_sif` or `busco_lineages_text`
+- resource request / resource spec
+  - structured CPU, memory, queue, account, and walltime settings
+- run record
+  - the durable Slurm run record under `.runtime/runs/`
+
+## First Successful Session
+
+For your first session with a new MCP client, this order is the safest:
+
+1. Read `flytetest://scope`.
+2. Call `list_entries`.
+3. Read `flytetest://example-prompts`.
+4. Run `prepare_run_recipe` for one supported target.
+5. Inspect the returned `typed_plan` before executing anything.
+6. Use `run_local_recipe` for local profile artifacts or `run_slurm_recipe` for
+   verified Slurm profile artifacts.
+
+Example resource reads:
+
+```text
+Use the flytetest MCP server and read the resource flytetest://scope.
+```
+
+```text
+Use the flytetest MCP server and read the resource flytetest://supported-targets.
+```
+
+```text
+Use the flytetest MCP server and read the resource flytetest://example-prompts.
+```
+
+## Prompt And Input Rules
+
+Prompts can include explicit local file paths. The recipe tools also accept
+manifest sources, saved planner bindings, and runtime bindings. The current MCP
+surface does not guess paths, search remote storage, orchestrate arbitrary
+workflows, or manage the Slurm job lifecycle end to end.
 
 Manifest sources must be either:
 
@@ -104,9 +290,49 @@ Experiment with Exonerate protein-to-genome alignment using genome data/braker3/
 
 `prepare_run_recipe(prompt, manifest_sources=[], explicit_bindings={}, runtime_bindings={}, resource_request={}, execution_profile="local", runtime_image={})`
 returns the typed plan plus the absolute path to a saved recipe artifact under
-`.runtime/specs/`. The saved `BindingPlan` records the selected execution
-profile, structured `ResourceSpec`, optional `RuntimeImageSpec`, and ordinary
-runtime bindings before any local execution starts.
+`.runtime/specs/`. The saved `BindingPlan` records the execution profile,
+structured `ResourceSpec`, optional `RuntimeImageSpec`, and runtime bindings
+before any execution starts.
+
+Plain-English input guide:
+
+- `prompt`
+  - the natural-language request that says what you want to run
+- `manifest_sources`
+  - one or more existing result folders or `run_manifest.json` files to reuse
+    as inputs
+- `explicit_bindings`
+  - direct input values for the planner when you already know exactly what to
+    pass
+  - example:
+
+    ```json
+    {
+      "ReferenceGenome": {
+        "fasta_path": "data/braker3/reference/genome.fa"
+      }
+    }
+    ```
+  - use this when the prompt alone is not enough and you already have the exact
+    planner input object
+- `runtime_bindings`
+  - runtime settings for the chosen workflow, such as input file paths or tool
+    options like `exonerate_sif`
+  - example:
+
+    ```json
+    {
+      "exonerate_sif": "data/images/exonerate_2.2.0--1.sif"
+    }
+    ```
+  - use this for runtime inputs that point to files, including Apptainer
+    container images stored as `.sif` files
+- `resource_request`
+  - compute settings such as CPU, memory, queue, account, and walltime
+- `execution_profile`
+  - where the recipe should run, usually `local` or `slurm`
+- `runtime_image`
+  - container or image metadata to freeze into the saved recipe when needed
 
 When a client calls `prepare_run_recipe` or `prompt_and_run` directly, the
 structured arguments must be real JSON/object mappings. For example, pass
@@ -115,6 +341,9 @@ stringified pseudo-dict such as `{exonerate_sif:data/images/exonerate_2.2.0--1.s
 For Slurm preparation, also verify that the returned `typed_plan.execution_profile`
 and `typed_plan.binding_plan.execution_profile` are both `slurm` before passing
 the saved artifact to `run_slurm_recipe`.
+If an LLM-driven client does not preserve optional tool arguments reliably,
+encode the execution profile and resource choices directly in the prompt text,
+then verify the frozen recipe before submission.
 
 `run_local_recipe(artifact_path)` loads that artifact and executes it through
 `LocalWorkflowSpecExecutor` with the server's explicit handler map.
@@ -144,10 +373,220 @@ likewise requires the same already-authenticated scheduler environment.
 remains available for existing clients. It performs the same prepare-then-run
 sequence and returns the artifact path alongside the execution summary.
 
-Resource policy is frozen before execution. CPU, memory, queue, walltime, and
-runtime image choices are recorded for review and replay; local execution uses
+Resource choices are frozen before execution. CPU, memory, queue, walltime, and
+runtime image settings are recorded for review and replay. Local execution uses
 the explicit handler map, while Slurm execution uses the saved profile and
 resource spec to render `sbatch` directives.
+
+## Local Walkthrough
+
+The local path is the simplest way to prove that prompt interpretation and
+saved-recipe execution are both working before adding scheduler behavior.
+
+Quick sanity check:
+
+```text
+Use the flytetest MCP server and call list_entries.
+```
+
+Prepare a local recipe:
+
+```text
+Use the flytetest MCP server.
+
+Call prepare_run_recipe with exactly these arguments:
+- prompt: "Run protein evidence alignment with genome data/braker3/reference/genome.fa and protein evidence data/braker3/protein_data/fastas/proteins.fa."
+- runtime_bindings: {"exonerate_sif":"data/images/exonerate_2.2.0--1.sif"}
+
+Then print exactly:
+- supported
+- typed_plan.execution_profile
+- typed_plan.binding_plan.execution_profile
+- typed_plan.binding_plan.runtime_bindings
+- artifact_path
+- limitations
+```
+
+Run the saved local artifact:
+
+```text
+Use the flytetest MCP server.
+
+Call run_local_recipe with the artifact_path from the last successful prepare_run_recipe call.
+
+Then print exactly:
+- supported
+- execution_result.execution_profile
+- execution_result.output_paths
+- limitations
+```
+
+## Validated Slurm Walkthrough
+
+The following prompt sequence was validated on the RCC cluster with an
+authenticated scheduler session.
+
+Quick sanity check:
+
+```text
+Use the flytetest MCP server and call list_entries.
+```
+
+Prepare a Slurm recipe:
+
+```text
+Use the flytetest MCP server.
+
+Call prepare_run_recipe with exactly these arguments:
+- prompt: "Run protein evidence alignment with genome data/braker3/reference/genome.fa and protein evidence data/braker3/protein_data/fastas/proteins.fa using execution profile slurm on account rcc-staff, queue caslake, with 8 CPUs, memory 32Gi, and walltime 02:00:00."
+- runtime_bindings: {"exonerate_sif":"data/images/exonerate_2.2.0--1.sif"}
+
+Then print exactly:
+- supported
+- typed_plan.execution_profile
+- typed_plan.binding_plan.execution_profile
+- typed_plan.binding_plan.runtime_bindings
+- typed_plan.resource_spec
+- typed_plan.binding_plan.resource_spec
+- artifact_path
+- limitations
+```
+
+Submit the saved artifact:
+
+```text
+Use the flytetest MCP server.
+
+Call run_slurm_recipe with the artifact_path from the last successful prepare_run_recipe call.
+
+Then print exactly:
+- supported
+- job_id
+- run_record_path
+- limitations
+```
+
+Monitor, cancel, and reconcile:
+
+```text
+Use the flytetest MCP server.
+
+Call monitor_slurm_job with the run_record_path from run_slurm_recipe.
+
+Then print exactly:
+- supported
+- scheduler_state
+- final_scheduler_state
+- run_record_path
+- limitations
+```
+
+```text
+Use the flytetest MCP server.
+
+Call cancel_slurm_job with the run_record_path from run_slurm_recipe.
+
+Then print exactly:
+- supported
+- job_id
+- run_record_path
+- limitations
+- run_record.scheduler_state
+- run_record.final_scheduler_state
+```
+
+Reconcile once more after cancellation:
+
+```text
+Use the flytetest MCP server.
+
+Call monitor_slurm_job with the same run_record_path after cancellation.
+
+Then print exactly:
+- supported
+- scheduler_state
+- final_scheduler_state
+- run_record_path
+- limitations
+```
+
+## Common Failure Modes
+
+These are the most common ways a session can go wrong even when the workflow
+code itself is fine.
+
+### The client dropped optional tool arguments
+
+Symptom:
+
+- `prepare_run_recipe` returns `typed_plan.execution_profile = local` even
+  though you intended `slurm`
+
+What it usually means:
+
+- the LLM-driven client did not preserve an optional tool argument such as
+  `execution_profile` or `resource_request`
+
+What to do:
+
+- put `execution profile slurm` and resource choices directly in the prompt text
+- then verify the returned `typed_plan.execution_profile` and
+  `typed_plan.binding_plan.execution_profile` before submission
+
+### Structured mappings were sent as pseudo-dicts
+
+Symptom:
+
+- tool validation rejects a field like `runtime_bindings`
+
+What it usually means:
+
+- the client sent a string that looks like a dict instead of a real JSON/object mapping
+
+Use:
+
+```json
+{"exonerate_sif":"data/images/exonerate_2.2.0--1.sif"}
+```
+
+Do not use:
+
+```text
+{exonerate_sif:data/images/exonerate_2.2.0--1.sif}
+```
+
+### The server was started outside the scheduler boundary
+
+Symptom:
+
+- `run_slurm_recipe`, `monitor_slurm_job`, or `cancel_slurm_job` return an
+  unsupported-environment limitation
+
+What it usually means:
+
+- the server is running outside an already-authenticated scheduler-capable
+  environment, or the Slurm commands are not visible on `PATH`
+
+What to do:
+
+- start the MCP client and server inside an authenticated HPC session
+- confirm `sbatch`, `squeue`, `scontrol`, `sacct`, and `scancel` are visible
+
+### The artifact was prepared for the wrong execution profile
+
+Symptom:
+
+- `run_slurm_recipe` says the frozen recipe must have `execution_profile slurm`
+
+What it means:
+
+- the artifact you passed was frozen as `local`
+
+What to do:
+
+- re-run `prepare_run_recipe`
+- verify the returned profile fields
+- only then pass the new `artifact_path` to `run_slurm_recipe`
 
 ## Result Summary
 
@@ -176,7 +615,7 @@ Important result-code categories:
 - `failed_execution`
 
 For the exact machine-readable contract, see
-[src/flytetest/mcp_contract.py](/home/rmeht/Projects/flyteTest/src/flytetest/mcp_contract.py).
+[src/flytetest/mcp_contract.py](../src/flytetest/mcp_contract.py).
 
 ## Scope Boundary
 
@@ -187,14 +626,3 @@ Broader registered stages such as EVM, PASA refinement, repeat filtering,
 `table2asn`, Slurm retry/resubmission, and composed downstream pipelines should be
 enabled only after their recipe inputs, runtime bindings, and local handlers
 are made explicit.
-
-## Planned Next Slice
-
-Milestone 11 enabled the individual EggNOG and AGAT recipe targets using the
-same explicit input-binding pattern that BUSCO demonstrated. A composed
-EggNOG-plus-AGAT pipeline, `table2asn`, Slurm, and database-backed discovery
-remain future work.
-
-Milestone 16 added lifecycle reconciliation and cancellation from the durable
-run record without reworking submission. Milestone 18 should build retry and
-resubmission policy on top of that run history.

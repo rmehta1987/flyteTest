@@ -87,8 +87,10 @@ Short stop-rule note for Milestones 1 through 20:
   reviewable before any executor runs it
 - Slurm failure recovery should stay frozen-recipe driven and Slurm-specific,
   not broaden into generic remote orchestration
-- execution-capable composed DAGs remain gated on Milestone 19 caching and
-  resumability, even if Milestone 15 lands earlier as a composition preview
+- the currently planned sequencing is `17 -> 18 -> 15 -> 19`
+- Milestone 15 is the composition-preview milestone; Milestone 19 is the later
+  caching/resumability milestone that makes execution-capable composed DAGs
+  safe to expose
 
 ## Plan History Rule
 
@@ -970,8 +972,10 @@ Status: Not started
   runtime bindings rather than hidden mutable state.
 - Resume behavior should be compatible with both local saved-spec execution
   and the Slurm path that Milestones 13, 16, and 18 establish.
-- It is the prerequisite that makes execution-capable composed DAGs safe to
-  expose after Milestone 15 has already defined the composition preview.
+- It follows Milestone 15 rather than preceding it: Milestone 15 defines the
+  composition preview and approval boundary first, while Milestone 19 later
+  adds the caching and resumability needed to make execution-capable composed
+  DAGs safe to expose.
 
 ### Acceptance evidence
 
@@ -1068,6 +1072,10 @@ Status: Not started
 
 - This slice should be registry-driven and compatibility-preserving, not an
   unconstrained autonomous graph search.
+- It is currently scheduled after Milestone 17 generic asset adoption and
+  Milestone 18 Slurm retry/resubmission so the repo can finish the current
+  asset-surface cleanup and Slurm recovery lane before opening broader
+  composition preview work.
 - It should keep dynamic workflow creation typed, inspectable, and reviewable
   before execution.
 - It should only open the composition and approval path; execution-capable

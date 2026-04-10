@@ -9,6 +9,10 @@ Related checklist milestone:
 Implementation note:
 - This slice should let users prompt by biological intent while the planner
   assembles only registry-compatible, typed, reviewable workflow compositions.
+- It is currently scheduled after Milestone 17 generic asset adoption and
+  Milestone 18 Slurm retry/resubmission so the repo can finish those enabling
+  cleanup and recovery slices first. The current intended ordering is
+  `17 -> 18 -> 15 -> 19`.
 - It should stay bounded by explicit compatibility metadata, cycle detection,
   and structured declines.
 - The generated plan must be frozen and reviewable before any executor runs it.

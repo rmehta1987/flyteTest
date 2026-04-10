@@ -13,8 +13,10 @@ Implementation note:
   process state.
 - Cache and resume rules should be compatible with both local saved-spec
   execution and the Slurm path established earlier.
-- This milestone is the prerequisite that makes execution-capable composed
-  DAGs safe to expose after Milestone 15 has defined the composition preview.
+- This milestone follows Milestone 15 rather than preceding it. Milestone 15
+  opens the composition preview and approval boundary first; Milestone 19 then
+  adds the caching and resumability required before execution-capable composed
+  DAGs can be exposed safely.
 
 ## Current State
 

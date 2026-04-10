@@ -30,8 +30,9 @@ Context:
 - The next step is to make repeated or interrupted runs resumable from the
   frozen recipe and explicit run record.
 - Keep the behavior explicit and inspectable.
-- Milestone 19 is the prerequisite that makes execution-capable composed DAGs
-  safe to expose after Milestone 15 has defined the composition preview.
+- Milestone 19 follows Milestone 15 rather than preceding it: Milestone 15
+  defines the composition preview and approval boundary first, and Milestone 19
+  later makes execution-capable composed DAGs safe to expose.
 
 Task:
 
