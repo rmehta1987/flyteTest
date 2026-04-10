@@ -214,9 +214,9 @@ class ServerTests(TestCase):
         self.assertEqual(payload["supported_runnable_targets"], EXPECTED_RUNNABLE_TARGETS)
         self.assertIn(".runtime/specs", payload["recipe_artifact_directory"])
         self.assertIn("manifest_sources", payload["recipe_input_context_fields"])
-        self.assertIn("busco_lineages_text", payload["recipe_input_runtime_rules"][1])
-        self.assertIn("eggnog_data_dir", payload["recipe_input_runtime_rules"][2])
-        self.assertIn("annotation_fasta_path", payload["recipe_input_runtime_rules"][3])
+        self.assertTrue(any("busco_lineages_text" in rule for rule in payload["recipe_input_runtime_rules"]))
+        self.assertTrue(any("eggnog_data_dir" in rule for rule in payload["recipe_input_runtime_rules"]))
+        self.assertTrue(any("annotation_fasta_path" in rule for rule in payload["recipe_input_runtime_rules"]))
 
     def test_supported_targets_resource_matches_the_exact_showcase_entries(self) -> None:
         """Keep the resource target list aligned with the tool-facing entry list."""
@@ -243,7 +243,7 @@ class ServerTests(TestCase):
         self.assertEqual(payload["supported_tools"], list(MCP_TOOL_NAMES))
         self.assertEqual(payload["supported_runnable_targets"], EXPECTED_RUNNABLE_TARGETS)
         self.assertIn("manifest_sources", payload["recipe_input_context_fields"])
-        self.assertIn("QualityAssessmentTarget", payload["recipe_input_binding_rules"][1])
+        self.assertTrue(any("QualityAssessmentTarget" in rule for rule in payload["recipe_input_binding_rules"]))
         self.assertIn("result_code", payload["result_summary_fields"])
         self.assertIn("reason_code", payload["result_summary_fields"])
         self.assertEqual(
@@ -584,6 +584,31 @@ class ServerTests(TestCase):
         )
         self.assertEqual(artifact.binding_plan.resource_spec.memory, "48Gi")
         self.assertEqual(artifact.binding_plan.runtime_image.apptainer_image, "busco.sif")
+
+    def test_prepare_run_recipe_preserves_explicit_slurm_profile(self) -> None:
+        """Freeze an explicitly requested Slurm profile into the saved recipe artifact."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            prepared = _prepare_run_recipe_impl(
+                "Run protein evidence alignment with genome data/braker3/reference/genome.fa and protein evidence data/braker3/protein_data/fastas/proteins.fa",
+                runtime_bindings={"exonerate_sif": "data/images/exonerate_2.2.0--1.sif"},
+                resource_request={
+                    "account": "rcc-staff",
+                    "queue": "caslake",
+                    "cpu": 8,
+                    "memory": "32Gi",
+                    "walltime": "02:00:00",
+                },
+                execution_profile="slurm",
+                recipe_dir=tmp_path,
+            )
+            artifact = load_workflow_spec_artifact(Path(str(prepared["artifact_path"])))
+
+        self.assertTrue(prepared["supported"])
+        self.assertEqual(prepared["recipe_input_context"]["execution_profile"], "slurm")
+        self.assertEqual(prepared["typed_plan"]["execution_profile"], "slurm")
+        self.assertEqual(prepared["typed_plan"]["binding_plan"]["execution_profile"], "slurm")
+        self.assertEqual(artifact.binding_plan.execution_profile, "slurm")
 
     def test_prepare_run_recipe_rejects_missing_manifest_sources(self) -> None:
         """Return a structured decline when a manifest source cannot be validated."""

@@ -108,6 +108,14 @@ returns the typed plan plus the absolute path to a saved recipe artifact under
 profile, structured `ResourceSpec`, optional `RuntimeImageSpec`, and ordinary
 runtime bindings before any local execution starts.
 
+When a client calls `prepare_run_recipe` or `prompt_and_run` directly, the
+structured arguments must be real JSON/object mappings. For example, pass
+`{"exonerate_sif":"data/images/exonerate_2.2.0--1.sif"}` rather than a
+stringified pseudo-dict such as `{exonerate_sif:data/images/exonerate_2.2.0--1.sif}`.
+For Slurm preparation, also verify that the returned `typed_plan.execution_profile`
+and `typed_plan.binding_plan.execution_profile` are both `slurm` before passing
+the saved artifact to `run_slurm_recipe`.
+
 `run_local_recipe(artifact_path)` loads that artifact and executes it through
 `LocalWorkflowSpecExecutor` with the server's explicit handler map.
 

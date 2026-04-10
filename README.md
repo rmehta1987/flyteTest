@@ -306,6 +306,14 @@ Current MCP behavior:
 - `prepare_run_recipe` and `prompt_and_run` accept optional `manifest_sources`,
   `explicit_bindings`, `runtime_bindings`, `resource_request`,
   `execution_profile`, and `runtime_image` arguments
+- when MCP clients pass `explicit_bindings`, `runtime_bindings`,
+  `resource_request`, or `runtime_image` directly, those values must be real
+  JSON/object mappings rather than stringified pseudo-dictionaries
+- when freezing a Slurm recipe through an LLM-driven MCP client, check that the
+  returned `typed_plan.execution_profile` and
+  `typed_plan.binding_plan.execution_profile` are both `slurm` before calling
+  `run_slurm_recipe`; if those fields still read `local`, the client likely did
+  not pass the structured argument through to the tool call
 - `manifest_sources` must be `run_manifest.json` paths or result directories
   containing one
 - BUSCO and EggNOG recipe preparation can resolve a

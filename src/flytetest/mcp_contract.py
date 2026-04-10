@@ -136,10 +136,12 @@ RECIPE_INPUT_MANIFEST_RULES = (
 )
 RECIPE_INPUT_BINDING_RULES = (
     "Serialized planner bindings are accepted as JSON mappings keyed by planner type name.",
+    "Direct MCP clients must send structured binding arguments as real JSON/object mappings, not stringified pseudo-dicts.",
     "BUSCO, EggNOG, and AGAT use a `QualityAssessmentTarget` binding when the target is supplied directly instead of recovered from a manifest.",
 )
 RECIPE_INPUT_RUNTIME_RULES = (
     "Runtime bindings are frozen into the saved recipe and are not inferred from prompt text.",
+    "Direct MCP clients must send `runtime_bindings`, `resource_request`, and `runtime_image` as real JSON/object mappings.",
     "BUSCO runtime bindings begin with `busco_lineages_text`, optional `busco_sif`, and `busco_cpu`.",
     "EggNOG runtime bindings are `eggnog_data_dir`, optional `eggnog_sif`, `eggnog_cpu`, and `eggnog_database`.",
     "AGAT runtime bindings are `annotation_fasta_path` and optional `agat_sif` for statistics, and optional `agat_sif` for conversion.",
