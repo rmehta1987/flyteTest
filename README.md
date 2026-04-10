@@ -411,50 +411,55 @@ Image provenance:
 - `data/images/busco_v6.0.0_cv1.sif` was built from `ezlabgva/busco:v6.0.0_cv1`
 
 Use [scripts/rcc/download_minimal_fixtures.sh](scripts/rcc/download_minimal_fixtures.sh)
-to restore the lightweight tutorial-backed smoke files on a cluster checkout,
-Use [scripts/rcc/download_minimal_images.sh](scripts/rcc/download_minimal_images.sh)
-to restore the core local smoke images under `data/images/`. The additional
-repo-local images `data/images/braker3.sif` and
-`data/images/busco_v6.0.0_cv1.sif` are expected to be staged separately when
-those stages are exercised. The cluster wrappers keep using the shared RCC
-`/project/rcc/hyadav/genomes` image paths for Trinity and STAR, use the shared
-StringTie binary at `/project/rcc/hyadav/genomes/software/stringtie/stringtie`,
-and you can point `PASA_SIF` at the PASA image path you scp to the cluster when
-you run that smoke there.
-Use [scripts/rcc/build_pasa_image.sh](scripts/rcc/build_pasa_image.sh)
-to build the experimental PASA image recipe when you need to inspect the
-container itself. The preferred source is the local
-[containers/pasa/Dockerfile](containers/pasa/Dockerfile),
-which serves as the maintenance recipe. The helper then exports that recipe
-through Apptainer when possible.
-Use [scripts/rcc/check_minimal_images.sh](scripts/rcc/check_minimal_images.sh)
-to verify that the smoke images are present under `data/images/` and that the
-shared cluster Trinity/STAR/StringTie defaults exist under
-`/project/rcc/hyadav/genomes/software` when that mount is available. Set
-`PASA_SIF` first if you want the checker to validate a scp'd PASA image path
-instead of the repo-local one.
-Use [scripts/rcc/run_minimal_pasa_align_smoke.sh](scripts/rcc/run_minimal_pasa_align_smoke.sh)
-to run the wiki-shaped PASA align/assemble smoke from the tiny Trinity FASTA
-and genome fixture on the host-installed PASA pipeline. The launcher uses
-`sbatch` when it is available and otherwise runs locally.
-Use [scripts/rcc/check_minimal_pasa_align_smoke.sh](scripts/rcc/check_minimal_pasa_align_smoke.sh)
-to verify the wiki-shaped PASA smoke artifacts after the job finishes.
-Use [scripts/rcc/run_minimal_pasa_image_smoke.sh](scripts/rcc/run_minimal_pasa_image_smoke.sh)
-to run the Apptainer-backed PASA image smoke against the same Trinity FASTA
-and genome fixture pair. The launcher uses `sbatch` when it is available and
-otherwise runs locally. The PASA Apptainer image smoke does not currently
-support the legacy `seqclean` path; see
-https://github.com/PASApipeline/PASApipeline/issues/73.
-Use [scripts/rcc/check_minimal_pasa_image_smoke.sh](scripts/rcc/check_minimal_pasa_image_smoke.sh)
-to verify the PASA image smoke artifacts after the job finishes.
-Use [docs/tutorial_context.md](docs/tutorial_context.md)
-for Galaxy tutorial mappings, fixture provenance, and smoke-test planning.
-Use synthetic tests when external binaries or lineage datasets are unavailable.
+to restore the lightweight tutorial-backed smoke files on a cluster checkout.
+
+Fixture and smoke-test helpers:
+
+- [scripts/rcc/download_minimal_images.sh](scripts/rcc/download_minimal_images.sh)
+  - restore the core local smoke images under `data/images/`
+- `data/images/braker3.sif` and `data/images/busco_v6.0.0_cv1.sif`
+  - are still expected to be staged separately when those stages are exercised
+- RCC cluster defaults
+  - keep using the shared `/project/rcc/hyadav/genomes` image paths for
+    Trinity and STAR
+  - keep using the shared StringTie binary at
+    `/project/rcc/hyadav/genomes/software/stringtie/stringtie`
+  - can use `PASA_SIF` to point at a PASA image path copied onto the cluster
+- [scripts/rcc/build_pasa_image.sh](scripts/rcc/build_pasa_image.sh)
+  - build the experimental PASA image recipe when you need to inspect the
+    container itself
+  - uses [containers/pasa/Dockerfile](containers/pasa/Dockerfile) as the
+    preferred maintenance source and exports it through Apptainer when possible
+- [scripts/rcc/check_minimal_images.sh](scripts/rcc/check_minimal_images.sh)
+  - verify that the smoke images exist under `data/images/`
+  - verify that the shared Trinity/STAR/StringTie defaults exist under
+    `/project/rcc/hyadav/genomes/software` when that mount is available
+  - respects `PASA_SIF` if you want to validate a copied PASA image path
+- [scripts/rcc/run_minimal_pasa_align_smoke.sh](scripts/rcc/run_minimal_pasa_align_smoke.sh)
+  - run the wiki-shaped PASA align/assemble smoke from the tiny Trinity FASTA
+    and genome fixture on the host-installed PASA pipeline
+  - uses `sbatch` when available and otherwise runs locally
+- [scripts/rcc/check_minimal_pasa_align_smoke.sh](scripts/rcc/check_minimal_pasa_align_smoke.sh)
+  - verify the PASA align/assemble smoke artifacts after the job finishes
+- [scripts/rcc/run_minimal_pasa_image_smoke.sh](scripts/rcc/run_minimal_pasa_image_smoke.sh)
+  - run the Apptainer-backed PASA image smoke against the same Trinity FASTA
+    and genome fixture pair
+  - uses `sbatch` when available and otherwise runs locally
+  - does not currently support the legacy `seqclean` path; see
+    <https://github.com/PASApipeline/PASApipeline/issues/73>
+- [scripts/rcc/check_minimal_pasa_image_smoke.sh](scripts/rcc/check_minimal_pasa_image_smoke.sh)
+  - verify the PASA image smoke artifacts after the job finishes
+- [docs/tutorial_context.md](docs/tutorial_context.md)
+  - Galaxy tutorial mappings, fixture provenance, and smoke-test planning
+- synthetic tests
+  - use these when external binaries or lineage datasets are unavailable
 
 ## HPC And Containers
 
-Implemented workflows support optional Apptainer/Singularity execution through
-stage-specific `*_sif` arguments such as:
+Container execution:
+
+- implemented workflows support optional Apptainer/Singularity execution
+- stage-specific `*_sif` arguments include:
 
 - `fastqc_sif`
 - `salmon_sif`
@@ -472,29 +477,41 @@ stage-specific `*_sif` arguments such as:
 - `eggnog_sif`
 - `agat_sif`
 
-If a `*_sif` path is empty, tasks use native binaries. If provided, tasks use
-`apptainer exec` or `singularity exec` with deterministic bind mounts for the
-relevant input and output parent directories.
+- if a `*_sif` path is empty, tasks use native binaries
+- if a `*_sif` path is provided, tasks use `apptainer exec` or
+  `singularity exec`
+- container runs use deterministic bind mounts for the relevant input and
+  output parent directories
 
-Slurm support now starts with a filesystem-backed `sbatch` submission path:
-prepare a recipe with execution profile `slurm`, then call `run_slurm_recipe`
-on the saved artifact. The submission record captures the Slurm job ID,
-generated script path, stdout and stderr log patterns, selected execution
-profile, and resource spec under `.runtime/runs/`. `monitor_slurm_job`
-reconciles the record with `squeue`, `scontrol show job`, and `sacct`, while
-`cancel_slurm_job` records explicit `scancel` requests. Retry and resumability
-remain later milestones. On the RCC cluster the frozen Slurm recipe carries an
-account setting through to the generated script so submission does not depend
-on a manual `sbatch --account=...` override.
-These Slurm tools are intended to run from an already-authenticated scheduler
-session such as a login-node shell, `tmux`, or `screen` session; outside that
-environment they report an explicit access limitation instead of pretending the
-scheduler is reachable.
-The generated `sbatch` scripts currently load both `python/3.11.9` and
-`apptainer/1.4.1` before invoking the frozen local-recipe runner on RCC.
-The cluster helper scripts under `scripts/rcc/` now include a protein-evidence
-Slurm lifecycle launcher plus monitor and cancellation wrappers that default to
-the same account and queue policy.
+HPC and Slurm execution:
+
+- Slurm support currently starts with a filesystem-backed `sbatch` submission path
+- prepare a recipe with execution profile `slurm`, then call
+  `run_slurm_recipe` on the saved artifact
+- the submission record captures:
+  - Slurm job ID
+  - generated script path
+  - stdout and stderr log patterns
+  - selected execution profile
+  - resource spec
+  - durable run-record state under `.runtime/runs/`
+- `monitor_slurm_job`
+  - reconciles the durable record with `squeue`, `scontrol show job`, and
+    `sacct`
+- `cancel_slurm_job`
+  - records explicit `scancel` requests
+- retry and resumability remain later milestones
+- on RCC, the frozen Slurm recipe carries the account setting through to the
+  generated script so submission does not depend on a manual
+  `sbatch --account=...` override
+- these Slurm tools are intended to run from an already-authenticated
+  scheduler session such as a login-node shell, `tmux`, or `screen`
+- outside that environment, they return an explicit access limitation instead
+  of pretending the scheduler is reachable
+- generated `sbatch` scripts currently load both `python/3.11.9` and
+  `apptainer/1.4.1` before invoking the frozen local-recipe runner on RCC
+- `scripts/rcc/` includes protein-evidence Slurm lifecycle wrappers for
+  submit, monitor, and cancel with the same default account and queue policy
 
 ## Assumptions
 
