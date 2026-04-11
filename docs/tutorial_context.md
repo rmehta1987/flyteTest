@@ -261,7 +261,7 @@ Practical rule:
   `seqclean` path; see
   https://github.com/PASApipeline/PASApipeline/issues/73
 - use stage result bundles or synthetic fixtures for PASA, TransDecoder, and EVM work
-- use the Trinity FASTA emitted under `temp/minimal_transcriptomics_smoke/
+- use the Trinity FASTA emitted under `results/minimal_transcriptomics_smoke/
   trinity/` as the source for the wiki-shaped PASA host smoke; the host-based
   helper stages that FASTA under its original basename and runs
   `Launch_PASA_pipeline.pl` directly against the genome FASTA, and the

@@ -9,8 +9,8 @@ source "$SCRIPT_DIR/common.sh"
 HOST_PROJECT_DIR="${HOST_PROJECT_DIR:-/project/rcc/hyadav/genomes}"
 # Container bind target for the same project tree.
 CONTAINER_PROJECT_DIR="${CONTAINER_PROJECT_DIR:-/workspace}"
-# Host scratch area for PASA temp files and outputs.
-WORK_DIR="${WORK_DIR:-$PWD/temp}"
+# Host project-local results area for PASA temp files and outputs.
+WORK_DIR="${WORK_DIR:-$HOST_PROJECT_DIR/results/rcc_pasa}"
 MODE="${MODE:-seqclean}" # seqclean | align_assemble | accession_extract
 
 # PASA prefers the repo-local smoke image, then the shared RCC cluster image.

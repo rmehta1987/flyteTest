@@ -69,13 +69,20 @@ def _write_fasta(path: Path, records: list[tuple[str, str]]) -> Path:
 def _fixed_datetime() -> type:
     """Return a deterministic timestamp provider for result-directory naming."""
 
+    # Keep the synthetic result-directory name stable for manifest assertions.
     class _Stamp:
+        """Fake datetime stamp that always returns the same test timestamp."""
+
         def strftime(self, fmt: str) -> str:
+            """Return the fixed timestamp string expected by the assertions."""
             return "20260403_120000"
 
     class _FixedDatetime:
+        """Shim object that mimics the subset of `datetime` used by the code."""
+
         @classmethod
         def now(cls) -> _Stamp:
+            """Return the fixed timestamp stub used by the synthetic tests."""
             return _Stamp()
 
     return _FixedDatetime
@@ -114,8 +121,8 @@ def _create_pasa_update_results(tmp_path: Path) -> Path:
 class RepeatFilteringTaskTests(TestCase):
     """Task-level coverage for the repeat-filtering stage boundary."""
 
-    def test_repeatmasker_out_to_bed_converts_generated_gff3_to_notes_shaped_bed(self) -> None:
-        """Extract the exact three-column BED described in the notes from converted GFF3."""
+    def test_repeatmasker_out_to_bed_converts_generated_gff3_to_downstream_bed(self) -> None:
+        """Extract the deterministic three-column BED described in `docs/tool_refs/repeatmasker.md`."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             repeatmasker_out = tmp_path / "genome.fasta.out"
@@ -128,6 +135,7 @@ class RepeatFilteringTaskTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
+                """Test double for `run_tool` that writes a minimal RepeatMasker GFF3 conversion output."""
                 self.assertIsNotNone(stdout_path)
                 stdout_path.write_text(
                     "##gff-version 3\n"
@@ -162,6 +170,7 @@ class RepeatFilteringTaskTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
+                """Test double for `run_tool` that writes the minimal funannotate-cleaned outputs."""
                 self.assertIsNotNone(cwd)
                 _write_gff3(cwd / "annotation.clean.gff3", _annotation_records()[1:])
                 (cwd / "genome.repeats.to.remove.gff").write_text(
@@ -183,7 +192,7 @@ class RepeatFilteringTaskTests(TestCase):
             self.assertEqual(Path(str(manifest["outputs"]["models_to_remove"])).name, "genome.repeats.to.remove.gff")
 
     def test_remove_repeat_blast_hits_filters_parent_and_translated_ids(self) -> None:
-        """Remove blast hits using both direct IDs and the notes-shaped evm.model to evm.TU translation."""
+        """Remove blast hits using both direct IDs and the repo's deterministic evm.model/evm.TU mapping."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             annotation_gff3 = _write_gff3(tmp_path / "annotation.gff3", _annotation_records())
@@ -224,6 +233,7 @@ class RepeatFilteringWorkflowTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
+                """Test double for `run_tool` that dispatches the repeat-filter subcommands by signature."""
                 if stdout_path is not None and "rmOutToGFF3.pl" in cmd[1]:
                     stdout_path.write_text(
                         "##gff-version 3\n"
@@ -307,11 +317,20 @@ class RepeatFilteringWorkflowTests(TestCase):
     def test_repeatmasker_fixture_inputs_exist_for_optional_smoke_runs(self) -> None:
         """Keep the local RepeatMasker fixture set visible for later binary-backed smoke tests."""
         fixture_root = TESTS_DIR.parent / "data" / "repeatmasker"
+        download_script = TESTS_DIR.parent / "scripts" / "rcc" / "download_minimal_repeatmasker_fixture.sh"
         expected = {
             "genome_raw.fasta",
             "Muco_library_RM2.fasta",
             "Muco_library_EDTA.fasta",
         }
 
+        self.assertTrue(download_script.exists())
+        script_text = download_script.read_text()
+        for filename in expected:
+            self.assertIn(filename, script_text)
+
+        # The GTN fixture is restored into ignored local data/, so skip cleanly when it is absent.
+        if not fixture_root.exists():
+            self.skipTest("RepeatMasker smoke fixtures are not staged; run scripts/rcc/download_minimal_repeatmasker_fixture.sh.")
         self.assertTrue(fixture_root.exists())
-        self.assertEqual({path.name for path in fixture_root.iterdir() if path.is_file()}, expected)
+        self.assertEqual({path.name for path in fixture_root.iterdir() if path.is_file() and path.name in expected}, expected)

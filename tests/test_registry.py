@@ -1,4 +1,4 @@
-"""Registry checks for the active notes-backed public workflow surface.
+"""Registry checks for the current milestone-facing public workflow surface.
 
 These tests make sure the catalog still exposes the key workflow and task
 interfaces described in the repository docs while milestone refactors land.
@@ -259,7 +259,7 @@ class RegistryTests(TestCase):
         entry = get_entry("pasa_transcript_alignment")
 
         self.assertEqual(entry.category, "workflow")
-        self.assertIn("internally produced de novo Trinity", entry.description)
+        self.assertIn("transcript-evidence bundle's de novo Trinity", entry.description)
         self.assertEqual(
             [field.name for field in entry.inputs],
             [

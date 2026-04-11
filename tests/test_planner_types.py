@@ -156,7 +156,7 @@ class PlannerTypeTests(TestCase):
                 tool_name="STAR",
                 tool_stage="RNA-seq genome alignment",
                 legacy_asset_name="StarAlignmentResult",
-                source_manifest_key="star_alignment",
+                source_manifest_key="rna_seq_alignment",
             ),
         )
         genome_guided = TrinityGenomeGuidedAssemblyResult(
@@ -174,7 +174,7 @@ class PlannerTypeTests(TestCase):
                 tool_name="PASA seqclean",
                 tool_stage="transcript cleaning",
                 legacy_asset_name="PasaCleanedTranscriptAsset",
-                source_manifest_key="pasa_cleaned_transcripts",
+                source_manifest_key="cleaned_transcript_dataset",
             ),
         )
         ab_initio = AbInitioResultBundle(
@@ -189,7 +189,7 @@ class PlannerTypeTests(TestCase):
                 tool_name="BRAKER3",
                 tool_stage="ab initio annotation",
                 legacy_asset_name="Braker3ResultBundle",
-                source_manifest_key="braker3_result_bundle",
+                source_manifest_key="ab_initio_result_bundle",
             ),
         )
 

@@ -46,13 +46,20 @@ def _read_json(path: Path) -> dict[str, object]:
 def _fixed_datetime() -> type:
     """Return a deterministic timestamp provider for result-directory naming."""
 
+    # Keep the synthetic result-directory name stable for manifest assertions.
     class _Stamp:
+        """Fake datetime stamp that always returns the same test timestamp."""
+
         def strftime(self, fmt: str) -> str:
+            """Return the fixed timestamp string expected by the assertions."""
             return "20260402_090000"
 
     class _FixedDatetime:
+        """Shim object that mimics the subset of `datetime` used by the code."""
+
         @classmethod
         def now(cls) -> _Stamp:
+            """Return the fixed timestamp stub used by the synthetic tests."""
             return _Stamp()
 
     return _FixedDatetime
@@ -165,7 +172,7 @@ class AnnotationTaskTests(TestCase):
             self.assertIn("repo_policy", manifest)
 
     def test_collect_braker3_results_manifest_records_policy_sections(self) -> None:
-        """Surface note-backed, tutorial-backed, and repo-policy language in the result bundle."""
+        """Surface the tool-contract, tutorial-backed, and repo-policy language in the result bundle."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             genome_path = tmp_path / "genome.fa"
@@ -234,3 +241,9 @@ class AnnotationTaskTests(TestCase):
             self.assertIn("tutorial_backed_behavior", manifest)
             self.assertIn("repo_policy", manifest)
             self.assertIn("preserves upstream BRAKER source-column values", " ".join(manifest["repo_policy"]))
+            self.assertIn("ab_initio_result_bundle", manifest["assets"])
+            self.assertIn("braker3_result_bundle", manifest["assets"])
+            self.assertEqual(
+                manifest["assets"]["ab_initio_result_bundle"]["provenance"]["source_manifest_key"],
+                "ab_initio_result_bundle",
+            )

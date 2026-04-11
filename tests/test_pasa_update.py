@@ -57,13 +57,20 @@ def _write_gff3(path: Path, records: list[str]) -> Path:
 def _fixed_datetime() -> type:
     """Return a deterministic timestamp provider for result-directory naming."""
 
+    # Keep the synthetic result-directory name stable for manifest assertions.
     class _Stamp:
+        """Fake datetime stamp that always returns the same test timestamp."""
+
         def strftime(self, fmt: str) -> str:
+            """Return the fixed timestamp string expected by the assertions."""
             return "20260402_120000"
 
     class _FixedDatetime:
+        """Shim object that mimics the subset of `datetime` used by the code."""
+
         @classmethod
         def now(cls) -> _Stamp:
+            """Return the fixed timestamp stub used by the synthetic tests."""
             return _Stamp()
 
     return _FixedDatetime
@@ -290,7 +297,7 @@ class PasaUpdateWorkflowTests(TestCase):
     """Workflow-level coverage for the PASA post-EVM entrypoint contract."""
 
     def test_annotation_refinement_pasa_requires_at_least_two_rounds(self) -> None:
-        """Reject round counts below the notes-backed minimum of two."""
+        """Reject round counts below the current PASA refinement contract minimum of two."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             pasa_results = _create_pasa_results(tmp_path)

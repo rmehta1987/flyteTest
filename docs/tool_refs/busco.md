@@ -4,6 +4,16 @@
 
 Assess annotation or protein-set completeness against lineage-specific conserved ortholog sets.
 
+## Input Data
+
+- predicted proteins or annotations converted to the required BUSCO input form
+- one or more selected lineage datasets
+
+## Output Data
+
+- BUSCO completeness summaries
+- lineage-specific report directories and tables
+
 ## Key Inputs
 
 - predicted proteins or annotations converted to the required BUSCO input form
@@ -29,11 +39,18 @@ Assess annotation or protein-set completeness against lineage-specific conserved
 - Galaxy Training Network BUSCO tutorial: https://training.galaxyproject.org/training-material/by-tool/iuc/busco/busco.html
 - Galaxy genome annotation topic, which includes BUSCO in the broader workflow context: https://training.galaxyproject.org/training-material/topics/genome-annotation/
 
+## Code Reference
+
+- [`src/flytetest/tasks/functional.py`](src/flytetest/tasks/functional.py)
+- that module defines the BUSCO lineage defaults, the auto-lineage omission behavior, and the manifest-bearing QC collector
+
 ## Native Command Context
 
 - BUSCO is a command-line QC tool for genome, transcriptome, or protein inputs.
 - The official user guide documents `--in` for input, `--mode` for genome/proteins/transcriptome, and lineage selection via `--lineage_dataset` or `--auto-lineage`.
 - For eukaryotic genome mode, the guide notes Miniprot as the default predictor.
+- FLyteTest’s production BUSCO task defaults to `-m prot` and `-c 8`, and it omits `-l` when the lineage label is `auto` or `auto-lineage`.
+- The repo’s default lineage list is `eukaryota_odb10,metazoa_odb10,insecta_odb10,arthropoda_odb10,diptera_odb10`.
 
 ## Apptainer Command Context
 
@@ -43,6 +60,31 @@ Assess annotation or protein-set completeness against lineage-specific conserved
 - A repo-local runtime was smoke-tested with `data/images/busco_v6.0.0_cv1.sif` plus explicit lineage directories under `data/busco_downloads/lineages/`.
 - Image provenance from `apptainer inspect`:
   - `org.label-schema.usage.singularity.deffile.from: ezlabgva/busco:v6.0.0_cv1`
+
+## Repo Smoke Fixture
+
+- The lightweight BUSCO image smoke uses the upstream eukaryota test genome
+  from `https://gitlab.com/ezlab/busco/-/raw/master/test_data/eukaryota/genome.fna?ref_type=heads`.
+- The fixture is staged under `data/busco/test_data/eukaryota/` by
+  `scripts/rcc/download_minimal_busco_fixture.sh`.
+- The smoke command preserves the upstream test shape:
+
+```bash
+busco -i genome.fna -c 8 -m geno -f --out test_eukaryota
+```
+
+- On RCC, use `scripts/rcc/run_m18_hpc_smoke.sh` as the one-command Milestone
+  18 path when `BUSCO_SIF` points at the BUSCO v6 SIF. That wrapper stages the
+  fixture, submits the BUSCO image smoke, then exercises the Milestone 18
+  Slurm retry/resubmission record path with a frozen BUSCO genome-mode fixture
+  recipe that also points at `data/busco/test_data/eukaryota/genome.fna`. The
+  fixture recipe uses `busco_mode=geno` and `lineage_dataset=auto-lineage` so
+  FLyteTest omits `-l`, matching the lightweight upstream command shape.
+- The production `annotation_qc_busco` workflow still runs downstream of
+  repeat filtering on the final protein FASTA. The Milestone 18 HPC smoke is a
+  smaller scheduler/runtime test and does not require a repeat-filter result
+  directory.
+- The production task does not use `-f`; that flag is part of the smoke fixture only.
 
 ## Prompt Template
 

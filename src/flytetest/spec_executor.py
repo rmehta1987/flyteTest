@@ -35,6 +35,7 @@ RegisteredNodeHandler = Callable[["LocalNodeExecutionRequest"], Mapping[str, Any
 SLURM_RUN_RECORD_SCHEMA_VERSION = "slurm-run-record-v1"
 DEFAULT_SLURM_RUN_RECORD_FILENAME = "slurm_run_record.json"
 DEFAULT_SLURM_SCRIPT_FILENAME = "submit_slurm.sh"
+DEFAULT_SLURM_MAX_ATTEMPTS = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +79,26 @@ class LocalSpecExecutionResult:
 
 
 @dataclass(frozen=True, slots=True)
+class SlurmRetryPolicy(SpecSerializable):
+    """Explicit retry policy recorded with each Slurm run lineage."""
+
+    max_attempts: int = DEFAULT_SLURM_MAX_ATTEMPTS
+
+
+@dataclass(frozen=True, slots=True)
+class SlurmFailureClassification(SpecSerializable):
+    """Conservative retryability assessment for one Slurm run record."""
+
+    status: str
+    retryable: bool
+    failure_class: str | None = None
+    scheduler_state: str | None = None
+    exit_code: str | None = None
+    reason: str | None = None
+    detail: str = ""
+
+
+@dataclass(frozen=True, slots=True)
 class SlurmRunRecord(SpecSerializable):
     """Durable filesystem record for one accepted Slurm recipe submission."""
 
@@ -104,6 +125,15 @@ class SlurmRunRecord(SpecSerializable):
     final_scheduler_state: str | None = None
     last_reconciled_at: str | None = None
     cancellation_requested_at: str | None = None
+    retry_policy: SlurmRetryPolicy = field(default_factory=SlurmRetryPolicy)
+    attempt_number: int = 1
+    lineage_root_run_id: str | None = None
+    lineage_root_run_record_path: Path | None = None
+    retry_parent_run_id: str | None = None
+    retry_parent_run_record_path: Path | None = None
+    retry_child_run_ids: tuple[str, ...] = field(default_factory=tuple)
+    retry_child_run_record_paths: tuple[Path, ...] = field(default_factory=tuple)
+    failure_classification: SlurmFailureClassification | None = None
     assumptions: tuple[str, ...] = field(default_factory=tuple)
     limitations: tuple[str, ...] = field(default_factory=tuple)
 
@@ -150,6 +180,20 @@ class SlurmLifecycleResult(SpecSerializable):
     run_record: SlurmRunRecord | None = None
     scheduler_snapshot: SlurmSchedulerSnapshot | None = None
     action: str = "status"
+    limitations: tuple[str, ...] = field(default_factory=tuple)
+    assumptions: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class SlurmRetryResult(SpecSerializable):
+    """Outcome of retrying one failed Slurm run from a durable run record."""
+
+    supported: bool
+    source_run_record: SlurmRunRecord | None = None
+    failure_classification: SlurmFailureClassification | None = None
+    retry_policy: SlurmRetryPolicy | None = None
+    retry_execution: SlurmSpecExecutionResult | None = None
+    action: str = "retry"
     limitations: tuple[str, ...] = field(default_factory=tuple)
     assumptions: tuple[str, ...] = field(default_factory=tuple)
 
@@ -449,6 +493,20 @@ _TERMINAL_SLURM_STATES = {
     "SPECIAL_EXIT",
     "TIMEOUT",
 }
+_RETRYABLE_SLURM_STATES = {
+    "BOOT_FAIL",
+    "NODE_FAIL",
+    "PREEMPTED",
+    "REVOKED",
+}
+_RETRYABLE_REASON_PATTERNS = (
+    "node failure",
+    "launch failed",
+    "system failure",
+    "communication connection failure",
+    "socket timed out",
+    "failed to connect",
+)
 
 _SLURM_AUTHENTICATED_ENVIRONMENT_GUIDANCE = (
     "Start FLyteTest inside an already-authenticated scheduler environment such as "
@@ -471,6 +529,134 @@ def _normalize_scheduler_state(value: str | None) -> str | None:
     if value in (None, ""):
         return None
     return str(value).strip().split()[0].split("+")[0].split("(")[0].upper()
+
+
+def _scheduler_state_for_classification(record: SlurmRunRecord) -> str | None:
+    """Prefer the durable terminal state when classifying retryability."""
+    return record.final_scheduler_state or record.scheduler_state
+
+
+def _scheduler_exit_is_nonzero(exit_code: str | None) -> bool:
+    """Return whether a recorded Slurm exit code represents a nonzero outcome."""
+    if exit_code in (None, ""):
+        return False
+    status_code, _, signal_code = str(exit_code).partition(":")
+    return status_code not in {"", "0"} or signal_code not in {"", "0"}
+
+
+def classify_slurm_failure(record: SlurmRunRecord) -> SlurmFailureClassification:
+    """Classify one durable Slurm record as retryable, terminal, or incomplete."""
+    state = _scheduler_state_for_classification(record)
+    reason = record.scheduler_reason
+    exit_code = record.scheduler_exit_code
+    detail_parts = [part for part in (reason, exit_code) if part not in (None, "")]
+    detail = " | ".join(detail_parts)
+
+    if state in (None, ""):
+        return SlurmFailureClassification(
+            status="unknown",
+            retryable=False,
+            scheduler_state=state,
+            exit_code=exit_code,
+            reason=reason,
+            detail="No scheduler state is recorded yet for this Slurm run.",
+        )
+
+    if state == "COMPLETED":
+        return SlurmFailureClassification(
+            status="completed",
+            retryable=False,
+            scheduler_state=state,
+            exit_code=exit_code,
+            reason=reason,
+            detail="The Slurm job completed successfully and should not be retried.",
+        )
+
+    if state not in _TERMINAL_SLURM_STATES and state != "cancellation_requested":
+        return SlurmFailureClassification(
+            status="not_terminal",
+            retryable=False,
+            scheduler_state=state,
+            exit_code=exit_code,
+            reason=reason,
+            detail="Retry is only available after the scheduler records a terminal job state.",
+        )
+
+    if state in _RETRYABLE_SLURM_STATES:
+        return SlurmFailureClassification(
+            status="retryable_failure",
+            retryable=True,
+            failure_class="scheduler_infrastructure",
+            scheduler_state=state,
+            exit_code=exit_code,
+            reason=reason,
+            detail=detail or "The scheduler recorded an infrastructure failure that can be retried conservatively.",
+        )
+
+    if state == "FAILED":
+        lowered_reason = (reason or "").lower()
+        if any(pattern in lowered_reason for pattern in _RETRYABLE_REASON_PATTERNS) and not _scheduler_exit_is_nonzero(exit_code):
+            return SlurmFailureClassification(
+                status="retryable_failure",
+                retryable=True,
+                failure_class="scheduler_infrastructure",
+                scheduler_state=state,
+                exit_code=exit_code,
+                reason=reason,
+                detail=detail or "The scheduler reported an infrastructure-style failure without a nonzero job exit code.",
+            )
+        return SlurmFailureClassification(
+            status="terminal_failure",
+            retryable=False,
+            failure_class="workflow_exit_failure",
+            scheduler_state=state,
+            exit_code=exit_code,
+            reason=reason,
+            detail=detail or "The Slurm job failed with an application or workflow exit status.",
+        )
+
+    if state in {"OUT_OF_MEMORY", "TIMEOUT", "DEADLINE"}:
+        return SlurmFailureClassification(
+            status="terminal_failure",
+            retryable=False,
+            failure_class="resource_exhaustion",
+            scheduler_state=state,
+            exit_code=exit_code,
+            reason=reason,
+            detail=detail or "The recorded scheduler state indicates a resource-limit failure, so a retry would likely repeat the same outcome.",
+        )
+
+    if state in {"CANCELLED", "cancellation_requested"}:
+        return SlurmFailureClassification(
+            status="terminal_failure",
+            retryable=False,
+            failure_class="cancelled",
+            scheduler_state=state,
+            exit_code=exit_code,
+            reason=reason,
+            detail=detail or "Cancelled jobs are treated as terminal and are not retried automatically.",
+        )
+
+    if state == "REQUEUED":
+        return SlurmFailureClassification(
+            status="terminal_failure",
+            retryable=False,
+            failure_class="scheduler_requeue",
+            scheduler_state=state,
+            exit_code=exit_code,
+            reason=reason,
+            detail=detail or "Slurm already requeued this job, so FLyteTest does not submit an additional retry.",
+        )
+
+    return SlurmFailureClassification(
+        status="terminal_failure",
+        retryable=False,
+        failure_class="terminal_scheduler_failure",
+        scheduler_state=state,
+        exit_code=exit_code,
+        reason=reason,
+        detail=detail or "The recorded terminal scheduler state is not classified as retryable.",
+    )
 
 
 def _command_is_available(command: str) -> bool:
@@ -664,6 +850,9 @@ def render_slurm_script(
             f"if [[ -f {shlex.quote(str(repo_root / '.venv/bin/activate'))} ]]; then",
             f"  source {shlex.quote(str(repo_root / '.venv/bin/activate'))}",
             "fi",
+            f"mkdir -p {shlex.quote(str(repo_root / 'results/.tmp'))}",
+            f"export FLYTETEST_TMPDIR={shlex.quote(str(repo_root / 'results/.tmp'))}",
+            "export TMPDIR=\"$FLYTETEST_TMPDIR\"",
             f"export PYTHONPATH={shlex.quote(str(repo_root / 'src'))}${{PYTHONPATH:+:$PYTHONPATH}}",
             "PYTHON_BIN=\"${PYTHON_BIN:-$(command -v python3)}\"",
             f"$PYTHON_BIN -c {shlex.quote(python_code)}",
@@ -683,6 +872,18 @@ def _run_id_for_artifact(artifact: SavedWorkflowSpecArtifact, artifact_path: Pat
     digest = hashlib.sha256(digest_source.encode("utf-8")).hexdigest()[:12]
     timestamp = submitted_at.replace(":", "").replace("-", "").replace("Z", "Z")
     return f"{timestamp}-{_slug(artifact.workflow_spec.name, max_length=32)}-{digest}"
+
+
+def _allocate_run_dir(run_root: Path, requested_run_id: str) -> tuple[str, Path]:
+    """Reserve a unique run directory even when submissions happen in the same second."""
+    run_id = requested_run_id
+    run_dir = run_root / run_id
+    suffix = 1
+    while run_dir.exists():
+        run_id = f"{requested_run_id}-retry{suffix}"
+        run_dir = run_root / run_id
+        suffix += 1
+    return run_id, run_dir
 
 
 class LocalWorkflowSpecExecutor:
@@ -939,46 +1140,34 @@ class SlurmWorkflowSpecExecutor:
             limitations=tuple(limitations),
         )
 
-    def render_script(
-        self,
-        artifact_source: SavedWorkflowSpecArtifact | Path,
-        *,
-        run_id: str = "dry-run",
-        stdout_path: Path | None = None,
-        stderr_path: Path | None = None,
-    ) -> str:
-        """Render the Slurm script without submitting it."""
-        artifact = _artifact_from_source(artifact_source)
-        artifact_path = _artifact_path_from_source(artifact_source) or Path("<in-memory-artifact>")
-        workflow_spec = artifact.workflow_spec
-        binding_plan = artifact.binding_plan
-        return render_slurm_script(
-            artifact_path=artifact_path,
-            workflow_name=workflow_spec.name,
-            run_id=run_id,
-            stdout_path=stdout_path or Path("slurm.out"),
-            stderr_path=stderr_path or Path("slurm.err"),
-            resource_spec=binding_plan.resource_spec,
-            repo_root=self._repo_root,
-            python_executable=self._python_executable,
+    def _record_with_snapshot(self, record: SlurmRunRecord, snapshot: SlurmSchedulerSnapshot) -> SlurmRunRecord:
+        """Merge one scheduler snapshot into the durable run record."""
+        final_state = (
+            snapshot.scheduler_state
+            if snapshot.scheduler_state in _TERMINAL_SLURM_STATES
+            else record.final_scheduler_state
         )
+        updated_record = replace(
+            record,
+            scheduler_state=snapshot.scheduler_state,
+            scheduler_state_source=snapshot.source,
+            scheduler_exit_code=snapshot.exit_code,
+            scheduler_reason=snapshot.reason,
+            stdout_path=snapshot.stdout_path or record.stdout_path,
+            stderr_path=snapshot.stderr_path or record.stderr_path,
+            final_scheduler_state=final_state,
+            last_reconciled_at=_created_at(),
+            limitations=tuple(dict.fromkeys((*record.limitations, *snapshot.limitations))),
+        )
+        return replace(updated_record, failure_classification=classify_slurm_failure(updated_record))
 
-    def submit(
+    def _submit_saved_artifact(
         self,
-        artifact_source: SavedWorkflowSpecArtifact | Path,
+        artifact_path: Path,
+        *,
+        retry_parent: SlurmRunRecord | None = None,
     ) -> SlurmSpecExecutionResult:
-        """Render, submit, and persist a durable record for one Slurm recipe."""
-        artifact_path = _artifact_path_from_source(artifact_source)
-        if artifact_path is None:
-            return SlurmSpecExecutionResult(
-                supported=False,
-                workflow_name=artifact_source.workflow_spec.name,
-                execution_profile=artifact_source.binding_plan.execution_profile,
-                resource_spec=artifact_source.binding_plan.resource_spec,
-                runtime_image=artifact_source.binding_plan.runtime_image,
-                limitations=("Slurm submission requires a saved recipe artifact path, not only an in-memory artifact.",),
-            )
-
+        """Render, submit, and persist one saved Slurm recipe artifact."""
         artifact = _artifact_from_source(artifact_path)
         workflow_spec = artifact.workflow_spec
         binding_plan = artifact.binding_plan
@@ -1009,8 +1198,10 @@ class SlurmWorkflowSpecExecutor:
             )
 
         submitted_at = _created_at()
-        run_id = _run_id_for_artifact(artifact, artifact_path, submitted_at)
-        run_dir = self._run_root / run_id
+        run_id, run_dir = _allocate_run_dir(
+            self._run_root,
+            _run_id_for_artifact(artifact, artifact_path, submitted_at),
+        )
         script_path = run_dir / DEFAULT_SLURM_SCRIPT_FILENAME
         stdout_path = run_dir / "slurm-%j.out"
         stderr_path = run_dir / "slurm-%j.err"
@@ -1066,6 +1257,29 @@ class SlurmWorkflowSpecExecutor:
                 limitations=(str(exc),),
             )
 
+        assumptions = [
+            "This durable record captures accepted Slurm submission from a frozen recipe artifact.",
+            "Execution uses the frozen workflow-spec artifact and does not reinterpret the original prompt.",
+            "Submission assumes FLyteTest is running inside an already-authenticated scheduler environment.",
+        ]
+        if retry_parent is not None:
+            assumptions.append(
+                "This submission is an explicit retry attempt linked to a prior failed Slurm run record."
+            )
+
+        retry_policy = retry_parent.retry_policy if retry_parent is not None else SlurmRetryPolicy()
+        attempt_number = retry_parent.attempt_number + 1 if retry_parent is not None else 1
+        lineage_root_run_id = (
+            (retry_parent.lineage_root_run_id or retry_parent.run_id)
+            if retry_parent is not None
+            else run_id
+        )
+        lineage_root_run_record_path = (
+            retry_parent.lineage_root_run_record_path or retry_parent.run_record_path
+            if retry_parent is not None
+            else run_record_path
+        )
+
         record = SlurmRunRecord(
             schema_version=SLURM_RUN_RECORD_SCHEMA_VERSION,
             run_id=run_id,
@@ -1083,13 +1297,16 @@ class SlurmWorkflowSpecExecutor:
             submitted_at=submitted_at,
             scheduler_stdout=submission.stdout or "",
             scheduler_stderr=submission.stderr or "",
-            assumptions=(
-                "This durable record captures accepted Slurm submission from a frozen recipe artifact.",
-                "Execution uses the frozen workflow-spec artifact and does not reinterpret the original prompt.",
-                "Submission assumes FLyteTest is running inside an already-authenticated scheduler environment.",
-            ),
+            retry_policy=retry_policy,
+            attempt_number=attempt_number,
+            lineage_root_run_id=lineage_root_run_id,
+            lineage_root_run_record_path=lineage_root_run_record_path,
+            retry_parent_run_id=retry_parent.run_id if retry_parent is not None else None,
+            retry_parent_run_record_path=retry_parent.run_record_path if retry_parent is not None else None,
+            assumptions=tuple(dict.fromkeys(assumptions)),
         )
-        _write_json_atomically(run_record_path, record.to_dict())
+        record = replace(record, failure_classification=classify_slurm_failure(record))
+        save_slurm_run_record(record)
         return SlurmSpecExecutionResult(
             supported=True,
             workflow_name=workflow_spec.name,
@@ -1102,6 +1319,47 @@ class SlurmWorkflowSpecExecutor:
             scheduler_stderr=submission.stderr or "",
             assumptions=record.assumptions,
         )
+
+    def render_script(
+        self,
+        artifact_source: SavedWorkflowSpecArtifact | Path,
+        *,
+        run_id: str = "dry-run",
+        stdout_path: Path | None = None,
+        stderr_path: Path | None = None,
+    ) -> str:
+        """Render the Slurm script without submitting it."""
+        artifact = _artifact_from_source(artifact_source)
+        artifact_path = _artifact_path_from_source(artifact_source) or Path("<in-memory-artifact>")
+        workflow_spec = artifact.workflow_spec
+        binding_plan = artifact.binding_plan
+        return render_slurm_script(
+            artifact_path=artifact_path,
+            workflow_name=workflow_spec.name,
+            run_id=run_id,
+            stdout_path=stdout_path or Path("slurm.out"),
+            stderr_path=stderr_path or Path("slurm.err"),
+            resource_spec=binding_plan.resource_spec,
+            repo_root=self._repo_root,
+            python_executable=self._python_executable,
+        )
+
+    def submit(
+        self,
+        artifact_source: SavedWorkflowSpecArtifact | Path,
+    ) -> SlurmSpecExecutionResult:
+        """Render, submit, and persist a durable record for one Slurm recipe."""
+        artifact_path = _artifact_path_from_source(artifact_source)
+        if artifact_path is None:
+            return SlurmSpecExecutionResult(
+                supported=False,
+                workflow_name=artifact_source.workflow_spec.name,
+                execution_profile=artifact_source.binding_plan.execution_profile,
+                resource_spec=artifact_source.binding_plan.resource_spec,
+                runtime_image=artifact_source.binding_plan.runtime_image,
+                limitations=("Slurm submission requires a saved recipe artifact path, not only an in-memory artifact.",),
+            )
+        return self._submit_saved_artifact(artifact_path)
 
     def reconcile(self, run_record_source: Path) -> SlurmLifecycleResult:
         """Reload a Slurm run record and reconcile it with scheduler state."""
@@ -1127,19 +1385,7 @@ class SlurmWorkflowSpecExecutor:
                 ),
             )
 
-        final_state = snapshot.scheduler_state if snapshot.scheduler_state in _TERMINAL_SLURM_STATES else record.final_scheduler_state
-        updated_record = replace(
-            record,
-            scheduler_state=snapshot.scheduler_state,
-            scheduler_state_source=snapshot.source,
-            scheduler_exit_code=snapshot.exit_code,
-            scheduler_reason=snapshot.reason,
-            stdout_path=snapshot.stdout_path or record.stdout_path,
-            stderr_path=snapshot.stderr_path or record.stderr_path,
-            final_scheduler_state=final_state,
-            last_reconciled_at=_created_at(),
-            limitations=tuple(dict.fromkeys((*record.limitations, *snapshot.limitations))),
-        )
+        updated_record = self._record_with_snapshot(record, snapshot)
         save_slurm_run_record(updated_record)
         return SlurmLifecycleResult(
             supported=True,
@@ -1209,6 +1455,7 @@ class SlurmWorkflowSpecExecutor:
             cancellation_requested_at=cancellation_requested_at,
             last_reconciled_at=cancellation_requested_at,
         )
+        updated_record = replace(updated_record, failure_classification=classify_slurm_failure(updated_record))
         save_slurm_run_record(updated_record)
         snapshot = SlurmSchedulerSnapshot(
             job_id=record.job_id,
@@ -1226,8 +1473,135 @@ class SlurmWorkflowSpecExecutor:
             ),
         )
 
+    def retry(self, run_record_source: Path) -> SlurmRetryResult:
+        """Resubmit one retryable Slurm run from its durable failed run record."""
+        try:
+            source_record = load_slurm_run_record(run_record_source)
+        except (FileNotFoundError, json.JSONDecodeError, ValueError) as exc:
+            return SlurmRetryResult(
+                supported=False,
+                action="retry",
+                limitations=(str(exc),),
+            )
+
+        if source_record.retry_child_run_record_paths:
+            child_paths = ", ".join(str(path) for path in source_record.retry_child_run_record_paths)
+            return SlurmRetryResult(
+                supported=False,
+                source_run_record=source_record,
+                failure_classification=source_record.failure_classification or classify_slurm_failure(source_record),
+                retry_policy=source_record.retry_policy,
+                action="retry",
+                limitations=(
+                    f"Run record `{source_record.run_record_path}` already has explicit retry child record(s): {child_paths}. "
+                    "Retry the latest child record instead of branching from a stale parent.",
+                ),
+            )
+
+        current_record = source_record
+        current_state = _scheduler_state_for_classification(current_record)
+        if current_state not in _TERMINAL_SLURM_STATES:
+            missing_commands = self._missing_commands(("squeue", "scontrol", "sacct"))
+            if not missing_commands:
+                snapshot = self._scheduler_snapshot(current_record)
+                if snapshot.scheduler_state is not None:
+                    current_record = self._record_with_snapshot(current_record, snapshot)
+                    save_slurm_run_record(current_record)
+
+        failure_classification = classify_slurm_failure(current_record)
+        current_record = replace(current_record, failure_classification=failure_classification)
+        save_slurm_run_record(current_record)
+
+        if failure_classification.status in {"not_terminal", "unknown", "completed"}:
+            return SlurmRetryResult(
+                supported=False,
+                source_run_record=current_record,
+                failure_classification=failure_classification,
+                retry_policy=current_record.retry_policy,
+                action="retry",
+                limitations=(failure_classification.detail,),
+                assumptions=(
+                    "Retry stays frozen-recipe driven and only proceeds from an explicit terminal failed Slurm run record.",
+                ),
+            )
+
+        if not failure_classification.retryable:
+            return SlurmRetryResult(
+                supported=False,
+                source_run_record=current_record,
+                failure_classification=failure_classification,
+                retry_policy=current_record.retry_policy,
+                action="retry",
+                limitations=(
+                    f"Run `{current_record.run_id}` is classified as `{failure_classification.failure_class}` and is not retryable. "
+                    f"{failure_classification.detail}",
+                ),
+                assumptions=(
+                    "If a failure is not clearly retryable from scheduler state and exit details, FLyteTest declines instead of guessing.",
+                ),
+            )
+
+        max_attempts = max(1, current_record.retry_policy.max_attempts)
+        if current_record.attempt_number >= max_attempts:
+            return SlurmRetryResult(
+                supported=False,
+                source_run_record=current_record,
+                failure_classification=failure_classification,
+                retry_policy=current_record.retry_policy,
+                action="retry",
+                limitations=(
+                    f"Run `{current_record.run_id}` is already at attempt {current_record.attempt_number} of {max_attempts}; no additional retry is allowed.",
+                ),
+            )
+
+        if not current_record.artifact_path.exists():
+            return SlurmRetryResult(
+                supported=False,
+                source_run_record=current_record,
+                failure_classification=failure_classification,
+                retry_policy=current_record.retry_policy,
+                action="retry",
+                limitations=(
+                    f"Frozen recipe artifact `{current_record.artifact_path}` is missing, so the Slurm retry cannot be resubmitted safely.",
+                ),
+            )
+
+        retry_execution = self._submit_saved_artifact(current_record.artifact_path, retry_parent=current_record)
+        if not retry_execution.supported or retry_execution.run_record is None:
+            return SlurmRetryResult(
+                supported=False,
+                source_run_record=current_record,
+                failure_classification=failure_classification,
+                retry_policy=current_record.retry_policy,
+                retry_execution=retry_execution,
+                action="retry",
+                limitations=retry_execution.limitations,
+            )
+
+        updated_source_record = replace(
+            current_record,
+            retry_child_run_ids=tuple(dict.fromkeys((*current_record.retry_child_run_ids, retry_execution.run_record.run_id))),
+            retry_child_run_record_paths=tuple(
+                dict.fromkeys((*current_record.retry_child_run_record_paths, retry_execution.run_record.run_record_path))
+            ),
+        )
+        save_slurm_run_record(updated_source_record)
+        return SlurmRetryResult(
+            supported=True,
+            source_run_record=updated_source_record,
+            failure_classification=failure_classification,
+            retry_policy=updated_source_record.retry_policy,
+            retry_execution=retry_execution,
+            action="retry",
+            assumptions=(
+                "Slurm retries reuse the frozen workflow-spec artifact and recorded execution profile rather than rebuilding intent.",
+                "Each retry remains an explicit child run record linked back to the source failure.",
+            ),
+        )
+
 
 __all__ = [
+    "DEFAULT_SLURM_MAX_ATTEMPTS",
     "DEFAULT_SLURM_RUN_RECORD_FILENAME",
     "DEFAULT_SLURM_SCRIPT_FILENAME",
     "LocalNodeExecutionRequest",
@@ -1236,11 +1610,15 @@ __all__ = [
     "LocalWorkflowSpecExecutor",
     "RegisteredNodeHandler",
     "SLURM_RUN_RECORD_SCHEMA_VERSION",
+    "SlurmFailureClassification",
     "SlurmLifecycleResult",
+    "SlurmRetryPolicy",
+    "SlurmRetryResult",
     "SlurmRunRecord",
     "SlurmSchedulerSnapshot",
     "SlurmSpecExecutionResult",
     "SlurmWorkflowSpecExecutor",
+    "classify_slurm_failure",
     "load_slurm_run_record",
     "parse_sbatch_job_id",
     "render_slurm_script",

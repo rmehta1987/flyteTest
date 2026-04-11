@@ -1,16 +1,20 @@
 """Repeat-filtering and cleanup tasks for the post-PASA FLyteTest milestone.
 
 This module starts from the PASA-updated annotation boundary, converts an
-external RepeatMasker `.out` file into note-shaped interval data, runs the
-documented gffread and funannotate cleanup steps, and collects stable final
-repeat-filtered outputs before functional annotation.
+external RepeatMasker `.out` file into interval data, runs the gffread and
+funannotate cleanup steps, and collects stable final repeat-filtered outputs
+before functional annotation.
+
+Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
+input/output expectations follow the tool references under `docs/tool_refs/`
+(notably `repeatmasker.md`, `gffread.md`, and `funannotate.md`).
+Those refs match the repeat-filtering slices implemented here.
 """
 
 from __future__ import annotations
 
 import json
 import shutil
-import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -21,6 +25,7 @@ from flytetest.config import (
     REPEAT_FILTER_RESULTS_PREFIX,
     REPEAT_FILTER_WORKFLOW_NAME,
     RESULTS_ROOT,
+    project_mkdtemp,
     repeat_filter_env,
     require_path,
     run_tool,
@@ -85,12 +90,12 @@ def _pasa_update_reference_genome(results_dir: Path) -> Path:
 
 
 def _repeatmasker_gff3_path(results_dir: Path) -> Path:
-    """Resolve the RepeatMasker-derived GFF3 staged by conversion."""
+    """Resolve the RepeatMasker GFF3 staged by the downstream conversion."""
     return require_path(results_dir / "repeatmasker.gff3", "RepeatMasker-derived GFF3")
 
 
 def _repeatmasker_bed_path(results_dir: Path) -> Path:
-    """Resolve the notes-shaped RepeatMasker BED file."""
+    """Resolve the downstream RepeatMasker BED file."""
     return require_path(results_dir / "repeatmasker.bed", "RepeatMasker BED")
 
 
@@ -152,7 +157,7 @@ def _repeat_blast_hits_path(results_dir: Path) -> Path:
 
 
 def _write_repeatmasker_bed(gff3_path: Path, bed_path: Path) -> Path:
-    """Write the notes-shaped BED extracted from RepeatMasker-converted GFF3."""
+    """Write the downstream BED extracted from the converted RepeatMasker GFF3."""
     bed_lines: list[str] = []
     for raw_line in gff3_path.read_text().splitlines():
         if not raw_line or raw_line.startswith("#"):
@@ -209,7 +214,7 @@ def _remove_exact_feature_lines(annotation_gff3: Path, removal_list: Path, outpu
 
 
 def _remove_repeat_blast_ids(annotation_gff3: Path, repeat_blast_hits: Path, output_gff3: Path) -> Path:
-    """Remove blast-hit gene models using the note-shaped Parent/ID filtering logic."""
+    """Remove blast-hit gene models using the existing Parent/ID filtering logic."""
     blast_ids = {
         line.split()[0]
         for line in repeat_blast_hits.read_text().splitlines()
@@ -247,9 +252,9 @@ def repeatmasker_out_to_bed(
     rmout_to_gff3_script: str = "rmOutToGFF3.pl",
     repeat_filter_sif: str = "",
 ) -> Dir:
-    """Convert a RepeatMasker `.out` file into the note-shaped GFF3 and BED pair."""
+    """Convert a RepeatMasker `.out` file into the downstream GFF3 and BED pair."""
     repeatmasker_out_path = require_path(Path(repeatmasker_out.download_sync()), "RepeatMasker .out file")
-    out_dir = Path(tempfile.mkdtemp(prefix="repeatmasker_convert_")) / "repeatmasker"
+    out_dir = project_mkdtemp("repeatmasker_convert_") / "repeatmasker"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     staged_out_path = _copy_file(repeatmasker_out_path, out_dir / repeatmasker_out_path.name)
@@ -266,9 +271,10 @@ def repeatmasker_out_to_bed(
     manifest = {
         "stage": "repeatmasker_out_to_bed",
         "assumptions": [
-            "The notes start repeat filtering from an already generated RepeatMasker `.out` file; running RepeatMasker itself remains upstream of this milestone.",
-            "The RepeatMasker GFF3 conversion uses `rmOutToGFF3.pl` exactly as shown in the notes.",
-            "The BED output preserves the notes' raw `awk '{print $1 \"\\t\" $4 \"\\t\" $5}'` extraction, so coordinates are copied directly from the converted GFF3 instead of being normalized further.",
+            "Native RepeatMasker runs consume a genome FASTA plus a configured repeat source and emit `.masked`, `.out`, `.tbl`, and optional GFF outputs.",
+            "This FLyteTest task is only the downstream adapter for an already generated RepeatMasker `.out` file; running RepeatMasker itself remains upstream of this milestone.",
+            "The GFF3 conversion uses the RepeatMasker utility `rmOutToGFF3.pl`.",
+            "The BED output preserves the existing BRaker/EVM notes' raw `awk '{print $1 \"\\t\" $4 \"\\t\" $5}'` extraction, so coordinates are copied directly from the converted GFF3 instead of being normalized further.",
         ],
         "inputs": {
             "repeatmasker_out": str(repeatmasker_out_path),
@@ -296,7 +302,7 @@ def gffread_proteins(
     """Extract proteins with gffread and emit a period-stripped FASTA for repeat blasting."""
     annotation_path = require_path(Path(annotation_gff3.download_sync()), "Annotation GFF3")
     genome_path = require_path(Path(genome_fasta.download_sync()), "Reference genome FASTA")
-    out_dir = Path(tempfile.mkdtemp(prefix="gffread_proteins_")) / "proteins"
+    out_dir = project_mkdtemp("gffread_proteins_") / "proteins"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     proteins_fasta = out_dir / f"{protein_output_stem}.proteins.fa"
@@ -342,11 +348,11 @@ def funannotate_remove_bad_models(
     repeat_filter_sif: str = "",
     min_protlen: int = 50,
 ) -> Dir:
-    """Run the note-shaped funannotate overlap filter to mark repeat-overlapping models."""
+    """Run the funannotate overlap filter to mark repeat-overlapping models."""
     annotation_path = require_path(Path(annotation_gff3.download_sync()), "Annotation GFF3")
     proteins_path = require_path(Path(proteins_fasta.download_sync()), "Protein FASTA for overlap filtering")
     repeatmasker_bed_path = require_path(Path(repeatmasker_bed.download_sync()), "RepeatMasker BED")
-    out_dir = Path(tempfile.mkdtemp(prefix="funannotate_overlap_")) / "funannotate_overlap"
+    out_dir = project_mkdtemp("funannotate_overlap_") / "funannotate_overlap"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     clean_gff3 = out_dir / clean_output_name
@@ -412,7 +418,7 @@ def remove_overlap_repeat_models(
     """Remove exact overlap-listed feature lines from the current annotation GFF3."""
     annotation_path = require_path(Path(annotation_gff3.download_sync()), "Annotation GFF3")
     removal_path = require_path(Path(models_to_remove.download_sync()), "Overlap removal list")
-    out_dir = Path(tempfile.mkdtemp(prefix="overlap_removed_")) / "overlap_removed"
+    out_dir = project_mkdtemp("overlap_removed_") / "overlap_removed"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     filtered_gff3 = _remove_exact_feature_lines(annotation_path, removal_path, out_dir / output_name)
@@ -443,10 +449,10 @@ def funannotate_repeat_blast(
     repeat_blast_cpu: int = 1,
     repeat_blast_evalue: float = 1e-10,
 ) -> Dir:
-    """Run the note-shaped funannotate repeat blast against `repeats.dmnd`."""
+    """Run the funannotate repeat blast against `repeats.dmnd`."""
     proteins_path = require_path(Path(proteins_fasta.download_sync()), "Protein FASTA for repeat blasting")
     fundb_path = require_path(Path(funannotate_db_path), "funannotate database root")
-    out_dir = Path(tempfile.mkdtemp(prefix="repeat_blast_")) / "repeat_blast"
+    out_dir = project_mkdtemp("repeat_blast_") / "repeat_blast"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     blast_hits_path = out_dir / "repeat.dmnd.blast.txt"
@@ -501,11 +507,11 @@ def remove_repeat_blast_hits(
     repeat_blast_results: Dir,
     output_name: str = "all_repeats_removed.gff3",
 ) -> Dir:
-    """Remove repeat-blast-hit models from a GFF3 using the notes-shaped attribute rules."""
+    """Remove repeat-blast-hit models from a GFF3 using the existing attribute rules."""
     annotation_path = require_path(Path(annotation_gff3.download_sync()), "Annotation GFF3")
     repeat_blast_dir = require_path(Path(repeat_blast_results.download_sync()), "Repeat blast results directory")
     blast_hits_path = _repeat_blast_hits_path(repeat_blast_dir)
-    out_dir = Path(tempfile.mkdtemp(prefix="blast_removed_")) / "blast_removed"
+    out_dir = project_mkdtemp("blast_removed_") / "blast_removed"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     filtered_gff3 = _remove_repeat_blast_ids(annotation_path, blast_hits_path, out_dir / output_name)

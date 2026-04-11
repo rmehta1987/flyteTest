@@ -4,6 +4,17 @@
 
 Generate ab initio gene predictions to provide a core evidence source for consensus annotation.
 
+## Input Data
+
+- reference genome
+- local user-provided RNA-seq BAM evidence and/or local user-provided protein FASTA evidence
+
+## Output Data
+
+- BRAKER3 prediction outputs
+- `braker.gff3` as the key downstream consensus input described in the design notes
+- a deterministic source-preserving normalized BRAKER3 GFF3 boundary for later EVM composition
+
 ## Key Inputs
 
 - reference genome
@@ -35,6 +46,11 @@ Lightweight local fixture examples for milestone-scoped testing:
 - GTN Braker3 tutorial: https://training.galaxyproject.org/training-material/topics/genome-annotation/tutorials/braker3/tutorial.html
 - GTN Braker3 workflow: https://training.galaxyproject.org/training-material/topics/genome-annotation/tutorials/braker3/workflows/braker.html
 - GTN Braker3 topic tag: https://training.galaxyproject.org/training-material/tags/braker3/
+
+## Code Reference
+
+- [`src/flytetest/tasks/annotation.py`](src/flytetest/tasks/annotation.py)
+- that module stages the ab initio inputs, runs `braker.pl`, normalizes `braker.gff3`, and collects the reviewable BRAKER3 bundle
 
 ## Native Command Context
 
@@ -107,4 +123,4 @@ Deliver:
 - Repo-local normalization policy preserves upstream BRAKER source-column values instead of rewriting them to `BRAKER3`, so later EVM weights can stay aligned with the staged sources.
 - The local fixture paths above are intended for lightweight smoke testing only, not for production-scale annotation benchmarks.
 - This BRAKER3-only workflow preserves raw BRAKER3 outputs and produces a deterministic later-EVM-ready normalized GFF3.
-- The repo now implements EVM and PASA post-EVM refinement downstream elsewhere, but repeat filtering and later post-PASA work remain out of scope for the current validation milestone.
+- The repo now implements EVM, PASA post-EVM refinement, repeat filtering, functional annotation, and submission-prep stages elsewhere; this reference stays focused on the BRAKER3 boundary rather than those later milestones.

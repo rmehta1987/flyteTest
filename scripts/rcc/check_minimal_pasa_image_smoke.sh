@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # PASA image smoke workspace on the host checkout.
-PASA_IMAGE_SMOKE_ROOT="${PASA_IMAGE_SMOKE_ROOT:-$REPO_ROOT/temp/minimal_pasa_image_smoke}"
+PASA_IMAGE_SMOKE_ROOT="${PASA_IMAGE_SMOKE_ROOT:-$REPO_ROOT/results/minimal_pasa_image_smoke}"
 # PASA work directory that should contain the image-backed outputs.
 HOST_PASA_WORK_DIR="${HOST_PASA_WORK_DIR:-$PASA_IMAGE_SMOKE_ROOT/pasa}"
 # Staged transcript FASTA used as the image-backed PASA input.

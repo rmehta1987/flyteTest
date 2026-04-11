@@ -32,8 +32,8 @@ surfaces evolve.
 | Typed prompt planning outcomes | Current | `src/flytetest/planning.py` now has a `plan_typed_request(...)` path that can report direct registered workflows or tasks, registered-stage composition, generated `WorkflowSpec` preview, and honest decline outcomes; `src/flytetest/server.py` now uses that path for MCP recipe preparation. |
 | Local saved-spec execution | Current | `src/flytetest/spec_executor.py` executes saved `WorkflowSpec` artifacts through explicit registered handlers, resolver inputs, and saved binding plans, with synthetic manifest-preserving coverage. It is wired into MCP for the original runnable targets plus BUSCO, EggNOG, and the three individual AGAT slices, but it still does not auto-load every checked-in Flyte workflow. |
 | Generic biology asset compatibility | Current | `src/flytetest/types/assets.py` now exposes `ManifestSerializable`, typed `AssetToolProvenance`, and generic sibling names for `AbInitioResultBundle`, `RnaSeqAlignmentResult`, and `CleanedTranscriptDataset` while keeping the legacy BRAKER3, STAR, and PASA names readable for historical manifests. |
-| Generic biology asset adoption | Close | Generic biology asset names now appear in the compatibility layer and selected manifest emitters, but a broader migration across planner adapters and workflow outputs is still reserved for Milestone 17 while legacy alias replay stays available. |
-| Slurm retry and resubmission policy | Far | Slurm job submission, lifecycle reconciliation, and cancellation now exist, but failed jobs still need an explicit retry policy with attempt limits before they can be resubmitted safely. Milestone 18 covers that Slurm-specific recovery step. |
+| Generic biology asset adoption | Current | Generic biology asset names are now the preferred internal asset surface in the current BRAKER3, STAR, and PASA-compatible emitters, planner adapters prefer the generic keys when the semantic meaning is known, and legacy alias replay remains available for historical manifests. The remaining family-scoped follow-up candidates are now split into Milestones 22 through 25, with the source audit recorded in `docs/realtime_refactor_plans/2026-04-10-post-m17-asset-surface-follow-up-audit.md`. |
+| Slurm retry and resubmission policy | Current | `src/flytetest/spec_executor.py` now records a conservative `SlurmFailureClassification` plus explicit `SlurmRetryPolicy` in each durable run record, distinguishes retryable scheduler failures from terminal failures, and can resubmit retryable failures from the frozen saved recipe while linking each child attempt back to its parent run record. `src/flytetest/server.py` exposes the same behavior through `retry_slurm_job`. |
 | EggNOG functional annotation | Current | `src/flytetest/tasks/eggnog.py` and `src/flytetest/workflows/eggnog.py` now expose the post-BUSCO functional-annotation boundary, preserve the EggNOG annotations and decorated GFF3 outputs, and keep the local EggNOG database directory explicit. |
 | AGAT post-processing | Current | The statistics, conversion, and deterministic cleanup slices after EggNOG functional annotation are wired through task and workflow boundaries, while `table2asn` remains deferred. |
 | Prompt-to-spec generation | Current | Typed planning can produce metadata-only `WorkflowSpec` and `BindingPlan` previews from supported natural-language requests. This is controlled dynamic generation from registered biological building blocks, not arbitrary Python code generation. |
@@ -43,7 +43,7 @@ surfaces evolve.
 | Container/dependency handling | Close | Optional `*.sif` inputs and `run_tool()` are real, but they are user-supplied and local-first rather than centrally managed runtime environments. |
 | Local execution with provenance | Current | This is one of the strongest parts today: stable result bundles and `run_manifest.json` files across stages. |
 | Managed / remote execution | Far | The repo mostly uses `flyte run --local` and does not yet show a real backend deployment or execution model. |
-| Slurm/HPC execution integration | Close | The Slurm path now renders an `sbatch` script from a frozen Slurm-profile recipe, submits it explicitly, captures the accepted job ID, writes a run record under `.runtime/runs/`, reconciles scheduler state with `squeue`, `scontrol show job`, and `sacct`, and records `scancel` cancellation requests. The supported topology is a local MCP/server process running inside an already-authenticated scheduler-capable environment; outside that boundary the tools now return explicit unsupported-environment diagnostics. Retry/resubmission and resumability remain future milestones. |
+| Slurm/HPC execution integration | Current | The Slurm path now renders an `sbatch` script from a frozen Slurm-profile recipe, submits it explicitly, captures the accepted job ID, writes a run record under `.runtime/runs/`, reconciles scheduler state with `squeue`, `scontrol show job`, and `sacct`, records `scancel` cancellation requests, and manually retries only scheduler-classified retryable failures from the same frozen recipe and execution profile. The supported topology is a local MCP/server process running inside an already-authenticated scheduler-capable environment; outside that boundary the tools return explicit unsupported-environment diagnostics. Resumability remains a later milestone. |
 | Caching / resumability | Far | The current code does not yet use explicit cache keys, stage-completion state, or replayable resume rules in a meaningful way. Milestone 19 covers that execution recovery step. |
 | Reproducible result delivery | Current locally | The repo writes deterministic local result bundles with copied boundaries and manifests, but not to durable queryable remote storage. |
 | Storage-native durable asset return | Far | There is no content-addressed object store or metadata-indexed asset retrieval layer yet. Milestone 20 covers the first filesystem-backed durable asset reference step. |
@@ -66,13 +66,18 @@ surfaces evolve.
   through `WorkflowSpec`, `BindingPlan`, provenance, and explicit assumptions.
 - Define a bounded ad hoc task execution policy before widening the current
   single-task MCP task surface.
-- Migrate internal callers and manifest emitters toward the generic asset
-  vocabulary while keeping legacy aliases available.
+- Keep new manifest emitters and planner adapters on the generic asset
+  vocabulary while preserving legacy alias replay.
+- Use `docs/realtime_refactor_plans/2026-04-10-post-m17-asset-surface-follow-up-audit.md`
+  when choosing the next asset-surface cleanup target instead of broad
+  repo-wide renaming.
+- Keep the remaining asset-surface cleanup work family-scoped through
+  Milestones 22 through 25 instead of reviving a single repo-wide rename lane.
 - Keep registry-driven composition bounded, typed, and approval-gated before
   execution, with composed DAG execution gated on Milestone 19.
 - Extend explicit resource policy from current workflow-level recipe metadata into task-level graph planning when later composition work needs it.
 - Keep resource requests and execution profiles explicit in the recipe-backed MCP flow before any Slurm submission work.
-- Add explicit Slurm retry and resubmission policy before any caching or resumability work.
+- Keep the explicit Slurm retry and resubmission policy bounded to frozen-recipe manual retries before adding caching or resumability work.
 - Add caching and resumability before any durable asset-reference layer.
 - Add durable asset references without turning the project into a database-first architecture.
 - Add Slurm/HPC execution profiles only when queue, filesystem, image, and scheduler assumptions can be made explicit.

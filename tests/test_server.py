@@ -54,6 +54,7 @@ from flytetest.server import (
     _prepare_run_recipe_impl,
     _cancel_slurm_job_impl,
     _monitor_slurm_job_impl,
+    _retry_slurm_job_impl,
     _run_local_recipe_impl,
     _run_slurm_recipe_impl,
     create_mcp_server,
@@ -62,6 +63,7 @@ from flytetest.server import (
     prompt_and_run,
     prepare_run_recipe,
     monitor_slurm_job,
+    retry_slurm_job,
     cancel_slurm_job,
     resource_example_prompts,
     resource_prompt_and_run_contract,
@@ -69,9 +71,11 @@ from flytetest.server import (
     resource_supported_targets,
     run_local_recipe,
     run_slurm_recipe,
+    run_task,
     run_workflow,
 )
 from flytetest.spec_artifacts import load_workflow_spec_artifact
+from flytetest.spec_executor import load_slurm_run_record, save_slurm_run_record
 
 EXPECTED_TARGET_NAMES = list(SUPPORTED_TARGET_NAMES)
 EXPECTED_RUNNABLE_TARGETS = supported_runnable_targets_payload()
@@ -141,6 +145,7 @@ class FakeFastMCP:
     """Small FastMCP stand-in used to capture tool registration."""
 
     def __init__(self, name: str) -> None:
+        """Record the server name and the decorators registered during setup."""
         self.name = name
         self.tools: dict[str, object] = {}
         self.resources: dict[str, object] = {}
@@ -477,6 +482,106 @@ class ServerTests(TestCase):
         self.assertTrue(cancelled["supported"])
         self.assertEqual(calls, [["scancel", "55555"]])
         self.assertEqual(cancelled["lifecycle_result"]["scheduler_state"], "cancellation_requested")
+
+    def test_retry_slurm_job_resubmits_retryable_failure(self) -> None:
+        """Expose explicit Slurm retry through the server helper."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result_dir = _repeat_filter_manifest_dir(tmp_path)
+            prepared = _prepare_run_recipe_impl(
+                "Run BUSCO quality assessment on the annotation.",
+                manifest_sources=(result_dir,),
+                runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                execution_profile="slurm",
+                recipe_dir=tmp_path,
+            )
+            job_ids = iter(("55601", "55602"))
+
+            def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                return subprocess.CompletedProcess(
+                    args=args,
+                    returncode=0,
+                    stdout=f"Submitted batch job {next(job_ids)}\n",
+                    stderr="",
+                )
+
+            submitted = _run_slurm_recipe_impl(
+                str(prepared["artifact_path"]),
+                run_dir=tmp_path / "runs",
+                sbatch_runner=fake_sbatch,
+                command_available=lambda command: True,
+            )
+            failed_record = load_slurm_run_record(Path(str(submitted["run_record_path"])))
+            failed_record = failed_record.__class__.from_dict(
+                {
+                    **failed_record.to_dict(),
+                    "scheduler_state": "NODE_FAIL",
+                    "scheduler_exit_code": "0:0",
+                    "scheduler_reason": "Node failure detected by scheduler.",
+                    "final_scheduler_state": "NODE_FAIL",
+                    "failure_classification": None,
+                }
+            )
+            save_slurm_run_record(failed_record)
+
+            retried = _retry_slurm_job_impl(
+                str(submitted["run_record_path"]),
+                run_dir=tmp_path / "runs",
+                sbatch_runner=fake_sbatch,
+                command_available=lambda command: True,
+            )
+
+        self.assertTrue(retried["supported"])
+        self.assertEqual(retried["job_id"], "55602")
+        self.assertEqual(retried["retry_result"]["execution_mode"], "slurm-retry")
+        self.assertEqual(retried["retry_result"]["failure_classification"]["status"], "retryable_failure")
+        self.assertEqual(retried["retry_result"]["retry_execution"]["execution_mode"], "slurm-workflow-spec-executor")
+
+    def test_retry_slurm_job_declines_nonretryable_failure(self) -> None:
+        """Report terminal resource failures without resubmitting them."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result_dir = _repeat_filter_manifest_dir(tmp_path)
+            prepared = _prepare_run_recipe_impl(
+                "Run BUSCO quality assessment on the annotation.",
+                manifest_sources=(result_dir,),
+                runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                execution_profile="slurm",
+                recipe_dir=tmp_path,
+            )
+
+            def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 55701\n", stderr="")
+
+            submitted = _run_slurm_recipe_impl(
+                str(prepared["artifact_path"]),
+                run_dir=tmp_path / "runs",
+                sbatch_runner=fake_sbatch,
+                command_available=lambda command: True,
+            )
+            failed_record = load_slurm_run_record(Path(str(submitted["run_record_path"])))
+            failed_record = failed_record.__class__.from_dict(
+                {
+                    **failed_record.to_dict(),
+                    "scheduler_state": "OUT_OF_MEMORY",
+                    "scheduler_exit_code": "1:0",
+                    "scheduler_reason": "Out Of Memory",
+                    "final_scheduler_state": "OUT_OF_MEMORY",
+                    "failure_classification": None,
+                }
+            )
+            save_slurm_run_record(failed_record)
+
+            retried = _retry_slurm_job_impl(
+                str(submitted["run_record_path"]),
+                run_dir=tmp_path / "runs",
+                sbatch_runner=fake_sbatch,
+                command_available=lambda command: True,
+            )
+
+        self.assertFalse(retried["supported"])
+        self.assertEqual(retried["retry_result"]["failure_classification"]["failure_class"], "resource_exhaustion")
+        self.assertIn("not retryable", retried["limitations"][0])
 
     def test_monitor_slurm_job_reports_missing_record(self) -> None:
         """Report missing run records instead of inventing state."""
@@ -1056,6 +1161,40 @@ class ServerTests(TestCase):
             },
         )
         self.assertEqual(payload["result_summary"]["output_paths"], ["/tmp/exonerate_results"])
+
+    def test_run_task_supports_busco_fixture_task(self) -> None:
+        """Dispatch the M18 BUSCO fixture task through the direct task runner."""
+
+        class _Result:
+            """Small fake Flyte directory result used by the BUSCO task runner."""
+
+            def download_sync(self) -> str:
+                """Return the synthetic BUSCO output path."""
+                return "/tmp/busco_fixture_results"
+
+        captured: dict[str, object] = {}
+
+        def fake_busco_assess_proteins(**kwargs: object) -> _Result:
+            captured.update(kwargs)
+            return _Result()
+
+        with patch("flytetest.tasks.functional.busco_assess_proteins", side_effect=fake_busco_assess_proteins):
+            payload = run_task(
+                "busco_assess_proteins",
+                {
+                    "proteins_fasta": "data/busco/test_data/eukaryota/genome.fna",
+                    "lineage_dataset": "auto-lineage",
+                    "busco_cpu": 2,
+                    "busco_mode": "geno",
+                },
+            )
+
+        self.assertTrue(payload["supported"])
+        self.assertEqual(payload["exit_status"], 0)
+        self.assertEqual(payload["output_paths"], ["/tmp/busco_fixture_results"])
+        self.assertEqual(captured["lineage_dataset"], "auto-lineage")
+        self.assertEqual(captured["busco_cpu"], 2)
+        self.assertEqual(captured["busco_mode"], "geno")
 
     def test_prompt_and_run_no_longer_blocks_downstream_terms(self) -> None:
         """Execute the day-one target without the old downstream term blocklist."""

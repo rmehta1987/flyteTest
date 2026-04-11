@@ -2,6 +2,9 @@
 
 This module stages local inputs, runs the tutorial-backed BRAKER3 boundary, and
 collects source-preserving normalized outputs for later EVM preparation.
+
+Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
+input/output expectations follow `docs/tool_refs/braker3.md`.
 """
 
 from __future__ import annotations

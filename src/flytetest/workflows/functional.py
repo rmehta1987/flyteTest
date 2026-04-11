@@ -3,6 +3,9 @@
 This module runs multi-lineage BUSCO protein assessments strictly downstream of
 the repeat-filtered annotation boundary and stops before EggNOG, AGAT, or
 submission-prep work.
+
+Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
+input/output expectations follow `docs/tool_refs/busco.md`.
 """
 
 from __future__ import annotations

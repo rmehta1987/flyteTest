@@ -4,6 +4,16 @@
 
 Generate per-FASTQ quality control reports for raw or trimmed sequencing reads.
 
+## Input Data
+
+- FASTQ or FASTQ.GZ read files
+- optional runtime/container choice
+
+## Output Data
+
+- HTML report per input FASTQ
+- ZIP archive per input FASTQ
+
 ## Key Inputs
 
 - FASTQ or FASTQ.GZ read files
@@ -30,6 +40,11 @@ Generate per-FASTQ quality control reports for raw or trimmed sequencing reads.
 - [GTN FastQC tool reference](https://training.galaxyproject.org/training-material/by-tool/devteam/fastqc.html)
 - [GTN Quality Control tutorial](https://training.galaxyproject.org/topics/sequence-analysis/tutorials/quality-control/tutorial.html)
 - [GTN FAQ for FastQC reports](https://training.galaxyproject.org/training-material/topics/sequence-analysis/tutorials/quality-control/faqs/)
+
+## Code Reference
+
+- [`src/flytetest/tasks/qc.py`](src/flytetest/tasks/qc.py)
+- that module implements the current paired-end FastQC boundary and result-directory capture
 
 ## Native Command Context
 

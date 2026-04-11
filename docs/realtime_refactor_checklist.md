@@ -87,7 +87,7 @@ Short stop-rule note for Milestones 1 through 20:
   reviewable before any executor runs it
 - Slurm failure recovery should stay frozen-recipe driven and Slurm-specific,
   not broaden into generic remote orchestration
-- the currently planned sequencing is `17 -> 18 -> 15 -> 19`
+- the currently planned sequencing is `18 -> 18a -> 18b -> 18c -> 15 -> 19`
 - Milestone 15 is the composition-preview milestone; Milestone 19 is the later
   caching/resumability milestone that makes execution-capable composed DAGs
   safe to expose
@@ -999,21 +999,21 @@ Status: Not started
 Goal: add Slurm-specific retry and resubmission policy for failed jobs while
 preserving the frozen recipe boundary.
 
-Status: Not started
+Status: Complete
 
 ### Still required
 
-- [ ] Define a Slurm failure-classification model in the run-record layer.
-- [ ] Distinguish retryable failures from terminal failures using scheduler
+- [x] Define a Slurm failure-classification model in the run-record layer.
+- [x] Distinguish retryable failures from terminal failures using scheduler
       state and exit information.
-- [ ] Add a retry policy with an explicit maximum attempt limit.
-- [ ] Resubmit failed jobs by reusing the frozen `WorkflowSpec` and recorded
+- [x] Add a retry policy with an explicit maximum attempt limit.
+- [x] Resubmit failed jobs by reusing the frozen `WorkflowSpec` and recorded
       execution profile.
-- [ ] Preserve the original run record while linking retry attempts back to
+- [x] Preserve the original run record while linking retry attempts back to
       the parent job.
-- [ ] Expose retry and resubmission operations through the execution layer or
+- [x] Expose retry and resubmission operations through the execution layer or
       MCP in a Slurm-specific way.
-- [ ] Add synthetic tests for retry classification, resubmission behavior,
+- [x] Add synthetic tests for retry classification, resubmission behavior,
       attempt limits, and stale-record handling.
 
 ### Milestone 18 implementation note
@@ -1042,6 +1042,136 @@ Status: Not started
 - Collapsing retry history into a single run record instead of linking explicit
   attempts
 - Letting a retry policy broaden into generic remote execution
+
+## Milestone 18a
+
+Goal: extract shared manifest and file-operation helpers so task modules stop
+duplicating the same JSON and copy logic.
+
+Status: Not started
+
+### Still required
+
+- [ ] Add a shared manifest helper module for JSON-compatible conversion,
+      read/write, and deterministic file-copy helpers used by task modules.
+- [ ] Migrate the most duplicated task modules to the shared helpers without
+      changing manifest behavior or result-bundle paths.
+- [ ] Keep current `run_manifest.json` shapes readable and truthful during the
+      transition.
+- [ ] Add focused tests for the shared helpers and one or two migrated call
+      sites.
+- [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
+      after the behavior lands.
+
+### Milestone 18a implementation note
+
+- This slice should stay purely mechanical.
+- It should reduce duplication across the task modules without changing any
+  biological boundary or manifest semantics.
+- If a helper would need consensus-specific naming knowledge, it belongs in a
+  later milestone instead of this one.
+
+### Acceptance evidence
+
+- `docs/realtime_refactor_plans/2026-04-10-milestone-18a-shared-manifest-io-utilities.md`
+- `docs/realtime_refactor_milestone_18a_submission_prompt.md`
+- Tests likely to include `tests/test_spec_executor.py`, `tests/test_server.py`,
+  and focused helper-unit coverage
+- `README.md`, `docs/capability_maturity.md`, and compatibility docs stay
+  aligned with the landed behavior
+
+### Compatibility risks
+
+- Accidentally changing manifest serialization or copied output paths
+- Introducing a helper API that is too broad for the current refactor lane
+- Mixing non-mechanical naming changes into a pure utility extraction
+
+## Milestone 18b
+
+Goal: centralize GFF3 attribute parsing, formatting, escaping, and common
+filtering helpers used by EggNOG and repeat filtering.
+
+Status: Not started
+
+### Still required
+
+- [ ] Add a shared `gff3` utility module with ordered attribute parsing and
+      formatting helpers.
+- [ ] Centralize escaping and ID / Parent filtering helpers needed by EggNOG
+      propagation and repeat-filter cleanup.
+- [ ] Migrate the current EggNOG and repeat-filter callers while preserving
+      exact GFF3 output ordering and behavior.
+- [ ] Add focused tests that prove the shared helpers preserve the current
+      file outputs.
+- [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
+      after the behavior lands.
+
+### Milestone 18b implementation note
+
+- This slice should stay focused on deterministic GFF3 mechanics.
+- It should not change the biological meaning of the current EggNOG or repeat-
+  filtering stages.
+- The helper representation should be chosen to preserve attribute ordering
+  and existing output fidelity.
+
+### Acceptance evidence
+
+- `docs/realtime_refactor_plans/2026-04-10-milestone-18b-shared-gff3-utilities.md`
+- `docs/realtime_refactor_milestone_18b_submission_prompt.md`
+- Tests likely to include `tests/test_eggnog.py`, `tests/test_repeat_filtering.py`,
+  and focused helper-unit coverage
+- `README.md`, `docs/capability_maturity.md`, and compatibility docs stay
+  aligned with the landed behavior
+
+### Compatibility risks
+
+- Reordering attributes or changing GFF3 escaping semantics
+- Creating a helper that silently changes cleanup or annotation propagation
+- Conflating generic GFF3 utilities with tool-specific biological policy
+
+## Milestone 18c
+
+Goal: standardize the common manifest envelope so task modules record
+assumptions, inputs, outputs, and code references consistently.
+
+Status: Not started
+
+### Still required
+
+- [ ] Add a small manifest-envelope helper that standardizes the common
+      `stage` / `assumptions` / `inputs` / `outputs` shape.
+- [ ] Decide whether `code_reference` or `tool_ref` should be a required or
+      optional field in the shared envelope.
+- [ ] Update task modules to use the helper while preserving their task-
+      specific fields and current result-bundle paths.
+- [ ] Add focused tests that check the standardized envelope without forcing a
+      global manifest schema rewrite.
+- [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
+      after the behavior lands.
+
+### Milestone 18c implementation note
+
+- This slice should remain manifest-shape focused.
+- It may be implemented after 18a and 18b if those helpers make the call sites
+  easier to standardize.
+- If the envelope would need consensus asset naming decisions, defer that
+  specific part until the later abstraction milestone.
+
+### Acceptance evidence
+
+- `docs/realtime_refactor_plans/2026-04-10-milestone-18c-standard-manifest-envelope.md`
+- `docs/realtime_refactor_milestone_18c_submission_prompt.md`
+- Tests likely to include `tests/test_spec_executor.py`, `tests/test_server.py`,
+  and manifest-shape coverage from the migrated task modules
+- `README.md`, `docs/capability_maturity.md`, and compatibility docs stay
+  aligned with the landed behavior
+
+### Compatibility risks
+
+- Forcing a schema rewrite instead of a thin common envelope helper
+- Losing task-specific manifest details while standardizing the envelope
+- Mixing the manifest-shape work with naming decisions that belong in later
+  milestones
 
 ## Milestone 15
 
@@ -1072,10 +1202,10 @@ Status: Not started
 
 - This slice should be registry-driven and compatibility-preserving, not an
   unconstrained autonomous graph search.
-- It is currently scheduled after Milestone 17 generic asset adoption and
-  Milestone 18 Slurm retry/resubmission so the repo can finish the current
-  asset-surface cleanup and Slurm recovery lane before opening broader
-  composition preview work.
+- It is currently scheduled after Milestone 17 generic asset adoption,
+  Milestone 18 Slurm retry/resubmission, and the 18a/18b/18c utility cleanup
+  lane so the repo can finish the current asset-surface and helper cleanup
+  before opening broader composition preview work.
 - It should keep dynamic workflow creation typed, inspectable, and reviewable
   before execution.
 - It should only open the composition and approval path; execution-capable
@@ -1166,19 +1296,19 @@ Status: Complete
 Goal: make generic biology-facing asset names the preferred internal surface
 while retaining legacy aliases for replay and compatibility.
 
-Status: Not started
+Status: Complete
 
-### Still required
+### Completed
 
-- [ ] Update planner adapters to emit the generic asset names by default
+- [x] Update planner adapters to emit the generic asset names by default
       wherever the workflow semantics are already known.
-- [ ] Update local workflow outputs and manifest-producing helpers to prefer
+- [x] Update local workflow outputs and manifest-producing helpers to prefer
       the generic asset types while keeping legacy aliases available.
-- [ ] Ensure resolver and replay paths still accept historical legacy asset
+- [x] Ensure resolver and replay paths still accept historical legacy asset
       names without rewriting manifests.
-- [ ] Expand tests to cover both legacy alias loading and generic-name
+- [x] Expand tests to cover both legacy alias loading and generic-name
       round-tripping through planner adapters and workflow outputs.
-- [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
+- [x] Update README, `docs/capability_maturity.md`, and the handoff prompt
       after the behavior lands.
 
 ### Milestone 17 implementation note
@@ -1194,9 +1324,8 @@ Status: Not started
 
 - `docs/realtime_refactor_plans/2026-04-08-milestone-17-generic-asset-adoption.md`
 - `docs/realtime_refactor_milestone_17_submission_prompt.md`
-- Tests likely to include `tests/test_planner_adapters.py`, `tests/test_resolver.py`,
-  `tests/test_spec_executor.py`, and any workflow-output coverage that proves
-  the generic names are now preferred
+- Tests include `tests/test_planner_adapters.py`, `tests/test_planner_types.py`,
+  `tests/test_transcript_contract.py`, and `tests/test_annotation.py`
 - `README.md`, `docs/capability_maturity.md`, and compatibility docs stay
   aligned with the landed behavior
 
@@ -1307,6 +1436,209 @@ Status: Not started
   collection-shaped Flyte I/O inputs
 - Reintroducing hidden ad hoc shell behavior instead of explicit direct task
   execution policy
+
+## Asset Cleanup Follow-On Lane
+
+These milestones are the narrow follow-up cleanup lane after Milestone 17.
+They are intentionally family-scoped and should be done one family at a time
+instead of as a repo-wide rename.
+
+They do not replace the mainline sequencing of `18 -> 15 -> 19`.
+They exist so tool-branded asset cleanup can continue in bounded slices when it
+materially helps planner clarity, manifest reuse, or future tool interchange.
+
+## Milestone 22
+
+Goal: define and adopt a biology-facing generic asset surface for the current
+TransDecoder-backed coding-prediction boundary while retaining legacy replay.
+
+Status: Not started
+
+### Still required
+
+- [ ] Define the biology-facing concept that should replace the current
+      TransDecoder-only naming at this stage boundary.
+- [ ] Introduce generic sibling asset names or types for the TransDecoder
+      output family while keeping the current tool-branded names readable.
+- [ ] Update manifest-producing helpers and adapters to prefer the generic
+      naming where the biological meaning is already known.
+- [ ] Preserve replay of historical manifests that only use the current
+      TransDecoder-branded asset names.
+- [ ] Add tests for generic-name round-tripping, legacy manifest loading, and
+      current manifest emission.
+- [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
+      after the behavior lands.
+
+### Milestone 22 implementation note
+
+- This slice should stay limited to the TransDecoder family.
+- It should not rename unrelated PASA, protein-evidence, or consensus assets.
+- It should only introduce a generic sibling layer once the biology-facing
+  concept is named clearly enough to survive future tool variation.
+
+### Acceptance evidence
+
+- `docs/realtime_refactor_plans/2026-04-10-milestone-22-transdecoder-generic-asset-follow-up.md`
+- `docs/realtime_refactor_milestone_22_submission_prompt.md`
+- Tests likely to include `tests/test_transdecoder.py`,
+  `tests/test_planner_types.py`, and any focused adapter or manifest-shape
+  coverage
+- `README.md`, `docs/capability_maturity.md`, and compatibility docs stay
+  aligned with the landed behavior
+
+### Compatibility risks
+
+- Renaming TransDecoder outputs before the biological boundary is named clearly
+- Breaking historical PASA-to-TransDecoder manifest replay
+- Mixing new generic keys and old tool-branded keys inconsistently across
+  emitters and adapters
+- Generalizing the TransDecoder family before another implementation path
+  actually exists
+
+## Milestone 23
+
+Goal: make the nested protein-evidence alignment assets less Exonerate-specific
+while preserving the current top-level protein-evidence bundle contract.
+
+Status: Not started
+
+### Still required
+
+- [ ] Audit which nested protein-evidence assets are too Exonerate-branded for
+      future planner or manifest reuse.
+- [ ] Define generic sibling names for the nested raw-alignment and converted
+      evidence assets where a stable biology-facing meaning exists.
+- [ ] Keep the current top-level `protein_evidence_result_bundle` contract
+      intact while adding generic nested names.
+- [ ] Preserve replay of manifests that still carry the current
+      Exonerate-specific nested asset names.
+- [ ] Add tests for nested generic-name round-tripping, legacy manifest
+      loading, and current manifest emission.
+- [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
+      after the behavior lands.
+
+### Milestone 23 implementation note
+
+- This slice should stay limited to the protein-evidence family.
+- The top-level bundle name is already acceptable and should not be broadened
+  casually.
+- The main target is the nested Exonerate-specific naming, not a rewrite of
+  the whole protein-evidence workflow.
+
+### Acceptance evidence
+
+- `docs/realtime_refactor_plans/2026-04-10-milestone-23-protein-evidence-nested-asset-cleanup.md`
+- `docs/realtime_refactor_milestone_23_submission_prompt.md`
+- Tests likely to include `tests/test_protein_evidence.py`,
+  `tests/test_planner_types.py`, and any focused adapter or manifest-shape
+  coverage
+- `README.md`, `docs/capability_maturity.md`, and compatibility docs stay
+  aligned with the landed behavior
+
+### Compatibility risks
+
+- Accidentally changing the top-level protein-evidence result-bundle contract
+- Breaking manifest replay for current Exonerate-backed results
+- Introducing generic nested names that hide useful current-tool truth
+- Renaming nested assets without clear downstream planner or reuse benefit
+
+## Milestone 24
+
+Goal: define whether PASA post-EVM refinement should grow a generic annotation-
+refinement asset layer, and adopt it only if that abstraction is genuinely
+useful.
+
+Status: Not started
+
+### Still required
+
+- [ ] Decide whether the PASA post-EVM refinement boundary needs a generic
+      annotation-refinement asset layer at all.
+- [ ] If yes, define generic sibling names for the PASA refinement input,
+      round, and result-bundle assets while keeping current PASA names
+      available.
+- [ ] Update manifest emitters and adapters to prefer the generic names only
+      if the biological boundary is now explicit enough.
+- [ ] Preserve replay of historical PASA refinement manifests.
+- [ ] Add tests for generic-name round-tripping, legacy manifest loading, and
+      current manifest emission when the generic layer is adopted.
+- [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
+      after the behavior lands.
+
+### Milestone 24 implementation note
+
+- This slice may legitimately decide not to introduce a generic sibling layer
+  yet if PASA remains the only clear truthful boundary.
+- The milestone is about making that decision explicit, not forcing a rename.
+- If the answer is “not yet”, the landed result should still improve the docs
+  and clarify the boundary.
+
+### Acceptance evidence
+
+- `docs/realtime_refactor_plans/2026-04-10-milestone-24-pasa-refinement-asset-generalization-boundary.md`
+- `docs/realtime_refactor_milestone_24_submission_prompt.md`
+- Tests likely to include `tests/test_pasa_update.py`, `tests/test_planner_types.py`,
+  and any focused adapter or manifest-shape coverage
+- `README.md`, `docs/capability_maturity.md`, and compatibility docs stay
+  aligned with the landed behavior
+
+### Compatibility risks
+
+- Introducing a generic refinement layer before the repo has a stable
+  biology-facing meaning for it
+- Breaking PASA update manifest replay while trying to generalize too early
+- Hiding that the current implementation is still explicitly PASA-backed
+- Forcing rename churn that does not materially help planner or composition
+  work
+
+## Milestone 25
+
+Goal: define whether the EVM-prefixed consensus assets need a generic
+consensus-annotation layer, and adopt it only when another implementation path
+or real planner pressure justifies it.
+
+Status: Not started
+
+### Still required
+
+- [ ] Decide whether the repo currently needs a generic consensus-annotation
+      asset layer or should keep the explicit EVM-prefixed names for now.
+- [ ] If yes, define generic sibling names for the consensus input,
+      preparation, execution, partition, command, and result assets while
+      keeping current EVM names available.
+- [ ] Update manifest emitters and adapters to prefer the generic names only
+      if the broader stage meaning is now explicit enough.
+- [ ] Preserve replay of historical EVM manifests and result bundles.
+- [ ] Add tests for generic-name round-tripping, legacy manifest loading, and
+      current manifest emission when the generic layer is adopted.
+- [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
+      after the behavior lands.
+
+### Milestone 25 implementation note
+
+- This slice should not proceed as a casual rename.
+- It should only introduce a generic consensus layer if the repo has a real
+  need for that abstraction, such as planner pressure or a second
+  consensus-engine path.
+- If the answer is “not yet”, the milestone can still land as a clarified
+  boundary decision and documentation improvement.
+
+### Acceptance evidence
+
+- `docs/realtime_refactor_plans/2026-04-10-milestone-25-consensus-asset-generalization-boundary.md`
+- `docs/realtime_refactor_milestone_25_submission_prompt.md`
+- Tests likely to include `tests/test_consensus.py`, `tests/test_planner_types.py`,
+  and any focused adapter or manifest-shape coverage
+- `README.md`, `docs/capability_maturity.md`, and compatibility docs stay
+  aligned with the landed behavior
+
+### Compatibility risks
+
+- Renaming EVM assets before the repo has a concrete non-EVM reason for a
+  generic consensus layer
+- Breaking replay of current pre-EVM, EVM, or consensus result manifests
+- Blurring the current truth that the implemented consensus path is EVM-backed
+- Broadening the abstraction without any actual execution or planner benefit
 
 ## Verification Matrix
 

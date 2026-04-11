@@ -1,14 +1,16 @@
 """AGAT post-processing tasks for the post-EggNOG milestone slices.
 
 This module keeps the AGAT boundary split into narrow slices: statistics,
-conversion, and deterministic post-conversion cleanup before table2asn.
+conversion, and deterministic post-conversion cleanup before table2asn. The
+tool-level command shapes and input/output expectations follow
+`docs/tool_refs/agat.md`, while the current milestone keeps the cleanup rules as
+deterministic in-repo transforms.
 """
 
 from __future__ import annotations
 
 import json
 import shutil
-import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -26,6 +28,7 @@ from flytetest.config import (
     agat_cleanup_env,
     agat_conversion_env,
     agat_env,
+    project_mkdtemp,
     require_path,
     run_tool,
 )
@@ -199,7 +202,11 @@ def _matching_mrna_name(parent_value: str | None, mrna_names: dict[str, str]) ->
 
 
 def _cleanup_gff3_attributes(source_gff3: Path, cleaned_gff3: Path) -> dict[str, int]:
-    """Apply the notes-backed post-AGAT GFF3 attribute cleanup rules."""
+    """Apply the deterministic post-AGAT GFF3 attribute cleanup rules.
+
+    See `docs/tool_refs/agat.md` for the cleanup contract and its notes-derived
+    provenance.
+    """
     lines = source_gff3.read_text().splitlines(keepends=True)
     mrna_names: dict[str, str] = {}
     for line in lines:
@@ -261,14 +268,14 @@ def _cleanup_gff3_attributes(source_gff3: Path, cleaned_gff3: Path) -> dict[str,
 def agat_cleanup_gff3(
     agat_conversion_results: Dir,
 ) -> Dir:
-    """Clean the AGAT-converted GFF3 with the notes-backed attribute edits."""
+    """Clean the AGAT-converted GFF3 with the deterministic attribute edits."""
     conversion_dir = require_path(
         Path(agat_conversion_results.download_sync()),
         "AGAT conversion results directory",
     )
     converted_gff3 = _agat_converted_gff3(conversion_dir)
 
-    work_dir = Path(tempfile.mkdtemp(prefix="agat_cleanup_")) / "agat"
+    work_dir = project_mkdtemp("agat_cleanup_") / "agat"
     work_dir.mkdir(parents=True, exist_ok=True)
     output_dir = work_dir / _AGAT_OUTPUT_DIRNAME
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -301,7 +308,7 @@ def agat_cleanup_gff3(
         "workflow": AGAT_CLEANUP_WORKFLOW_NAME,
         "assumptions": [
             "This cleanup slice consumes the AGAT conversion result bundle and preserves the converted GFF3 as its source boundary.",
-            "The cleanup rules are deterministic translations of the notes-backed R and awk commands rather than a new AGAT binary invocation.",
+            "The cleanup rules are deterministic translations of the repository's R and awk commands rather than a new AGAT binary invocation.",
             "CDS product values are populated from parent mRNA Name attributes when available, gene Note attributes are removed, and CDS products beginning with '-' are replaced with 'putative'.",
             "table2asn remains deferred after this cleanup slice.",
         ],
@@ -334,7 +341,7 @@ def agat_convert_sp_gxf2gxf(
     eggnog_dir = require_path(Path(eggnog_results.download_sync()), "EggNOG results directory")
     eggnog_gff3 = _eggnog_annotated_gff3(eggnog_dir)
 
-    work_dir = Path(tempfile.mkdtemp(prefix="agat_convert_")) / "agat"
+    work_dir = project_mkdtemp("agat_convert_") / "agat"
     work_dir.mkdir(parents=True, exist_ok=True)
     output_dir = work_dir / _AGAT_OUTPUT_DIRNAME
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -411,7 +418,7 @@ def agat_statistics(
     eggnog_gff3 = _eggnog_annotated_gff3(eggnog_dir)
     annotation_fasta = require_path(Path(annotation_fasta_path), "Annotation FASTA") if annotation_fasta_path else None
 
-    work_dir = Path(tempfile.mkdtemp(prefix="agat_run_")) / "agat"
+    work_dir = project_mkdtemp("agat_run_") / "agat"
     work_dir.mkdir(parents=True, exist_ok=True)
     output_dir = work_dir / _AGAT_OUTPUT_DIRNAME
     output_dir.mkdir(parents=True, exist_ok=True)

@@ -4,6 +4,16 @@
 
 Manipulate SAM/BAM alignment files for downstream transcript-evidence and annotation workflows.
 
+## Input Data
+
+- one or more SAM/BAM alignment files
+- merge, sort, or index subcommand parameters
+
+## Output Data
+
+- merged or transformed BAM files
+- optional BAM index files depending on the subcommand
+
 ## Key Inputs
 
 - one or more SAM/BAM alignment files
@@ -31,6 +41,11 @@ Manipulate SAM/BAM alignment files for downstream transcript-evidence and annota
 - [GTN Reference-based RNA-Seq data analysis tutorial](https://training.galaxyproject.org/training-material/topics/transcriptomics/tutorials/ref-based/tutorial.html)
 - [GTN QC + Mapping + Counting workflow from the same tutorial set](https://training.galaxyproject.org/training-material/topics/transcriptomics/tutorials/ref-based/workflows/qc-mapping-counting-paired-and-single.html)
 - GTN’s transcriptomics training materials place samtools in practical RNA-seq mapping and BAM-handling contexts.
+
+## Code Reference
+
+- [`src/flytetest/tasks/transcript_evidence.py`](src/flytetest/tasks/transcript_evidence.py)
+- that module implements the explicit BAM merge boundary used before genome-guided Trinity and StringTie
 
 ## Native Command Context
 

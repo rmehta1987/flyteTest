@@ -6,7 +6,9 @@ workflow-runtime change.
 
 from __future__ import annotations
 
+import os
 import sys
+import tempfile
 from pathlib import Path
 from unittest import TestCase
 
@@ -59,3 +61,77 @@ class ConfigTests(TestCase):
             config.TASK_ENVIRONMENTS_BY_NAME[config.TRANSCRIPT_EVIDENCE_WORKFLOW_NAME],
         )
         self.assertIs(config.consensus_env, config.consensus_prep_env)
+
+    def test_project_mkdtemp_defaults_under_results_tmp(self) -> None:
+        """Keep local task scratch directories inside the project result tree."""
+        old_cwd = Path.cwd()
+        old_tmpdir = os.environ.pop(config.PROJECT_TMP_ENV_VAR, None)
+        old_system_tmpdir = os.environ.get("TMPDIR")
+        old_tempfile_tempdir = tempfile.tempdir
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                tmp_path = Path(tmp)
+                os.chdir(tmp_path)
+
+                work_dir = config.project_mkdtemp("probe_")
+
+                self.assertTrue(work_dir.exists())
+                self.assertEqual(work_dir.parent, tmp_path / config.RESULTS_ROOT / ".tmp")
+        finally:
+            os.chdir(old_cwd)
+            if old_tmpdir is not None:
+                os.environ[config.PROJECT_TMP_ENV_VAR] = old_tmpdir
+            if old_system_tmpdir is None:
+                os.environ.pop("TMPDIR", None)
+            else:
+                os.environ["TMPDIR"] = old_system_tmpdir
+            tempfile.tempdir = old_tempfile_tempdir
+
+    def test_project_mkdtemp_honors_explicit_override(self) -> None:
+        """Allow callers to redirect task scratch while keeping the default safe."""
+        old_tmpdir = os.environ.get(config.PROJECT_TMP_ENV_VAR)
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                tmp_path = Path(tmp)
+                override = tmp_path / "custom-tmp"
+                os.environ[config.PROJECT_TMP_ENV_VAR] = str(override)
+
+                work_dir = config.project_mkdtemp("probe_")
+
+                self.assertTrue(work_dir.exists())
+                self.assertEqual(work_dir.parent, override)
+        finally:
+            if old_tmpdir is None:
+                os.environ.pop(config.PROJECT_TMP_ENV_VAR, None)
+            else:
+                os.environ[config.PROJECT_TMP_ENV_VAR] = old_tmpdir
+
+    def test_configure_project_tmpdir_updates_python_tempdir(self) -> None:
+        """Route generic local tempfile users through the project result tree."""
+        old_cwd = Path.cwd()
+        old_tmpdir = os.environ.get(config.PROJECT_TMP_ENV_VAR)
+        old_system_tmpdir = os.environ.get("TMPDIR")
+        old_tempfile_tempdir = tempfile.tempdir
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                tmp_path = Path(tmp)
+                os.chdir(tmp_path)
+                os.environ.pop(config.PROJECT_TMP_ENV_VAR, None)
+
+                root = config.configure_project_tmpdir()
+
+                self.assertEqual(root, tmp_path / config.RESULTS_ROOT / ".tmp")
+                self.assertEqual(os.environ["TMPDIR"], str(root))
+                self.assertEqual(tempfile.tempdir, str(root))
+                self.assertTrue(Path(tempfile.mkdtemp(prefix="stdlib_")).is_relative_to(root))
+        finally:
+            os.chdir(old_cwd)
+            if old_tmpdir is None:
+                os.environ.pop(config.PROJECT_TMP_ENV_VAR, None)
+            else:
+                os.environ[config.PROJECT_TMP_ENV_VAR] = old_tmpdir
+            if old_system_tmpdir is None:
+                os.environ.pop("TMPDIR", None)
+            else:
+                os.environ["TMPDIR"] = old_system_tmpdir
+            tempfile.tempdir = old_tempfile_tempdir

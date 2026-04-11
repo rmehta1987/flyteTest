@@ -1,15 +1,17 @@
 """BRAKER3 task implementations for the current FLyteTest annotation milestone.
 
 This module stages local ab initio inputs, runs the tutorial-backed BRAKER3
-boundary, preserves the note-backed `braker.gff3` handoff for EVM, and
+boundary, preserves the normalized `braker.gff3` handoff for EVM, and
 collects a stable downstream bundle with explicit repo-policy metadata.
+
+Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
+input/output expectations follow `docs/tool_refs/braker3.md`.
 """
 
 from __future__ import annotations
 
 import json
 import shutil
-import tempfile
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -22,6 +24,7 @@ from flytetest.config import (
     ANNOTATION_WORKFLOW_NAME,
     RESULTS_ROOT,
     annotation_env,
+    project_mkdtemp,
     require_path,
     run_tool,
 )
@@ -140,7 +143,7 @@ def stage_braker3_inputs(
             "stage_braker3_inputs requires at least one local BRAKER3 evidence input: rnaseq_bam_path or protein_fasta_path."
         )
 
-    out_dir = Path(tempfile.mkdtemp(prefix="braker3_stage_")) / "staged_inputs"
+    out_dir = project_mkdtemp("braker3_stage_") / "staged_inputs"
     genome_dir = out_dir / "genome"
     bam_dir = out_dir / "rnaseq_bam"
     protein_dir = out_dir / "protein_fasta"
@@ -203,7 +206,7 @@ def braker3_predict(
     rnaseq_bam = _single_staged_file(staged_dir, "rnaseq_bam", "Staged RNA-seq BAM directory")
     protein_fasta = _single_staged_file(staged_dir, "protein_fasta", "Staged protein FASTA directory")
 
-    out_dir = Path(tempfile.mkdtemp(prefix="braker3_run_")) / "braker3"
+    out_dir = project_mkdtemp("braker3_run_") / "braker3"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     cmd = [
@@ -262,7 +265,7 @@ def normalize_braker3_for_evm(
     run_dir = require_path(Path(braker_run.download_sync()), "BRAKER3 run directory")
     source_gff3 = _braker_gff3(run_dir)
 
-    out_dir = Path(tempfile.mkdtemp(prefix="braker3_normalized_")) / "normalized"
+    out_dir = project_mkdtemp("braker3_normalized_") / "normalized"
     out_dir.mkdir(parents=True, exist_ok=True)
     normalized_gff3_path = out_dir / "braker3.evm.gff3"
     source_fields = _gff3_source_names(source_gff3)
@@ -396,7 +399,7 @@ def collect_braker3_results(
             tool_name="BRAKER3",
             tool_stage="ab initio annotation",
             legacy_asset_name="Braker3ResultBundle",
-            source_manifest_key="braker3_result_bundle",
+            source_manifest_key="ab_initio_result_bundle",
         ),
     )
 

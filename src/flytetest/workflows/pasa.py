@@ -1,5 +1,7 @@
 """PASA workflow entrypoints for FLyteTest.
 
+The workflow composition follows `docs/braker3_evm_notes.md`, while the PASA
+task boundaries and command expectations follow `docs/tool_refs/pasa.md`.
 This module runs PASA align/assemble from the internally collected transcript
 bundle and adds post-EVM PASA annotation refinement with explicit update
 rounds.
@@ -46,7 +48,7 @@ def pasa_transcript_alignment(
     pasa_aligners: str = "blat,gmap,minimap2",
     pasa_db_name: str = "pasa.sqlite",
 ) -> Dir:
-    """Run PASA align/assemble from the collected transcript-evidence bundle."""
+    """Run the PASA align/assemble workflow boundary described in `docs/tool_refs/pasa.md`."""
     transcript_evidence_path = require_path(
         Path(transcript_evidence_results.download_sync()),
         "Transcript evidence results directory",
@@ -129,10 +131,10 @@ def annotation_refinement_pasa(
     pasa_sif: str = "",
     pasa_update_cpu: int = 8,
 ) -> Dir:
-    """Run the note-backed PASA post-EVM annotation-refinement rounds."""
+    """Run the PASA post-EVM refinement boundary described in `docs/tool_refs/pasa.md`."""
     if pasa_update_rounds < 2:
         raise ValueError(
-            "annotation_refinement_pasa requires at least two PASA update rounds to match the notes-backed milestone contract."
+            "annotation_refinement_pasa requires at least two PASA update rounds to match the current PASA refinement contract."
         )
 
     staged_inputs = prepare_pasa_update_inputs(

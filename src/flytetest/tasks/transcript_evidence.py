@@ -1,15 +1,19 @@
 """Transcript-evidence task implementations for FLyteTest.
 
-This module stages the current notes-ordered transcript branch upstream of
-PASA: single-sample de novo Trinity, STAR alignment, one-BAM merge,
-genome-guided Trinity, note-aligned StringTie, and manifest-bearing collection.
+Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
+input/output expectations follow the tool references under `docs/tool_refs/`
+(notably `trinity.md`, `star.md`, `samtools.md`, and `stringtie.md`).
+See those refs for the task-level command context that matches this module.
+
+This module stages the current transcript-evidence branch upstream of PASA:
+single-sample de novo Trinity, STAR alignment, one-BAM merge, genome-guided
+Trinity, StringTie, and manifest-bearing collection.
 """
 
 from __future__ import annotations
 
 import json
 import shutil
-import tempfile
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -21,6 +25,7 @@ from flytetest.config import (
     RESULTS_ROOT,
     TRANSCRIPT_EVIDENCE_RESULTS_PREFIX,
     TRANSCRIPT_EVIDENCE_WORKFLOW_NAME,
+    project_mkdtemp,
     require_path,
     run_tool,
     transcript_evidence_env,
@@ -153,7 +158,7 @@ def trinity_denovo_assemble(
     """
     left_path = require_path(Path(left.download_sync()), "Read 1 FASTQ")
     right_path = require_path(Path(right.download_sync()), "Read 2 FASTQ")
-    out_dir = Path(tempfile.mkdtemp(prefix=f"trinity_denovo_{sample_id}_")) / "trinity_denovo"
+    out_dir = project_mkdtemp(f"trinity_denovo_{sample_id}_") / "trinity_denovo"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     run_tool(
@@ -186,7 +191,7 @@ def star_genome_index(
 ) -> Dir:
     """Build a STAR genome index from the reference genome FASTA."""
     genome_path = require_path(Path(genome.download_sync()), "Reference genome FASTA")
-    out_dir = Path(tempfile.mkdtemp(prefix="star_index_")) / "index"
+    out_dir = project_mkdtemp("star_index_") / "index"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     run_tool(
@@ -220,7 +225,7 @@ def star_align_sample(
     index_path = require_path(Path(index.download_sync()), "STAR index directory")
     left_path = require_path(Path(left.download_sync()), "Read 1 FASTQ")
     right_path = require_path(Path(right.download_sync()), "Read 2 FASTQ")
-    out_dir = Path(tempfile.mkdtemp(prefix=f"star_align_{sample_id}_")) / "alignment"
+    out_dir = project_mkdtemp(f"star_align_{sample_id}_") / "alignment"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     cmd = [
@@ -263,7 +268,7 @@ def samtools_merge_bams(
     ]
     input_bams = [_star_sorted_bam(alignment_path) for alignment_path in alignment_paths]
 
-    out_dir = Path(tempfile.mkdtemp(prefix="merged_bam_"))
+    out_dir = project_mkdtemp("merged_bam_")
     out_dir.mkdir(parents=True, exist_ok=True)
     merged_bam = out_dir / "merged.bam"
 
@@ -285,7 +290,7 @@ def trinity_genome_guided_assemble(
 ) -> Dir:
     """Run genome-guided Trinity from the merged RNA-seq BAM."""
     merged_bam_path = require_path(Path(merged_bam.download_sync()), "Merged BAM")
-    out_dir = Path(tempfile.mkdtemp(prefix="trinity_gg_")) / "trinity_gg"
+    out_dir = project_mkdtemp("trinity_gg_") / "trinity_gg"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     run_tool(
@@ -316,11 +321,13 @@ def stringtie_assemble(
 ) -> Dir:
     """Run StringTie transcript assembly from the merged RNA-seq BAM.
 
-    The attached notes show fixed `-l STRG -f 0.10 -c 3 -j 3` settings, so
-    this task keeps those flags explicit instead of silently simplifying them.
+    The command contract for this stage is captured in
+    `docs/tool_refs/stringtie.md`. This implementation uses a fixed,
+    deterministic flag set for the current milestone and records it in the
+    result manifest.
     """
     merged_bam_path = require_path(Path(merged_bam.download_sync()), "Merged BAM")
-    out_dir = Path(tempfile.mkdtemp(prefix="stringtie_")) / "stringtie"
+    out_dir = project_mkdtemp("stringtie_") / "stringtie"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     run_tool(
@@ -428,7 +435,7 @@ def collect_transcript_evidence_results(
             tool_name="STAR",
             tool_stage="RNA-seq genome alignment",
             legacy_asset_name="StarAlignmentResult",
-            source_manifest_key="star_alignment",
+            source_manifest_key="rna_seq_alignment",
         ),
     )
     merged_bam_asset = MergedBamAsset(
@@ -455,7 +462,7 @@ def collect_transcript_evidence_results(
         gene_abundance_path=_stringtie_abundance(copied_stringtie_dir),
         source_bam=merged_bam_asset,
         notes=(
-            "StringTie runs with the note-backed fixed flags -l STRG -f 0.10 -c 3 -j 3 plus -A and the requested thread count.",
+            "StringTie runs with the fixed flag set -l STRG -f 0.10 -c 3 -j 3 plus -A and the requested thread count.",
         ),
     )
 
@@ -465,14 +472,14 @@ def collect_transcript_evidence_results(
         "notes_alignment": {
             "status": "implemented_with_documented_simplifications",
             "pasa_ready": True,
-            "reason": "This bundle now contains both Trinity branches required upstream of PASA, while STAR alignment and BAM merge remain simplified to one paired-end sample instead of the notes-backed all-sample path.",
+            "reason": "This bundle now contains both Trinity branches required upstream of PASA, while STAR alignment and BAM merge remain simplified to one paired-end sample instead of the full all-sample path.",
         },
         "assumptions": [
-            "This workflow preserves the notes-backed stage order upstream of PASA by running de novo Trinity before STAR alignment, BAM merge, genome-guided Trinity, and StringTie.",
+            "This workflow preserves the upstream stage order from the biological notes by running de novo Trinity before STAR alignment, BAM merge, genome-guided Trinity, and StringTie.",
             "The notes show de novo Trinity with --samples_file across RNA-seq inputs; this workflow currently keeps the repo's single-sample shape and uses Trinity --left/--right for one paired-end read set.",
             "The notes describe aligning all RNA-seq samples with STAR and then merging all BAMs; this workflow currently aligns one paired-end sample and merges only that sample's BAM.",
             "The workflow always builds a fresh STAR genome index rather than reusing a prebuilt one.",
-            "StringTie is run with the note-backed fixed flags -l STRG -f 0.10 -c 3 -j 3 in addition to -A and the requested thread count.",
+            "StringTie is run with the fixed flags -l STRG -f 0.10 -c 3 -j 3 in addition to -A and the requested thread count.",
             "When both read inputs end in .gz, STAR is run with --readFilesCommand zcat.",
             "De novo and genome-guided Trinity FASTA resolution are both based on common Trinity output filenames inside their respective task output directories.",
         ],

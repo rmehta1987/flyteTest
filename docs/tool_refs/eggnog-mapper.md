@@ -4,6 +4,16 @@
 
 Assign functional annotations, orthology-informed names, and related annotation metadata.
 
+## Input Data
+
+- predicted proteins or other supported sequence inputs
+- a locally staged EggNOG database directory and runtime configuration
+
+## Output Data
+
+- functional annotation tables
+- name or function mappings that can be propagated into GFF3 features
+
 ## Official Documentation
 
 - upstream project README: [github.com/eggnogdb/eggnog-mapper](https://github.com/eggnogdb/eggnog-mapper)
@@ -15,6 +25,11 @@ Assign functional annotations, orthology-informed names, and related annotation 
 - GTN tutorial: [Functional annotation of protein sequences](https://training.galaxyproject.org/training-material/topics/genome-annotation/tutorials/functional/tutorial.html)
 - GTN workflow page: [Functional annotation](https://training.galaxyproject.org/training-material/topics/genome-annotation/tutorials/functional/workflows/functional.html)
 - the GTN material is the clearest hands-on reference for the common EggNOG-mapper protein annotation flow
+
+## Code Reference
+
+- [`src/flytetest/tasks/eggnog.py`](src/flytetest/tasks/eggnog.py)
+- that module implements the repeat-filtered protein boundary, `tx2gene` bridge derivation, EggNOG invocation, and annotated GFF3 collection
 
 ## Key Inputs
 
@@ -33,9 +48,10 @@ Assign functional annotations, orthology-informed names, and related annotation 
 ## Native Command Context
 
 - the upstream CLI centers on `emapper.py`
-- a common native pattern is `emapper.py -i <proteins.faa> --cpu <N> -o <prefix>`
+- FLyteTest’s current run shape is `emapper.py -i <proteins.faa> -o <prefix> -m hmmer -d Diptera --cpu <N> --decorate_gff --report_orthologs --excel`
 - the GTN tutorial also shows nucleotide-derived input with `emapper.py -m diamond --itype CDS -i <cDNA.fasta> -o <prefix> --cpu <N>`
 - database download and staging stay separate from the annotation run in the upstream project
+- the repo stages a deterministic `tx2gene.tsv`, propagates gene-name labels into GFF3, and records the decorated outputs explicitly
 
 ## Apptainer Command Context
 

@@ -4,6 +4,20 @@
 
 Use the funannotate repeat-cleanup helpers described in the notes to identify overlap-based repeat models and repeat-blast hits that should be removed from the current annotation.
 
+## Input Data
+
+- current annotation GFF3
+- current protein FASTA, typically with periods already removed
+- RepeatMasker BED for overlap filtering
+- local funannotate database root for repeat blasting
+
+## Output Data
+
+- clean GFF3 from the overlap-filter stage
+- overlap-removal list such as `genome.repeats.to.remove.gff` or `.gff3`
+- `repeat.dmnd.blast.txt`
+- final repeat-filtered GFF3 after deterministic removal transforms
+
 ## Key Inputs
 
 - current annotation GFF3
@@ -31,6 +45,11 @@ Use the funannotate repeat-cleanup helpers described in the notes to identify ov
 
 - GTN Funannotate tutorial: https://training.galaxyproject.org/training-material/topics/genome-annotation/tutorials/funannotate/tutorial.html
 - the repo-local notes remain the concrete source for the `RemoveBadModels` and `RepeatBlast` wrapper usage in this milestone
+
+## Code Reference
+
+- [`src/flytetest/tasks/filtering.py`](src/flytetest/tasks/filtering.py)
+- that module implements the funannotate overlap-filtering and repeat-blast boundaries plus the deterministic cleanup follow-up
 
 ## Native Command Context
 

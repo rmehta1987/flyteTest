@@ -4,6 +4,16 @@
 
 Assemble transcripts and summarize transcript abundance from genome-aligned RNA-seq data.
 
+## Input Data
+
+- coordinate-sorted RNA-seq BAM files
+- reference genome and optional annotation context
+
+## Output Data
+
+- assembled transcript GTF
+- abundance tables and summary files
+
 ## Key Inputs
 
 - coordinate-sorted RNA-seq BAM files
@@ -28,6 +38,11 @@ Assemble transcripts and summarize transcript abundance from genome-aligned RNA-
 
 - [GTN StringTie tool page](https://training.galaxyproject.org/training-material/by-tool/iuc/stringtie/stringtie.html)
 - [GTN: De novo transcriptome reconstruction with RNA-Seq](https://training.galaxyproject.org/training-material/topics/transcriptomics/tutorials/de-novo/tutorial.html)
+
+## Code Reference
+
+- [`src/flytetest/tasks/transcript_evidence.py`](src/flytetest/tasks/transcript_evidence.py)
+- that module implements the current StringTie assembly boundary and its `transcripts.gtf` / abundance outputs
 
 ## Native Command Context
 

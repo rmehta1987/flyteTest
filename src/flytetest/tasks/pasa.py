@@ -1,5 +1,7 @@
 """PASA task implementations for FLyteTest transcript and post-EVM refinement.
 
+The stage order follows `docs/braker3_evm_notes.md`, while the PASA command
+shapes and input/output expectations follow `docs/tool_refs/pasa.md`.
 This module covers PASA transcript preparation and align/assemble using the
 internally collected Trinity transcript branch, plus downstream post-EVM PASA
 update rounds.
@@ -10,7 +12,6 @@ from __future__ import annotations
 import json
 import shutil
 import sqlite3
-import tempfile
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -26,6 +27,7 @@ from flytetest.config import (
     RESULTS_ROOT,
     pasa_env,
     pasa_update_env,
+    project_mkdtemp,
     require_path,
     run_tool,
 )
@@ -209,7 +211,7 @@ def pasa_accession_extract(
 ) -> File:
     """Extract PASA TDN accessions from the de novo Trinity FASTA."""
     denovo_path = require_path(Path(denovo_trinity_fasta.download_sync()), "De novo Trinity FASTA")
-    out_dir = Path(tempfile.mkdtemp(prefix="pasa_accs_"))
+    out_dir = project_mkdtemp("pasa_accs_")
     out_dir.mkdir(parents=True, exist_ok=True)
     accession_path = out_dir / "tdn.accs"
 
@@ -230,7 +232,7 @@ def combine_trinity_fastas(
     gg_path = require_path(Path(genome_guided_trinity_fasta.download_sync()), "Genome-guided Trinity FASTA")
     denovo_path = require_path(Path(denovo_trinity_fasta.download_sync()), "De novo Trinity FASTA")
 
-    out_dir = Path(tempfile.mkdtemp(prefix="pasa_combined_"))
+    out_dir = project_mkdtemp("pasa_combined_")
     out_dir.mkdir(parents=True, exist_ok=True)
     combined_path = out_dir / "trinity_transcripts.fa"
 
@@ -254,7 +256,7 @@ def pasa_seqclean(
     transcripts_path = require_path(Path(transcripts.download_sync()), "Combined Trinity transcript FASTA")
     univec_path = require_path(Path(univec_fasta.download_sync()), "UniVec FASTA")
 
-    out_dir = Path(tempfile.mkdtemp(prefix="pasa_seqclean_")) / "seqclean"
+    out_dir = project_mkdtemp("pasa_seqclean_") / "seqclean"
     out_dir.mkdir(parents=True, exist_ok=True)
     staged_transcripts = out_dir / transcripts_path.name
     shutil.copy2(transcripts_path, staged_transcripts)
@@ -282,7 +284,7 @@ def pasa_create_sqlite_db(
 ) -> Dir:
     """Create a SQLite-backed PASA config directory from a user template."""
     template_path = require_path(Path(pasa_config_template.download_sync()), "PASA align/assemble template config")
-    out_dir = Path(tempfile.mkdtemp(prefix="pasa_config_")) / "config"
+    out_dir = project_mkdtemp("pasa_config_") / "config"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     database_path = out_dir / pasa_db_name
@@ -325,7 +327,7 @@ def pasa_align_assemble(
     pasa_cpu: int = 4,
     pasa_max_intron_length: int = 100000,
 ) -> Dir:
-    """Run PASA align-and-assemble with required de novo and genome-guided Trinity evidence."""
+    """Run the PASA align/assemble command pattern described in `docs/tool_refs/pasa.md`."""
     genome_path = require_path(Path(genome.download_sync()), "Reference genome FASTA")
     cleaned_dir = require_path(Path(cleaned_transcripts.download_sync()), "seqclean output directory")
     clean_fasta_path = _seqclean_clean_fasta(cleaned_dir)
@@ -335,7 +337,7 @@ def pasa_align_assemble(
     config_path = _pasa_config_path(config_dir)
     accession_path = require_path(Path(tdn_accs.download_sync()), "PASA de novo accession list")
 
-    out_dir = Path(tempfile.mkdtemp(prefix="pasa_run_")) / "pasa"
+    out_dir = project_mkdtemp("pasa_run_") / "pasa"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     cmd = [
@@ -474,7 +476,7 @@ def collect_pasa_results(
             tool_name="PASA seqclean",
             tool_stage="transcript cleaning",
             legacy_asset_name="PasaCleanedTranscriptAsset",
-            source_manifest_key="pasa_cleaned_transcripts",
+            source_manifest_key="cleaned_transcript_dataset",
         ),
     )
     sqlite_database_path = _sqlite_db_path(copied_config_dir)
@@ -516,7 +518,7 @@ def collect_pasa_results(
         stringtie_gtf_path=stringtie_asset.transcript_gtf_path,
         database_config=database_asset,
         notes=(
-            "The PASA align/assemble invocation mirrors the flags shown in the attached notes for aligners, max intron length, ALT_SPLICE, create/run, -T, and stringent alignment overlap.",
+            "The PASA align/assemble invocation uses the fixed aligner, intron, ALT_SPLICE, create/run, -T, and alignment-overlap flag set expected by the PASA tool reference.",
         ),
     )
 
@@ -527,7 +529,7 @@ def collect_pasa_results(
         "notes_alignment": {
             "status": "implemented_with_documented_simplifications",
             "requires_external_denovo_trinity": False,
-            "reason": "PASA now consumes both internally produced Trinity branches from the transcript-evidence bundle, while that upstream bundle still keeps the notes-backed all-sample STAR/BAM path simplified to one paired-end sample.",
+            "reason": "PASA now consumes both internally produced Trinity branches from the transcript-evidence bundle, while that upstream bundle still keeps the full all-sample STAR/BAM path simplified to one paired-end sample.",
         },
         "assumptions": [
             "This workflow consumes the transcript_evidence_generation bundle, specifically trinity_denovo/, trinity_gg/, and stringtie/ outputs.",
@@ -838,7 +840,7 @@ def prepare_pasa_update_inputs(
     evm_sorted_gff3 = _evm_sorted_gff3_from_results(evm_results_dir, evm_manifest)
     genome_fasta = _evm_reference_genome_from_results(evm_results_dir)
 
-    out_dir = Path(tempfile.mkdtemp(prefix="pasa_update_inputs_")) / "pasa_update_inputs"
+    out_dir = project_mkdtemp("pasa_update_inputs_") / "pasa_update_inputs"
     config_dir = out_dir / "config"
     transcripts_dir = out_dir / "transcripts"
     reference_dir = out_dir / "reference"
@@ -943,7 +945,7 @@ def pasa_load_current_annotations(
     input_dir = require_path(Path(pasa_update_inputs.download_sync()), "PASA update input directory")
     input_manifest = _read_json(_manifest_path(input_dir, "PASA update inputs"))
 
-    out_dir = Path(tempfile.mkdtemp(prefix=f"pasa_load_round_{round_index:02d}_")) / "pasa_load"
+    out_dir = project_mkdtemp(f"pasa_load_round_{round_index:02d}_") / "pasa_load"
     _copy_tree(input_dir, out_dir)
 
     cmd = [
@@ -997,7 +999,7 @@ def pasa_update_gene_models(
     loaded_dir = require_path(Path(loaded_pasa_update.download_sync()), "Loaded PASA update directory")
     loaded_manifest = _read_json(_manifest_path(loaded_dir, "Loaded PASA update directory"))
 
-    out_dir = Path(tempfile.mkdtemp(prefix=f"pasa_update_round_{round_index:02d}_")) / "pasa_update"
+    out_dir = project_mkdtemp(f"pasa_update_round_{round_index:02d}_") / "pasa_update"
     _copy_tree(loaded_dir, out_dir)
 
     annotations_dir = out_dir / "annotations"
@@ -1115,7 +1117,7 @@ def finalize_pasa_update_outputs(
     round_dir = require_path(Path(pasa_update_round.download_sync()), "PASA update round directory")
     round_manifest = _read_json(_manifest_path(round_dir, "PASA update round directory"))
 
-    out_dir = Path(tempfile.mkdtemp(prefix="pasa_update_finalize_")) / "pasa_update_finalized"
+    out_dir = project_mkdtemp("pasa_update_finalize_") / "pasa_update_finalized"
     _copy_tree(round_dir, out_dir)
 
     raw_final_gff3 = _copy_file(

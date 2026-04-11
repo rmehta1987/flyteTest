@@ -15,6 +15,9 @@ export FLYTETEST_SLURM_MEMORY="${FLYTETEST_SLURM_MEMORY:-32Gi}"
 export FLYTETEST_SLURM_JOB_PREFIX="${FLYTETEST_SLURM_JOB_PREFIX:-pe}"
 export FLYTETEST_REPO_ROOT="$REPO_ROOT"
 export PYTHONPATH="$REPO_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
+mkdir -p "$REPO_ROOT/results/.tmp"
+export FLYTETEST_TMPDIR="${FLYTETEST_TMPDIR:-$REPO_ROOT/results/.tmp}"
+export TMPDIR="$FLYTETEST_TMPDIR"
 
 if [[ -z "${EXONERATE_SIF:-}" && -f "$REPO_ROOT/data/images/exonerate_2.2.0--1.sif" ]]; then
   export EXONERATE_SIF="$REPO_ROOT/data/images/exonerate_2.2.0--1.sif"

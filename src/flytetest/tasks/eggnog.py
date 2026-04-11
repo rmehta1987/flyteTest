@@ -4,6 +4,9 @@ This module runs EggNOG-mapper on the repeat-filtered protein boundary,
 derives a deterministic `tx2gene` bridge from the repeat-filtered GFF3, and
 propagates the resulting annotations into a reviewable GFF3 bundle without
 broadenings into AGAT or submission-prep work.
+
+Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
+input/output expectations follow `docs/tool_refs/eggnog-mapper.md`.
 """
 
 from __future__ import annotations
@@ -11,7 +14,6 @@ from __future__ import annotations
 import csv
 import json
 import shutil
-import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -23,6 +25,7 @@ from flytetest.config import (
     EGGNOG_WORKFLOW_NAME,
     RESULTS_ROOT,
     eggnog_env,
+    project_mkdtemp,
     require_path,
     run_tool,
 )
@@ -328,7 +331,7 @@ def eggnog_map(
     proteins_fasta = _repeat_filter_final_proteins(repeat_filter_dir)
     repeat_filter_gff3 = _repeat_filter_final_gff3(repeat_filter_dir)
 
-    work_dir = Path(tempfile.mkdtemp(prefix="eggnog_run_")) / "eggnog"
+    work_dir = project_mkdtemp("eggnog_run_") / "eggnog"
     work_dir.mkdir(parents=True, exist_ok=True)
 
     source_boundary_dir = work_dir / "source_boundary"

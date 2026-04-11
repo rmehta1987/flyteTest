@@ -1,5 +1,10 @@
-Use this prompt when handing the Milestone 17 generic asset adoption slice off
-to another Codex session or when starting the next implementation pass.
+Historical note: Milestone 17 landed on 2026-04-10 with generic provenance-key
+adoption in current manifest emitters, generic-first planner-adapter loading,
+and legacy BRAKER manifest replay coverage.
+
+Use this prompt only when reviewing or repairing the Milestone 17
+generic-asset-adoption slice. For new work, start from the next unchecked
+milestone in `docs/realtime_refactor_checklist.md`.
 
 ```text
 You are continuing the FLyteTest `realtime` architecture refactor under the rules in:

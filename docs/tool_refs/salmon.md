@@ -4,6 +4,18 @@
 
 Build transcriptome indices and quantify transcript abundance from RNA-seq reads.
 
+## Input Data
+
+- transcriptome FASTA for indexing
+- paired-end or single-end read files for quantification
+- library type settings
+
+## Output Data
+
+- Salmon index directory
+- `quant.sf`
+- run metadata such as `cmd_info.json`, logs, and auxiliary files
+
 ## Key Inputs
 
 - transcriptome FASTA for indexing
@@ -33,6 +45,11 @@ Build transcriptome indices and quantify transcript abundance from RNA-seq reads
 
 - [GTN Reference-based RNA-Seq data analysis](https://training.galaxyproject.org/training-material/topics/transcriptomics/tutorials/ref-based/tutorial.html)
 - [GTN QC + Mapping + Counting workflow](https://training.galaxyproject.org/training-material/topics/transcriptomics/tutorials/ref-based/workflows/qc-mapping-counting-paired-and-single.html)
+
+## Code Reference
+
+- [`src/flytetest/tasks/quant.py`](src/flytetest/tasks/quant.py)
+- that module implements the Salmon index, quantification, and manifest collection boundaries
 
 ## Native Command Context
 

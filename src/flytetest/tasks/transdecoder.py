@@ -1,14 +1,16 @@
 """TransDecoder task implementations for FLyteTest.
 
-This module covers the current PASA-derived coding-prediction boundary and the
-stable result collection used before later annotation stages.
+The stage order follows `docs/braker3_evm_notes.md`, while the TransDecoder
+command shapes and input/output expectations follow
+`docs/tool_refs/transdecoder.md`. This module covers the current
+PASA-derived coding-prediction boundary and the stable result collection used
+before later annotation stages.
 """
 
 from __future__ import annotations
 
 import json
 import shutil
-import tempfile
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -20,6 +22,7 @@ from flytetest.config import (
     RESULTS_ROOT,
     TRANSDECODER_RESULTS_PREFIX,
     TRANSDECODER_WORKFLOW_NAME,
+    project_mkdtemp,
     require_path,
     run_tool,
     transdecoder_env,
@@ -101,11 +104,11 @@ def transdecoder_train_from_pasa(
     transdecoder_min_protein_length: int = 100,
     transdecoder_genome_orf_script: str = "cdna_alignment_orf_to_genome_orf.pl",
 ) -> Dir:
-    """Run the current TransDecoder training and prediction boundary from PASA outputs."""
+    """Run the TransDecoder phase sequence described in `docs/tool_refs/transdecoder.md`."""
     fasta_path = require_path(Path(pasa_assemblies_fasta.download_sync()), "PASA assemblies FASTA")
     gff3_path = require_path(Path(pasa_assemblies_gff3.download_sync()), "PASA assemblies GFF3")
 
-    out_dir = Path(tempfile.mkdtemp(prefix="transdecoder_")) / "transdecoder"
+    out_dir = project_mkdtemp("transdecoder_") / "transdecoder"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     staged_fasta = out_dir / fasta_path.name

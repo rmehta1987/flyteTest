@@ -1,8 +1,12 @@
 """Transcript-evidence workflow entrypoint for FLyteTest.
 
-This module composes the current notes-ordered transcript branch upstream of
-PASA: de novo Trinity, STAR indexing and alignment, one-BAM merge,
-genome-guided Trinity, StringTie, and stable result collection.
+Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
+input/output expectations follow the tool references under `docs/tool_refs/`
+(notably `trinity.md`, `star.md`, `samtools.md`, and `stringtie.md`).
+
+This module composes the current transcript branch upstream of PASA: de novo
+Trinity, STAR indexing and alignment, one-BAM merge, genome-guided Trinity,
+StringTie, and stable result collection.
 """
 
 from __future__ import annotations

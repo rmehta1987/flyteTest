@@ -2,6 +2,9 @@
 
 This module keeps the post-BUSCO functional-annotation boundary explicit while
 preserving the deterministic local collector pattern used by the other stages.
+
+Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
+input/output expectations follow `docs/tool_refs/eggnog-mapper.md`.
 """
 
 from __future__ import annotations

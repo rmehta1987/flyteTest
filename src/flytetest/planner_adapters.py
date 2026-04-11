@@ -71,6 +71,19 @@ def _string_tuple(value: Any) -> tuple[str, ...]:
     return tuple(str(item) for item in value if str(item).strip())
 
 
+def _asset_entry(
+    assets: Mapping[str, Any],
+    primary_key: str,
+    *legacy_keys: str,
+) -> Mapping[str, Any] | None:
+    """Return one manifest asset payload, preferring the generic key first."""
+    for key in (primary_key, *legacy_keys):
+        value = assets.get(key)
+        if isinstance(value, Mapping):
+            return value
+    return None
+
+
 def reference_genome_from_asset(
     asset: AssetReferenceGenome,
     *,
@@ -356,8 +369,8 @@ def annotation_evidence_from_manifest(source: Path | Mapping[str, Any]) -> Annot
         reference_genome = _reference_from_manifest(manifest, result_dir=result_dir, manifest_path=manifest_path)
         provenance_notes = ()
         if isinstance(assets, Mapping):
-            ab_initio_bundle = assets.get("ab_initio_result_bundle")
-            if isinstance(ab_initio_bundle, Mapping):
+            ab_initio_bundle = _asset_entry(assets, "ab_initio_result_bundle", "braker3_result_bundle")
+            if ab_initio_bundle is not None:
                 provenance = ab_initio_bundle.get("provenance")
                 if isinstance(provenance, Mapping) and provenance.get("tool_name"):
                     provenance_notes = (

@@ -313,6 +313,8 @@ resolve_smoke_image() {
 }
 
 # Run a command inside the resolved image with the repo and scratch bind mounts.
+# Callers should set WORK_DIR to a repo-local project path, normally under
+# results/, so container /tmp never depends on host /tmp or node-local scratch.
 runtime_exec() {
   local image_path="$1"
   shift

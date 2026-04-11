@@ -108,6 +108,10 @@ Before considering a change complete, check that:
 - the relevant unit tests pass
 - fixture-backed tests cover the behavior when real tools are too heavy or too
   slow for everyday validation
+- smoke-test outputs and host scratch directories stay under the project tree,
+  preferably `results/`, rather than host `/tmp`; container-visible `/tmp`
+  should be a bind mount backed by a project-local directory when a tool expects
+  `/tmp`
 - when a new bioinformatics tool is introduced, look first for a small
   tutorial-backed dataset, mirrored fixture set, or similar ground-truth smoke
   test before expanding scope

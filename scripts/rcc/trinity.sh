@@ -10,8 +10,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 HOST_PROJECT_DIR="${HOST_PROJECT_DIR:-$REPO_ROOT}"
 # Container bind target for the checkout root.
 CONTAINER_PROJECT_DIR="${CONTAINER_PROJECT_DIR:-/workspace}"
-# Host scratch area for Trinity outputs and temp intermediates.
-WORK_DIR="${WORK_DIR:-$PWD/temp}"
+# Host project-local results area for Trinity outputs and scratch intermediates.
+WORK_DIR="${WORK_DIR:-$REPO_ROOT/results/rcc_trinity}"
 MODE="${MODE:-denovo}" # denovo | genome_guided
 
 # Trinity prefers the repo-local smoke image, then the shared RCC cluster image.

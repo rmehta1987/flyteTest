@@ -43,13 +43,20 @@ def _read_json(path: Path) -> dict[str, object]:
 def _fixed_datetime() -> type:
     """Return a deterministic timestamp provider for result-directory naming."""
 
+    # Keep the synthetic result-directory name stable for manifest assertions.
     class _Stamp:
+        """Fake datetime stamp that always returns the same test timestamp."""
+
         def strftime(self, fmt: str) -> str:
+            """Return the fixed timestamp string expected by the assertions."""
             return "20260402_130000"
 
     class _FixedDatetime:
+        """Shim object that mimics the subset of `datetime` used by the code."""
+
         @classmethod
         def now(cls) -> _Stamp:
+            """Return the fixed timestamp stub used by the synthetic tests."""
             return _Stamp()
 
     return _FixedDatetime
@@ -96,7 +103,7 @@ class TranscriptContractTests(TestCase):
             self.assertNotIn("--genome_guided_bam", cmd)
 
     def test_stringtie_assemble_uses_note_backed_flags(self) -> None:
-        """Keep the exposed StringTie command aligned with the attached notes."""
+        """Keep the exposed StringTie command aligned with the StringTie task reference."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             merged_bam = tmp_path / "merged.bam"
@@ -189,8 +196,14 @@ class TranscriptContractTests(TestCase):
             self.assertIn("de novo Trinity before STAR alignment", assumptions)
             self.assertIn("aligning all RNA-seq samples", assumptions)
             self.assertIn("Trinity --left/--right", assumptions)
-            self.assertIn("StringTie is run with the note-backed fixed flags", assumptions)
+            self.assertIn("StringTie is run with the fixed flags", assumptions)
             self.assertIn("trinity_denovo_fasta", manifest["outputs"])
+            self.assertIn("rna_seq_alignment", manifest["assets"])
+            self.assertIn("star_alignment", manifest["assets"])
+            self.assertEqual(
+                manifest["assets"]["rna_seq_alignment"]["provenance"]["source_manifest_key"],
+                "rna_seq_alignment",
+            )
 
     def test_pasa_transcript_alignment_uses_internal_denovo_trinity_from_bundle(self) -> None:
         """Resolve the de novo Trinity FASTA from the transcript bundle instead of an external path."""

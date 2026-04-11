@@ -564,8 +564,11 @@ Representative tools and tasks include PASA accession extraction, SeqClean,
 PASA alignment and assembly, and TransDecoder coding prediction from PASA
 assemblies.
 
-These stages should record assumptions about PASA configuration, local database
-setup, and runtime-specific dependencies.
+The stage order comes from `docs/braker3_evm_notes.md`, but the task-level
+command shapes and input/output expectations should come from the tool
+references in `docs/tool_refs/pasa.md` and `docs/tool_refs/transdecoder.md`.
+These stages should record assumptions about PASA configuration, local
+database setup, and runtime-specific dependencies.
 
 ### 5.3 Protein and Ab Initio Evidence
 

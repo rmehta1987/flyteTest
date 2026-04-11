@@ -24,12 +24,17 @@ from flytetest.planner_types import ConsensusAnnotation, QualityAssessmentTarget
 from flytetest.planning import plan_typed_request
 from flytetest.spec_artifacts import artifact_from_typed_plan, save_workflow_spec_artifact
 from flytetest.spec_executor import (
+    DEFAULT_SLURM_MAX_ATTEMPTS,
     DEFAULT_SLURM_RUN_RECORD_FILENAME,
     LocalNodeExecutionRequest,
     LocalWorkflowSpecExecutor,
+    SLURM_RUN_RECORD_SCHEMA_VERSION,
     SlurmWorkflowSpecExecutor,
+    classify_slurm_failure,
     load_slurm_run_record,
     parse_sbatch_job_id,
+    save_slurm_run_record,
+    SlurmRunRecord,
 )
 
 
@@ -405,6 +410,32 @@ class SpecExecutorTests(TestCase):
         """Recover the durable scheduler ID from sbatch output."""
         self.assertEqual(parse_sbatch_job_id("Submitted batch job 12345\n"), "12345")
 
+    def test_classify_slurm_failure_marks_node_fail_retryable(self) -> None:
+        """Treat scheduler infrastructure failures as conservatively retryable."""
+        record = SlurmRunRecord(
+            schema_version=SLURM_RUN_RECORD_SCHEMA_VERSION,
+            run_id="run-1",
+            recipe_id="recipe",
+            workflow_name="annotation_qc_busco",
+            artifact_path=Path("/tmp/recipe.json"),
+            script_path=Path("/tmp/submit_slurm.sh"),
+            stdout_path=Path("/tmp/slurm.out"),
+            stderr_path=Path("/tmp/slurm.err"),
+            run_record_path=Path("/tmp/slurm_run_record.json"),
+            job_id="12345",
+            execution_profile="slurm",
+            scheduler_state="NODE_FAIL",
+            final_scheduler_state="NODE_FAIL",
+            scheduler_exit_code="0:0",
+            scheduler_reason="Node failure detected by scheduler.",
+        )
+
+        classification = classify_slurm_failure(record)
+
+        self.assertEqual(classification.status, "retryable_failure")
+        self.assertTrue(classification.retryable)
+        self.assertEqual(classification.failure_class, "scheduler_infrastructure")
+
     def test_slurm_script_rendering_is_deterministic(self) -> None:
         """Render the same frozen recipe into the same Slurm script text."""
         with tempfile.TemporaryDirectory() as tmp:
@@ -438,6 +469,9 @@ class SpecExecutorTests(TestCase):
         self.assertIn("#SBATCH --mem=80G", first)
         self.assertIn("module load python/3.11.9", first)
         self.assertIn("module load apptainer/1.4.1", first)
+        self.assertIn("export FLYTETEST_TMPDIR=", first)
+        self.assertIn("export TMPDIR=", first)
+        self.assertIn("results/.tmp", first)
         self.assertIn("source", first)
         self.assertIn("run_local_recipe", first)
         self.assertIn(str(artifact_path), first)
@@ -479,6 +513,8 @@ class SpecExecutorTests(TestCase):
         self.assertEqual(record_payload["resource_spec"]["memory"], "80Gi")
         self.assertEqual(record_payload["resource_spec"]["account"], "rcc-staff")
         self.assertEqual(result.run_record.run_record_path.name, DEFAULT_SLURM_RUN_RECORD_FILENAME)
+        self.assertEqual(result.run_record.retry_policy.max_attempts, DEFAULT_SLURM_MAX_ATTEMPTS)
+        self.assertEqual(result.run_record.attempt_number, 1)
 
     def test_slurm_reconcile_updates_running_job_record(self) -> None:
         """Reconcile a submitted run record with live scheduler state."""
@@ -594,6 +630,128 @@ class SpecExecutorTests(TestCase):
         self.assertEqual(cancelled.run_record.scheduler_state, "cancellation_requested")
         self.assertEqual(cancelled.run_record.scheduler_state_source, "scancel")
         self.assertIsNotNone(reloaded.cancellation_requested_at)
+
+    def test_slurm_retry_resubmits_retryable_failure_with_linked_child_record(self) -> None:
+        """Retry a node-failure record by reusing the frozen saved recipe."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            artifact = _slurm_busco_artifact_with_runtime_bindings(tmp_path)
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+            job_ids = iter(("90001", "90002"))
+
+            def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                return subprocess.CompletedProcess(
+                    args=args,
+                    returncode=0,
+                    stdout=f"Submitted batch job {next(job_ids)}\n",
+                    stderr="",
+                )
+
+            executor = SlurmWorkflowSpecExecutor(
+                run_root=tmp_path / "runs",
+                repo_root=tmp_path,
+                sbatch_runner=fake_sbatch,
+                command_available=lambda command: True,
+            )
+            submitted = executor.submit(artifact_path)
+            failed_record = replace(
+                load_slurm_run_record(submitted.run_record.run_record_path),
+                scheduler_state="NODE_FAIL",
+                scheduler_state_source="sacct",
+                scheduler_exit_code="0:0",
+                scheduler_reason="Node failure detected by scheduler.",
+                final_scheduler_state="NODE_FAIL",
+                failure_classification=None,
+            )
+            save_slurm_run_record(failed_record)
+
+            retried = executor.retry(failed_record.run_record_path)
+            updated_source = load_slurm_run_record(failed_record.run_record_path)
+            child_record = load_slurm_run_record(retried.retry_execution.run_record.run_record_path)
+
+        self.assertTrue(retried.supported)
+        self.assertEqual(retried.failure_classification.status, "retryable_failure")
+        self.assertEqual(updated_source.retry_child_run_record_paths, (child_record.run_record_path,))
+        self.assertEqual(child_record.attempt_number, 2)
+        self.assertEqual(child_record.retry_parent_run_id, updated_source.run_id)
+        self.assertEqual(child_record.retry_parent_run_record_path, updated_source.run_record_path)
+        self.assertEqual(child_record.lineage_root_run_id, updated_source.run_id)
+        self.assertEqual(child_record.lineage_root_run_record_path, updated_source.run_record_path)
+        self.assertEqual(child_record.retry_policy.max_attempts, DEFAULT_SLURM_MAX_ATTEMPTS)
+        self.assertEqual(child_record.execution_profile, "slurm")
+        self.assertEqual(child_record.artifact_path, updated_source.artifact_path)
+
+    def test_slurm_retry_enforces_attempt_limit(self) -> None:
+        """Decline manual retries once the explicit attempt limit is reached."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            artifact = _slurm_busco_artifact_with_runtime_bindings(tmp_path)
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+
+            def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 90100\n", stderr="")
+
+            executor = SlurmWorkflowSpecExecutor(
+                run_root=tmp_path / "runs",
+                repo_root=tmp_path,
+                sbatch_runner=fake_sbatch,
+                command_available=lambda command: True,
+            )
+            submitted = executor.submit(artifact_path)
+            limited_record = replace(
+                load_slurm_run_record(submitted.run_record.run_record_path),
+                scheduler_state="NODE_FAIL",
+                scheduler_exit_code="0:0",
+                scheduler_reason="Node failure detected by scheduler.",
+                final_scheduler_state="NODE_FAIL",
+                attempt_number=DEFAULT_SLURM_MAX_ATTEMPTS,
+                failure_classification=None,
+            )
+            save_slurm_run_record(limited_record)
+
+            retried = executor.retry(limited_record.run_record_path)
+
+        self.assertFalse(retried.supported)
+        self.assertIn(f"attempt {DEFAULT_SLURM_MAX_ATTEMPTS}", retried.limitations[0])
+
+    def test_slurm_retry_declines_stale_parent_record_after_child_exists(self) -> None:
+        """Refuse to branch from the same failed parent record twice."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            artifact = _slurm_busco_artifact_with_runtime_bindings(tmp_path)
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+            job_ids = iter(("90201", "90202"))
+
+            def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                return subprocess.CompletedProcess(
+                    args=args,
+                    returncode=0,
+                    stdout=f"Submitted batch job {next(job_ids)}\n",
+                    stderr="",
+                )
+
+            executor = SlurmWorkflowSpecExecutor(
+                run_root=tmp_path / "runs",
+                repo_root=tmp_path,
+                sbatch_runner=fake_sbatch,
+                command_available=lambda command: True,
+            )
+            submitted = executor.submit(artifact_path)
+            failed_record = replace(
+                load_slurm_run_record(submitted.run_record.run_record_path),
+                scheduler_state="NODE_FAIL",
+                scheduler_exit_code="0:0",
+                scheduler_reason="Node failure detected by scheduler.",
+                final_scheduler_state="NODE_FAIL",
+                failure_classification=None,
+            )
+            save_slurm_run_record(failed_record)
+            first_retry = executor.retry(failed_record.run_record_path)
+            second_retry = executor.retry(failed_record.run_record_path)
+
+        self.assertTrue(first_retry.supported)
+        self.assertFalse(second_retry.supported)
+        self.assertIn("stale parent", second_retry.limitations[0])
 
     def test_slurm_reconcile_reports_missing_record_without_guessing(self) -> None:
         """Decline status checks when the filesystem record is missing."""

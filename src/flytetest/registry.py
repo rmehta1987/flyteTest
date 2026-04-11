@@ -175,7 +175,7 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
     RegistryEntry(
         name="stringtie_assemble",
         category="task",
-        description="Run StringTie transcript assembly from a merged RNA-seq BAM with the note-backed fixed flags `-l STRG -f 0.10 -c 3 -j 3`.",
+        description="Run StringTie transcript assembly from a merged RNA-seq BAM with the fixed flags `-l STRG -f 0.10 -c 3 -j 3`.",
         inputs=(
             InterfaceField("merged_bam", "File", "Merged BAM input for StringTie."),
             InterfaceField(
@@ -218,7 +218,7 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
     RegistryEntry(
         name="pasa_accession_extract",
         category="task",
-        description="Extract de novo Trinity transcript accessions for PASA TDN input.",
+        description="Extract PASA TDN accessions from the de novo Trinity FASTA for PASA align/assemble input.",
         inputs=(
             InterfaceField("denovo_trinity_fasta", "File", "De novo Trinity transcript FASTA."),
             InterfaceField("pasa_sif", "str", "Optional Apptainer/Singularity image path for PASA tools."),
@@ -231,7 +231,7 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
     RegistryEntry(
         name="combine_trinity_fastas",
         category="task",
-        description="Concatenate de novo and genome-guided Trinity transcript FASTAs for PASA transcript input in the notes-backed order.",
+        description="Concatenate de novo and genome-guided Trinity transcript FASTAs into the PASA input order.",
         inputs=(
             InterfaceField("genome_guided_trinity_fasta", "File", "Genome-guided Trinity transcript FASTA."),
             InterfaceField("denovo_trinity_fasta", "File", "De novo Trinity transcript FASTA."),
@@ -276,7 +276,7 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
     RegistryEntry(
         name="pasa_align_assemble",
         category="task",
-        description="Run PASA Launch_PASA_pipeline.pl for transcript alignment and assembly using de novo Trinity, Trinity-GG, and StringTie evidence.",
+        description="Run the PASA align/assemble command boundary with de novo Trinity, Trinity-GG, and StringTie evidence.",
         inputs=(
             InterfaceField("genome", "File", "Reference genome FASTA."),
             InterfaceField("cleaned_transcripts", "Dir", "seqclean output directory containing the cleaned Trinity transcript FASTA."),
@@ -285,7 +285,7 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
             InterfaceField("pasa_config", "Dir", "Directory containing the PASA config and SQLite database."),
             InterfaceField("tdn_accs", "File", "PASA de novo Trinity accession list."),
             InterfaceField("pasa_sif", "str", "Optional Apptainer/Singularity image path for PASA tools."),
-            InterfaceField("pasa_aligners", "str", "Comma-separated PASA aligner list, following the attached notes."),
+            InterfaceField("pasa_aligners", "str", "Comma-separated PASA aligner list, following the PASA tool reference."),
             InterfaceField("pasa_cpu", "int", "CPU count passed to Launch_PASA_pipeline.pl."),
             InterfaceField("pasa_max_intron_length", "int", "Maximum intron length passed to PASA."),
         ),
@@ -297,7 +297,7 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
     RegistryEntry(
         name="collect_pasa_results",
         category="task",
-        description="Collect PASA preparation and align/assemble outputs into a structured results directory with a manifest that records the internally produced Trinity inputs plus remaining upstream simplifications.",
+        description="Collect PASA preparation and align/assemble outputs into a structured results directory with a manifest.",
         inputs=(
             InterfaceField("genome", "File", "Reference genome FASTA."),
             InterfaceField("transcript_evidence_results", "Dir", "Transcript evidence results directory used as PASA source input."),
@@ -779,7 +779,7 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
             InterfaceField(
                 "lineage_dataset",
                 "str",
-                "BUSCO lineage dataset identifier or local lineage path passed with `-l`.",
+                "BUSCO lineage dataset identifier or local lineage path passed with `-l`; use `auto-lineage` to omit `-l` for fixture smoke runs.",
             ),
             InterfaceField(
                 "busco_sif",
@@ -936,7 +936,7 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
     RegistryEntry(
         name="agat_cleanup_gff3",
         category="task",
-        description="Apply the notes-backed post-AGAT GFF3 attribute cleanup to an AGAT conversion bundle and collect the cleaned GFF3 into a manifest-bearing results directory.",
+        description="Apply the deterministic post-AGAT GFF3 attribute cleanup to an AGAT conversion bundle and collect the cleaned GFF3 into a manifest-bearing results directory.",
         inputs=(
             InterfaceField(
                 "agat_conversion_results",
@@ -956,7 +956,7 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
     RegistryEntry(
         name="transdecoder_train_from_pasa",
         category="task",
-        description="Run TransDecoder coding-region prediction from PASA assemblies and lift ORFs onto genome coordinates for downstream annotation.",
+        description="Run the TransDecoder LongOrfs/Predict phase sequence from PASA assemblies and lift ORFs onto genome coordinates.",
         inputs=(
             InterfaceField("pasa_assemblies_fasta", "File", "PASA assemblies FASTA generated from the PASA align/assemble stage."),
             InterfaceField("pasa_assemblies_gff3", "File", "PASA assemblies GFF3 used to project TransDecoder ORFs onto genome coordinates."),
@@ -1651,7 +1651,7 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
     RegistryEntry(
         name="transcript_evidence_generation",
         category="workflow",
-        description="Single-sample transcript-evidence workflow composed from de novo Trinity, STAR indexing/alignment, one-BAM merge, genome-guided Trinity, and note-aligned StringTie; it now produces both Trinity branches required upstream of PASA while keeping the notes-backed all-sample merge contract as a documented simplification.",
+        description="Single-sample transcript-evidence workflow composed from de novo Trinity, STAR indexing/alignment, one-BAM merge, genome-guided Trinity, and StringTie; it now produces both Trinity branches required upstream of PASA while keeping the all-sample merge contract as a documented simplification.",
         inputs=(
             InterfaceField("genome", "File", "Reference genome FASTA."),
             InterfaceField("left", "File", "Read 1 FASTQ input."),
@@ -1683,7 +1683,7 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
     RegistryEntry(
         name="pasa_transcript_alignment",
         category="workflow",
-        description="PASA transcript preparation and align/assemble workflow consuming the transcript-evidence bundle's internally produced de novo Trinity, Trinity-GG, and StringTie outputs.",
+        description="PASA transcript preparation and align/assemble workflow built from the PASA tool reference and the transcript-evidence bundle's de novo Trinity, Trinity-GG, and StringTie outputs.",
         inputs=(
             InterfaceField("genome", "File", "Reference genome FASTA."),
             InterfaceField(
@@ -1716,7 +1716,7 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
     RegistryEntry(
         name="annotation_refinement_pasa",
         category="workflow",
-        description="PASA post-EVM annotation-refinement workflow that consumes the existing PASA and EVM bundles, stages update inputs, runs explicit load-and-update rounds, finalizes the last-round GFF3, and collects a manifest-bearing results bundle.",
+        description="PASA post-EVM annotation-refinement workflow built from the PASA tool reference, explicit update rounds, and the existing PASA and EVM bundles.",
         inputs=(
             InterfaceField(
                 "pasa_results",
@@ -1756,7 +1756,7 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
             InterfaceField(
                 "pasa_update_rounds",
                 "int",
-                "Number of PASA post-EVM update rounds to run; must be at least 2 because the notes-backed milestone requires two or more update rounds.",
+                "Number of PASA post-EVM update rounds to run; must be at least 2 to match the current PASA refinement contract.",
             ),
             InterfaceField(
                 "pasa_sif",
@@ -1856,7 +1856,7 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
             InterfaceField(
                 "busco_lineages_text",
                 "str",
-                "Comma-separated BUSCO lineage list. The workflow defaults to the note-backed eukaryota, metazoa, insecta, arthropoda, and diptera lineages.",
+                "Comma-separated BUSCO lineage list. The workflow currently defaults to the eukaryota, metazoa, insecta, arthropoda, and diptera lineages.",
             ),
             InterfaceField(
                 "busco_sif",
@@ -1964,7 +1964,7 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
     RegistryEntry(
         name="annotation_postprocess_agat_cleanup",
         category="workflow",
-        description="AGAT cleanup workflow that consumes the AGAT conversion bundle and collects the notes-backed cleaned GFF3 slice without running table2asn.",
+        description="AGAT cleanup workflow that consumes the AGAT conversion bundle and collects the deterministic cleaned GFF3 slice without running table2asn.",
         inputs=(
             InterfaceField(
                 "agat_conversion_results",
@@ -1984,7 +1984,7 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
     RegistryEntry(
         name="transdecoder_from_pasa",
         category="workflow",
-        description="TransDecoder coding-prediction workflow consuming the PASA results bundle and producing transcript-level and genome-level ORF evidence.",
+        description="TransDecoder coding-prediction workflow built from the PASA results bundle and the TransDecoder tool reference.",
         inputs=(
             InterfaceField(
                 "pasa_results",
@@ -2248,7 +2248,7 @@ _WORKFLOW_COMPATIBILITY_METADATA: dict[str, RegistryCompatibilityMetadata] = {
         execution_defaults={"profile": "local", "result_manifest": "run_manifest.json"},
         synthesis_eligible=True,
         composition_constraints=(
-            "Current implementation is a one paired-end sample subset of the notes-backed all-sample branch.",
+            "Current implementation is a one paired-end sample subset of the full all-sample branch.",
             "Downstream PASA alignment should consume the manifest-bearing transcript evidence result bundle.",
         ),
     ),
@@ -2394,7 +2394,7 @@ _WORKFLOW_COMPATIBILITY_METADATA: dict[str, RegistryCompatibilityMetadata] = {
         execution_defaults={"profile": "local", "result_manifest": "run_manifest.json"},
         synthesis_eligible=True,
         composition_constraints=(
-            "Consumes the AGAT conversion GFF3 boundary, applies the notes-backed cleanup rules, and keeps table2asn deferred.",
+            "Consumes the AGAT conversion GFF3 boundary, applies the deterministic cleanup rules, and keeps table2asn deferred.",
         ),
     ),
 }

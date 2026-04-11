@@ -4,6 +4,18 @@
 
 Predict coding regions from transcript assemblies and produce coding-support features for downstream annotation.
 
+## Input Data
+
+- PASA assemblies FASTA
+- PASA assemblies GFF3 for lifting predicted ORFs onto genome coordinates
+- optional minimum protein-length threshold
+
+## Output Data
+
+- transcript-level coding sequence predictions
+- protein translations
+- genome-coordinate GFF3 support files for downstream consensus steps
+
 ## Official Documentation
 
 - project source and docs hub: https://github.com/TransDecoder/TransDecoder
@@ -15,6 +27,11 @@ Predict coding regions from transcript assemblies and produce coding-support fea
 - GTN tool page: https://training.galaxyproject.org/training-material/by-tool/iuc/transdecoder/transdecoder.html
 - GTN tutorial context: https://training.galaxyproject.org/training-material/topics/transcriptomics/tutorials/full-de-novo/tutorial.html
 - the GTN material is the clearest training reference for the common Trinity plus TransDecoder transcriptomics flow
+
+## Code Reference
+
+- [`src/flytetest/tasks/transdecoder.py`](src/flytetest/tasks/transdecoder.py)
+- that module implements the PASA-derived LongOrfs/Predict flow and the genome-coordinate ORF lift
 
 ## Key Inputs
 

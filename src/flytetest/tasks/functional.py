@@ -3,6 +3,9 @@
 This module runs one BUSCO protein assessment per lineage downstream of the
 repeat-filtered annotation boundary and collects deterministic QC bundles
 without broadening into EggNOG, AGAT, or submission-prep work.
+
+Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
+input/output expectations follow `docs/tool_refs/busco.md`.
 """
 
 from __future__ import annotations
@@ -10,7 +13,6 @@ from __future__ import annotations
 import csv
 import json
 import shutil
-import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -22,6 +24,7 @@ from flytetest.config import (
     FUNCTIONAL_QC_WORKFLOW_NAME,
     RESULTS_ROOT,
     functional_qc_env,
+    project_mkdtemp,
     require_path,
     run_tool,
 )
@@ -176,30 +179,31 @@ def busco_assess_proteins(
 ) -> Dir:
     """Run BUSCO on one protein FASTA against one selected lineage dataset."""
     proteins_path = require_path(Path(proteins_fasta.download_sync()), "Proteins FASTA")
-    work_root = Path(tempfile.mkdtemp(prefix="busco_run_")) / "busco"
+    work_root = project_mkdtemp("busco_run_") / "busco"
     work_root.mkdir(parents=True, exist_ok=True)
 
-    output_name = _busco_output_name(lineage_dataset)
-    run_tool(
+    lineage_label = lineage_dataset.strip() or "auto-lineage"
+    output_name = _busco_output_name(lineage_label)
+    cmd = [
+        "busco",
+        "-i",
+        str(proteins_path),
+        "-o",
+        output_name,
+    ]
+    if lineage_label not in {"auto", "auto-lineage"}:
+        cmd.extend(["-l", lineage_label])
+    cmd.extend(
         [
-            "busco",
-            "-i",
-            str(proteins_path),
-            "-o",
-            output_name,
-            "-l",
-            lineage_dataset,
             "-m",
             busco_mode,
             "-c",
             str(busco_cpu),
-        ],
-        busco_sif,
-        [proteins_path.parent, work_root],
-        cwd=work_root,
+        ]
     )
+    run_tool(cmd, busco_sif, [proteins_path.parent, work_root], cwd=work_root)
 
-    run_dir = require_path(work_root / output_name, f"BUSCO run directory for `{lineage_dataset}`")
+    run_dir = require_path(work_root / output_name, f"BUSCO run directory for `{lineage_label}`")
     short_summary = _busco_short_summary(run_dir)
     full_table = _busco_full_table(run_dir)
     manifest = {
@@ -211,7 +215,7 @@ def busco_assess_proteins(
         ],
         "inputs": {
             "proteins_fasta": str(proteins_path),
-            "lineage_dataset": lineage_dataset,
+            "lineage_dataset": lineage_label,
             "busco_sif": busco_sif,
             "busco_cpu": busco_cpu,
             "busco_mode": busco_mode,

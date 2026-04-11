@@ -1,8 +1,12 @@
 """Repeat-filtering workflow entrypoint for the post-PASA FLyteTest milestone.
 
 This module starts from the PASA-updated annotation bundle, applies the
-RepeatMasker and funannotate cleanup steps described in the notes, and stops
-at repeat-free GFF3 plus protein FASTA outputs before functional annotation.
+repeat-filtering toolchain, and stops at repeat-free GFF3 plus protein FASTA
+outputs before functional annotation.
+
+Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
+input/output expectations follow the tool references under `docs/tool_refs/`
+(notably `repeatmasker.md`, `gffread.md`, and `funannotate.md`).
 """
 
 from __future__ import annotations

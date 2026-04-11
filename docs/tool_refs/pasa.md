@@ -4,6 +4,20 @@
 
 Align transcript assemblies to the genome, refine transcript structures, and later update gene models.
 
+## Input Data
+
+- transcript assemblies such as Trinity de novo and Trinity genome-guided outputs
+- reference genome
+- PASA database configuration
+- host-installed PASA pipeline with `Launch_PASA_pipeline.pl` on `PATH`
+
+## Output Data
+
+- PASA transcript alignment and assembly products
+- refined transcript structures
+- SQLite-backed PASA database and config state for the run
+- updated gene models in later refinement rounds
+
 ## Key Inputs
 
 - transcript assemblies such as Trinity de novo and Trinity genome-guided outputs
@@ -38,6 +52,11 @@ Align transcript assemblies to the genome, refine transcript structures, and lat
 - GTN genome annotation topic: https://training.galaxyproject.org/training-material/topics/genome-annotation/
 - GTN genome annotation tutorial: https://training.galaxyproject.org/training-material/topics/genome-annotation/tutorials/genome-annotation/tutorial.html
 - GTN coverage is useful for the broader annotation context, but it is weak on PASA-specific align/assemble and update-round details; treat it as adjacent training, not a complete PASA guide.
+
+## Code Reference
+
+- [`src/flytetest/tasks/pasa.py`](src/flytetest/tasks/pasa.py)
+- that module implements PASA staging, align/assemble, post-EVM update rounds, and manifest collection
 
 ## Native Command Context
 
@@ -97,10 +116,10 @@ Deliver:
 - FLyteTest currently implements PASA as a task family with explicit setup, align/assemble, and post-EVM update stages rather than one opaque step.
 - The current workflow consumes `trinity_denovo/`, `trinity_gg/`, and `stringtie/` outputs from the transcript evidence stage.
 - The wiki-shaped smoke helper reuses the Trinity FASTA emitted by
-  `temp/minimal_transcriptomics_smoke/trinity/`, stages it under its original
+  `results/minimal_transcriptomics_smoke/trinity/`, stages it under its original
   basename, and runs `Launch_PASA_pipeline.pl` directly with the genome FASTA
   and a minimal SQLite config. The staged basename is often
   `trinity_out_dir.Trinity.fasta` or `Trinity.tmp.fasta`.
 - The PASA align/assemble template config and the PASA annotCompare template/config are external, environment-specific inputs in this repo.
 - The design notes explicitly mention substantial external dependencies such as SQLite or MySQL, samtools, BioPerl, minimap2, BLAT, and gmap.
-- This tool reference covers the implemented PASA scope only; repeat filtering, BUSCO, EggNOG, AGAT, and `table2asn` remain downstream stages elsewhere in the annotation graph.
+- This tool reference covers the implemented PASA scope only; repeat filtering, BUSCO, EggNOG, AGAT, and `table2asn` are implemented or handled downstream elsewhere in the annotation graph.

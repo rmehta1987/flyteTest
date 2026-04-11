@@ -37,6 +37,7 @@ PREPARE_RECIPE_TOOL_NAME = "prepare_run_recipe"
 RUN_RECIPE_TOOL_NAME = "run_local_recipe"
 RUN_SLURM_RECIPE_TOOL_NAME = "run_slurm_recipe"
 MONITOR_SLURM_JOB_TOOL_NAME = "monitor_slurm_job"
+RETRY_SLURM_JOB_TOOL_NAME = "retry_slurm_job"
 CANCEL_SLURM_JOB_TOOL_NAME = "cancel_slurm_job"
 MCP_TOOL_NAMES = (
     "list_entries",
@@ -45,6 +46,7 @@ MCP_TOOL_NAMES = (
     RUN_RECIPE_TOOL_NAME,
     RUN_SLURM_RECIPE_TOOL_NAME,
     MONITOR_SLURM_JOB_TOOL_NAME,
+    RETRY_SLURM_JOB_TOOL_NAME,
     CANCEL_SLURM_JOB_TOOL_NAME,
     PRIMARY_TOOL_NAME,
 )
@@ -149,7 +151,8 @@ RECIPE_INPUT_RUNTIME_RULES = (
     "Resource requests use structured `ResourceSpec` fields such as `cpu`, `memory`, `queue`, `account`, and `walltime`.",
     "`local` recipes run through explicit local handlers; `slurm` recipes can be submitted with `run_slurm_recipe` after they are frozen.",
     "Slurm recipe submission and lifecycle tools require FLyteTest to run inside an already-authenticated scheduler-capable environment with the needed Slurm CLI commands on PATH.",
-    "`monitor_slurm_job` and `cancel_slurm_job` operate from durable `.runtime/runs/` Slurm run records and return explicit unsupported-environment limitations when that scheduler boundary is unavailable.",
+    "`monitor_slurm_job`, `retry_slurm_job`, and `cancel_slurm_job` operate from durable `.runtime/runs/` Slurm run records and return explicit unsupported-environment limitations when that scheduler boundary is unavailable.",
+    "`retry_slurm_job` stays Slurm-specific, reuses the frozen saved recipe plus recorded execution profile, and declines when the run record is not terminal, not clearly retryable, or already at its attempt limit.",
     "Runtime image policy can be frozen as `RuntimeImageSpec` metadata, while existing workflow SIF inputs remain explicit runtime bindings.",
 )
 

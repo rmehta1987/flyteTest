@@ -36,6 +36,7 @@ from flytetest.mcp_contract import (
     PRIMARY_TOOL_NAME,
     PROMPT_REQUIREMENTS,
     PROTEIN_WORKFLOW_EXAMPLE_PROMPT,
+    RETRY_SLURM_JOB_TOOL_NAME,
     RUN_SLURM_RECIPE_TOOL_NAME,
     RESULT_CODE_DECLINED_MISSING_INPUTS,
     RESULT_CODE_DECLINED_UNSUPPORTED_REQUEST,
@@ -74,6 +75,7 @@ from flytetest.spec_artifacts import artifact_from_typed_plan, save_workflow_spe
 from flytetest.spec_executor import (
     LocalNodeExecutionRequest,
     LocalSpecExecutionResult,
+    SlurmRetryResult,
     LocalWorkflowSpecExecutor,
     SlurmLifecycleResult,
     SlurmSpecExecutionResult,
@@ -89,6 +91,7 @@ DEFAULT_RECIPE_DIR = REPO_ROOT / ".runtime" / "specs"
 DEFAULT_RUN_DIR = REPO_ROOT / ".runtime" / "runs"
 SERVER_TOOL_NAMES = MCP_TOOL_NAMES
 SERVER_RESOURCE_URIS = MCP_RESOURCE_URIS
+BUSCO_FIXTURE_TASK_NAME = "busco_assess_proteins"
 
 
 def _resolve_flyte_cli() -> str:
@@ -609,20 +612,33 @@ def run_workflow(
 
 
 def run_task(task_name: str, inputs: dict[str, object]) -> dict[str, object]:
-    """Execute the one supported Exonerate chunk task through a direct Python call."""
-    if task_name != SUPPORTED_TASK_NAME:
+    """Execute one supported direct task through a Python call."""
+    if task_name not in {SUPPORTED_TASK_NAME, BUSCO_FIXTURE_TASK_NAME}:
         return {
             "supported": False,
             "task_name": task_name,
             "exit_status": None,
             "output_paths": [],
             "limitations": [
-                f"Only `{SUPPORTED_TASK_NAME}` is executable through this showcase task runner.",
+                (
+                    "Only "
+                    f"`{SUPPORTED_TASK_NAME}` and `{BUSCO_FIXTURE_TASK_NAME}` "
+                    "are executable through this showcase task runner."
+                ),
             ],
         }
 
-    parameters = supported_entry_parameters(task_name)
-    allowed_inputs = tuple(parameter.name for parameter in parameters)
+    if task_name == BUSCO_FIXTURE_TASK_NAME:
+        parameters = (
+            ("proteins_fasta", True),
+            ("lineage_dataset", True),
+            ("busco_sif", False),
+            ("busco_cpu", False),
+            ("busco_mode", False),
+        )
+    else:
+        parameters = tuple((parameter.name, parameter.required) for parameter in supported_entry_parameters(task_name))
+    allowed_inputs = tuple(parameter_name for parameter_name, _ in parameters)
     unknown_inputs = sorted(set(inputs) - set(allowed_inputs))
     if unknown_inputs:
         return {
@@ -634,9 +650,9 @@ def run_task(task_name: str, inputs: dict[str, object]) -> dict[str, object]:
         }
 
     missing_required = [
-        parameter.name
-        for parameter in parameters
-        if parameter.required and inputs.get(parameter.name) in (None, "")
+        parameter_name
+        for parameter_name, required in parameters
+        if required and inputs.get(parameter_name) in (None, "")
     ]
     if missing_required:
         return {
@@ -646,6 +662,49 @@ def run_task(task_name: str, inputs: dict[str, object]) -> dict[str, object]:
             "output_paths": [],
             "limitations": [f"Missing required task inputs: {', '.join(missing_required)}."],
         }
+
+    if task_name == BUSCO_FIXTURE_TASK_NAME:
+        try:
+            from flyte.io import File
+            from flytetest.tasks.functional import busco_assess_proteins
+
+            result = busco_assess_proteins(
+                proteins_fasta=File(path=str(inputs["proteins_fasta"])),
+                lineage_dataset=str(inputs["lineage_dataset"]),
+                busco_sif=str(inputs.get("busco_sif") or ""),
+                busco_cpu=int(inputs.get("busco_cpu") or 2),
+                busco_mode=str(inputs.get("busco_mode") or "geno"),
+            )
+            result_path = result.download_sync() if hasattr(result, "download_sync") else getattr(result, "path", "")
+            output_paths = [result_path] if result_path else []
+            return {
+                "supported": True,
+                "entry_name": task_name,
+                "entry_category": "task",
+                "execution_mode": "direct-python-call",
+                "exit_status": 0,
+                "stdout": "",
+                "stderr": "",
+                "output_paths": output_paths,
+                "limitations": [
+                    "This direct BUSCO task call is used by the Milestone 18 fixture smoke recipe.",
+                ],
+            }
+        except Exception as exc:
+            return {
+                "supported": True,
+                "entry_name": task_name,
+                "entry_category": "task",
+                "execution_mode": "direct-python-call",
+                "exit_status": 1,
+                "stdout": "",
+                "stderr": str(exc),
+                "output_paths": [],
+                "error_type": type(exc).__name__,
+                "limitations": [
+                    "The server attempted the BUSCO fixture task call, but runtime dependencies or BUSCO assets may be missing.",
+                ],
+            }
 
     try:
         from flyte.io import File
@@ -752,6 +811,7 @@ def _local_node_handlers(
         SUPPORTED_AGAT_CONVERSION_WORKFLOW_NAME: workflow_handler,
         SUPPORTED_AGAT_CLEANUP_WORKFLOW_NAME: workflow_handler,
         SUPPORTED_TASK_NAME: task_handler,
+        BUSCO_FIXTURE_TASK_NAME: task_handler,
     }
 
 
@@ -862,6 +922,27 @@ def _result_from_slurm_lifecycle(result: SlurmLifecycleResult) -> dict[str, obje
         "stdout_path": str(run_record.stdout_path) if run_record is not None else None,
         "stderr_path": str(run_record.stderr_path) if run_record is not None else None,
         "exit_code": run_record.scheduler_exit_code if run_record is not None else None,
+        "limitations": list(result.limitations),
+        "assumptions": list(result.assumptions),
+    }
+
+
+def _result_from_slurm_retry(result: SlurmRetryResult) -> dict[str, object]:
+    """Serialize Slurm retry operations for MCP clients."""
+    source_run_record = result.source_run_record
+    retry_execution = result.retry_execution
+    retry_run_record = retry_execution.run_record if retry_execution is not None else None
+    return {
+        "supported": result.supported,
+        "action": result.action,
+        "execution_mode": "slurm-retry",
+        "source_run_record": _jsonable(source_run_record),
+        "failure_classification": _jsonable(result.failure_classification),
+        "retry_policy": _jsonable(result.retry_policy),
+        "retry_execution": _result_from_slurm_spec_execution(retry_execution) if retry_execution is not None else None,
+        "retry_run_record": _jsonable(retry_run_record),
+        "job_id": retry_run_record.job_id if retry_run_record is not None else None,
+        "run_record_path": str(retry_run_record.run_record_path) if retry_run_record is not None else None,
         "limitations": list(result.limitations),
         "assumptions": list(result.assumptions),
     }
@@ -1086,6 +1167,38 @@ def _cancel_slurm_job_impl(
 def cancel_slurm_job(run_record_path: str) -> dict[str, object]:
     """Request cancellation for a submitted Slurm job from its run record."""
     return _cancel_slurm_job_impl(run_record_path)
+
+
+def _retry_slurm_job_impl(
+    run_record_path: str | Path,
+    *,
+    run_dir: Path | None = None,
+    sbatch_runner: Any = subprocess.run,
+    scheduler_runner: Any = subprocess.run,
+    command_available: Any = None,
+) -> dict[str, object]:
+    """Retry one failed Slurm job from its durable run record."""
+    result = SlurmWorkflowSpecExecutor(
+        run_root=run_dir or DEFAULT_RUN_DIR,
+        repo_root=REPO_ROOT,
+        sbatch_runner=sbatch_runner,
+        scheduler_runner=scheduler_runner,
+        command_available=command_available or _command_is_available,
+    ).retry(Path(run_record_path))
+    retry_run_record = result.retry_execution.run_record if result.retry_execution is not None else None
+    return {
+        "supported": bool(result.supported),
+        "run_record_path": str(run_record_path),
+        "retry_run_record_path": str(retry_run_record.run_record_path) if retry_run_record is not None else None,
+        "job_id": retry_run_record.job_id if retry_run_record is not None else None,
+        "retry_result": _result_from_slurm_retry(result),
+        "limitations": list(result.limitations),
+    }
+
+
+def retry_slurm_job(run_record_path: str) -> dict[str, object]:
+    """Retry a failed Slurm job from its durable run record."""
+    return _retry_slurm_job_impl(run_record_path)
 
 
 def _supported_target_names() -> list[str]:
@@ -1469,6 +1582,7 @@ def create_mcp_server(fastmcp_cls: Any | None = None) -> Any:
     mcp.tool()(run_local_recipe)
     mcp.tool()(run_slurm_recipe)
     mcp.tool()(monitor_slurm_job)
+    mcp.tool()(retry_slurm_job)
     mcp.tool()(cancel_slurm_job)
     mcp.tool()(prompt_and_run)
     mcp.resource(SERVER_RESOURCE_URIS[0])(resource_scope)

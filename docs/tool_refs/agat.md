@@ -4,6 +4,18 @@
 
 Generate annotation statistics, GFF/GTF conversion, and deterministic cleanup slices around the EggNOG-annotated annotation bundle while keeping `table2asn` separate.
 
+## Input Data
+
+- GFF3 or GTF annotation files
+- optional companion FASTA for the statistics slice
+- AGAT conversion results for the cleanup slice
+
+## Output Data
+
+- annotation statistics reports
+- converted or normalized annotation files
+- cleaned GFF3 files and cleanup summaries
+
 ## Key Inputs
 
 - GFF3 or GTF annotation files
@@ -52,6 +64,11 @@ Generate annotation statistics, GFF/GTF conversion, and deterministic cleanup sl
   - [agat_sp_statistics.pl](https://nbisweden.github.io/AGAT/tools/agat_sp_statistics/)
 - The official docs clearly treat AGAT as many small scripts, split across `_sp_` and `_sq_` families.
 
+## Code Reference
+
+- [`src/flytetest/tasks/agat.py`](src/flytetest/tasks/agat.py)
+- that module implements the statistics and conversion shell boundaries plus the deterministic in-repo cleanup slice
+
 ## Tutorial And Training References
 
 - GTN coverage for AGAT specifically is weak; we did not find a dedicated AGAT walkthrough.
@@ -75,11 +92,12 @@ Generate annotation statistics, GFF/GTF conversion, and deterministic cleanup sl
 Use docs/tool_refs/agat.md as the reference for AGAT post-processing work.
 
 Goal:
-Plan or implement the `agat_cleanup_gff3` stage for the AGAT-converted GFF3 bundle.
+Plan or implement one of the AGAT post-processing slices: `agat_statistics`, `agat_convert_sp_gxf2gxf`, or `agat_cleanup_gff3`.
 
 Inputs:
-- AGAT conversion results bundle
-- converted GFF3 boundary from `annotation_postprocess_agat_conversion`
+- GFF3 or GTF annotation files for statistics or conversion
+- optional companion FASTA for statistics
+- AGAT conversion results bundle for cleanup
 
 Constraints:
 - keep AGAT scoped to post-processing and reporting after the main annotation graph
@@ -87,7 +105,7 @@ Constraints:
 - do not run `table2asn` or add submission packaging in this slice
 
 Deliver:
-- the AGAT task change
-- expected cleaned GFF3 output and cleanup summary
+- the AGAT task or workflow change
+- expected statistics, conversion, or cleaned-GFF3 outputs
 - any assumptions that need to stay explicit
 ```

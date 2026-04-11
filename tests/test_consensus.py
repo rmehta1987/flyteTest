@@ -49,13 +49,20 @@ def _read_json(path: Path) -> dict[str, object]:
 def _fixed_datetime() -> type:
     """Return a deterministic timestamp provider for result-directory naming."""
 
+    # Keep the synthetic result-directory name stable for manifest assertions.
     class _Stamp:
+        """Fake datetime stamp that always returns the same test timestamp."""
+
         def strftime(self, fmt: str) -> str:
+            """Return the fixed timestamp string expected by the assertions."""
             return "20260401_120000"
 
     class _FixedDatetime:
+        """Shim object that mimics the subset of `datetime` used by the code."""
+
         @classmethod
         def now(cls) -> _Stamp:
+            """Return the fixed timestamp stub used by the synthetic tests."""
             return _Stamp()
 
     return _FixedDatetime
@@ -484,7 +491,7 @@ class ConsensusEvmTaskTests(TestCase):
             self.assertIn("repo_policy", manifest)
 
     def test_evm_partition_inputs_runs_note_faithful_partition_command_deterministically(self) -> None:
-        """Use the note-backed partition flags and preserve a stable partition listing."""
+        """Use the documented EVM partition flags and preserve a stable partition listing."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             prep_results = _create_pre_evm_results(tmp_path)

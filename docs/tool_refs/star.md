@@ -4,6 +4,18 @@
 
 Create genome indices and align RNA-seq reads to a reference genome.
 
+## Input Data
+
+- reference genome FASTA
+- RNA-seq FASTQ files
+- splice-aware alignment parameters
+
+## Output Data
+
+- STAR genome index
+- alignment BAM files
+- alignment logs and summary metrics
+
 ## Key Inputs
 
 - reference genome FASTA
@@ -30,6 +42,11 @@ Create genome indices and align RNA-seq reads to a reference genome.
 
 - [GTN RNA-seq Alignment with STAR](https://galaxyproject.github.io/training-material/topics/transcriptomics/tutorials/rna-seq-bash-star-align/tutorial.html)
 - [GTN Reference-based RNA-Seq data analysis](https://galaxyproject.github.io/training-material/topics/transcriptomics/tutorials/ref-based/tutorial.html)
+
+## Code Reference
+
+- [`src/flytetest/tasks/transcript_evidence.py`](src/flytetest/tasks/transcript_evidence.py)
+- that module implements the STAR genome-index and alignment boundaries in transcript evidence generation
 
 ## Native Command Context
 

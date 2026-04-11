@@ -21,9 +21,11 @@ class _Artifact:
     path: str
 
     def __init__(self, path: str | Path) -> None:
+        """Store the local filesystem path as a plain string."""
         self.path = str(path)
 
     def download_sync(self) -> str:
+        """Return the local filesystem path without any transfer step."""
         return self.path
 
 
@@ -39,10 +41,12 @@ class TaskEnvironment:
     """Minimal stand-in for the Flyte task environment decorator container."""
 
     def __init__(self, name: str, **kwargs: object) -> None:
+        """Record the environment name and constructor kwargs for assertions."""
         self.name = name
         self.kwargs = kwargs
 
     def task(self, fn: Callable[..., Any]) -> Callable[..., Any]:
+        """Return the function unchanged, just like the test double expects."""
         return fn
 
 

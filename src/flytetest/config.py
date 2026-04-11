@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -47,6 +48,7 @@ TASK_ENV_NAME = "rnaseq_qc_quant"
 # Keep the legacy name as a compatibility alias for older imports and manifests.
 WORKFLOW_NAME = TASK_ENV_NAME
 RESULTS_ROOT = "results"
+PROJECT_TMP_ENV_VAR = "FLYTETEST_TMPDIR"
 RESULTS_PREFIX = "rnaseq_results"
 TRANSCRIPT_EVIDENCE_WORKFLOW_NAME = "transcript_evidence_generation"
 TRANSCRIPT_EVIDENCE_RESULTS_PREFIX = "transcript_evidence_results"
@@ -133,6 +135,30 @@ agat_env = TASK_ENVIRONMENTS_BY_NAME[AGAT_WORKFLOW_NAME]
 agat_conversion_env = TASK_ENVIRONMENTS_BY_NAME[AGAT_CONVERSION_WORKFLOW_NAME]
 agat_cleanup_env = TASK_ENVIRONMENTS_BY_NAME[AGAT_CLEANUP_WORKFLOW_NAME]
 DEFAULT_SLURM_ACCOUNT = os.environ.get("FLYTETEST_SLURM_ACCOUNT", "rcc-staff")
+
+
+def project_tmp_root() -> Path:
+    """Return the project-local scratch root used by task work directories."""
+    configured = os.environ.get(PROJECT_TMP_ENV_VAR)
+    root = Path(configured) if configured else Path.cwd() / RESULTS_ROOT / ".tmp"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
+def project_mkdtemp(prefix: str) -> Path:
+    """Create one temporary work directory under the project-local results tree."""
+    return Path(tempfile.mkdtemp(prefix=prefix, dir=project_tmp_root()))
+
+
+def configure_project_tmpdir() -> Path:
+    """Point Python's default temp directory at the project-local scratch root."""
+    root = project_tmp_root()
+    os.environ["TMPDIR"] = str(root)
+    tempfile.tempdir = str(root)
+    return root
+
+
+configure_project_tmpdir()
 
 
 def run(

@@ -97,13 +97,20 @@ def _create_repeat_filter_results(tmp_path: Path) -> Path:
 def _fixed_datetime() -> type:
     """Return a deterministic timestamp provider for result-directory naming."""
 
+    # Keep the synthetic result-directory name stable for manifest assertions.
     class _Stamp:
+        """Fake datetime stamp that always returns the same test timestamp."""
+
         def strftime(self, fmt: str) -> str:
+            """Return the fixed timestamp string expected by the assertions."""
             return "20260404_150000"
 
     class _FixedDatetime:
+        """Shim object that mimics the subset of `datetime` used by the code."""
+
         @classmethod
         def now(cls) -> _Stamp:
+            """Return the fixed timestamp stub used by the synthetic tests."""
             return _Stamp()
 
     return _FixedDatetime
@@ -113,7 +120,7 @@ class EggnogTaskTests(TestCase):
     """Task-level coverage for EggNOG functional annotation."""
 
     def test_eggnog_map_writes_tx2gene_and_annotated_gff3(self) -> None:
-        """Keep the EggNOG command and annotation propagation aligned with the notes."""
+        """Keep the EggNOG command and GFF3 decoration aligned with `docs/tool_refs/eggnog-mapper.md`."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             repeat_filter_results = _create_repeat_filter_results(tmp_path)
@@ -128,6 +135,7 @@ class EggnogTaskTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
+                """Test double for `run_tool` that emits the minimal EggNOG outputs the task collects."""
                 captured["cmd"] = cmd
                 self.assertIsNotNone(cwd)
                 work_dir = Path(cwd)
@@ -215,6 +223,7 @@ class EggnogWorkflowTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
+                """Test double for `run_tool` that emits the minimal EggNOG outputs the workflow collects."""
                 self.assertIsNotNone(cwd)
                 work_dir = Path(cwd)
                 (work_dir / "eggnog_output.emapper.annotations").write_text(

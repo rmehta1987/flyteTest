@@ -4,8 +4,8 @@ This page groups FLyteTest tool references by biological stage so future prompts
 
 Scope note:
 
-- the current executable MCP showcase is hard-limited to `ab_initio_annotation_braker3`, `protein_evidence_alignment`, and `exonerate_align_chunk`
-- the multi-stage references below are repo planning aids, not the current server-exposed workflow catalog
+- the current executable MCP showcase still exposes a narrow surface, but the repo now implements and documents broader stage families for PASA, TransDecoder, repeat filtering, BUSCO, EggNOG, AGAT, and EVM prep/execution
+- the stage refs below are planning aids that stay anchored to implemented task and workflow boundaries rather than to an incomplete showcase catalog
 
 Use this page when:
 

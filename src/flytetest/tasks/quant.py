@@ -2,13 +2,15 @@
 
 This module keeps the current Salmon indexing, quantification, and result
 collection boundaries used by the compatibility entrypoint.
+
+Tool-level command and input/output expectations follow `docs/tool_refs/salmon.md`.
+That reference matches the Salmon stage implemented here.
 """
 
 from __future__ import annotations
 
 import json
 import shutil
-import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -18,6 +20,7 @@ from flytetest.config import (
     RESULTS_PREFIX,
     RESULTS_ROOT,
     WORKFLOW_NAME,
+    project_mkdtemp,
     require_path,
     rnaseq_qc_quant_env,
     run_tool,
@@ -28,7 +31,7 @@ from flytetest.config import (
 def salmon_index(ref: File, salmon_sif: str = "") -> Dir:
     """Build a Salmon index from a transcriptome FASTA."""
     ref_path = require_path(Path(ref.download_sync()), "Reference transcriptome")
-    out_dir = Path(tempfile.mkdtemp(prefix="salmon_index_")) / "index"
+    out_dir = project_mkdtemp("salmon_index_") / "index"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     run_tool(
@@ -50,7 +53,7 @@ def salmon_quant(
     index_path = require_path(Path(index.download_sync()), "Salmon index directory")
     left_path = require_path(Path(left.download_sync()), "Read 1 FASTQ")
     right_path = require_path(Path(right.download_sync()), "Read 2 FASTQ")
-    out_dir = Path(tempfile.mkdtemp(prefix="salmon_quant_")) / "quant"
+    out_dir = project_mkdtemp("salmon_quant_") / "quant"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     run_tool(

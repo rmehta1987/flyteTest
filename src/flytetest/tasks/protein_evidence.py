@@ -2,13 +2,15 @@
 
 This module stages local protein FASTAs, chunks them deterministically, runs
 Exonerate alignments, converts outputs for later EVM use, and collects results.
+
+Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
+input/output expectations follow `docs/tool_refs/exonerate.md`.
 """
 
 from __future__ import annotations
 
 import json
 import shutil
-import tempfile
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -21,6 +23,7 @@ from flytetest.config import (
     PROTEIN_EVIDENCE_WORKFLOW_NAME,
     RESULTS_ROOT,
     protein_evidence_env,
+    project_mkdtemp,
     require_path,
     run_tool,
 )
@@ -142,7 +145,7 @@ def stage_protein_fastas(protein_fastas: list[File]) -> Dir:
     if not protein_fastas:
         raise ValueError("stage_protein_fastas requires at least one protein FASTA input.")
 
-    out_dir = Path(tempfile.mkdtemp(prefix="protein_stage_")) / "protein_stage"
+    out_dir = project_mkdtemp("protein_stage_") / "protein_stage"
     inputs_dir = out_dir / "inputs"
     combined_dir = out_dir / "combined"
     inputs_dir.mkdir(parents=True, exist_ok=True)
@@ -197,7 +200,7 @@ def chunk_protein_fastas(
     staged_dir = require_path(Path(staged_proteins.download_sync()), "Staged protein FASTA directory")
     combined_fasta_path = _staged_combined_fasta(staged_dir)
 
-    out_dir = Path(tempfile.mkdtemp(prefix="protein_chunks_")) / "protein_chunks"
+    out_dir = project_mkdtemp("protein_chunks_") / "protein_chunks"
     chunks_dir = out_dir / "chunks"
     chunks_dir.mkdir(parents=True, exist_ok=True)
 
@@ -261,7 +264,7 @@ def exonerate_align_chunk(
     chunk_path = require_path(Path(protein_chunk.download_sync()), "Protein FASTA chunk")
     chunk_label = chunk_path.stem
 
-    out_dir = Path(tempfile.mkdtemp(prefix=f"exonerate_{chunk_label}_")) / "alignment"
+    out_dir = project_mkdtemp(f"exonerate_{chunk_label}_") / "alignment"
     out_dir.mkdir(parents=True, exist_ok=True)
     raw_output_path = out_dir / f"{chunk_label}.exonerate.out"
 
@@ -317,7 +320,7 @@ def exonerate_to_evm_gff3(
     raw_output_path = _raw_exonerate_output(alignment_dir)
     chunk_label = raw_output_path.name.removesuffix(".exonerate.out")
 
-    out_dir = Path(tempfile.mkdtemp(prefix=f"exonerate_evm_{chunk_label}_")) / "evm"
+    out_dir = project_mkdtemp(f"exonerate_evm_{chunk_label}_") / "evm"
     out_dir.mkdir(parents=True, exist_ok=True)
     gff3_path = out_dir / f"{chunk_label}.evm.gff3"
 

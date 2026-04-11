@@ -7,13 +7,13 @@ source "$SCRIPT_DIR/common.sh"
 
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # Smoke root that collects the PASA align/assemble inputs and outputs.
-ALIGN_SMOKE_ROOT="${ALIGN_SMOKE_ROOT:-$REPO_ROOT/temp/minimal_pasa_align_smoke}"
+ALIGN_SMOKE_ROOT="${ALIGN_SMOKE_ROOT:-$REPO_ROOT/results/minimal_pasa_align_smoke}"
 # Host PASA workspace used for the wiki-shaped align/assemble smoke run.
 HOST_PASA_WORK_DIR="${HOST_PASA_WORK_DIR:-$ALIGN_SMOKE_ROOT/pasa}"
 # Container view of the same PASA workspace.
-CONTAINER_PASA_WORK_DIR="${CONTAINER_PASA_WORK_DIR:-/workspace/temp/minimal_pasa_align_smoke/pasa}"
+CONTAINER_PASA_WORK_DIR="${CONTAINER_PASA_WORK_DIR:-/workspace/results/minimal_pasa_align_smoke/pasa}"
 # Repo-local transcriptomics smoke root that provides the Trinity FASTA.
-TRANSCRIPTOMICS_SMOKE_ROOT="${TRANSCRIPTOMICS_SMOKE_ROOT:-$REPO_ROOT/temp/minimal_transcriptomics_smoke}"
+TRANSCRIPTOMICS_SMOKE_ROOT="${TRANSCRIPTOMICS_SMOKE_ROOT:-$REPO_ROOT/results/minimal_transcriptomics_smoke}"
 # Trinity transcript FASTA emitted by the transcriptomics smoke.
 TRINITY_OUTPUT_DIR="${TRINITY_OUTPUT_DIR:-$TRANSCRIPTOMICS_SMOKE_ROOT/trinity/trinity_out_dir}"
 # Reference genome used by the align/assemble smoke.

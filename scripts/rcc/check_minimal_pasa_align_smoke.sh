@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # Align/assemble smoke workspace on the host checkout.
-PASA_ALIGN_SMOKE_ROOT="${PASA_ALIGN_SMOKE_ROOT:-$REPO_ROOT/temp/minimal_pasa_align_smoke}"
+PASA_ALIGN_SMOKE_ROOT="${PASA_ALIGN_SMOKE_ROOT:-$REPO_ROOT/results/minimal_pasa_align_smoke}"
 # PASA work directory that should contain the align/assemble outputs.
 HOST_PASA_WORK_DIR="${HOST_PASA_WORK_DIR:-$PASA_ALIGN_SMOKE_ROOT/pasa}"
 # Staged Trinity FASTA used as the input transcript assembly.

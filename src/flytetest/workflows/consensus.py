@@ -1,7 +1,11 @@
 """Consensus-stage workflow entrypoints for FLyteTest.
 
-This module preserves the note-faithful pre-EVM bundle workflow and adds the
-downstream deterministic EVidenceModeler execution workflow that consumes it.
+Stage ordering and the pre-EVM file contract follow `docs/braker3_evm_notes.md`.
+Tool-level command and input/output expectations follow the tool references
+under `docs/tool_refs/` (notably `evidencemodeler.md`).
+
+This module preserves the pre-EVM bundle workflow and adds the downstream
+deterministic EVidenceModeler execution workflow that consumes it.
 """
 
 from __future__ import annotations

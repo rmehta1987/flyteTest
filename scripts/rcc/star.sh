@@ -10,8 +10,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 HOST_PROJECT_DIR="${HOST_PROJECT_DIR:-$REPO_ROOT}"
 # Container bind target for the checkout root.
 CONTAINER_PROJECT_DIR="${CONTAINER_PROJECT_DIR:-/workspace}"
-# Host scratch area for the STAR index and alignment outputs.
-WORK_DIR="${WORK_DIR:-$PWD/temp}"
+# Host project-local results area for the STAR index and alignment outputs.
+WORK_DIR="${WORK_DIR:-$REPO_ROOT/results/rcc_star}"
 MODE="${MODE:-index}" # index | align
 
 # STAR prefers the repo-local smoke image, then the shared RCC cluster image.

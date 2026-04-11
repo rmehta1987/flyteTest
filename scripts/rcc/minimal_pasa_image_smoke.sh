@@ -11,13 +11,13 @@ HOST_PROJECT_DIR="${HOST_PROJECT_DIR:-$REPO_ROOT}"
 # Container project root used by the image runtime.
 CONTAINER_PROJECT_DIR="${CONTAINER_PROJECT_DIR:-/workspace}"
 # Root directory that collects the PASA image smoke inputs and outputs.
-IMAGE_SMOKE_ROOT="${IMAGE_SMOKE_ROOT:-$REPO_ROOT/temp/minimal_pasa_image_smoke}"
+IMAGE_SMOKE_ROOT="${IMAGE_SMOKE_ROOT:-$REPO_ROOT/results/minimal_pasa_image_smoke}"
 # Host PASA workspace used for the image-backed smoke run.
 HOST_PASA_WORK_DIR="${HOST_PASA_WORK_DIR:-$IMAGE_SMOKE_ROOT/pasa}"
 # Container view of the same PASA workspace.
-CONTAINER_PASA_WORK_DIR="${CONTAINER_PASA_WORK_DIR:-/workspace/temp/minimal_pasa_image_smoke/pasa}"
+CONTAINER_PASA_WORK_DIR="${CONTAINER_PASA_WORK_DIR:-/workspace/results/minimal_pasa_image_smoke/pasa}"
 # Repo-local transcriptomics smoke root that provides the Trinity FASTA.
-TRANSCRIPTOMICS_SMOKE_ROOT="${TRANSCRIPTOMICS_SMOKE_ROOT:-$REPO_ROOT/temp/minimal_transcriptomics_smoke}"
+TRANSCRIPTOMICS_SMOKE_ROOT="${TRANSCRIPTOMICS_SMOKE_ROOT:-$REPO_ROOT/results/minimal_transcriptomics_smoke}"
 # Trinity transcript FASTA emitted by the transcriptomics smoke.
 TRINITY_OUTPUT_DIR="${TRINITY_OUTPUT_DIR:-$TRANSCRIPTOMICS_SMOKE_ROOT/trinity/trinity_out_dir}"
 # Reference genome used by the image-backed smoke.
@@ -27,10 +27,10 @@ PASA_SIF="${PASA_SIF:-$(resolve_smoke_image PASA_SIF "$REPO_ROOT/data/images/pas
 # Container view of the genome FASTA.
 CONTAINER_GENOME_FASTA="${CONTAINER_GENOME_FASTA:-/workspace/data/braker3/reference/genome.fa}"
 # Container view of the staged transcript FASTA.
-CONTAINER_TRANSCRIPTS_FASTA="${CONTAINER_TRANSCRIPTS_FASTA:-/workspace/temp/minimal_pasa_image_smoke/pasa/transcripts/transcripts.cdna.fasta}"
+CONTAINER_TRANSCRIPTS_FASTA="${CONTAINER_TRANSCRIPTS_FASTA:-/workspace/results/minimal_pasa_image_smoke/pasa/transcripts/transcripts.cdna.fasta}"
 # PASA config staged inside the smoke workspace.
 HOST_PASA_CONFIG="${HOST_PASA_CONFIG:-$HOST_PASA_WORK_DIR/config/alignAssembly.conf}"
-CONTAINER_PASA_CONFIG="${CONTAINER_PASA_CONFIG:-/workspace/temp/minimal_pasa_image_smoke/pasa/config/alignAssembly.conf}"
+CONTAINER_PASA_CONFIG="${CONTAINER_PASA_CONFIG:-/workspace/results/minimal_pasa_image_smoke/pasa/config/alignAssembly.conf}"
 PASA_CPU="${PASA_CPU:-2}"
 PASA_ALIGNER="${PASA_ALIGNER:-gmap}"
 WORK_DIR="${WORK_DIR:-$IMAGE_SMOKE_ROOT/runtime}"

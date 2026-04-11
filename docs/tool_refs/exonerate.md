@@ -4,6 +4,18 @@
 
 Align protein evidence to the genome and convert the results into annotation-support formats.
 
+## Input Data
+
+- one or more local protein FASTA files
+- reference genome
+- deterministic chunking or partition inputs for parallel runs
+
+## Output Data
+
+- raw Exonerate alignments
+- converted GFF3 evidence suitable for EVidenceModeler
+- deterministic chunk manifests and collected result bundles
+
 ## Key Inputs
 
 - one or more local protein FASTA files
@@ -55,10 +67,16 @@ Lightweight local fixture examples for milestone-scoped testing:
 - Closest adjacent GTN material is the broader genome annotation track, including [Genome annotation with Funannotate](https://training.galaxyproject.org/training-material/topics/genome-annotation/tutorials/funannotate/tutorial.html).
 - For milestone context, the GTN assembly/annotation recordings page is useful background but does not cover the local-input Exonerate implementation directly.
 
+## Code Reference
+
+- [`src/flytetest/tasks/protein_evidence.py`](src/flytetest/tasks/protein_evidence.py)
+- that module implements chunk staging, `--showtargetgff yes`, per-chunk stdout capture, conversion, and result collection
+
 ## Native Command Context
 
 - The upstream command shape is `exonerate [options] <query path> <target path>`, with `--query`, `--target`, and `--model` documented in the manpage.
 - FLyteTest uses that native alignment model against local protein FASTA chunks and a local genome, rather than fetching UniProt or RefSeq automatically.
+- The repo’s current command shape includes `--model protein2genome`, `--showtargetgff yes`, and stdout redirection to a per-chunk `.exonerate.out` file.
 - `exonerate --help` and `exonerate --version` are the quickest sanity checks for the installed binary and supported options.
 
 ## Apptainer Command Context

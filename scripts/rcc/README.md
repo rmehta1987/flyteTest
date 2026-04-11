@@ -9,7 +9,9 @@ tool boundary with the same command shape used in FLyteTest.
 
 - Host project root: the repository checkout root
 - Container mount path: `/workspace`
-- Temporary work directory: `$PWD/temp`
+- Smoke output root: repo-local `results/`
+- Container scratch mount: `/tmp` inside the image, backed by a repo-local
+  `results/.../runtime` or stage-specific output directory on the host
 - An Apptainer or Singularity runtime is available on `PATH`
 
 The minimal smoke wrappers default their input files to the repo-local `data/`
@@ -48,6 +50,31 @@ The local smoke scripts can still use `data/images/*.sif`.
 - `cancel_protein_evidence_slurm.py`: Python helper called by the cancel
   wrapper; it loads one durable run record, requests cancellation, and prints
   the structured JSON cancellation summary
+- `run_m18_slurm_recipe.sh`: prepares and submits the Milestone 18 BUSCO
+  fixture Slurm recipe with RCC defaults for account, `caslake` partition,
+  walltime, CPU, memory, genome fixture, lineage, mode, and image discovery
+- `run_m18_hpc_smoke.sh`: one-command Milestone 18 HPC smoke; stages the BUSCO
+  GitLab eukaryota fixture, optionally submits the BUSCO image smoke, submits
+  the M18 Slurm recipe, creates the synthetic retryable record, and submits the
+  retry child
+- `m18_prepare_slurm_recipe.py`: prepares a small Slurm-profile BUSCO
+  genome-fixture recipe from `data/busco/test_data/eukaryota/genome.fna` for
+  Milestone 18 retry testing
+- `m18_submit_slurm_recipe.py`: submits the frozen Milestone 18 smoke recipe
+  and updates `.runtime/runs/latest_m18_slurm_run_record.txt`
+- `monitor_m18_slurm_job.sh`: reconciles the latest Milestone 18 Slurm run
+  record, or a run record path that you pass explicitly
+- `m18_monitor_slurm_job.py`: reconciles a Milestone 18 Slurm run record path
+  passed explicitly
+- `make_m18_retry_smoke_record.sh`: creates a synthetic retryable copy of the
+  latest Milestone 18 Slurm run record, or a run record path passed explicitly
+- `m18_make_retry_smoke_record.py`: copies a Slurm run-record directory and
+  marks the copy as a retryable synthetic scheduler failure so the real
+  original record is not mutated for retry testing
+- `retry_m18_slurm_job.sh`: retries the latest synthetic Milestone 18 run
+  record, or a retryable run record path that you pass explicitly
+- `m18_retry_slurm_job.py`: retries the synthetic Milestone 18 run record and
+  updates `.runtime/runs/latest_m18_retry_child_run_record.txt`
 - `debug_protein_evidence_workflow.sbatch`: runs the protein-evidence workflow
   probe directly under Slurm and prints a full JSON traceback if the workflow
   fails
@@ -81,6 +108,20 @@ The local smoke scripts can still use `data/images/*.sif`.
   runner
 - `run_minimal_pasa_image_smoke.sh`: convenience launcher that creates the
   output directory and submits the PASA image smoke job
+- `download_minimal_busco_fixture.sh`: stages the upstream BUSCO eukaryota
+  `genome.fna` test fixture from GitLab under `data/busco/test_data/eukaryota/`
+- `download_minimal_repeatmasker_fixture.sh`: stages the GTN RepeatMasker
+  tutorial genome and Mucor mucedo repeat-library fixtures from Zenodo under
+  `data/repeatmasker/`
+- `minimal_busco_image_smoke.sh`: Apptainer-backed BUSCO image smoke that runs
+  the upstream eukaryota genome test command against the BUSCO image
+- `check_minimal_busco_image_smoke.sh`: verifies the BUSCO image smoke emitted
+  a short summary with BUSCO completeness notation
+- `minimal_busco_image_smoke.sbatch`: Slurm wrapper for the BUSCO image smoke
+  runner
+- `run_minimal_busco_image_smoke.sh`: convenience launcher that stages the
+  upstream BUSCO test FASTA, creates the Slurm output directory, and submits
+  the BUSCO image smoke job
 - `download_minimal_fixtures.sh`: restores the small tutorial-backed smoke
   fixtures into `data/`
 - `download_minimal_images.sh`: restores the small smoke images into
@@ -107,7 +148,7 @@ The Trinity wrapper defaults to the repo-local minimal fixture layout:
 - image: `/project/rcc/hyadav/genomes/software/trinityrnaseq.v2.15.2.simg`
 - host fastq directory: `data/transcriptomics/ref-based/`
 - container fastq mount: `/workspace/data/transcriptomics/ref-based`
-- host output directory: `temp/trinity_out_dir`
+- host output directory: `results/rcc_trinity/trinity_out_dir`
 - container output mount: `/tmp/trinity_out_dir`
 - mode: `denovo`
 
@@ -117,14 +158,15 @@ fastq directory when `LEFT_FASTQ` and `RIGHT_FASTQ` are not provided.
 For genome-guided Trinity, the wrapper defaults to:
 
 - merged BAM: `data/braker3/rnaseq/RNAseq.bam`
-- output directory: `temp/trinity_gg`
+- output directory: `results/rcc_trinity/trinity_gg`
 - container output directory: `/tmp/trinity_gg`
 - CPU count: `4`
 - memory: `8G`
 - max intron: `100000`
 
-If you override `OUT_DIR`, also override `CONTAINER_OUT_DIR` so the host mount
-and container output path stay aligned.
+If you override `OUT_DIR`, prefer a repo-local path under `results/`. Also
+override `CONTAINER_OUT_DIR` so the host mount and container output path stay
+aligned.
 
 Run STAR indexing:
 
@@ -136,7 +178,8 @@ The STAR wrapper defaults to the repo-local minimal fixture layout:
 
 - image: `/project/rcc/hyadav/genomes/software/STAR.sif`
 - genome FASTA: `data/braker3/reference/genome.fa`
-- genome index: `temp/star_index` on the host, `/tmp/star_index` inside the container
+- genome index: `results/rcc_star/star_index` on the host, `/tmp/star_index`
+  inside the container
 - default read pair for alignment: `data/transcriptomics/ref-based/reads_1.fq.gz`
   and `data/transcriptomics/ref-based/reads_2.fq.gz`
 - CPU count: `4`
@@ -151,9 +194,9 @@ The StringTie wrapper defaults to the repo-local minimal fixture layout:
 
 - binary: `/project/rcc/hyadav/genomes/software/stringtie/stringtie`
 - input BAM: `data/braker3/rnaseq/RNAseq.bam`
-- output GTF: `temp/stringtie/stringtie_yeast.gtf`
+- output GTF: `results/rcc_stringtie/stringtie/stringtie_yeast.gtf`
 - abundance table:
-  `temp/stringtie/stringtie_yeast_abundances.txt`
+  `results/rcc_stringtie/stringtie/stringtie_yeast_abundances.txt`
 
 Run the wiki-shaped PASA align/assemble smoke:
 
@@ -164,10 +207,12 @@ bash scripts/rcc/run_minimal_pasa_align_smoke.sh
 
 The wiki-shaped PASA smoke defaults to the repo-local fixture layout:
 
-- work directory: `temp/minimal_pasa_align_smoke/pasa`
-- Trinity FASTA: `temp/minimal_transcriptomics_smoke/trinity/trinity_out_dir.Trinity.fasta`
+- work directory: `results/minimal_pasa_align_smoke/pasa`
+- Trinity FASTA:
+  `results/minimal_transcriptomics_smoke/trinity/trinity_out_dir.Trinity.fasta`
 - genome FASTA: `data/braker3/reference/genome.fa`
-- PASA config: `temp/minimal_pasa_align_smoke/pasa/config/pasa.alignAssembly.config`
+- PASA config:
+  `results/minimal_pasa_align_smoke/pasa/config/pasa.alignAssembly.config`
 - host PASA entrypoint: `Launch_PASA_pipeline.pl`
 - host aligners: `blat,gmap` when `pblat` is available, otherwise `gmap`
 
@@ -183,14 +228,43 @@ fixture pair as the host smoke, but runs inside the repo-local image-backed
 fixture layout:
 
 - image: `data/images/pasa_2.5.3.sif`
-- work directory: `temp/minimal_pasa_image_smoke/pasa`
-- Trinity FASTA: `temp/minimal_transcriptomics_smoke/trinity/trinity_out_dir.Trinity.fasta`
+- work directory: `results/minimal_pasa_image_smoke/pasa`
+- Trinity FASTA:
+  `results/minimal_transcriptomics_smoke/trinity/trinity_out_dir.Trinity.fasta`
 - genome FASTA: `data/braker3/reference/genome.fa`
-- PASA config: `temp/minimal_pasa_image_smoke/pasa/config/alignAssembly.conf`
+- PASA config:
+  `results/minimal_pasa_image_smoke/pasa/config/alignAssembly.conf`
 - container PASA entrypoint: `/usr/local/src/PASApipeline/Launch_PASA_pipeline.pl`
 - The PASA Apptainer image smoke does not currently support the legacy
   `seqclean` path; see
   https://github.com/PASApipeline/PASApipeline/issues/73.
+
+Run the upstream BUSCO eukaryota image smoke:
+
+```bash
+export BUSCO_SIF="/scratch/midway3/mehta5/flyteTest/data/images/busco_v6.0.0_cv1.sif"
+bash scripts/rcc/run_minimal_busco_image_smoke.sh
+```
+
+The launcher stages the upstream BUSCO eukaryota test genome from
+`https://gitlab.com/ezlab/busco/-/raw/master/test_data/eukaryota/genome.fna?ref_type=heads`
+under `data/busco/test_data/eukaryota/genome.fna` before submitting the Slurm
+job, then the image smoke runs the command shape recommended by the upstream
+test-data note:
+
+```bash
+busco -i genome.fna -c 8 -m geno -f --out test_eukaryota
+```
+
+The wrapper uses `BUSCO_CPU=2` by default for the RCC smoke and preserves the
+same genome-mode, force-overwrite, auto-lineage, and output-name behavior. Set
+`BUSCO_EXTRA_ARGS` before launching when the cluster needs additional BUSCO
+flags such as a pre-staged download path or offline mode.
+
+BUSCO smoke outputs are written under `results/minimal_busco_image_smoke/`.
+The Apptainer helper still binds a container-visible `/tmp`, but that path is
+backed by `results/minimal_busco_image_smoke/runtime` on the host rather than
+cluster `/tmp`.
 
 Submit the hello-world Slurm smoke job:
 
@@ -218,6 +292,37 @@ The cancel wrapper also prints a small machine-readable JSON summary:
 - cancel JSON: whether the cancellation request was accepted, which durable
   run record and scheduler job were targeted, and any cancellation limits or
   scheduler-side errors reported by the server
+
+Run the Milestone 18 HPC smoke without pasting Python or pointer paths into the
+shell:
+
+```bash
+export BUSCO_SIF="/scratch/midway3/mehta5/flyteTest/data/images/busco_v6.0.0_cv1.sif"
+bash scripts/rcc/run_m18_hpc_smoke.sh
+```
+
+The wrapper sets RCC-shaped defaults, including
+`FLYTETEST_SLURM_ACCOUNT=rcc-staff`, `FLYTETEST_SLURM_QUEUE=caslake`,
+`FLYTETEST_SLURM_CPU=2`, `FLYTETEST_SLURM_MEMORY=8Gi`,
+`FLYTETEST_SLURM_WALLTIME=00:10:00`, and
+`FLYTETEST_BUSCO_GENOME_FASTA=data/busco/test_data/eukaryota/genome.fna`.
+The fixture recipe also defaults to `FLYTETEST_BUSCO_MODE=geno` and
+`FLYTETEST_BUSCO_LINEAGE_DATASET=auto-lineage`, which omits the BUSCO `-l`
+flag to stay close to the upstream test-data command.
+Override any of those environment variables before running the wrapper when
+the cluster allocation, BUSCO image, or fixture path differs.
+
+The top-level smoke does two related checks:
+
+- It stages the upstream BUSCO eukaryota test genome under
+  `data/busco/test_data/eukaryota/` and submits the BUSCO image smoke with the
+  configured `BUSCO_SIF`, unless `M18_RUN_BUSCO_IMAGE_SMOKE=0`.
+- It validates the Milestone 18 retry/resubmission path by submitting a frozen
+  FLyteTest Slurm recipe that runs BUSCO genome mode on
+  `data/busco/test_data/eukaryota/genome.fna`, copying the accepted run
+  record, marking the copy with synthetic `NODE_FAIL` scheduler state, and
+  submitting a retry child. This avoids waiting for a real node failure and
+  does not mutate the original submission record.
 
 Run the protein-evidence workflow probe directly on Slurm:
 
@@ -259,7 +364,9 @@ chunk-alignment debug probe.
 When the cluster module system is available, the helper loads
 `python/3.11.9` and then activates `.venv/` if it exists in the checkout.
 The generated Slurm payload does the same bootstrap on the compute node before
-invoking the frozen recipe.
+invoking the frozen recipe. The wrapper and generated Slurm payload also set
+`FLYTETEST_TMPDIR` and `TMPDIR` to `results/.tmp` under the checkout so Python
+task tempdirs stay in the project tree.
 
 Run the transcriptomics smoke suite:
 
@@ -286,6 +393,13 @@ tests and cluster validation:
   - `data/braker3/rnaseq/RNAseq.bam`
   - `data/braker3/protein_data/fastas/proteins.fa`
   - `data/braker3/protein_data/fastas/proteins_extra.fa`
+- BUSCO upstream eukaryota image-smoke fixture:
+  - `data/busco/test_data/eukaryota/genome.fna`
+  - `data/busco/test_data/eukaryota/info.txt`
+- RepeatMasker GTN tutorial fixtures:
+  - `data/repeatmasker/genome_raw.fasta`
+  - `data/repeatmasker/Muco_library_RM2.fasta`
+  - `data/repeatmasker/Muco_library_EDTA.fasta`
 
 The wiki-shaped align/assemble smoke reuses the Trinity FASTA emitted by the
 transcriptomics smoke, stages it under its original basename, and runs the

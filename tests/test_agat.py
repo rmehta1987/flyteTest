@@ -107,13 +107,20 @@ def _create_agat_conversion_results(tmp_path: Path) -> Path:
 def _fixed_datetime(stamp: str = "20260404_160000") -> type:
     """Return a deterministic timestamp provider for result-directory naming."""
 
+    # Keep the synthetic result-directory name stable for manifest assertions.
     class _Stamp:
+        """Fake datetime stamp that always returns the same test timestamp."""
+
         def strftime(self, fmt: str) -> str:
+            """Return the fixed timestamp string expected by the assertions."""
             return stamp
 
     class _FixedDatetime:
+        """Shim object that mimics the subset of `datetime` used by the code."""
+
         @classmethod
         def now(cls) -> _Stamp:
+            """Return the fixed timestamp stub used by the synthetic tests."""
             return _Stamp()
 
     return _FixedDatetime
@@ -123,7 +130,7 @@ class AgatTaskTests(TestCase):
     """Task-level coverage for the AGAT post-processing slices."""
 
     def test_agat_statistics_runs_the_statistics_command_with_optional_fasta(self) -> None:
-        """Keep the AGAT command and output collection aligned with the notes."""
+        """Keep the AGAT command and output collection aligned with the AGAT task ref."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             eggnog_results = _create_eggnog_results(tmp_path)
@@ -184,7 +191,7 @@ class AgatTaskTests(TestCase):
             self.assertEqual(manifest["outputs"]["agat_statistics_tsv"], str(results_dir / "agat_statistics.tsv"))
 
     def test_agat_convert_sp_gxf2gxf_runs_the_conversion_command(self) -> None:
-        """Keep the AGAT conversion command and output collection aligned with the notes."""
+        """Keep the AGAT conversion command and output collection aligned with the AGAT task ref."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             eggnog_results = _create_eggnog_results(tmp_path)

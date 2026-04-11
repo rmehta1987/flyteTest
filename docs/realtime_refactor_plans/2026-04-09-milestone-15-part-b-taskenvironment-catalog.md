@@ -12,7 +12,9 @@ Implementation note:
   `TaskEnvironment` defaults from a single declarative catalog.
 - A couple of heavier families now carry explicit resource and description
   overrides so the catalog reflects real workload differences, not just names.
-- Compatibility aliases remain in place for current imports and manifests.
+- Compatibility aliases remain in place for current imports and manifests, but
+  newer task families should prefer the specific environment names in their own
+  docs and manifest records.
 
 ## Current State
 
@@ -22,6 +24,9 @@ Implementation note:
   the environment definitions themselves were still repetitive.
 - The refactor opportunity was to centralize shared task-environment defaults
   and make future task-family additions more declarative.
+- `WORKFLOW_NAME` still exists as a legacy alias for the original RNA-seq
+  baseline, but it should be treated as compatibility-only rather than as the
+  model for newer milestone-specific task families.
 
 ## Target State
 
@@ -35,6 +40,9 @@ Implementation note:
   real runtime differentiation between heavy and light families.
 - Environment names remain available through compatibility aliases so current
   task modules and manifests continue to work unchanged.
+- The broader refactor roadmap now includes the 18a / 18b / 18c utility
+  cleanup lane before Milestone 15, so later planner work should assume those
+  helper abstractions exist.
 
 ## Scope
 
@@ -80,3 +88,5 @@ Out of scope:
   not force an early packaging decision.
 - If a future family needs stronger defaults, the catalog can carry per-family
   overrides without changing the import surface.
+- Any eventual removal of `WORKFLOW_NAME` should be treated as a separate
+  compatibility migration, not as a side effect of this catalog refactor.

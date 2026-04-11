@@ -10,10 +10,12 @@ BRAKER3_REFERENCE_DIR="$DATA_DIR/braker3/reference"
 BRAKER3_RNASEQ_DIR="$DATA_DIR/braker3/rnaseq"
 BRAKER3_PROTEIN_DIR="$DATA_DIR/braker3/protein_data/fastas"
 PASA_DIR="$DATA_DIR/pasa"
+BUSCO_TEST_DIR="$DATA_DIR/busco/test_data/eukaryota"
+REPEATMASKER_DIR="$DATA_DIR/repeatmasker"
 
 mkdir -p "$DATA_DIR"
 mkdir -p "$TRANSCRIPTOMICS_DIR" "$BRAKER3_REFERENCE_DIR" "$BRAKER3_RNASEQ_DIR" "$BRAKER3_PROTEIN_DIR"
-mkdir -p "$PASA_DIR"
+mkdir -p "$PASA_DIR" "$BUSCO_TEST_DIR" "$REPEATMASKER_DIR"
 
 download_file() {
   local url="$1"
@@ -91,6 +93,25 @@ download_file \
 download_file \
   "https://zenodo.org/records/14770765/files/protein_sequences.fasta" \
   "$BRAKER3_PROTEIN_DIR/proteins.fa"
+
+# BUSCO upstream eukaryota image-smoke fixture.
+download_file \
+  "https://gitlab.com/ezlab/busco/-/raw/master/test_data/eukaryota/genome.fna?ref_type=heads" \
+  "$BUSCO_TEST_DIR/genome.fna"
+download_file \
+  "https://gitlab.com/ezlab/busco/-/raw/master/test_data/eukaryota/info.txt?ref_type=heads" \
+  "$BUSCO_TEST_DIR/info.txt"
+
+# RepeatMasker tutorial fixtures from the GTN masking tutorial.
+download_file \
+  "https://zenodo.org/record/7085837/files/genome_raw.fasta" \
+  "$REPEATMASKER_DIR/genome_raw.fasta"
+download_file \
+  "https://zenodo.org/record/7085837/files/Muco_library_RM2.fasta" \
+  "$REPEATMASKER_DIR/Muco_library_RM2.fasta"
+download_file \
+  "https://zenodo.org/record/7085837/files/Muco_library_EDTA.fasta" \
+  "$REPEATMASKER_DIR/Muco_library_EDTA.fasta"
 
 # A second small protein FASTA keeps the multi-input planning tests realistic.
 if [[ ! -e "$BRAKER3_PROTEIN_DIR/proteins_extra.fa" || "$FORCE" == "1" ]]; then

@@ -75,13 +75,20 @@ def _create_repeat_filter_results(tmp_path: Path) -> Path:
 def _fixed_datetime() -> type:
     """Return a deterministic timestamp provider for result-directory naming."""
 
+    # Keep the synthetic result-directory name stable for manifest assertions.
     class _Stamp:
+        """Fake datetime stamp that always returns the same test timestamp."""
+
         def strftime(self, fmt: str) -> str:
+            """Return the fixed timestamp string expected by the assertions."""
             return "20260404_140000"
 
     class _FixedDatetime:
+        """Shim object that mimics the subset of `datetime` used by the code."""
+
         @classmethod
         def now(cls) -> _Stamp:
+            """Return the fixed timestamp stub used by the synthetic tests."""
             return _Stamp()
 
     return _FixedDatetime
@@ -98,7 +105,7 @@ class FunctionalTaskTests(TestCase):
         )
 
     def test_busco_assess_proteins_uses_note_backed_protein_mode_flags(self) -> None:
-        """Keep the BUSCO command aligned with the notes-backed protein assessment shape."""
+        """Keep the BUSCO command aligned with the BUSCO tool reference and protein-mode flags."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             proteins = _write_fasta(tmp_path / "proteins.fa", [("prot1", "MAPP")])
@@ -146,6 +153,55 @@ class FunctionalTaskTests(TestCase):
             )
             manifest = _read_json(Path(results.download_sync()) / "run_manifest.json")
             self.assertEqual(manifest["outputs"]["summary_notation"], "C:98.0%[S:97.0%,D:1.0%],F:1.0%,M:1.0%,n:255")
+
+    def test_busco_assess_proteins_can_omit_lineage_for_fixture_genome_mode(self) -> None:
+        """Support the upstream BUSCO genome fixture command shape without a lineage flag."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            genome = _write_fasta(tmp_path / "genome.fna", [("seq1", "ACGTACGT")])
+            captured: dict[str, object] = {}
+
+            def fake_run_tool(
+                cmd: list[str],
+                sif: str,
+                bind_paths: list[Path],
+                cwd: Path | None = None,
+                stdout_path: Path | None = None,
+            ) -> None:
+                captured["cmd"] = cmd
+                self.assertIsNotNone(cwd)
+                run_dir = cwd / "busco_output_auto-lineage"
+                run_dir.mkdir(parents=True, exist_ok=True)
+                (run_dir / "short_summary.specific.eukaryota_odb10.txt").write_text(
+                    "C:75.0%[S:75.0%,D:0.0%],F:5.0%,M:20.0%,n:255\n"
+                )
+                (run_dir / "full_table.tsv").write_text("# BUSCO table\n")
+
+            with patch.object(functional, "run_tool", side_effect=fake_run_tool):
+                results = functional.busco_assess_proteins(
+                    proteins_fasta=File(path=str(genome)),
+                    lineage_dataset="auto-lineage",
+                    busco_cpu=2,
+                    busco_mode="geno",
+                )
+
+            cmd = captured["cmd"]
+            self.assertEqual(
+                cmd,
+                [
+                    "busco",
+                    "-i",
+                    str(genome),
+                    "-o",
+                    "busco_output_auto-lineage",
+                    "-m",
+                    "geno",
+                    "-c",
+                    "2",
+                ],
+            )
+            manifest = _read_json(Path(results.download_sync()) / "run_manifest.json")
+            self.assertEqual(manifest["inputs"]["lineage_dataset"], "auto-lineage")
 
 
 class FunctionalWorkflowTests(TestCase):

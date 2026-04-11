@@ -2,6 +2,9 @@
 
 This module stages local protein FASTAs, chunks them deterministically, runs
 Exonerate per chunk, and collects the later-EVM protein evidence bundle.
+
+Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
+input/output expectations follow `docs/tool_refs/exonerate.md`.
 """
 
 from __future__ import annotations

@@ -10,8 +10,8 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 HOST_PROJECT_DIR="${HOST_PROJECT_DIR:-$REPO_ROOT}"
 # Container bind target for the checkout root.
 CONTAINER_PROJECT_DIR="${CONTAINER_PROJECT_DIR:-/workspace}"
-# Host scratch area for StringTie outputs.
-WORK_DIR="${WORK_DIR:-$PWD/temp}"
+# Host project-local results area for StringTie outputs.
+WORK_DIR="${WORK_DIR:-$REPO_ROOT/results/rcc_stringtie}"
 
 # StringTie prefers the shared RCC cluster binary, then the repo-local smoke image.
 STRINGTIE_BIN="${STRINGTIE_BIN:-/project/rcc/hyadav/genomes/software/stringtie/stringtie}"

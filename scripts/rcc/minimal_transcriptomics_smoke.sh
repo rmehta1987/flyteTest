@@ -3,8 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-# Top-level scratch tree for the whole smoke workflow.
-SMOKE_ROOT="${SMOKE_ROOT:-$REPO_ROOT/temp/minimal_transcriptomics_smoke}"
+# Top-level project-local results tree for the whole smoke workflow.
+SMOKE_ROOT="${SMOKE_ROOT:-$REPO_ROOT/results/minimal_transcriptomics_smoke}"
 
 mkdir -p "$SMOKE_ROOT"
 

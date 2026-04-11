@@ -1,8 +1,12 @@
 """Consensus-stage preparation and EVM execution tasks for FLyteTest.
 
-This module preserves the note-faithful pre-EVM contract assembly boundary,
-then runs deterministic EVidenceModeler partitioning, command generation,
-execution, and recombination strictly downstream of that existing bundle.
+Stage ordering and the pre-EVM file contract follow `docs/braker3_evm_notes.md`.
+Tool-level command and input/output expectations follow the tool references
+under `docs/tool_refs/` (notably `evidencemodeler.md`).
+
+This module preserves the current pre-EVM contract assembly boundary, then runs
+deterministic EVidenceModeler partitioning, command generation, execution, and
+recombination strictly downstream of that existing bundle.
 """
 
 from __future__ import annotations
@@ -10,7 +14,6 @@ from __future__ import annotations
 import json
 import shlex
 import shutil
-import tempfile
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -26,6 +29,7 @@ from flytetest.config import (
     RESULTS_ROOT,
     consensus_evm_env,
     consensus_prep_env,
+    project_mkdtemp,
     require_path,
     run_tool,
 )
@@ -204,7 +208,7 @@ def prepare_evm_transcript_inputs(
     manifest = _read_json(_manifest_path(results_dir, "PASA"))
     pasa_assemblies_gff3 = _pasa_assemblies_gff3_from_results(results_dir, manifest)
 
-    out_dir = Path(tempfile.mkdtemp(prefix="evm_transcript_inputs_")) / "transcript_inputs"
+    out_dir = project_mkdtemp("evm_transcript_inputs_") / "transcript_inputs"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     staged_gff3 = _copy_file(pasa_assemblies_gff3, out_dir / "transcripts.gff3")
@@ -214,7 +218,7 @@ def prepare_evm_transcript_inputs(
         transcripts_gff3_path=staged_gff3,
         source_results_dir=results_dir,
         notes=(
-            "The notes-faithful transcript channel is the PASA assemblies GFF3 copied directly to transcripts.gff3.",
+            "The transcript channel is the PASA assemblies GFF3 copied directly to transcripts.gff3.",
         ),
     )
     run_manifest = {
@@ -223,7 +227,7 @@ def prepare_evm_transcript_inputs(
         "evm_source_fields": list(source_fields),
         "evm_weight_categories": ["TRANSCRIPT" for _ in source_fields],
         "assumptions": [
-            "The attached notes define `${db}.pasa_assemblies.gff3` as the transcript evidence input to the pre-EVM boundary.",
+            "The source notes define `${db}.pasa_assemblies.gff3` as the transcript evidence input to the pre-EVM boundary.",
             "This milestone does not invent an additional PASA-to-EVM transcript conversion step beyond deterministic staging to transcripts.gff3.",
         ],
         "source_results_bundle": str(results_dir),
@@ -249,7 +253,7 @@ def prepare_evm_protein_inputs(
     manifest = _read_json(_manifest_path(results_dir, "Protein evidence"))
     protein_gff3 = _protein_evidence_gff3_from_results(results_dir, manifest)
 
-    out_dir = Path(tempfile.mkdtemp(prefix="evm_protein_inputs_")) / "protein_inputs"
+    out_dir = project_mkdtemp("evm_protein_inputs_") / "protein_inputs"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     staged_gff3 = _copy_file(protein_gff3, out_dir / "proteins.gff3")
@@ -303,7 +307,7 @@ def prepare_evm_prediction_inputs(
     normalized_braker_gff3 = _normalized_braker_gff3_from_results(braker3_results_dir, braker_manifest)
     genome_fasta = _braker_genome_fasta(braker3_results_dir)
 
-    out_dir = Path(tempfile.mkdtemp(prefix="evm_prediction_inputs_")) / "prediction_inputs"
+    out_dir = project_mkdtemp("evm_prediction_inputs_") / "prediction_inputs"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     staged_braker_gff3 = _copy_file(normalized_braker_gff3, out_dir / "braker.gff3")
@@ -327,7 +331,7 @@ def prepare_evm_prediction_inputs(
         source_braker3_results_dir=braker3_results_dir,
         source_transdecoder_results_dir=transdecoder_results_dir,
         notes=(
-            "The notes-faithful predictions channel is assembled by concatenating braker.gff3 with the PASA-derived TransDecoder genome GFF3.",
+            "The predictions channel is assembled by concatenating braker.gff3 with the PASA-derived TransDecoder genome GFF3.",
             "The staged braker.gff3 copy comes from the deterministic normalized BRAKER3 result bundle produced upstream.",
         ),
     )
@@ -339,7 +343,7 @@ def prepare_evm_prediction_inputs(
             for source_name in source_fields
         ],
         "notes_backed_behavior": [
-            "The attached notes define predictions.gff3 as braker.gff3 plus `${db}.assemblies.fasta.transdecoder.genome.gff3`.",
+            "The source notes define predictions.gff3 as braker.gff3 plus `${db}.assemblies.fasta.transdecoder.genome.gff3`.",
         ],
         "tutorial_backed_behavior": [
             "The upstream BRAKER3 source bundle comes from the repo's Galaxy tutorial-backed runtime model.",
@@ -743,7 +747,7 @@ def prepare_evm_execution_inputs(
     )
     prep_manifest = _manifest_from_dir(prep_results_dir, "Pre-EVM")
 
-    out_dir = Path(tempfile.mkdtemp(prefix="evm_execution_inputs_")) / "evm_execution_inputs"
+    out_dir = project_mkdtemp("evm_execution_inputs_") / "evm_execution_inputs"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     transcripts_gff3 = _copy_file(
@@ -840,7 +844,7 @@ def evm_partition_inputs(
     )
     input_manifest = _manifest_from_dir(execution_inputs_dir, "EVM execution inputs")
 
-    out_dir = Path(tempfile.mkdtemp(prefix="evm_partition_")) / "evm_partitioned"
+    out_dir = project_mkdtemp("evm_partition_") / "evm_partitioned"
     _copy_tree(execution_inputs_dir, out_dir)
 
     cmd = [
@@ -942,7 +946,7 @@ def evm_write_commands(
     )
     partition_manifest = _manifest_from_dir(partitioned_dir, "Partitioned EVM inputs")
 
-    out_dir = Path(tempfile.mkdtemp(prefix="evm_commands_")) / "evm_commands"
+    out_dir = project_mkdtemp("evm_commands_") / "evm_commands"
     _copy_tree(partitioned_dir, out_dir)
 
     commands_path = out_dir / "commands.list"
@@ -1019,7 +1023,7 @@ def evm_execute_commands(
     commands_dir = require_path(Path(evm_commands.download_sync()), "EVM commands directory")
     commands_manifest = _manifest_from_dir(commands_dir, "EVM commands")
 
-    out_dir = Path(tempfile.mkdtemp(prefix="evm_execute_")) / "evm_executed"
+    out_dir = project_mkdtemp("evm_execute_") / "evm_executed"
     _copy_tree(commands_dir, out_dir)
 
     normalized_commands = _command_lines(_commands_path(out_dir))
@@ -1084,7 +1088,7 @@ def evm_recombine_outputs(
     )
     execution_manifest = _manifest_from_dir(executed_dir, "Executed EVM commands")
 
-    out_dir = Path(tempfile.mkdtemp(prefix="evm_recombine_")) / "evm_recombined"
+    out_dir = project_mkdtemp("evm_recombine_") / "evm_recombined"
     _copy_tree(executed_dir, out_dir)
 
     run_tool(

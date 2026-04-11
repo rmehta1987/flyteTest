@@ -1,7 +1,7 @@
 # Milestone 17 Generic Asset Adoption and Legacy Alias Retention
 
 Date: 2026-04-08
-Status: Proposed
+Status: Complete
 
 Related checklist milestone:
 - `docs/realtime_refactor_checklist.md` Milestone 17

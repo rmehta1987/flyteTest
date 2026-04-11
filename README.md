@@ -21,21 +21,18 @@ artifact upload semantics.
 ## Current Status
 
 - Active biological milestone: `AGAT post-processing after EggNOG`
-- Active architecture milestone: `realtime` refactor Milestones 0 through 14
-  and Milestone 16 are complete; the currently planned next sequence is
-  `17 -> 18 -> 15 -> 19`. Milestone 17 generic asset adoption is next on the
-  mainline path, Milestone 18 Slurm retry/resubmission is next on the Slurm
-  lane, Milestone 15 composition preview follows those two enabling slices,
-  and Milestone 19 caching/resumability comes after Milestone 15 to make
-  composed DAG execution safe
+- Active architecture milestone: `realtime` refactor Milestones 0 through 14,
+  16, 17, and 18 are complete; the currently planned next sequence is
+  `15 -> 19`. Milestone 15 composition preview is next, and Milestone 19
+  caching/resumability follows that to make composed DAG execution safe
 - Implemented biological scope: transcript evidence, PASA align/assemble,
   TransDecoder, protein evidence, tutorial-backed BRAKER3, corrected pre-EVM
   contract assembly, deterministic EVM execution, PASA post-EVM refinement,
   repeat filtering cleanup, BUSCO-based annotation QC, EggNOG functional
   annotation, and the AGAT statistics, conversion, and cleanup slices
 - Deferred biological scope: optional `table2asn` submission preparation
-- Deferred execution scope: Slurm retry, resumability, remote/indexed
-  discovery, and arbitrary Python task-code generation
+- Deferred execution scope: resumability, remote/indexed discovery, and
+  arbitrary Python task-code generation
 
 Important terminology:
 
@@ -62,7 +59,8 @@ Use the more specific docs when you need detail:
 - [docs/tutorial_context.md](docs/tutorial_context.md): Galaxy-backed fixture and smoke-test context
 - [src/flytetest/registry.py](src/flytetest/registry.py): exact supported task and workflow names
 
-Reading rule for agents: the notes define biological order and command context;
+Reading rule for agents: the notes define biological order and stage
+boundaries; the tool refs define tool-level command and input/output context;
 the registry and current code define what is actually implemented and runnable.
 
 ## Pipeline Story
@@ -137,6 +135,14 @@ python3 -m venv .venv
 python -m pip install -U pip
 python -m pip install -r requirements-cluster.txt
 ```
+
+Local and Slurm runs keep task scratch inside the checkout by default. Final
+bundles are written under `results/`, and intermediate task work directories
+created by FLyteTest use `results/.tmp` rather than host `/tmp`. FLyteTest also
+sets Python's `TMPDIR` to that project-local scratch root when its shared config
+loads, so generic local `tempfile` users follow the same convention. Set
+`FLYTETEST_TMPDIR=/path/inside/the/project` only when you need to override the
+scratch root explicitly.
 
 Legacy QC and quantification baseline:
 
@@ -245,8 +251,9 @@ Current architecture limits:
 - saved-spec execution is local and handler-based; it does not auto-load every
   checked-in Flyte workflow
 - Slurm/HPC support now has a deterministic `sbatch` submission path for frozen
-  Slurm-profile recipes, with lifecycle reconciliation and cancellation
-  recorded under `.runtime/runs/`. Retry and resumability remain future work.
+  Slurm-profile recipes, with lifecycle reconciliation, explicit manual retry,
+  and cancellation recorded under `.runtime/runs/`. Resumability remains
+  future work.
 
 ## MCP Recipe Surface
 
@@ -272,6 +279,7 @@ Supported tools:
 - `run_local_recipe`
 - `run_slurm_recipe`
 - `monitor_slurm_job`
+- `retry_slurm_job`
 - `cancel_slurm_job`
 - `prompt_and_run`
 
@@ -326,9 +334,14 @@ Current MCP behavior:
   running inside an already-authenticated scheduler-capable environment
 - `monitor_slurm_job` reconciles the durable Slurm run record with `squeue`,
   `scontrol show job`, and `sacct`, then persists observed scheduler state,
-  stdout/stderr paths, exit code, and final state when available; if the server
-  is started outside that scheduler boundary, it returns an explicit
-  unsupported-environment limitation
+  stdout/stderr paths, exit code, final state, and conservative retry
+  classification when available; if the server is started outside that
+  scheduler boundary, it returns an explicit unsupported-environment
+  limitation
+- `retry_slurm_job` manually resubmits a failed Slurm run only when the durable
+  run record shows a retryable scheduler failure, the explicit attempt limit
+  has not been reached, and the frozen saved recipe is still present; each
+  retry writes a new child run record linked back to the source failure
 - `cancel_slurm_job` requests cancellation with `scancel` from the durable run
   record and records the cancellation request for later reconciliation when the
   same authenticated scheduler boundary is available
@@ -367,6 +380,8 @@ Current MCP behavior:
   selected execution profile, and optional runtime image policy are frozen into
   the saved recipe as structured metadata; `local` recipes run through local
   handlers, and `slurm` recipes can be submitted through `run_slurm_recipe`
+  and retried later through `retry_slurm_job` without reinterpreting the
+  original prompt
 - the runnable MCP surface currently includes
   `ab_initio_annotation_braker3`, `protein_evidence_alignment`,
   `exonerate_align_chunk`, `annotation_qc_busco`,
@@ -374,8 +389,8 @@ Current MCP behavior:
   `annotation_postprocess_agat_conversion`, and
   `annotation_postprocess_agat_cleanup`
 - EggNOG and AGAT remain individual MCP recipe targets in this slice; a
-  composed EggNOG-plus-AGAT pipeline, `table2asn`, Slurm retry/resubmission,
-  resumability, and database-backed asset discovery remain deferred
+  composed EggNOG-plus-AGAT pipeline, `table2asn`, resumability, and
+  database-backed asset discovery remain deferred
 - additional registered workflows require explicit local handlers before they
   are exposed as runnable MCP targets
 
