@@ -1,11 +1,10 @@
 """Execution helpers for saved workflow-spec artifacts and Slurm run records.
 
-    This module executes saved `WorkflowSpec` artifacts over registered building
-    blocks through explicit local handlers, and it also owns the repo's Slurm
-    submission, reconciliation, and cancellation helpers for frozen recipe runs.
-    It keeps execution separate from the current Flyte entrypoints and uses the
-    resolver plus saved `BindingPlan` data to prepare node inputs before any
-    registered stage is called.
+This module executes saved `WorkflowSpec` artifacts through explicit local
+handlers, and it also owns the repo's Slurm submission, reconciliation, and
+cancellation helpers for frozen recipe runs. It keeps execution separate from
+the current Flyte entrypoints and uses the resolver plus saved `BindingPlan`
+data to prepare node inputs before any supported stage is called.
 """
 
 from __future__ import annotations
@@ -40,9 +39,10 @@ DEFAULT_SLURM_MAX_ATTEMPTS = 2
 
 @dataclass(frozen=True, slots=True)
 class LocalNodeExecutionRequest:
-    """Inputs passed to one registered task or workflow handler.
+    """Inputs passed to one supported task or workflow handler.
 
-    This dataclass keeps the planning or execution contract explicit and easy to review.
+    It captures the node metadata, resolved planner inputs, and frozen runtime
+    policy that a local handler needs in order to execute one stage.
 """
 
     node: WorkflowNodeSpec
@@ -59,7 +59,8 @@ class LocalNodeExecutionRequest:
 class LocalNodeExecutionResult:
     """Execution details recorded for one saved-spec node.
 
-    This dataclass keeps the planning or execution contract explicit and easy to review.
+    It captures the node metadata, resolved planner inputs, and frozen runtime
+    policy that a local handler needs in order to execute one stage.
 """
 
     node_name: str
@@ -72,7 +73,8 @@ class LocalNodeExecutionResult:
 class LocalSpecExecutionResult:
     """Outcome of executing a saved workflow spec through local handlers.
 
-    This dataclass keeps the planning or execution contract explicit and easy to review.
+    It captures the node metadata, resolved planner inputs, and frozen runtime
+    policy that a local handler needs in order to execute one stage.
 """
 
     supported: bool
@@ -91,7 +93,8 @@ class LocalSpecExecutionResult:
 class SlurmRetryPolicy(SpecSerializable):
     """Explicit retry policy recorded with each Slurm run lineage.
 
-    This dataclass keeps the planning or execution contract explicit and easy to review.
+    It captures the node metadata, resolved planner inputs, and frozen runtime
+    policy that a local handler needs in order to execute one stage.
 """
 
     max_attempts: int = DEFAULT_SLURM_MAX_ATTEMPTS
@@ -101,7 +104,8 @@ class SlurmRetryPolicy(SpecSerializable):
 class SlurmFailureClassification(SpecSerializable):
     """Conservative retryability assessment for one Slurm run record.
 
-    This dataclass keeps the planning or execution contract explicit and easy to review.
+    It captures the node metadata, resolved planner inputs, and frozen runtime
+    policy that a local handler needs in order to execute one stage.
 """
 
     status: str
@@ -117,7 +121,8 @@ class SlurmFailureClassification(SpecSerializable):
 class SlurmRunRecord(SpecSerializable):
     """Durable filesystem record for one accepted Slurm recipe submission.
 
-    This dataclass keeps the planning or execution contract explicit and easy to review.
+    It captures the node metadata, resolved planner inputs, and frozen runtime
+    policy that a local handler needs in order to execute one stage.
 """
 
     schema_version: str
@@ -160,8 +165,9 @@ class SlurmRunRecord(SpecSerializable):
 class SlurmSpecExecutionResult:
     """Outcome of submitting a frozen workflow-spec artifact to Slurm.
 
-    This dataclass keeps the planning or execution contract explicit and easy to review.
-"""
+    It captures whether submission was supported, which supported workflow was
+    submitted, and the resulting script, logs, and run record if available.
+    """
 
     supported: bool
     workflow_name: str
@@ -180,8 +186,9 @@ class SlurmSpecExecutionResult:
 class SlurmSchedulerSnapshot(SpecSerializable):
     """Scheduler state observed for one Slurm job.
 
-    This dataclass keeps the planning or execution contract explicit and easy to review.
-"""
+    It stores the scheduler state and raw command output observed for one job
+    during status, reconciliation, or cancellation.
+    """
 
     job_id: str
     scheduler_state: str | None
@@ -200,8 +207,9 @@ class SlurmSchedulerSnapshot(SpecSerializable):
 class SlurmLifecycleResult(SpecSerializable):
     """Result of reloading, reconciling, or cancelling a Slurm run record.
 
-    This dataclass keeps the planning or execution contract explicit and easy to review.
-"""
+    It packages the durable run record together with the most recent scheduler
+    snapshot after a lifecycle action.
+    """
 
     supported: bool
     run_record: SlurmRunRecord | None = None
@@ -215,8 +223,9 @@ class SlurmLifecycleResult(SpecSerializable):
 class SlurmRetryResult(SpecSerializable):
     """Outcome of retrying one failed Slurm run from a durable run record.
 
-    This dataclass keeps the planning or execution contract explicit and easy to review.
-"""
+    It bundles the source record, failure classification, retry policy, and
+    retry submission result so the retry lineage stays inspectable.
+    """
 
     supported: bool
     source_run_record: SlurmRunRecord | None = None
@@ -232,11 +241,11 @@ def _artifact_from_source(source: SavedWorkflowSpecArtifact | Path) -> SavedWork
     """Load an artifact from disk when the caller provides a path.
 
     Args:
-        source: A filesystem path used by the helper.
+        source: Saved workflow-spec artifact or path that should be loaded first.
 
     Returns:
-        A `SavedWorkflowSpecArtifact` result computed by this helper.
-"""
+        The loaded saved workflow-spec artifact.
+    """
     if isinstance(source, SavedWorkflowSpecArtifact):
         return source
     return load_workflow_spec_artifact(source)
@@ -246,11 +255,11 @@ def _artifact_path_from_source(source: SavedWorkflowSpecArtifact | Path) -> Path
     """Return the artifact path when the caller supplied a filesystem source.
 
     Args:
-        source: A filesystem path used by the helper.
+        source: Saved workflow-spec artifact or path source being inspected.
 
     Returns:
-        A `Path | None` result computed by this helper.
-"""
+        The source path when the caller supplied a path, otherwise ``None``.
+    """
     return Path(source) if not isinstance(source, SavedWorkflowSpecArtifact) else None
 
 
@@ -261,8 +270,8 @@ def _planner_type_names_for_node_inputs(artifact: SavedWorkflowSpecArtifact) -> 
         artifact: Saved workflow-spec artifact being loaded, inspected, or executed.
 
     Returns:
-        A `tuple[str, ...]` result computed by this helper.
-"""
+        The unique planner type names required by the workflow inputs.
+    """
     names: list[str] = []
     for input_spec in artifact.workflow_spec.inputs:
         for name in input_spec.planner_type_names:
@@ -275,11 +284,11 @@ def _serialized_resolved_value(result: ResolutionResult) -> Any:
     """Convert one resolved planner value into an executor-friendly payload.
 
     Args:
-        result: A directory path used by the helper.
+        result: The resolution result that selected a planner-facing value.
 
     Returns:
-        A `Any` result computed by this helper.
-"""
+        A JSON-friendly representation of the selected planner value.
+    """
     value = result.resolved_value
     if hasattr(value, "to_dict"):
         return value.to_dict()
@@ -290,11 +299,11 @@ def _quality_assessment_target_from_serialized(value: Any) -> QualityAssessmentT
     """Convert a serialized quality target into the planner dataclass when possible.
 
     Args:
-        value: The value or values processed by the helper.
+        value: Serialized planner data or an already-built quality target.
 
     Returns:
-        A `QualityAssessmentTarget | None` result computed by this helper.
-"""
+        The reconstructed quality target, or ``None`` if the payload is not compatible.
+    """
     if isinstance(value, QualityAssessmentTarget):
         return value
     if isinstance(value, Mapping):
@@ -306,12 +315,12 @@ def _manifest_source_bundle_path(target: QualityAssessmentTarget, source_bundle_
     """Return one source bundle path from the target manifest when it is recorded.
 
     Args:
-        target: A filesystem path used by the helper.
-        source_bundle_key: A directory path used by the helper.
+        target: The quality target whose manifest should be inspected.
+        source_bundle_key: The source bundle field name expected in the manifest.
 
     Returns:
-        A `Path | None` result computed by this helper.
-"""
+        The recorded source bundle path, or ``None`` when the manifest omits it.
+    """
     if target.source_manifest_path is None:
         return None
     try:
@@ -336,13 +345,13 @@ def _source_dir_from_quality_target(
     """Derive the concrete workflow input directory required by a QC target.
 
     Args:
-        target: A filesystem path used by the helper.
-        source_bundle_key: A directory path used by the helper.
+        target: The quality target whose source directory should be recovered.
+        source_bundle_key: The source bundle field name expected in the manifest.
         execution_input_name: Execution input name used to select a runtime binding.
 
     Returns:
-        A `Path` result computed by this helper.
-"""
+        The source directory that should be passed to the downstream stage.
+    """
     if source_dir := _manifest_source_bundle_path(target, source_bundle_key):
         return source_dir
     if target.source_result_dir is not None:
@@ -375,7 +384,7 @@ def _quality_assessment_target_runtime_inputs(
     - `annotation_postprocess_agat_cleanup`
 
     Args:
-        node_reference_name: The registered node name being prepared for local execution.
+        node_reference_name: The supported node name being prepared for local execution.
         resolved_planner_inputs: Planner inputs after resolution, including any
             structured quality-assessment targets.
 
@@ -434,7 +443,7 @@ def _resolve_planner_inputs(
         resolver: Resolver used to discover planner-facing inputs from local sources.
 
     Returns:
-        A `tuple[dict[str, Any], tuple[str, ...], tuple[str, ...]]` result computed by this helper.
+        The computed result returned by this helper.
 """
     resolved: dict[str, Any] = {}
     limitations: list[str] = []
@@ -472,7 +481,7 @@ def _resolve_binding_expression(
         upstream_outputs: The `upstream_outputs` input processed by this helper.
 
     Returns:
-        A `Any` result computed by this helper.
+        The computed result returned by this helper.
 """
     if expression.startswith("inputs."):
         planner_type_name = expression.removeprefix("inputs.")
@@ -499,7 +508,7 @@ def _node_runtime_binding(
         input_name: Input name being looked up on the current node or shared bindings.
 
     Returns:
-        A `Any | None` result computed by this helper.
+        The computed result returned by this helper.
 """
     node_scoped_name = f"{node_name}.{input_name}"
     if node_scoped_name in runtime_bindings:
@@ -523,7 +532,7 @@ def _build_node_inputs(
         runtime_bindings: Frozen runtime inputs supplied alongside planner-discovered values.
 
     Returns:
-        A `dict[str, Any]` result computed by this helper.
+        The computed result returned by this helper.
 """
     inputs = {
         input_name: _resolve_binding_expression(
@@ -566,7 +575,7 @@ def _manifest_path_for_output(value: Any) -> Path | None:
         value: The value or values processed by the helper.
 
     Returns:
-        A `Path | None` result computed by this helper.
+        The computed result returned by this helper.
 """
     try:
         output_path = Path(value)
@@ -583,7 +592,7 @@ def _manifest_paths_for_outputs(outputs: Mapping[str, Any]) -> dict[str, Path]:
         outputs: Node outputs being scanned for manifest paths.
 
     Returns:
-        A `dict[str, Path]` result computed by this helper.
+        The computed result returned by this helper.
 """
     return {
         name: manifest_path
@@ -599,7 +608,7 @@ def _json_ready(value: Any) -> Any:
         value: The value or values processed by the helper.
 
     Returns:
-        A `Any` result computed by this helper.
+        The computed result returned by this helper.
 """
     if isinstance(value, Path):
         return str(value)
@@ -632,7 +641,7 @@ def _slurm_run_record_path(source: Path) -> Path:
         source: A filesystem path used by the helper.
 
     Returns:
-        A `Path` result computed by this helper.
+        The computed result returned by this helper.
 """
     return source / DEFAULT_SLURM_RUN_RECORD_FILENAME if source.is_dir() else source
 
@@ -644,7 +653,7 @@ def load_slurm_run_record(source: Path) -> SlurmRunRecord:
         source: A filesystem path used by the helper.
 
     Returns:
-        A `SlurmRunRecord` result computed by this helper.
+        The computed result returned by this helper.
 """
     record_path = _slurm_run_record_path(source)
     payload = json.loads(record_path.read_text())
@@ -661,7 +670,7 @@ def save_slurm_run_record(record: SlurmRunRecord) -> Path:
         record: Slurm run record or scheduler snapshot being processed.
 
     Returns:
-        A `Path` result computed by this helper.
+        The computed result returned by this helper.
 """
     _write_json_atomically(record.run_record_path, record.to_dict())
     return record.run_record_path
@@ -675,7 +684,7 @@ def parse_sbatch_job_id(stdout: str, stderr: str = "") -> str:
         stderr: Standard error text being parsed.
 
     Returns:
-        A `str` result computed by this helper.
+        The computed result returned by this helper.
 """
     combined = "\n".join(stream for stream in (stdout, stderr) if stream)
     submitted_match = re.search(r"\bSubmitted\s+batch\s+job\s+([0-9]+(?:\.[0-9]+)?)\b", combined)
@@ -739,7 +748,7 @@ def _normalize_scheduler_state(value: str | None) -> str | None:
         value: The value or values processed by the helper.
 
     Returns:
-        A `str | None` result computed by this helper.
+        The computed result returned by this helper.
 """
     if value in (None, ""):
         return None
@@ -753,7 +762,7 @@ def _scheduler_state_for_classification(record: SlurmRunRecord) -> str | None:
         record: Slurm run record or scheduler snapshot being processed.
 
     Returns:
-        A `str | None` result computed by this helper.
+        The computed result returned by this helper.
 """
     return record.final_scheduler_state or record.scheduler_state
 
@@ -765,7 +774,7 @@ def _scheduler_exit_is_nonzero(exit_code: str | None) -> bool:
         exit_code: The `exit_code` input processed by this helper.
 
     Returns:
-        A `bool` result computed by this helper.
+        The computed result returned by this helper.
 """
     if exit_code in (None, ""):
         return False
@@ -780,7 +789,7 @@ def classify_slurm_failure(record: SlurmRunRecord) -> SlurmFailureClassification
         record: Slurm run record or scheduler snapshot being processed.
 
     Returns:
-        A `SlurmFailureClassification` result computed by this helper.
+        The computed result returned by this helper.
 """
     state = _scheduler_state_for_classification(record)
     reason = record.scheduler_reason
@@ -902,7 +911,7 @@ def _command_is_available(command: str) -> bool:
         command: The command arguments or command name passed to the helper.
 
     Returns:
-        A `bool` result computed by this helper.
+        The computed result returned by this helper.
 """
     return shutil.which(command) is not None
 
@@ -914,7 +923,7 @@ def _format_slurm_command_list(commands: Sequence[str]) -> str:
         commands: Command names being checked for availability or reported in diagnostics.
 
     Returns:
-        A `str` result computed by this helper.
+        The computed result returned by this helper.
 """
     wrapped = [f"`{command}`" for command in commands]
     if len(wrapped) == 1:
@@ -933,7 +942,7 @@ def _missing_slurm_command_limitation(*, action: str, commands: Sequence[str], r
         require_all: The `require_all` input processed by this helper.
 
     Returns:
-        A `str` result computed by this helper.
+        The computed result returned by this helper.
 """
     requirement = (
         f"requires {_format_slurm_command_list(commands)} on PATH"
@@ -951,7 +960,7 @@ def _partial_slurm_command_limitation(*, action: str, commands: Sequence[str]) -
         commands: Command names being checked for availability or reported in diagnostics.
 
     Returns:
-        A `str` result computed by this helper.
+        The computed result returned by this helper.
 """
     return (
         f"Slurm {action} cannot use {_format_slurm_command_list(commands)} in the current "
@@ -966,7 +975,7 @@ def _looks_like_scheduler_reachability_issue(text: str) -> bool:
         text: Free text to normalize or inspect.
 
     Returns:
-        A `bool` result computed by this helper.
+        The computed result returned by this helper.
 """
     lowered = text.lower()
     return any(pattern in lowered for pattern in _SLURM_REACHABILITY_PATTERNS)
@@ -981,7 +990,7 @@ def _slurm_command_failure_limitation(*, command: str, stderr: str, action: str)
         action: Lifecycle action being described or performed.
 
     Returns:
-        A `str` result computed by this helper.
+        The computed result returned by this helper.
 """
     detail = stderr.strip()
     if _looks_like_scheduler_reachability_issue(detail):
@@ -1000,7 +1009,7 @@ def _first_nonempty_line(value: str) -> str | None:
         value: The value or values processed by the helper.
 
     Returns:
-        A `str | None` result computed by this helper.
+        The computed result returned by this helper.
 """
     for line in value.splitlines():
         stripped = line.strip()
@@ -1016,7 +1025,7 @@ def _parse_squeue_state(stdout: str) -> str | None:
         stdout: Standard output text being parsed.
 
     Returns:
-        A `str | None` result computed by this helper.
+        The computed result returned by this helper.
 """
     return _normalize_scheduler_state(_first_nonempty_line(stdout))
 
@@ -1028,7 +1037,7 @@ def _parse_scontrol_fields(stdout: str) -> dict[str, str]:
         stdout: Standard output text being parsed.
 
     Returns:
-        A `dict[str, str]` result computed by this helper.
+        The computed result returned by this helper.
 """
     fields: dict[str, str] = {}
     for token in stdout.replace("\n", " ").split():
@@ -1047,7 +1056,7 @@ def _parse_sacct_fields(stdout: str, job_id: str) -> dict[str, str]:
         job_id: Scheduler job identifier assigned after submission.
 
     Returns:
-        A `dict[str, str]` result computed by this helper.
+        The computed result returned by this helper.
 """
     fallback: dict[str, str] = {}
     for line in stdout.splitlines():
@@ -1072,7 +1081,7 @@ def _slug(value: str, *, max_length: int = 48) -> str:
         max_length: Maximum output length for the generated identifier fragment.
 
     Returns:
-        A `str` result computed by this helper.
+        The computed result returned by this helper.
 """
     slug = re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip("-")
     return (slug or "workflow")[:max_length]
@@ -1085,7 +1094,7 @@ def _normalize_slurm_memory(memory: str | None) -> str | None:
         memory: Memory request being normalized for Slurm.
 
     Returns:
-        A `str | None` result computed by this helper.
+        The computed result returned by this helper.
 """
     if memory is None:
         return None
@@ -1116,14 +1125,14 @@ def _slurm_directives(
     """Build deterministic `#SBATCH` directives from the frozen resource spec.
 
     Args:
-        workflow_name: The registered workflow or task name forwarded by the caller.
+        workflow_name: The supported workflow or task name forwarded by the caller.
         run_id: Stable run identifier associated with the frozen recipe or submission.
         stdout_path: A filesystem path used by the helper.
         stderr_path: A filesystem path used by the helper.
         resource_spec: Frozen compute resource policy for the recipe or run record.
 
     Returns:
-        A `list[str]` result computed by this helper.
+        The computed result returned by this helper.
 """
     job_prefix = "pe" if workflow_name == "protein_evidence_alignment" else "flytetest"
     job_name = _slug(f"{job_prefix}-{run_id}", max_length=32)
@@ -1164,7 +1173,7 @@ def render_slurm_script(
 
     Args:
         artifact_path: A filesystem path used by the helper.
-        workflow_name: The registered workflow or task name forwarded by the caller.
+        workflow_name: The supported workflow or task name forwarded by the caller.
         run_id: Stable run identifier associated with the frozen recipe or submission.
         stdout_path: A filesystem path used by the helper.
         stderr_path: A filesystem path used by the helper.
@@ -1173,7 +1182,7 @@ def render_slurm_script(
         python_executable: The `python_executable` input processed by this helper.
 
     Returns:
-        A `str` result computed by this helper.
+        The computed result returned by this helper.
 """
     python_code = (
         "from flytetest.server import run_local_recipe; "
@@ -1216,10 +1225,10 @@ def render_slurm_script(
 def _created_at() -> str:
     """Return a UTC timestamp suitable for a durable run record.
 
-    This helper keeps the relevant planning or execution step explicit and easy to review.
+    This helper keeps the supported planner or executor path explicit and easy to review.
 
     Returns:
-        A `str` result computed by this helper.
+        The computed result returned by this helper.
 """
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
@@ -1233,7 +1242,7 @@ def _run_id_for_artifact(artifact: SavedWorkflowSpecArtifact, artifact_path: Pat
         submitted_at: The `submitted_at` input processed by this helper.
 
     Returns:
-        A `str` result computed by this helper.
+        The computed result returned by this helper.
 """
     digest_source = f"{artifact_path.resolve()}|{artifact.workflow_spec.name}|{artifact.created_at}|{submitted_at}"
     digest = hashlib.sha256(digest_source.encode("utf-8")).hexdigest()[:12]
@@ -1249,7 +1258,7 @@ def _allocate_run_dir(run_root: Path, requested_run_id: str) -> tuple[str, Path]
         requested_run_id: The `requested_run_id` input processed by this helper.
 
     Returns:
-        A `tuple[str, Path]` result computed by this helper.
+        The computed result returned by this helper.
 """
     run_id = requested_run_id
     run_dir = run_root / run_id
@@ -1262,9 +1271,10 @@ def _allocate_run_dir(run_root: Path, requested_run_id: str) -> tuple[str, Path]
 
 
 class LocalWorkflowSpecExecutor:
-    """Execute saved workflow specs locally through registered stage handlers.
+    """Execute saved workflow specs locally through supported stage handlers.
 
-    This dataclass keeps the planning or execution contract explicit and easy to review.
+    It captures the node metadata, resolved planner inputs, and frozen runtime
+    policy that a local handler needs in order to execute one stage.
 """
 
     def __init__(
@@ -1273,7 +1283,7 @@ class LocalWorkflowSpecExecutor:
         *,
         resolver: AssetResolver | None = None,
     ) -> None:
-        """Create an executor with explicit handlers for registered stages.
+        """Create an executor with explicit handlers for supported stages.
 
     Args:
         handlers: The `handlers` input processed by this helper.
@@ -1290,7 +1300,7 @@ class LocalWorkflowSpecExecutor:
         manifest_sources: Sequence[Path | Mapping[str, Any]] = (),
         result_bundles: Sequence[Any] = (),
     ) -> LocalSpecExecutionResult:
-        """Execute one saved spec artifact through local registered handlers.
+        """Execute one saved spec artifact through local supported handlers.
 
     Args:
         artifact_source: Saved workflow-spec artifact or path that should be loaded first.
@@ -1299,7 +1309,7 @@ class LocalWorkflowSpecExecutor:
         result_bundles: A directory path used by the helper.
 
     Returns:
-        A `LocalSpecExecutionResult` result computed by this helper.
+        The computed result returned by this helper.
 """
         artifact = _artifact_from_source(artifact_source)
         workflow_spec = artifact.workflow_spec
@@ -1340,7 +1350,7 @@ class LocalWorkflowSpecExecutor:
                     resource_spec=binding_plan.resource_spec,
                     runtime_image=binding_plan.runtime_image,
                     node_results=tuple(node_results),
-                    limitations=(f"No local handler is registered for `{node.reference_name}`.",),
+                    limitations=(f"No local handler is available for `{node.reference_name}`.",),
                     assumptions=tuple(dict.fromkeys(assumptions)),
                 )
 
@@ -1391,7 +1401,8 @@ class LocalWorkflowSpecExecutor:
 class SlurmWorkflowSpecExecutor:
     """Submit saved workflow-spec artifacts through deterministic `sbatch` scripts.
 
-    This dataclass keeps the planning or execution contract explicit and easy to review.
+    It captures the node metadata, resolved planner inputs, and frozen runtime
+    policy that a local handler needs in order to execute one stage.
 """
 
     def __init__(
@@ -1428,7 +1439,7 @@ class SlurmWorkflowSpecExecutor:
         args: The argument vector forwarded to the helper.
 
     Returns:
-        A `subprocess.CompletedProcess[str]` result computed by this helper.
+        The computed result returned by this helper.
 """
         return self._scheduler_runner(
             args,
@@ -1444,7 +1455,7 @@ class SlurmWorkflowSpecExecutor:
         commands: Command names being checked for availability or reported in diagnostics.
 
     Returns:
-        A `tuple[str, ...]` result computed by this helper.
+        The computed result returned by this helper.
 """
         return tuple(command for command in commands if not self._command_available(command))
 
@@ -1455,7 +1466,7 @@ class SlurmWorkflowSpecExecutor:
         record: Slurm run record or scheduler snapshot being processed.
 
     Returns:
-        A `SlurmSchedulerSnapshot` result computed by this helper.
+        The computed result returned by this helper.
 """
         limitations: list[str] = []
         squeue_stdout = ""
@@ -1574,7 +1585,7 @@ class SlurmWorkflowSpecExecutor:
         snapshot: Observed scheduler snapshot being merged into the durable record.
 
     Returns:
-        A `SlurmRunRecord` result computed by this helper.
+        The computed result returned by this helper.
 """
         final_state = (
             snapshot.scheduler_state
@@ -1608,7 +1619,7 @@ class SlurmWorkflowSpecExecutor:
         retry_parent: The `retry_parent` input processed by this helper.
 
     Returns:
-        A `SlurmSpecExecutionResult` result computed by this helper.
+        The computed result returned by this helper.
 """
         artifact = _artifact_from_source(artifact_path)
         workflow_spec = artifact.workflow_spec
@@ -1779,7 +1790,7 @@ class SlurmWorkflowSpecExecutor:
         stderr_path: A filesystem path used by the helper.
 
     Returns:
-        A `str` result computed by this helper.
+        The computed result returned by this helper.
 """
         artifact = _artifact_from_source(artifact_source)
         artifact_path = _artifact_path_from_source(artifact_source) or Path("<in-memory-artifact>")
@@ -1806,7 +1817,7 @@ class SlurmWorkflowSpecExecutor:
         artifact_source: Saved workflow-spec artifact or path that should be loaded first.
 
     Returns:
-        A `SlurmSpecExecutionResult` result computed by this helper.
+        The computed result returned by this helper.
 """
         artifact_path = _artifact_path_from_source(artifact_source)
         if artifact_path is None:
@@ -1827,7 +1838,7 @@ class SlurmWorkflowSpecExecutor:
         run_record_source: Run-record directory or JSON file used to reload durable Slurm state.
 
     Returns:
-        A `SlurmLifecycleResult` result computed by this helper.
+        The computed result returned by this helper.
 """
         try:
             record = load_slurm_run_record(run_record_source)
@@ -1871,7 +1882,7 @@ class SlurmWorkflowSpecExecutor:
         run_record_source: Run-record directory or JSON file used to reload durable Slurm state.
 
     Returns:
-        A `SlurmLifecycleResult` result computed by this helper.
+        The computed result returned by this helper.
 """
         try:
             record = load_slurm_run_record(run_record_source)
@@ -1953,7 +1964,7 @@ class SlurmWorkflowSpecExecutor:
         run_record_source: Run-record directory or JSON file used to reload durable Slurm state.
 
     Returns:
-        A `SlurmRetryResult` result computed by this helper.
+        The computed result returned by this helper.
 """
         try:
             source_record = load_slurm_run_record(run_record_source)

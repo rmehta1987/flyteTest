@@ -1,11 +1,18 @@
 """Deterministic prompt planning for the narrow FLyteTest MCP showcase.
 
-    This module intentionally supports only two prebuilt workflows and one task:
-    `ab_initio_annotation_braker3`, `protein_evidence_alignment`, and
-    `exonerate_align_chunk`. It classifies a prompt, extracts explicit local file
-    paths written directly in that prompt, maps those paths onto the supported
-    entry inputs, and returns a structured plan without inventing broader
-    orchestration behavior.
+This module reads a natural-language request, looks for explicit local files
+and resource hints in the text, and matches the request against the small set
+of supported showcase entries:
+
+* `ab_initio_annotation_braker3`
+* `protein_evidence_alignment`
+* `exonerate_align_chunk`
+
+The planner does not invent new workflow behavior. Instead, it decides whether
+the request maps cleanly to one of the supported entries, what inputs can be
+frozen from the prompt, what still needs to be resolved from manifests or result
+bundles, and whether a metadata-only generated spec preview should be produced
+for the typed-planning path.
 """
 
 from __future__ import annotations
@@ -22,6 +29,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from flytetest.config import DEFAULT_SLURM_ACCOUNT
+from flytetest.composition import compose_workflow_path
 from flytetest.mcp_contract import (
     SHOWCASE_LIMITATIONS,
     SHOWCASE_TARGETS_BY_NAME,
@@ -60,7 +68,8 @@ TypedPlanningOutcome = Literal[
 class PlannedInput:
     """One planner-facing input field for a supported entry.
 
-    This dataclass keeps the planning or execution contract explicit and easy to review.
+    It preserves the user-visible input name, the declared type, and the short
+    registry description that explains what the field means in planning terms.
 """
 
     name: str
@@ -72,7 +81,8 @@ class PlannedInput:
 class EntryParameter:
     """One parameter from a supported task or workflow signature.
 
-    This dataclass keeps the planning or execution contract explicit and easy to review.
+    It records whether the parameter is required so the planner can separate
+    mandatory inputs from optional ones when building a prompt summary.
 """
 
     name: str
@@ -83,7 +93,9 @@ class EntryParameter:
 class PromptPath:
     """One explicit local path mention extracted from the prompt text.
 
-    This dataclass keeps the planning or execution contract explicit and easy to review.
+    It keeps both the literal path text and the prompt context that surrounded
+    it so later heuristics can tell whether a path was likely a genome, protein,
+    BAM, or tool-image reference.
 """
 
     value: str
@@ -94,7 +106,10 @@ class PromptPath:
 class TypedPlanningGoal:
     """One biology-level target selected before resolver and registry matching.
 
-    This dataclass keeps the planning or execution contract explicit and easy to review.
+    It captures the planner's decision about what the prompt is trying to do,
+    which registry entries can satisfy that goal, which planner types should be
+    resolved, and which assumptions or runtime bindings should travel with the
+    frozen recipe.
 """
 
     name: str
@@ -116,10 +131,11 @@ def _normalize(text: str) -> str:
     """Normalize free text into lowercase alphanumeric tokens.
 
     Args:
-        text: Free text to normalize or inspect.
+        text: Prompt text or other free text being tokenized for matching.
 
     Returns:
-        A `str` result computed by this helper.
+        A space-separated lowercase token string that is easier to match
+        against the planner's keyword heuristics.
 """
     return " ".join(_TOKEN_RE.findall(text.lower()))
 
@@ -128,10 +144,10 @@ def _supported_entry(name: str) -> RegistryEntry:
     """Resolve one supported registry entry by name.
 
     Args:
-        name: Registry entry, planner type, or target name being looked up.
+        name: The registry entry name to look up in the showcase catalog.
 
     Returns:
-        A `RegistryEntry` result computed by this helper.
+        The registry entry metadata for the requested supported target.
 """
     if name not in SHOWCASE_TARGETS_BY_NAME:
         raise KeyError(f"Unsupported showcase entry: {name}")
@@ -142,10 +158,10 @@ def _parameters_from_source(name: str) -> tuple[EntryParameter, ...]:
     """Parse the checked-in source file when import-time reflection is unavailable.
 
     Args:
-        name: Registry entry, planner type, or target name being looked up.
+        name: The supported entry whose signature should be reconstructed.
 
     Returns:
-        A `tuple[EntryParameter, ...]` result computed by this helper.
+        The ordered parameter list reconstructed from the checked-in source.
 """
     source_path = SHOWCASE_TARGETS_BY_NAME[name].source_path
     module = ast.parse(source_path.read_text(), filename=str(source_path))
@@ -164,10 +180,10 @@ def supported_entry_parameters(name: str) -> tuple[EntryParameter, ...]:
     """Return supported entry parameters from imports or source fallback.
 
     Args:
-        name: Registry entry, planner type, or target name being looked up.
+        name: The supported entry whose callable signature should be inspected.
 
     Returns:
-        A `tuple[EntryParameter, ...]` result computed by this helper.
+        The ordered parameters for the supported task or workflow.
 """
     target = SHOWCASE_TARGETS_BY_NAME.get(name)
     if target is None:
@@ -200,10 +216,10 @@ def split_entry_inputs(name: str) -> tuple[tuple[PlannedInput, ...], tuple[Plann
     """Split registry-defined entry inputs into required and optional groups.
 
     Args:
-        name: Registry entry, planner type, or target name being looked up.
+        name: The supported entry whose registry inputs should be grouped.
 
     Returns:
-        A `tuple[tuple[PlannedInput, ...], tuple[PlannedInput, ...]]` result computed by this helper.
+        A pair of tuples containing required and optional planner inputs.
 """
     entry = _supported_entry(name)
     registry_fields = {field.name: field for field in entry.inputs}
@@ -224,10 +240,10 @@ def _clean_path(raw_path: str) -> str:
     """Strip trailing punctuation from one path-like prompt token.
 
     Args:
-        raw_path: A filesystem path used by the helper.
+        raw_path: Path-like prompt text that may include trailing punctuation.
 
     Returns:
-        A `str` result computed by this helper.
+        The cleaned path text with punctuation removed from the right edge.
 """
     return raw_path.rstrip(".,);:'\"")
 
@@ -236,10 +252,10 @@ def _extract_prompt_paths(request: str) -> tuple[PromptPath, ...]:
     """Return explicit local path mentions with the prefix text that labels them.
 
     Args:
-        request: The local execution request forwarded by the caller.
+        request: The natural-language prompt being searched for path mentions.
 
     Returns:
-        A `tuple[PromptPath, ...]` result computed by this helper.
+        The explicit path mentions that appear to be written directly in the prompt.
 """
     matches: list[PromptPath] = []
     for match in _PATH_RE.finditer(request):
@@ -255,10 +271,10 @@ def _is_bam_path(path: str) -> bool:
     """Return whether a prompt path looks like a BAM file.
 
     Args:
-        path: A filesystem path used by the helper.
+        path: A filesystem path or prompt mention being classified.
 
     Returns:
-        A `bool` result computed by this helper.
+        ``True`` when the path ends with `.bam`.
 """
     return path.lower().endswith(".bam")
 
@@ -267,10 +283,10 @@ def _is_fasta_path(path: str) -> bool:
     """Return whether a prompt path looks like a FASTA file.
 
     Args:
-        path: A filesystem path used by the helper.
+        path: A filesystem path or prompt mention being classified.
 
     Returns:
-        A `bool` result computed by this helper.
+        ``True`` when the path looks like a FASTA file, including gzipped FASTA.
 """
     lowered = path.lower()
     if lowered.endswith(".gz"):
@@ -282,11 +298,11 @@ def _last_keyword_index(context: str, keywords: tuple[str, ...]) -> int:
     """Return the nearest keyword position from a short prompt prefix context.
 
     Args:
-        context: The `context` input processed by this helper.
-        keywords: The `keywords` input processed by this helper.
+        context: Lowercase prompt context captured before the path mention.
+        keywords: Keywords whose last position should be compared.
 
     Returns:
-        A `int` result computed by this helper.
+        The rightmost keyword match index, or ``-1`` when no keyword appears.
 """
     return max((context.rfind(keyword) for keyword in keywords), default=-1)
 
@@ -295,11 +311,11 @@ def _extract_braker_workflow_inputs(request: str, prompt_paths: tuple[PromptPath
     """Map prompt-contained explicit paths to BRAKER3 workflow inputs.
 
     Args:
-        request: The local execution request forwarded by the caller.
-        prompt_paths: The `prompt_paths` input processed by this helper.
+        request: The natural-language prompt being parsed for BRAKER3 inputs.
+        prompt_paths: The explicit path mentions already extracted from the prompt.
 
     Returns:
-        A `dict[str, str]` result computed by this helper.
+        The BRAKER3 input mapping inferred from the prompt text.
 """
     extracted: dict[str, str] = {}
     unlabeled_fastas: list[str] = []
@@ -342,11 +358,11 @@ def _extract_protein_workflow_inputs(
     """Map prompt-contained explicit paths to protein-evidence workflow inputs.
 
     Args:
-        request: The local execution request forwarded by the caller.
-        prompt_paths: The `prompt_paths` input processed by this helper.
+        request: The natural-language prompt being parsed for protein-evidence inputs.
+        prompt_paths: The explicit path mentions already extracted from the prompt.
 
     Returns:
-        A `dict[str, object]` result computed by this helper.
+        The protein-evidence input mapping inferred from the prompt text.
 """
     extracted: dict[str, object] = {}
     protein_fastas: list[str] = []
@@ -399,11 +415,11 @@ def _extract_task_inputs(request: str, prompt_paths: tuple[PromptPath, ...]) -> 
     """Map prompt-contained explicit paths to the Exonerate chunk task inputs.
 
     Args:
-        request: The local execution request forwarded by the caller.
-        prompt_paths: The `prompt_paths` input processed by this helper.
+        request: The natural-language prompt being parsed for Exonerate task inputs.
+        prompt_paths: The explicit path mentions already extracted from the prompt.
 
     Returns:
-        A `dict[str, str]` result computed by this helper.
+        The task input mapping inferred from the prompt text.
 """
     extracted: dict[str, str] = {}
     unlabeled_fastas: list[str] = []
@@ -440,10 +456,10 @@ def _coerce_resource_spec(value: Mapping[str, Any] | ResourceSpec | None) -> Res
     """Convert caller-supplied resource policy into the typed recipe shape.
 
     Args:
-        value: The value or values processed by the helper.
+        value: A mapping, dataclass, or ``None`` describing a resource request.
 
     Returns:
-        A `ResourceSpec | None` result computed by this helper.
+        A normalized resource spec, or ``None`` when no resource policy exists.
 """
     if value is None:
         return None
@@ -471,10 +487,10 @@ def _coerce_runtime_image_spec(value: Mapping[str, Any] | RuntimeImageSpec | str
     """Convert caller-supplied runtime image policy into the typed recipe shape.
 
     Args:
-        value: The value or values processed by the helper.
+        value: A mapping, dataclass, string path, or ``None`` describing an image policy.
 
     Returns:
-        A `RuntimeImageSpec | None` result computed by this helper.
+        A normalized runtime-image spec, or ``None`` when no image policy exists.
 """
     if value is None or value == "":
         return None
@@ -506,11 +522,11 @@ def _merge_resource_specs(base: ResourceSpec | None, override: ResourceSpec | No
     """Overlay explicit resource values on top of registry defaults.
 
     Args:
-        base: The `base` input processed by this helper.
-        override: The `override` input processed by this helper.
+        base: The registry default resource spec, if one exists.
+        override: The more specific prompt or caller override, if one exists.
 
     Returns:
-        A `ResourceSpec | None` result computed by this helper.
+        The merged resource spec, or whichever side is present.
 """
     if base is None:
         return override
@@ -532,10 +548,10 @@ def _extract_resource_spec_from_prompt(request: str) -> ResourceSpec | None:
     """Parse conservative resource mentions from prompt text into a ResourceSpec.
 
     Args:
-        request: The local execution request forwarded by the caller.
+        request: The natural-language prompt being searched for resource hints.
 
     Returns:
-        A `ResourceSpec | None` result computed by this helper.
+        A parsed resource spec when the prompt names one clearly enough.
 """
     cpu: str | None = None
     memory: str | None = None
@@ -583,10 +599,10 @@ def _slurm_resource_spec_defaults(resource_spec: ResourceSpec | None) -> Resourc
     """Attach cluster-specific Slurm defaults to a selected resource spec.
 
     Args:
-        resource_spec: Frozen compute resource policy for the recipe or run record.
+        resource_spec: The resource spec selected from registry, prompt, or caller input.
 
     Returns:
-        A `ResourceSpec | None` result computed by this helper.
+        A resource spec that carries a default Slurm account when needed.
 """
     if resource_spec is None:
         return ResourceSpec(account=DEFAULT_SLURM_ACCOUNT)
@@ -601,10 +617,10 @@ def _extract_execution_profile_from_prompt(request: str) -> str | None:
     """Parse an explicit execution profile name from the prompt when present.
 
     Args:
-        request: The local execution request forwarded by the caller.
+        request: The natural-language prompt being searched for a profile name.
 
     Returns:
-        A `str | None` result computed by this helper.
+        The lowercased execution profile name, or ``None`` when not named clearly.
 """
     profile_match = re.search(
         r"\b(?:execution profile|profile)\s*[:=]?\s*([A-Za-z0-9_.-]+)\b",
@@ -622,10 +638,10 @@ def _extract_runtime_image_from_prompt(request: str) -> RuntimeImageSpec | None:
     """Parse a global runtime image request from prompt text when clearly labeled.
 
     Args:
-        request: The local execution request forwarded by the caller.
+        request: The natural-language prompt being searched for runtime-image hints.
 
     Returns:
-        A `RuntimeImageSpec | None` result computed by this helper.
+        A runtime-image spec when the prompt names an image clearly enough.
 """
     image_match = re.search(
         r"\b(?:runtime image|container image|apptainer image)\s*[:=]?\s*([A-Za-z0-9_./:-]+)",
@@ -641,10 +657,10 @@ def _registry_default_resource_spec(entry: RegistryEntry) -> ResourceSpec | None
     """Return the registry's default local resource policy for one entry.
 
     Args:
-        entry: Registry entry or compatible metadata object being inspected.
+        entry: The registry entry whose compatibility defaults should be read.
 
     Returns:
-        A `ResourceSpec | None` result computed by this helper.
+        The registry's default resource policy, when one is declared.
 """
     resources = entry.compatibility.execution_defaults.get("resources")
     return _coerce_resource_spec(resources) if isinstance(resources, Mapping) else None
@@ -661,14 +677,15 @@ def _select_execution_policy(
     """Resolve profile, resources, and runtime image policy for a typed goal.
 
     Args:
-        goal: Typed planning goal currently being assembled or resolved.
-        request: The local execution request forwarded by the caller.
+        goal: The typed planning goal being prepared for freezing.
+        request: The natural-language prompt being evaluated.
         resource_request: Caller-supplied compute resource policy or override.
-        execution_profile: Named execution profile requested or selected for the recipe.
+        execution_profile: Caller-supplied execution profile, if any.
         runtime_image: Caller-supplied runtime image policy or override.
 
     Returns:
-        A `tuple[str, ResourceSpec | None, RuntimeImageSpec | None, tuple[str, ...], tuple[str, ...]]` result computed by this helper.
+        The selected execution profile, resource policy, runtime image policy,
+        unresolved resource requirements, and assumptions.
 """
     entries = tuple(get_entry(entry_name) for entry_name in goal.target_entry_names)
     default_profile = str(entries[0].compatibility.execution_defaults.get("profile", "local")) if entries else "local"
@@ -712,10 +729,10 @@ def _classify_target(request: str) -> tuple[str | None, float, tuple[str, ...]]:
     """Classify the prompt as one supported workflow, task, or unsupported.
 
     Args:
-        request: The local execution request forwarded by the caller.
+        request: The natural-language prompt being classified.
 
     Returns:
-        A `tuple[str | None, float, tuple[str, ...]]` result computed by this helper.
+        The selected showcase entry name, confidence, and rationale.
 """
     normalized_request = _normalize(_PATH_RE.sub(" ", request))
     has_exonerate = "exonerate" in normalized_request
@@ -786,20 +803,20 @@ def _missing_required_inputs(name: str, extracted_inputs: dict[str, object]) -> 
     """Return missing required prompt-derived inputs for one supported entry.
 
     Args:
-        name: Registry entry, planner type, or target name being looked up.
-        extracted_inputs: The `extracted_inputs` input processed by this helper.
+        name: The supported entry being checked.
+        extracted_inputs: The prompt-derived inputs already recovered for that entry.
 
     Returns:
-        A `list[str]` result computed by this helper.
+        The required inputs that were not found in the prompt.
 """
     def is_missing(value: object) -> bool:
         """Return whether one extracted prompt value should count as absent.
 
-    Args:
-        value: The value or values processed by the helper.
+        Args:
+            value: One extracted prompt value to evaluate.
 
-    Returns:
-        A `bool` result computed by this helper.
+        Returns:
+            ``True`` when the value is empty or missing.
 """
         if value in (None, ""):
             return True
@@ -824,10 +841,10 @@ def declined_downstream_stages(_request: str) -> tuple[str, ...]:
     """Return no downstream blocklist hits after the MCP recipe cutover.
 
     Args:
-        _request: The `_request` input processed by this helper.
+        _request: Present for interface compatibility with older call sites.
 
     Returns:
-        A `tuple[str, ...]` result computed by this helper.
+        An empty tuple because this showcase no longer blocks downstream stages here.
 """
     return ()
 
@@ -835,10 +852,8 @@ def declined_downstream_stages(_request: str) -> tuple[str, ...]:
 def showcase_limitations() -> tuple[str, ...]:
     """Return the hard interface limits for the showcase planner.
 
-    This helper keeps the relevant planning or execution step explicit and easy to review.
-
     Returns:
-        A `tuple[str, ...]` result computed by this helper.
+        The static limitations that define the current showcase surface.
 """
     return SHOWCASE_LIMITATIONS
 
@@ -847,12 +862,12 @@ def _typed_field(name: str, planner_type_name: str, description: str) -> TypedFi
     """Build one planner-facing field for a typed workflow spec preview.
 
     Args:
-        name: Registry entry, planner type, or target name being looked up.
-        planner_type_name: The `planner_type_name` input processed by this helper.
-        description: The `description` input processed by this helper.
+        name: The input or output field name to expose in the preview.
+        planner_type_name: The planner type that should be attached to the field.
+        description: Short human-readable text for the planning summary.
 
     Returns:
-        A `TypedFieldSpec` result computed by this helper.
+        A typed field spec suitable for frozen workflow metadata.
 """
     return TypedFieldSpec(
         name=name,
@@ -866,10 +881,10 @@ def _planning_goal_for_typed_request(request: str) -> TypedPlanningGoal | None:
     """Classify a prompt into one broader typed-planning goal when possible.
 
     Args:
-        request: The local execution request forwarded by the caller.
+        request: The natural-language prompt being mapped into a typed goal.
 
     Returns:
-        A `TypedPlanningGoal | None` result computed by this helper.
+        A typed planning goal, or ``None`` when the prompt does not match one.
 """
     normalized_request = _normalize(request)
 
@@ -1068,17 +1083,141 @@ def _planning_goal_for_typed_request(request: str) -> TypedPlanningGoal | None:
             analysis_goal="Run the registered transcript-evidence generation workflow.",
         )
 
+    if matched_name is not None:
+        return None
+
+    # Try registry-based composition when the prompt is broader than the direct matches.
+    composition_goal = _try_composition_fallback(request, normalized_request)
+    if composition_goal is not None:
+        return composition_goal
+
     return None
+
+
+def _try_composition_fallback(request: str, normalized_request: str) -> TypedPlanningGoal | None:
+    """Look for a registry-based composition when direct matches do not fit.
+
+    Args:
+        request: The original natural-language prompt.
+        normalized_request: The lowercase, punctuation-stripped version of the request.
+
+    Returns:
+        A generated `TypedPlanningGoal` when a valid composition path is found,
+        or ``None`` if the prompt does not fit this route.
+    """
+    if not _allows_composition_fallback(normalized_request):
+        return None
+
+    from flytetest.registry import REGISTRY_ENTRIES
+
+    # Use entries that are allowed to seed a composed workflow.
+    synthesis_eligible = [
+        entry for entry in REGISTRY_ENTRIES
+        if entry.compatibility.synthesis_eligible
+    ]
+
+    if not synthesis_eligible:
+        return None
+
+    # Try short paths that end in one of the supported biology targets.
+    target_output_types = (
+        "QualityAssessmentTarget",
+        "ConsensusAnnotation",
+        "ProteinEvidenceSet",
+        "TranscriptEvidenceSet",
+        "AnnotationEvidenceSet",
+    )
+
+    for entry in synthesis_eligible:
+        for target_type in target_output_types:
+            path, decline_reason = compose_workflow_path(
+                entry.name,
+                target_output_type=target_type,
+                max_depth=5,
+            )
+            if path and decline_reason is None and len(path) >= 1:
+                required_types = entry.compatibility.accepted_planner_types or ()
+                produced_types = entry.compatibility.produced_planner_types or ()
+
+                return TypedPlanningGoal(
+                    name=f"composition_{entry.name}_to_{target_type.lower()}",
+                    outcome="generated_workflow_spec",
+                    target_entry_names=path,
+                    required_planner_types=required_types,
+                    produced_planner_types=produced_types,
+                    rationale=(
+                        f"The prompt asks for annotation workflow processing that was not a hardcoded pattern.",
+                        f"The planner found a valid registered-stage path: {' -> '.join(path)}.",
+                        "This composition requires explicit user approval before execution (Milestone 19 gating pending).",
+                    ),
+                    analysis_goal=f"Compose and execute a workflow from {entry.name} toward {target_type} output.",
+                    generated_entity_id=f"generated::composition_{entry.name}_{int(len(path))}",
+                    unresolved_runtime_requirements=(
+                        "This generated composition is metadata-only and requires explicit approval from the user.",
+                        "Composition was discovered from registered stages under the Milestone 15 rules.",
+                        "Milestone 19 caching and resumability may affect final execution.",
+                    ),
+                )
+
+    return None
+
+
+def _allows_composition_fallback(normalized_request: str) -> bool:
+    """Return whether a prompt is specific enough for composition fallback.
+
+    Registry traversal is deliberately conservative: it is a preview path for
+    broad biology workflow requests, not a way to reinterpret arbitrary prompts
+    or known day-one targets that simply missed required path bindings.
+
+    Args:
+        normalized_request: The lowercase, tokenized prompt text.
+
+    Returns:
+        ``True`` when the prompt includes both a biology signal and a broad
+        workflow-composition signal.
+    """
+    biology_terms = (
+        "agat",
+        "annotation",
+        "braker",
+        "busco",
+        "eggnog",
+        "evidence",
+        "evm",
+        "genome",
+        "pasa",
+        "protein",
+        "quality",
+        "qc",
+        "repeat",
+        "rna",
+        "transcript",
+    )
+    workflow_terms = (
+        "chain",
+        "compose",
+        "composition",
+        "data",
+        "downstream",
+        "multi stage",
+        "multi-stage",
+        "pipeline",
+        "process",
+        "workflow",
+    )
+    return any(term in normalized_request for term in biology_terms) and any(
+        term in normalized_request for term in workflow_terms
+    )
 
 
 def _serialized_resolved_value(result: ResolutionResult) -> object:
     """Return a JSON-compatible representation of one resolved planner value.
 
     Args:
-        result: A directory path used by the helper.
+        result: The resolution result that selected a planner-facing value.
 
     Returns:
-        A `object` result computed by this helper.
+        A JSON-compatible representation of the selected planner value.
 """
     value = result.resolved_value
     if hasattr(value, "to_dict"):
@@ -1097,14 +1236,14 @@ def _resolve_typed_goal_inputs(
     """Resolve the planner-facing inputs required by one typed goal.
 
     Args:
-        goal: Typed planning goal currently being assembled or resolved.
+        goal: The typed planning goal whose planner inputs must be resolved.
         explicit_bindings: Caller-supplied planner values that should win over discovered inputs.
         manifest_sources: Manifest paths or inline manifest mappings that may contain planner values.
-        result_bundles: A directory path used by the helper.
-        resolver: Resolver used to discover planner-facing inputs from local sources.
+        result_bundles: Result bundles that can be adapted back into planner types.
+        resolver: The resolver implementation used to discover planner inputs.
 
     Returns:
-        A `tuple[dict[str, object], dict[str, object], tuple[str, ...], tuple[str, ...]]` result computed by this helper.
+        The resolved planner inputs, source labels, missing requirements, and assumptions.
 """
     resolved_inputs: dict[str, object] = {}
     source_labels: dict[str, object] = {}
@@ -1135,11 +1274,11 @@ def _workflow_spec_for_typed_goal(goal: TypedPlanningGoal, *, source_prompt: str
     """Build a metadata-only workflow spec preview for one typed planning goal.
 
     Args:
-        goal: Typed planning goal currently being assembled or resolved.
-        source_prompt: Original prompt text stored in generated metadata.
+        goal: The typed planning goal being turned into frozen metadata.
+        source_prompt: The original natural-language prompt for provenance.
 
     Returns:
-        A `WorkflowSpec | None` result computed by this helper.
+        A metadata-only workflow spec preview, or ``None`` when the goal is unsupported.
 """
     entries = tuple(get_entry(entry_name) for entry_name in goal.target_entry_names)
     inputs = tuple(
@@ -1247,54 +1386,133 @@ def _workflow_spec_for_typed_goal(goal: TypedPlanningGoal, *, source_prompt: str
             created_at="not_persisted_in_milestone_5",
             replay_metadata={"workflow_spec_version": "preview-v1"},
         )
-        repeat_entry, qc_entry = entries
-        return WorkflowSpec(
-            name=goal.name,
-            analysis_goal=goal.analysis_goal,
-            inputs=inputs,
-            outputs=outputs,
-            nodes=(
-                WorkflowNodeSpec(
-                    name="repeat_filtering",
+
+        # Handle both hardcoded repeat+BUSCO and composition-generated multi-stage workflows
+        if len(entries) == 2 and goal.name == "repeat_filter_then_busco_qc":
+            # Legacy hardcoded repeat_filter_then_busco_qc spec
+            repeat_entry, qc_entry = entries
+            return WorkflowSpec(
+                name=goal.name,
+                analysis_goal=goal.analysis_goal,
+                inputs=inputs,
+                outputs=outputs,
+                nodes=(
+                    WorkflowNodeSpec(
+                        name="repeat_filtering",
+                        kind="workflow",
+                        reference_name=repeat_entry.name,
+                        description=f"Run registered stage `{repeat_entry.name}`.",
+                        input_bindings={"pasa_update_results": "inputs.ConsensusAnnotation"},
+                        output_names=tuple(field.name for field in repeat_entry.outputs),
+                    ),
+                    WorkflowNodeSpec(
+                        name="busco_qc",
+                        kind="workflow",
+                        reference_name=qc_entry.name,
+                        description=f"Run registered stage `{qc_entry.name}` from repeat-filtered outputs.",
+                        input_bindings={"repeat_filter_results": "repeat_filtering.results_dir"},
+                        output_names=tuple(field.name for field in qc_entry.outputs),
+                    ),
+                ),
+                edges=(
+                    WorkflowEdgeSpec(
+                        source_node="repeat_filtering",
+                        source_output=repeat_entry.outputs[0].name,
+                        target_node="busco_qc",
+                        target_input=qc_entry.inputs[0].name,
+                    ),
+                ),
+                ordering_constraints=("repeat_filtering before busco_qc",),
+                reusable_registered_refs=goal.target_entry_names,
+                final_output_bindings=(
+                    WorkflowOutputBinding(
+                        output_name=qc_entry.outputs[0].name,
+                        source_node="busco_qc",
+                        source_output=qc_entry.outputs[0].name,
+                        description="BUSCO QC result bundle from the generated spec preview.",
+                    ),
+                ),
+                default_execution_profile="local",
+                replay_metadata={"selection_mode": "generated_workflow_spec_preview"},
+                generated_entity_record=generated_record,
+            )
+        else:
+            # Generic composition-generated multi-stage workflow
+            nodes = []
+            edges = []
+            ordering_constraints = []
+
+            for i, entry in enumerate(entries):
+                node_name = f"stage_{i}_{entry.name}"
+                input_bindings = {}
+
+                # First stage gets inputs from workflow inputs
+                if i == 0:
+                    for input_field in entry.inputs:
+                        # Try to find matching planner types in goal inputs
+                        for planner_type in goal.required_planner_types:
+                            if planner_type.lower() in input_field.type.lower() or input_field.type.lower() in planner_type.lower():
+                                input_bindings[input_field.name] = f"inputs.{planner_type}"
+                                break
+                else:
+                    # Subsequent stages get outputs from previous stage
+                    prev_entry = entries[i - 1]
+                    prev_node_name = f"stage_{i-1}_{prev_entry.name}"
+                    if prev_entry.outputs:
+                        input_bindings[entry.inputs[0].name if entry.inputs else "target"] = \
+                            f"{prev_node_name}.{prev_entry.outputs[0].name}"
+
+                nodes.append(WorkflowNodeSpec(
+                    name=node_name,
                     kind="workflow",
-                    reference_name=repeat_entry.name,
-                    description=f"Run registered stage `{repeat_entry.name}`.",
-                    input_bindings={"pasa_update_results": "inputs.ConsensusAnnotation"},
-                    output_names=tuple(field.name for field in repeat_entry.outputs),
+                    reference_name=entry.name,
+                    description=f"Run registered stage `{entry.name}`.",
+                    input_bindings=input_bindings,
+                    output_names=tuple(field.name for field in entry.outputs),
+                ))
+
+                # Create edge from previous stage
+                if i > 0:
+                    prev_entry = entries[i - 1]
+                    prev_node_name = f"stage_{i-1}_{prev_entry.name}"
+                    if prev_entry.outputs and entry.inputs:
+                        edges.append(WorkflowEdgeSpec(
+                            source_node=prev_node_name,
+                            source_output=prev_entry.outputs[0].name,
+                            target_node=node_name,
+                            target_input=entry.inputs[0].name,
+                        ))
+                        ordering_constraints.append(f"{prev_node_name} before {node_name}")
+
+            # Final output comes from last stage
+            last_entry = entries[-1]
+            last_node_name = f"stage_{len(entries)-1}_{last_entry.name}"
+            final_output_name = last_entry.outputs[0].name if last_entry.outputs else "results"
+
+            return WorkflowSpec(
+                name=goal.name,
+                analysis_goal=goal.analysis_goal,
+                inputs=inputs,
+                outputs=outputs,
+                nodes=tuple(nodes),
+                edges=tuple(edges),
+                ordering_constraints=tuple(ordering_constraints),
+                reusable_registered_refs=goal.target_entry_names,
+                final_output_bindings=(
+                    WorkflowOutputBinding(
+                        output_name=final_output_name,
+                        source_node=last_node_name,
+                        source_output=final_output_name,
+                        description="Final workflow output bundle from composed stages.",
+                    ),
                 ),
-                WorkflowNodeSpec(
-                    name="busco_qc",
-                    kind="workflow",
-                    reference_name=qc_entry.name,
-                    description=f"Run registered stage `{qc_entry.name}` from repeat-filtered outputs.",
-                    input_bindings={"repeat_filter_results": "repeat_filtering.results_dir"},
-                    output_names=tuple(field.name for field in qc_entry.outputs),
-                ),
-            ),
-            edges=(
-                WorkflowEdgeSpec(
-                    source_node="repeat_filtering",
-                    source_output=repeat_entry.outputs[0].name,
-                    target_node="busco_qc",
-                    target_input=qc_entry.inputs[0].name,
-                ),
-            ),
-            ordering_constraints=("repeat_filtering before busco_qc",),
-            reusable_registered_refs=goal.target_entry_names,
-            final_output_bindings=(
-                WorkflowOutputBinding(
-                    output_name=qc_entry.outputs[0].name,
-                    source_node="busco_qc",
-                    source_output=qc_entry.outputs[0].name,
-                    description="BUSCO QC result bundle from the generated spec preview.",
-                ),
-            ),
-            default_execution_profile="local",
-            replay_metadata={"selection_mode": "generated_workflow_spec_preview"},
-            generated_entity_record=generated_record,
-        )
+                default_execution_profile="local",
+                replay_metadata={"selection_mode": "registry_constrained_composition"},
+                generated_entity_record=generated_record,
+            )
 
     return None
+
 
 
 def _binding_plan_for_typed_goal(
@@ -1308,14 +1526,14 @@ def _binding_plan_for_typed_goal(
     """Build the metadata-only binding record for a typed planning result.
 
     Args:
-        goal: Typed planning goal currently being assembled or resolved.
+        goal: The typed planning goal being frozen into a binding plan.
         resolved_inputs: Typed planner values resolved before recipe freezing.
-        source_labels: Source labels describing where each resolved planner value came from.
-        unresolved_requirements: Requirements that remained missing after resolution.
-        assumptions: Assumptions recorded alongside the planning result.
+        source_labels: Source metadata describing where each resolved value came from.
+        unresolved_requirements: Planner or runtime requirements that still need attention.
+        assumptions: Assumptions that should travel with the frozen plan.
 
     Returns:
-        A `BindingPlan` result computed by this helper.
+        A metadata-only binding plan for the selected typed goal.
 """
     if goal.outcome == "generated_workflow_spec":
         target_kind = "generated_workflow"
@@ -1346,12 +1564,12 @@ def _unsupported_typed_plan(request: str, reason: str, rationale: tuple[str, ...
     """Build an honest typed-planning decline without falling back to guessing.
 
     Args:
-        request: The local execution request forwarded by the caller.
-        reason: Short explanation for a decline or retryability decision.
-        rationale: Human-readable reasoning for a decision or classification.
+        request: The natural-language prompt that could not be typed-planned.
+        reason: Short explanation for the decline.
+        rationale: Supporting reasoning that should be returned to the caller.
 
     Returns:
-        A `dict[str, object]` result computed by this helper.
+        A metadata-only decline payload for the typed planner path.
 """
     return {
         "supported": False,
@@ -1379,10 +1597,10 @@ def _unsupported_day_one_typed_plan(request: str) -> dict[str, object] | None:
     """Build a decline for recognized day-one targets missing prompt paths.
 
     Args:
-        request: The local execution request forwarded by the caller.
+        request: The natural-language prompt that may be missing explicit paths.
 
     Returns:
-        A `dict[str, object] | None` result computed by this helper.
+        A decline payload when a known target is missing required prompt inputs.
 """
     normalized_request = _normalize(request)
     matched_name, _, rationale = _classify_target(normalized_request)
@@ -1439,18 +1657,18 @@ def plan_typed_request(
     """Plan a prompt through the Milestone 5 typed resolver and registry path.
 
     Args:
-        request: The local execution request forwarded by the caller.
-        explicit_bindings: Caller-supplied planner values that should win over discovered inputs.
-        manifest_sources: Manifest paths or inline manifest mappings that may contain planner values.
-        result_bundles: A directory path used by the helper.
-        runtime_bindings: Frozen runtime inputs supplied alongside planner-discovered values.
+        request: The natural-language prompt being planned.
+        explicit_bindings: Planner values already supplied by the caller.
+        manifest_sources: Manifest sources available for resolution.
+        result_bundles: Result bundles available for resolution.
+        runtime_bindings: Frozen runtime overrides to carry into the recipe.
         resource_request: Caller-supplied compute resource policy or override.
-        execution_profile: Named execution profile requested or selected for the recipe.
+        execution_profile: Caller-supplied execution profile.
         runtime_image: Caller-supplied runtime image policy or override.
-        resolver: Resolver used to discover planner-facing inputs from local sources.
+        resolver: Optional resolver implementation to use for typed inputs.
 
     Returns:
-        A `dict[str, object]` result computed by this helper.
+        A metadata-only typed planning payload ready for freezing or decline reporting.
 """
     goal = _planning_goal_for_typed_request(request)
     if goal is None:
@@ -1505,6 +1723,7 @@ def plan_typed_request(
     )
 
     supported = not missing_requirements and not resource_requirements
+    requires_composition_approval = goal.outcome == "generated_workflow_spec" and goal.name.startswith("composition_")
     return {
         "supported": supported,
         "original_request": request,
@@ -1525,6 +1744,7 @@ def plan_typed_request(
         "workflow_spec": workflow_spec.to_dict() if workflow_spec is not None else None,
         "binding_plan": binding_plan.to_dict(),
         "metadata_only": True,
+        "requires_user_approval": requires_composition_approval,
     }
 
 
@@ -1532,10 +1752,10 @@ def _assumptions_for_target(name: str) -> tuple[str, ...]:
     """Return assumptions for the matched supported entry.
 
     Args:
-        name: Registry entry, planner type, or target name being looked up.
+        name: The supported entry name whose assumptions should be returned.
 
     Returns:
-        A `tuple[str, ...]` result computed by this helper.
+        The assumptions that explain how the planner will interpret the request.
 """
     if name == SUPPORTED_WORKFLOW_NAME:
         return (
@@ -1567,13 +1787,13 @@ def _unsupported_plan(
     """Build the stable decline payload for unsupported or out-of-scope prompts.
 
     Args:
-        request: The local execution request forwarded by the caller.
-        reason: Short explanation for a decline or retryability decision.
-        rationale: Human-readable reasoning for a decision or classification.
-        declined_stages: Downstream stages intentionally not exposed for this prompt.
+        request: The natural-language prompt that could not be mapped.
+        reason: Short explanation for the decline.
+        rationale: Supporting reasoning returned to the caller.
+        declined_stages: Any downstream stages that were intentionally not selected.
 
     Returns:
-        A `dict[str, object]` result computed by this helper.
+        A stable decline payload for the current narrow showcase surface.
 """
     return {
         "supported": False,
@@ -1599,10 +1819,10 @@ def plan_request(request: str) -> dict[str, object]:
     """Plan one prompt for the narrow workflow-or-task showcase.
 
     Args:
-        request: The local execution request forwarded by the caller.
+        request: The natural-language prompt being mapped to a showcase entry.
 
     Returns:
-        A `dict[str, object]` result computed by this helper.
+        A stable planning payload describing the matched showcase entry or decline.
 """
     matched_name, confidence, rationale = _classify_target(request)
     if matched_name is None:
@@ -1657,7 +1877,7 @@ def plan_request(request: str) -> dict[str, object]:
 def main() -> None:
     """Run the narrow planner from the command line and print JSON.
 
-    This helper keeps the relevant planning or execution step explicit and easy to review.
+    The CLI exists for local inspection and smoke testing of the planner.
 """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("request", help="Natural-language prompt to evaluate.")

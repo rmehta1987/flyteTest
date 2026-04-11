@@ -1,9 +1,9 @@
-"""Machine-readable catalog of supported FLyteTest tasks and workflows.
+"""Planner-facing catalog of available workflows and tasks.
 
-    The registry tells the prompt planner which checked-in building blocks exist,
-    what each one needs as input, and what each one produces. It stays deliberately
-    static for now so user requests are mapped to known Flyte code instead of
-    generating new workflow source at runtime.
+This module lists the registered stages the planner can choose from. Each entry
+describes the public inputs, outputs, and biological role of a task or
+workflow, so user requests stay tied to known Flyte code instead of ad hoc
+runtime generation.
 """
 
 from __future__ import annotations
@@ -17,11 +17,11 @@ Category = Literal["task", "workflow"]
 
 @dataclass(frozen=True)
 class InterfaceField:
-    """One named input or output shown for a task or workflow.
+    """One named input or output listed in the catalog.
 
-    These fields are intentionally small and readable: they describe the shape
-    of the public entry without importing Flyte objects or task functions.
-"""
+    These fields keep the public shape readable without importing Flyte objects
+    or task functions.
+    """
 
     name: str
     type: str
@@ -30,12 +30,12 @@ class InterfaceField:
 
 @dataclass(frozen=True)
 class RegistryCompatibilityMetadata:
-    """Extra planner notes about where an entry fits in the biology pipeline.
+    """Planner notes about where a stage fits in the biology pipeline.
 
-    The base registry says "this task or workflow exists." This metadata says
-    "this stage can accept these planner-facing values, can produce these new
-    values, and is safe to reuse in generated plans when the constraints match."
-"""
+    The base catalog says that a task or workflow exists. This metadata says
+    which biology types the entry can accept, which types it can produce, and
+    when the planner may safely reuse it in a generated plan.
+    """
 
     biological_stage: str = "unspecified"
     accepted_planner_types: tuple[str, ...] = ()
@@ -50,12 +50,12 @@ class RegistryCompatibilityMetadata:
 
 @dataclass(frozen=True)
 class RegistryEntry:
-    """One supported task or workflow that the prompt layer may choose.
+    """One registered task or workflow that the planner may choose.
 
-    Registry entries keep the user-facing catalog separate from the runnable
+    Catalog entries keep the user-facing description separate from the runnable
     Flyte definitions. That separation lets the planner inspect available
     stages without importing every task module or editing workflow code.
-"""
+    """
 
     name: str
     category: Category
@@ -66,15 +66,14 @@ class RegistryEntry:
     compatibility: RegistryCompatibilityMetadata = field(default_factory=RegistryCompatibilityMetadata)
 
     def to_dict(self) -> dict[str, object]:
-        """Serialize this entry for callers that need plain dictionaries.
+        """Serialize this catalog entry for callers that need plain dictionaries.
 
-    The method keeps `inputs` and `outputs` as lists of simple dictionaries,
-    matching the older registry shape while still including the newer
-    compatibility metadata.
+        The method keeps `inputs` and `outputs` as lists of simple dictionaries
+        while still including the compatibility metadata.
 
-    Returns:
-        A `dict[str, object]` result computed by this helper.
-"""
+        Returns:
+            A `dict[str, object]` representation of the catalog entry.
+        """
         data = asdict(self)
         data["inputs"] = [asdict(field) for field in self.inputs]
         data["outputs"] = [asdict(field) for field in self.outputs]
@@ -2228,7 +2227,7 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
 
 
 # Workflow compatibility is layered on after the base entries so the original
-# registry list remains easy to scan and older callers still see the same entry
+# catalog list remains easy to scan and older callers still see the same entry
 # names, descriptions, inputs, and outputs. Task entries intentionally keep the
 # safe default metadata until a later planner milestone needs task-level edges.
 _WORKFLOW_COMPATIBILITY_METADATA: dict[str, RegistryCompatibilityMetadata] = {
@@ -2426,12 +2425,12 @@ def _with_resource_defaults(name: str, metadata: RegistryCompatibilityMetadata) 
     """Attach declarative local resource defaults to workflow compatibility metadata.
 
     Args:
-        name: Registry entry, planner type, or target name being looked up.
-        metadata: The `metadata` input processed by this helper.
+        name: The supported entry name being looked up.
+        metadata: The compatibility metadata to augment.
 
     Returns:
-        A `RegistryCompatibilityMetadata` result computed by this helper.
-"""
+        A compatibility metadata object with local resource defaults attached.
+    """
     resources = _WORKFLOW_LOCAL_RESOURCE_DEFAULTS.get(name)
     if resources is None:
         return metadata
@@ -2448,14 +2447,14 @@ def _with_resource_defaults(name: str, metadata: RegistryCompatibilityMetadata) 
 def _backfill_workflow_compatibility_metadata(
     entries: tuple[RegistryEntry, ...],
 ) -> tuple[RegistryEntry, ...]:
-    """Attach workflow planning notes while preserving the public registry list.
+    """Attach workflow planning notes while preserving the public catalog list.
 
     Args:
-        entries: Registry entries or workflow stages being combined for planning.
+        entries: Catalog entries or workflow stages being combined for planning.
 
     Returns:
-        A `tuple[RegistryEntry, ...]` result computed by this helper.
-"""
+        The catalog entries with workflow planning notes attached where available.
+    """
     return tuple(
         # `replace` keeps the existing name, category, description, inputs,
         # outputs, and tags intact while swapping in planner-facing notes.
@@ -2474,30 +2473,30 @@ _REGISTRY = {entry.name: entry for entry in REGISTRY_ENTRIES}
 
 
 def list_entries(category: Category | None = None) -> tuple[RegistryEntry, ...]:
-    """List supported registry entries, optionally restricted to tasks or workflows.
+    """List supported catalog entries, optionally restricted to tasks or workflows.
 
     Args:
-        category: The `category` input processed by this helper.
+        category: Optional category filter for tasks or workflows.
 
     Returns:
-        A `tuple[RegistryEntry, ...]` result computed by this helper.
-"""
+        The supported catalog entries in the requested category, if any.
+    """
     if category is None:
         return REGISTRY_ENTRIES
     return tuple(entry for entry in REGISTRY_ENTRIES if entry.category == category)
 
 
 def get_entry(name: str) -> RegistryEntry:
-    """Return one registry entry by name with a helpful error for unknown names.
+    """Return one catalog entry by name with a helpful error for unknown names.
 
     Args:
-        name: Registry entry, planner type, or target name being looked up.
+        name: The supported entry name being looked up.
 
     Returns:
-        A `RegistryEntry` result computed by this helper.
-"""
+        The catalog entry for the requested name.
+    """
     try:
         return _REGISTRY[name]
     except KeyError as exc:
         supported = ", ".join(sorted(_REGISTRY))
-        raise KeyError(f"Unknown registry entry '{name}'. Supported entries: {supported}") from exc
+        raise KeyError(f"Unknown catalog entry '{name}'. Supported entries: {supported}") from exc

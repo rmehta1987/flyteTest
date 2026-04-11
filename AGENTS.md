@@ -72,6 +72,14 @@ baseline unless the change is explicitly needed to support the target design.
   show job` / `sacct` for observation, and `scancel` for cancellation.
 - Update the docs, manifests, and tests that describe a behavior when that
   behavior changes.
+- Keep `CHANGELOG.md` current as the shared agent memory for meaningful units
+  of work, not only finalized milestones.
+- Use dated checklist items or dated bullets in `CHANGELOG.md` for completed
+  work so later agents can see when progress landed.
+- Record what was tried, what worked, what failed, what is blocked, and any
+  dead ends that should not be retried without a new reason.
+- Add newly discovered tasks or follow-up risks to `CHANGELOG.md` while the
+  implementation is still in progress.
 - Make changes as small as possible while still solving the problem cleanly.
 - Avoid broad refactors unless the requested change truly depends on them.
 - If a change affects the biological pipeline order or supported workflow

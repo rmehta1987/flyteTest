@@ -1179,45 +1179,50 @@ Status: Complete
 Goal: compose workflow graphs from biological intent while keeping generated
 plans typed, bounded, reviewable, and registry-constrained.
 
-Status: Not started
+Status: Complete through Phase 2 (composition preview and approval gating landed)
 
-### Still required
+### Phase 1: Registry-Constrained Composition Algorithm (Complete)
 
-- [ ] Add an intent-based planning route in `planning.py` that can produce a
-      supported `WorkflowSpec` preview or a structured decline from biological
-      intent.
-- [ ] Implement registry-constrained graph composition using
-      `RegistryEntry.compatibility` so only biologically valid stage edges are
-      considered.
-- [ ] Bundle multiple sequential `TaskSpec` nodes into a cohesive multi-node
-      `WorkflowSpec` with explicit stage boundaries and frozen inputs and
-      outputs.
-- [ ] Enforce cycle detection, stage-count limits, and structured decline
-      reasons for unsupported or ambiguous compositions.
-- [ ] Require explicit user approval for the composed recipe preview, with
-      execution gated until Milestone 19 lands.
-- [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
-      after the behavior lands.
+- [x] Create `src/flytetest/composition.py` with registry-constrained graph traversal
+- [x] Implement `compose_workflow_path()` for greedy forward-chaining composition
+- [x] Implement `_find_compatible_successors()` using registry compatibility metadata
+- [x] Implement `_detect_cycles()` to prevent self-loops and cycles
+- [x] Implement `bundle_composition_into_workflow_spec()` to freeze paths into specs
+- [x] Add comprehensive test suite with 18 passing tests
+- [x] Validate against current registry (all 20+ workflows synthesis-eligible)
+
+### Phase 2: Planning Integration & User Approval (Complete)
+
+- [x] Extend `_planning_goal_for_typed_request()` to use composition algorithm for
+      broader biological intents that don't match hardcoded patterns
+- [x] Add intent-based planning route that can produce either supported
+      `WorkflowSpec` preview or structured decline from biological intent
+- [x] Require explicit user approval for composed recipe preview via MCP
+- [x] Gate execution of composed DAGs until Milestone 19 lands (caching/resumability)
+- [x] Update README, `docs/capability_maturity.md`, and handoff prompt
+- [x] Validate no regression in existing hardcoded compositions (EVM, repeat+BUSCO, AGAT)
+- [x] Keep fallback conservative so unrelated prompts and known day-one missing
+      input declines do not get reinterpreted as composed workflows
 
 ### Milestone 15 implementation note
 
-- This slice should be registry-driven and compatibility-preserving, not an
+- This slice is registry-driven and compatibility-preserving, not an
   unconstrained autonomous graph search.
-- It is currently scheduled after Milestone 17 generic asset adoption,
-  Milestone 18 Slurm retry/resubmission, and the 18a/18b/18c utility cleanup
-  lane so the repo can finish the current asset-surface and helper cleanup
-  before opening broader composition preview work.
-- It should keep dynamic workflow creation typed, inspectable, and reviewable
+- It followed Milestone 17 generic asset adoption, Milestone 18 Slurm
+  retry/resubmission, and the 18a/18b/18c utility cleanup lane.
+- It keeps dynamic workflow creation typed, inspectable, and reviewable
   before execution.
-- It should only open the composition and approval path; execution-capable
+- It only opens the composition and approval path; execution-capable
   composed DAGs stay gated on Milestone 19 caching and resumability.
-- The approval boundary should sit on the frozen recipe, not on a specific
+- The approval boundary sits on the frozen recipe, not on a specific
   backend such as local or Slurm execution.
 
 ### Acceptance evidence
 
 - `docs/realtime_refactor_plans/2026-04-08-milestone-15-registry-driven-dynamic-composition.md`
 - `docs/realtime_refactor_milestone_15_submission_prompt.md`
+- `docs/realtime_refactor_milestone_15_phase_1_summary.md`
+- `docs/realtime_refactor_milestone_15_phase_2_summary.md`
 - Tests likely to include `tests/test_planning.py`, `tests/test_registry.py`,
   `tests/test_server.py`, and any focused composition / decline coverage
 - `README.md`, `docs/capability_maturity.md`, and compatibility docs stay

@@ -295,12 +295,12 @@ def _prepared_prediction_transdecoder_gff3(prepared_dir: Path, manifest: dict[st
 
 @consensus_prep_env.task
 def prepare_evm_transcript_inputs(
-    passa_results: Dir,
+    pasa_results: Dir,
 ) -> Dir:
     """Stage PASA transcript evidence as the EVM transcript channel input.
 
     Args:
-        passa_results: A directory path used by the helper.
+        pasa_results: PASA result bundle containing the assemblies GFF3.
 
     Returns:
         The returned `Dir` value used by the caller.
