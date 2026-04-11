@@ -1,7 +1,7 @@
 """Synthetic coverage for normalized planning and replay specs.
 
-These tests cover metadata contracts and serialization without implying that
-runtime generation or resolver behavior already exists.
+    These tests cover metadata contracts and serialization without implying that
+    runtime generation or resolver behavior already exists.
 """
 
 from __future__ import annotations
@@ -39,7 +39,19 @@ def _field(
     repeated: bool = False,
     planner_type_names: tuple[str, ...] = (),
 ) -> TypedFieldSpec:
-    """Build one compact typed-field fixture for normalized spec tests."""
+    """Build one compact typed-field fixture for normalized spec tests.
+
+    Args:
+        name: A value used by the helper.
+        type_name: A value used by the helper.
+        description: A value used by the helper.
+        required: A value used by the helper.
+        repeated: A value used by the helper.
+        planner_type_names: A value used by the helper.
+
+    Returns:
+        The returned `TypedFieldSpec` value used by the caller.
+"""
     return TypedFieldSpec(
         name=name,
         type_name=type_name,
@@ -51,10 +63,16 @@ def _field(
 
 
 class SpecTests(TestCase):
-    """Coverage for normalized architecture spec creation and serialization."""
+    """Coverage for normalized architecture spec creation and serialization.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
     def test_task_spec_round_trips_with_runtime_metadata(self) -> None:
-        """Round-trip a task spec that mirrors the current Exonerate task boundary."""
+        """Round-trip a task spec that mirrors the current Exonerate task boundary.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         registry_entry = get_entry("exonerate_align_chunk")
         task_spec = TaskSpec(
             name=registry_entry.name,
@@ -84,7 +102,10 @@ class SpecTests(TestCase):
         self.assertEqual([field.name for field in task_spec.inputs[:2]], ["genome", "protein_chunk"])
 
     def test_binding_plan_round_trips_with_manifest_and_runtime_bindings(self) -> None:
-        """Round-trip a binding plan without implying resolver execution is implemented."""
+        """Round-trip a binding plan without implying resolver execution is implemented.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         binding_plan = BindingPlan(
             target_name="annotation_qc_busco",
             target_kind="workflow",
@@ -105,7 +126,10 @@ class SpecTests(TestCase):
         self.assertEqual(binding_plan.runtime_image.apptainer_image, "busco.sif")
 
     def test_workflow_spec_can_represent_registered_workflow_selection(self) -> None:
-        """Represent a direct registered-workflow choice without composition."""
+        """Represent a direct registered-workflow choice without composition.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         registry_entry = get_entry("ab_initio_annotation_braker3")
         workflow_spec = WorkflowSpec(
             name="select_registered_braker3_workflow",
@@ -143,7 +167,10 @@ class SpecTests(TestCase):
         self.assertEqual(workflow_spec.replay_metadata["selection_mode"], "registered_workflow")
 
     def test_workflow_spec_can_represent_registered_stage_composition(self) -> None:
-        """Represent a composition built from registered workflow and task stages."""
+        """Represent a composition built from registered workflow and task stages.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         workflow_spec = WorkflowSpec(
             name="compose_consensus_annotation_from_registered_stages",
             analysis_goal="Compose pre-EVM preparation and EVM execution from registered reviewed stages.",
@@ -222,7 +249,10 @@ class SpecTests(TestCase):
         self.assertEqual(workflow_spec.edges[0].target_input, "evm_prep_results")
 
     def test_workflow_spec_can_represent_saved_generated_artifact(self) -> None:
-        """Represent a saved generated workflow artifact without implying generic synthesis exists."""
+        """Represent a saved generated workflow artifact without implying generic synthesis exists.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         generated_record = GeneratedEntityRecord(
             generated_entity_id="generated::annotation_qc_bundle::2026-04-06T12:30:00Z",
             source_prompt="Assess the prepared consensus annotation with BUSCO after repeat filtering.",
@@ -283,7 +313,10 @@ class SpecTests(TestCase):
         self.assertEqual(workflow_spec.nodes[0].kind, "generated_workflow")
 
     def test_execution_profile_round_trips_with_resource_overrides(self) -> None:
-        """Round-trip one named execution profile used by normalized specs."""
+        """Round-trip one named execution profile used by normalized specs.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         profile = ExecutionProfile(
             name="high-mem",
             description="Use the same biology with a larger memory envelope.",

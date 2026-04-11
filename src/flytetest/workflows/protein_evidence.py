@@ -1,10 +1,10 @@
 """Protein-evidence workflow entrypoint for FLyteTest.
 
-This module stages local protein FASTAs, chunks them deterministically, runs
-Exonerate per chunk, and collects the later-EVM protein evidence bundle.
+    This module stages local protein FASTAs, chunks them deterministically, runs
+    Exonerate per chunk, and collects the later-EVM protein evidence bundle.
 
-Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
-input/output expectations follow `docs/tool_refs/exonerate.md`.
+    Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
+    input/output expectations follow `docs/tool_refs/exonerate.md`.
 """
 
 from __future__ import annotations
@@ -34,7 +34,18 @@ def protein_evidence_alignment(
     exonerate_sif: str = "",
     exonerate_model: str = "protein2genome",
 ) -> Dir:
-    """Build the current protein-evidence bundle from local FASTA inputs."""
+    """Orchestrate deterministic protein-to-genome alignment and EVM-compatible evidence generation.
+
+    Args:
+        genome: A value used by the helper.
+        protein_fastas: A value used by the helper.
+        proteins_per_chunk: A value used by the helper.
+        exonerate_sif: A value used by the helper.
+        exonerate_model: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     staged_proteins = stage_protein_fastas(protein_fastas=protein_fastas)
     protein_chunks = chunk_protein_fastas(
         staged_proteins=staged_proteins,

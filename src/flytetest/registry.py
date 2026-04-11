@@ -1,9 +1,9 @@
 """Machine-readable catalog of supported FLyteTest tasks and workflows.
 
-The registry tells the prompt planner which checked-in building blocks exist,
-what each one needs as input, and what each one produces. It stays deliberately
-static for now so user requests are mapped to known Flyte code instead of
-generating new workflow source at runtime.
+    The registry tells the prompt planner which checked-in building blocks exist,
+    what each one needs as input, and what each one produces. It stays deliberately
+    static for now so user requests are mapped to known Flyte code instead of
+    generating new workflow source at runtime.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ class InterfaceField:
 
     These fields are intentionally small and readable: they describe the shape
     of the public entry without importing Flyte objects or task functions.
-    """
+"""
 
     name: str
     type: str
@@ -35,7 +35,7 @@ class RegistryCompatibilityMetadata:
     The base registry says "this task or workflow exists." This metadata says
     "this stage can accept these planner-facing values, can produce these new
     values, and is safe to reuse in generated plans when the constraints match."
-    """
+"""
 
     biological_stage: str = "unspecified"
     accepted_planner_types: tuple[str, ...] = ()
@@ -55,7 +55,7 @@ class RegistryEntry:
     Registry entries keep the user-facing catalog separate from the runnable
     Flyte definitions. That separation lets the planner inspect available
     stages without importing every task module or editing workflow code.
-    """
+"""
 
     name: str
     category: Category
@@ -68,10 +68,13 @@ class RegistryEntry:
     def to_dict(self) -> dict[str, object]:
         """Serialize this entry for callers that need plain dictionaries.
 
-        The method keeps `inputs` and `outputs` as lists of simple dictionaries,
-        matching the older registry shape while still including the newer
-        compatibility metadata.
-        """
+    The method keeps `inputs` and `outputs` as lists of simple dictionaries,
+    matching the older registry shape while still including the newer
+    compatibility metadata.
+
+    Returns:
+        A `dict[str, object]` result computed by this helper.
+"""
         data = asdict(self)
         data["inputs"] = [asdict(field) for field in self.inputs]
         data["outputs"] = [asdict(field) for field in self.outputs]
@@ -1846,12 +1849,12 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
     RegistryEntry(
         name="annotation_qc_busco",
         category="workflow",
-        description="BUSCO-based annotation-QC workflow that consumes the repeat-filtered protein FASTA boundary, runs one BUSCO task per selected lineage, and collects a manifest-bearing QC bundle.",
+        description="BUSCO-based annotation quality-assessment workflow that consumes the repeat-filtered protein FASTA boundary, runs one BUSCO task per selected lineage, and collects a manifest-bearing quality-assessment bundle.",
         inputs=(
             InterfaceField(
                 "repeat_filter_results",
                 "Dir",
-                "Repeat-filtering results directory from annotation_repeat_filtering containing the final repeat-free proteins FASTA.",
+                "Repeat-filtering results directory from annotation_repeat_filtering containing the final repeat-free protein FASTA that BUSCO treats as the quality-assessment input.",
             ),
             InterfaceField(
                 "busco_lineages_text",
@@ -1869,7 +1872,7 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
             InterfaceField(
                 "results_dir",
                 "Dir",
-                "Timestamped BUSCO QC results directory containing copied lineage runs, busco_summary.tsv, and run_manifest.json.",
+                "Timestamped BUSCO quality-assessment results directory containing copied lineage runs, busco_summary.tsv, and run_manifest.json.",
             ),
         ),
         tags=("workflow", "busco", "annotation-qc", "proteins"),
@@ -1877,12 +1880,12 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
     RegistryEntry(
         name="annotation_functional_eggnog",
         category="workflow",
-        description="EggNOG functional-annotation workflow that consumes the repeat-filtered protein FASTA boundary, runs EggNOG-mapper with an explicit database directory, and collects a manifest-bearing annotated GFF3 bundle.",
+        description="EggNOG functional-annotation workflow that consumes the repeat-filtered protein FASTA boundary after quality assessment, runs EggNOG-mapper with an explicit database directory, and collects a manifest-bearing annotated GFF3 bundle.",
         inputs=(
             InterfaceField(
                 "repeat_filter_results",
                 "Dir",
-                "Repeat-filtering results directory from annotation_repeat_filtering containing the final repeat-free proteins FASTA and GFF3.",
+                "Repeat-filtering results directory from annotation_repeat_filtering containing the final repeat-free proteins FASTA and GFF3 that the planner treats as the current quality-assessed source bundle.",
             ),
             InterfaceField(
                 "eggnog_data_dir",
@@ -1909,12 +1912,12 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
     RegistryEntry(
         name="annotation_postprocess_agat",
         category="workflow",
-        description="AGAT post-processing workflow that consumes the EggNOG-annotated GFF3 bundle and collects the statistics slice in a manifest-bearing results directory.",
+        description="AGAT post-processing workflow that consumes the EggNOG-annotated GFF3 bundle after quality assessment and collects the statistics slice in a manifest-bearing results directory.",
         inputs=(
             InterfaceField(
                 "eggnog_results",
                 "Dir",
-                "EggNOG results directory from annotation_functional_eggnog containing the annotated GFF3 boundary.",
+                "EggNOG results directory from annotation_functional_eggnog containing the annotated GFF3 boundary that serves as the post-quality-assessment input for AGAT statistics.",
             ),
             InterfaceField(
                 "annotation_fasta_path",
@@ -1939,12 +1942,12 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
     RegistryEntry(
         name="annotation_postprocess_agat_conversion",
         category="workflow",
-        description="AGAT conversion workflow that consumes the EggNOG-annotated GFF3 bundle and collects the normalized GFF3 slice in a manifest-bearing results directory.",
+        description="AGAT conversion workflow that consumes the EggNOG-annotated GFF3 bundle after quality assessment and collects the normalized GFF3 slice in a manifest-bearing results directory.",
         inputs=(
             InterfaceField(
                 "eggnog_results",
                 "Dir",
-                "EggNOG results directory from annotation_functional_eggnog containing the annotated GFF3 boundary.",
+                "EggNOG results directory from annotation_functional_eggnog containing the annotated GFF3 boundary that serves as the post-quality-assessment input for AGAT conversion.",
             ),
             InterfaceField(
                 "agat_sif",
@@ -1964,12 +1967,12 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
     RegistryEntry(
         name="annotation_postprocess_agat_cleanup",
         category="workflow",
-        description="AGAT cleanup workflow that consumes the AGAT conversion bundle and collects the deterministic cleaned GFF3 slice without running table2asn.",
+        description="AGAT cleanup workflow that consumes the AGAT conversion bundle after quality assessment and collects the deterministic cleaned GFF3 slice without running table2asn.",
         inputs=(
             InterfaceField(
                 "agat_conversion_results",
                 "Dir",
-                "AGAT conversion results directory from annotation_postprocess_agat_conversion containing the converted GFF3 boundary.",
+                "AGAT conversion results directory from annotation_postprocess_agat_conversion containing the converted GFF3 boundary that serves as the cleanup input after quality assessment.",
             ),
         ),
         outputs=(
@@ -2350,7 +2353,7 @@ _WORKFLOW_COMPATIBILITY_METADATA: dict[str, RegistryCompatibilityMetadata] = {
         execution_defaults={"profile": "local", "result_manifest": "run_manifest.json"},
         synthesis_eligible=True,
         composition_constraints=(
-            "Consumes the repeat-filtered protein FASTA boundary and does not run EggNOG, AGAT, or submission prep.",
+            "Consumes the repeat-filtered protein FASTA boundary as the current QC target and does not run EggNOG, AGAT, or submission prep.",
         ),
     ),
     "annotation_functional_eggnog": RegistryCompatibilityMetadata(
@@ -2361,7 +2364,7 @@ _WORKFLOW_COMPATIBILITY_METADATA: dict[str, RegistryCompatibilityMetadata] = {
         execution_defaults={"profile": "local", "result_manifest": "run_manifest.json"},
         synthesis_eligible=True,
         composition_constraints=(
-            "Consumes the repeat-filtered protein FASTA boundary and keeps AGAT and submission prep deferred.",
+            "Consumes the repeat-filtered protein FASTA boundary after BUSCO-style quality assessment and keeps AGAT and submission prep deferred.",
         ),
     ),
     "annotation_postprocess_agat": RegistryCompatibilityMetadata(
@@ -2372,7 +2375,7 @@ _WORKFLOW_COMPATIBILITY_METADATA: dict[str, RegistryCompatibilityMetadata] = {
         execution_defaults={"profile": "local", "result_manifest": "run_manifest.json"},
         synthesis_eligible=True,
         composition_constraints=(
-            "Consumes the EggNOG-annotated GFF3 boundary and keeps AGAT conversion, cleanup, and table2asn as separate follow-on slices.",
+            "Consumes the EggNOG-annotated GFF3 boundary after quality assessment and keeps AGAT conversion, cleanup, and table2asn as separate follow-on slices.",
         ),
     ),
     "annotation_postprocess_agat_conversion": RegistryCompatibilityMetadata(
@@ -2383,7 +2386,7 @@ _WORKFLOW_COMPATIBILITY_METADATA: dict[str, RegistryCompatibilityMetadata] = {
         execution_defaults={"profile": "local", "result_manifest": "run_manifest.json"},
         synthesis_eligible=True,
         composition_constraints=(
-            "Consumes the EggNOG-annotated GFF3 boundary, uses the AGAT conversion command family explicitly, and keeps cleanup as a separate follow-on slice before table2asn.",
+            "Consumes the EggNOG-annotated GFF3 boundary after quality assessment, uses the AGAT conversion command family explicitly, and keeps cleanup as a separate follow-on slice before table2asn.",
         ),
     ),
     "annotation_postprocess_agat_cleanup": RegistryCompatibilityMetadata(
@@ -2394,7 +2397,7 @@ _WORKFLOW_COMPATIBILITY_METADATA: dict[str, RegistryCompatibilityMetadata] = {
         execution_defaults={"profile": "local", "result_manifest": "run_manifest.json"},
         synthesis_eligible=True,
         composition_constraints=(
-            "Consumes the AGAT conversion GFF3 boundary, applies the deterministic cleanup rules, and keeps table2asn deferred.",
+            "Consumes the AGAT conversion GFF3 boundary after quality assessment, applies the deterministic cleanup rules, and keeps table2asn deferred.",
         ),
     ),
 }
@@ -2420,7 +2423,15 @@ _WORKFLOW_LOCAL_RESOURCE_DEFAULTS: dict[str, dict[str, str]] = {
 
 
 def _with_resource_defaults(name: str, metadata: RegistryCompatibilityMetadata) -> RegistryCompatibilityMetadata:
-    """Attach declarative local resource defaults to workflow compatibility metadata."""
+    """Attach declarative local resource defaults to workflow compatibility metadata.
+
+    Args:
+        name: Registry entry, planner type, or target name being looked up.
+        metadata: The `metadata` input processed by this helper.
+
+    Returns:
+        A `RegistryCompatibilityMetadata` result computed by this helper.
+"""
     resources = _WORKFLOW_LOCAL_RESOURCE_DEFAULTS.get(name)
     if resources is None:
         return metadata
@@ -2439,10 +2450,12 @@ def _backfill_workflow_compatibility_metadata(
 ) -> tuple[RegistryEntry, ...]:
     """Attach workflow planning notes while preserving the public registry list.
 
-    `RegistryEntry` is frozen, so this returns copied entries with only the
-    compatibility metadata changed. Entries without a metadata override pass
-    through unchanged.
-    """
+    Args:
+        entries: Registry entries or workflow stages being combined for planning.
+
+    Returns:
+        A `tuple[RegistryEntry, ...]` result computed by this helper.
+"""
     return tuple(
         # `replace` keeps the existing name, category, description, inputs,
         # outputs, and tags intact while swapping in planner-facing notes.
@@ -2461,14 +2474,28 @@ _REGISTRY = {entry.name: entry for entry in REGISTRY_ENTRIES}
 
 
 def list_entries(category: Category | None = None) -> tuple[RegistryEntry, ...]:
-    """List supported registry entries, optionally restricted to tasks or workflows."""
+    """List supported registry entries, optionally restricted to tasks or workflows.
+
+    Args:
+        category: The `category` input processed by this helper.
+
+    Returns:
+        A `tuple[RegistryEntry, ...]` result computed by this helper.
+"""
     if category is None:
         return REGISTRY_ENTRIES
     return tuple(entry for entry in REGISTRY_ENTRIES if entry.category == category)
 
 
 def get_entry(name: str) -> RegistryEntry:
-    """Return one registry entry by name with a helpful error for unknown names."""
+    """Return one registry entry by name with a helpful error for unknown names.
+
+    Args:
+        name: Registry entry, planner type, or target name being looked up.
+
+    Returns:
+        A `RegistryEntry` result computed by this helper.
+"""
     try:
         return _REGISTRY[name]
     except KeyError as exc:

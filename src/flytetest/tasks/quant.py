@@ -1,10 +1,10 @@
 """Quantification tasks for the original FLyteTest RNA-seq workflow.
 
-This module keeps the current Salmon indexing, quantification, and result
-collection boundaries used by the compatibility entrypoint.
+    This module keeps the current Salmon indexing, quantification, and result
+    collection boundaries used by the compatibility entrypoint.
 
-Tool-level command and input/output expectations follow `docs/tool_refs/salmon.md`.
-That reference matches the Salmon stage implemented here.
+    Tool-level command and input/output expectations follow `docs/tool_refs/salmon.md`.
+    That reference matches the Salmon stage implemented here.
 """
 
 from __future__ import annotations
@@ -29,7 +29,15 @@ from flytetest.config import (
 
 @rnaseq_qc_quant_env.task
 def salmon_index(ref: File, salmon_sif: str = "") -> Dir:
-    """Build a Salmon index from a transcriptome FASTA."""
+    """Build a Salmon index from a reference transcriptome FASTA file.
+
+    Args:
+        ref: A value used by the helper.
+        salmon_sif: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     ref_path = require_path(Path(ref.download_sync()), "Reference transcriptome")
     out_dir = project_mkdtemp("salmon_index_") / "index"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -49,7 +57,17 @@ def salmon_quant(
     right: File,
     salmon_sif: str = "",
 ) -> Dir:
-    """Quantify one paired-end sample against a prebuilt Salmon index."""
+    """Quantify transcript abundance for a paired-end RNA-seq sample using Salmon.
+
+    Args:
+        index: A value used by the helper.
+        left: A value used by the helper.
+        right: A value used by the helper.
+        salmon_sif: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     index_path = require_path(Path(index.download_sync()), "Salmon index directory")
     left_path = require_path(Path(left.download_sync()), "Read 1 FASTQ")
     right_path = require_path(Path(right.download_sync()), "Read 2 FASTQ")
@@ -80,7 +98,15 @@ def salmon_quant(
 
 @rnaseq_qc_quant_env.task
 def collect_results(qc: Dir, quant: Dir) -> Dir:
-    """Copy QC and quantification outputs into a stable manifest-bearing bundle."""
+    """Consolidate FastQC and Salmon quantification outputs into a manifest-bearing result bundle.
+
+    Args:
+        qc: A value used by the helper.
+        quant: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     qc_path = require_path(Path(qc.download_sync()), "FastQC output directory")
     quant_path = require_path(Path(quant.download_sync()), "Salmon quantification directory")
 

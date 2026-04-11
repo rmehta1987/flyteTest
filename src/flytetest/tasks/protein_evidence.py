@@ -1,10 +1,10 @@
 """Protein-evidence task implementations for FLyteTest.
 
-This module stages local protein FASTAs, chunks them deterministically, runs
-Exonerate alignments, converts outputs for later EVM use, and collects results.
+    This module stages local protein FASTAs, chunks them deterministically, runs
+    Exonerate alignments, converts outputs for later EVM use, and collects results.
 
-Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
-input/output expectations follow `docs/tool_refs/exonerate.md`.
+    Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
+    input/output expectations follow `docs/tool_refs/exonerate.md`.
 """
 
 from __future__ import annotations
@@ -38,7 +38,14 @@ from flytetest.types import (
 
 
 def _as_json_compatible(value: Any) -> Any:
-    """Recursively convert manifest values into JSON-serializable primitives."""
+    """Recursively convert manifest values into JSON-serializable primitives.
+
+    Args:
+        value: The value or values processed by the helper.
+
+    Returns:
+        The returned `Any` value used by the caller.
+"""
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, dict):
@@ -51,7 +58,14 @@ def _as_json_compatible(value: Any) -> Any:
 
 
 def _iter_fasta_records(path: Path) -> Iterator[tuple[str, list[str]]]:
-    """Yield FASTA headers and sequence lines from a staged protein FASTA."""
+    """Yield FASTA headers and sequence lines from a staged protein FASTA.
+
+    Args:
+        path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `Iterator[tuple[str, list[str]]]` value used by the caller.
+"""
     header: str | None = None
     sequence_lines: list[str] = []
     with path.open() as handle:
@@ -72,49 +86,111 @@ def _iter_fasta_records(path: Path) -> Iterator[tuple[str, list[str]]]:
 
 
 def _write_fasta_record(handle: Any, header: str, sequence_lines: list[str]) -> None:
-    """Write one FASTA record using the staged sequence-line layout."""
+    """Write one FASTA record using the staged sequence-line layout.
+
+    Args:
+        handle: A value used by the helper.
+        header: A value used by the helper.
+        sequence_lines: A value used by the helper.
+"""
     handle.write(f">{header}\n")
     for line in sequence_lines:
         handle.write(f"{line}\n")
 
 
 def _read_json(path: Path) -> dict[str, Any]:
-    """Read a JSON manifest into a dictionary."""
+    """Read a JSON manifest into a dictionary.
+
+    Args:
+        path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `dict[str, Any]` value used by the caller.
+"""
     return json.loads(path.read_text())
 
 
 def _staged_inputs_dir(staged_dir: Path) -> Path:
-    """Resolve the directory containing copied source protein FASTAs."""
+    """Resolve the directory containing copied source protein FASTAs.
+
+    Args:
+        staged_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     return require_path(staged_dir / "inputs", "Staged protein FASTA input directory")
 
 
 def _staged_combined_fasta(staged_dir: Path) -> Path:
-    """Resolve the combined staged protein FASTA used for chunking."""
+    """Resolve the combined staged protein FASTA used for chunking.
+
+    Args:
+        staged_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     return require_path(staged_dir / "combined" / "proteins.all.fa", "Combined staged protein FASTA")
 
 
 def _stage_manifest_path(staged_dir: Path) -> Path:
-    """Resolve the manifest written by protein FASTA staging."""
+    """Resolve the manifest written by protein FASTA staging.
+
+    Args:
+        staged_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     return require_path(staged_dir / "run_manifest.json", "Protein staging manifest")
 
 
 def _chunk_subdir(chunk_dir: Path) -> Path:
-    """Resolve the directory containing per-chunk protein FASTAs."""
+    """Resolve the directory containing per-chunk protein FASTAs.
+
+    Args:
+        chunk_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     return require_path(chunk_dir / "chunks", "Protein chunk directory")
 
 
 def _chunk_manifest_path(chunk_dir: Path) -> Path:
-    """Resolve the manifest written by deterministic protein chunking."""
+    """Resolve the manifest written by deterministic protein chunking.
+
+    Args:
+        chunk_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     return require_path(chunk_dir / "run_manifest.json", "Protein chunking manifest")
 
 
 def _chunk_fasta_paths(chunk_dir: Path) -> tuple[Path, ...]:
-    """Return all chunk FASTAs in deterministic filename order."""
+    """Return all chunk FASTAs in deterministic filename order.
+
+    Args:
+        chunk_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `tuple[Path, ...]` value used by the caller.
+"""
     return tuple(sorted(_chunk_subdir(chunk_dir).glob("chunk_*.fa")))
 
 
 def _raw_exonerate_output(alignment_dir: Path) -> Path:
-    """Resolve the single raw Exonerate stdout file for one chunk."""
+    """Resolve the single raw Exonerate stdout file for one chunk.
+
+    Args:
+        alignment_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     candidates = sorted(alignment_dir.glob("*.exonerate.out"))
     if len(candidates) == 1:
         return candidates[0]
@@ -122,12 +198,26 @@ def _raw_exonerate_output(alignment_dir: Path) -> Path:
 
 
 def _alignment_manifest_path(alignment_dir: Path) -> Path:
-    """Resolve the manifest written by an Exonerate chunk alignment."""
+    """Resolve the manifest written by an Exonerate chunk alignment.
+
+    Args:
+        alignment_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     return require_path(alignment_dir / "run_manifest.json", "Exonerate chunk manifest")
 
 
 def _converted_evm_gff3(converted_dir: Path) -> Path:
-    """Resolve the converted downstream-ready EVM GFF3 for one chunk."""
+    """Resolve the converted downstream-ready EVM GFF3 for one chunk.
+
+    Args:
+        converted_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     candidates = sorted(converted_dir.glob("*.evm.gff3"))
     if len(candidates) == 1:
         return candidates[0]
@@ -135,13 +225,27 @@ def _converted_evm_gff3(converted_dir: Path) -> Path:
 
 
 def _converted_manifest_path(converted_dir: Path) -> Path:
-    """Resolve the manifest written by Exonerate-to-EVM conversion."""
+    """Resolve the manifest written by Exonerate-to-EVM conversion.
+
+    Args:
+        converted_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     return require_path(converted_dir / "run_manifest.json", "Converted Exonerate manifest")
 
 
 @protein_evidence_env.task
 def stage_protein_fastas(protein_fastas: list[File]) -> Dir:
-    """Stage one or more local protein FASTAs and concatenate them deterministically."""
+    """Stage one or more local protein FASTAs and concatenate them deterministically.
+
+    Args:
+        protein_fastas: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     if not protein_fastas:
         raise ValueError("stage_protein_fastas requires at least one protein FASTA input.")
 
@@ -193,7 +297,15 @@ def chunk_protein_fastas(
     staged_proteins: Dir,
     proteins_per_chunk: int = 500,
 ) -> Dir:
-    """Split the staged combined protein FASTA into deterministic chunk FASTAs."""
+    """Split the staged combined protein FASTA into deterministic chunk FASTAs.
+
+    Args:
+        staged_proteins: A value used by the helper.
+        proteins_per_chunk: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     if proteins_per_chunk < 1:
         raise ValueError("proteins_per_chunk must be at least 1.")
 
@@ -210,6 +322,12 @@ def chunk_protein_fastas(
     chunk_index = 0
 
     def flush_chunk(records: list[tuple[str, list[str]]], next_index: int) -> None:
+        """Write one numbered FASTA chunk and record its manifest metadata.
+
+    Args:
+        records: The records written into the synthetic file.
+        next_index: A value used by the helper.
+"""
         if not records:
             return
         chunk_path = chunks_dir / f"chunk_{next_index:04d}.fa"
@@ -259,7 +377,17 @@ def exonerate_align_chunk(
     exonerate_sif: str = "",
     exonerate_model: str = "protein2genome",
 ) -> Dir:
-    """Run Exonerate for one staged protein chunk against the reference genome."""
+    """Run Exonerate for one staged protein chunk against the reference genome.
+
+    Args:
+        genome: A value used by the helper.
+        protein_chunk: A value used by the helper.
+        exonerate_sif: A value used by the helper.
+        exonerate_model: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     genome_path = require_path(Path(genome.download_sync()), "Reference genome FASTA")
     chunk_path = require_path(Path(protein_chunk.download_sync()), "Protein FASTA chunk")
     chunk_label = chunk_path.stem
@@ -315,7 +443,14 @@ def exonerate_align_chunk(
 def exonerate_to_evm_gff3(
     exonerate_alignment: Dir,
 ) -> Dir:
-    """Convert one Exonerate chunk output into a later-EVM-ready protein GFF3."""
+    """Convert one Exonerate chunk output into a later-EVM-ready protein GFF3.
+
+    Args:
+        exonerate_alignment: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     alignment_dir = require_path(Path(exonerate_alignment.download_sync()), "Exonerate chunk alignment directory")
     raw_output_path = _raw_exonerate_output(alignment_dir)
     chunk_label = raw_output_path.name.removesuffix(".exonerate.out")
@@ -371,7 +506,18 @@ def exonerate_concat_results(
     raw_chunk_results: list[Dir],
     evm_chunk_results: list[Dir],
 ) -> Dir:
-    """Collect staged, raw, and converted protein-evidence outputs into one bundle."""
+    """Collect staged, raw, and converted protein-evidence outputs into one bundle.
+
+    Args:
+        genome: A value used by the helper.
+        staged_proteins: A value used by the helper.
+        protein_chunks: A value used by the helper.
+        raw_chunk_results: A directory path used by the helper.
+        evm_chunk_results: A directory path used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     if not raw_chunk_results:
         raise ValueError("exonerate_concat_results requires at least one raw Exonerate chunk result.")
     if len(raw_chunk_results) != len(evm_chunk_results):

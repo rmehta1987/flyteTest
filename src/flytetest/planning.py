@@ -1,11 +1,11 @@
 """Deterministic prompt planning for the narrow FLyteTest MCP showcase.
 
-This module intentionally supports only two prebuilt workflows and one task:
-`ab_initio_annotation_braker3`, `protein_evidence_alignment`, and
-`exonerate_align_chunk`. It classifies a prompt, extracts explicit local file
-paths written directly in that prompt, maps those paths onto the supported
-entry inputs, and returns a structured plan without inventing broader
-orchestration behavior.
+    This module intentionally supports only two prebuilt workflows and one task:
+    `ab_initio_annotation_braker3`, `protein_evidence_alignment`, and
+    `exonerate_align_chunk`. It classifies a prompt, extracts explicit local file
+    paths written directly in that prompt, maps those paths onto the supported
+    entry inputs, and returns a structured plan without inventing broader
+    orchestration behavior.
 """
 
 from __future__ import annotations
@@ -58,7 +58,10 @@ TypedPlanningOutcome = Literal[
 
 @dataclass(frozen=True, slots=True)
 class PlannedInput:
-    """One planner-facing input field for a supported entry."""
+    """One planner-facing input field for a supported entry.
+
+    This dataclass keeps the planning or execution contract explicit and easy to review.
+"""
 
     name: str
     type: str
@@ -67,7 +70,10 @@ class PlannedInput:
 
 @dataclass(frozen=True, slots=True)
 class EntryParameter:
-    """One parameter from a supported task or workflow signature."""
+    """One parameter from a supported task or workflow signature.
+
+    This dataclass keeps the planning or execution contract explicit and easy to review.
+"""
 
     name: str
     required: bool
@@ -75,7 +81,10 @@ class EntryParameter:
 
 @dataclass(frozen=True, slots=True)
 class PromptPath:
-    """One explicit local path mention extracted from the prompt text."""
+    """One explicit local path mention extracted from the prompt text.
+
+    This dataclass keeps the planning or execution contract explicit and easy to review.
+"""
 
     value: str
     context: str
@@ -83,7 +92,10 @@ class PromptPath:
 
 @dataclass(frozen=True, slots=True)
 class TypedPlanningGoal:
-    """One biology-level target selected before resolver and registry matching."""
+    """One biology-level target selected before resolver and registry matching.
+
+    This dataclass keeps the planning or execution contract explicit and easy to review.
+"""
 
     name: str
     outcome: TypedPlanningOutcome
@@ -101,19 +113,40 @@ class TypedPlanningGoal:
 
 
 def _normalize(text: str) -> str:
-    """Normalize free text into lowercase alphanumeric tokens."""
+    """Normalize free text into lowercase alphanumeric tokens.
+
+    Args:
+        text: Free text to normalize or inspect.
+
+    Returns:
+        A `str` result computed by this helper.
+"""
     return " ".join(_TOKEN_RE.findall(text.lower()))
 
 
 def _supported_entry(name: str) -> RegistryEntry:
-    """Resolve one supported registry entry by name."""
+    """Resolve one supported registry entry by name.
+
+    Args:
+        name: Registry entry, planner type, or target name being looked up.
+
+    Returns:
+        A `RegistryEntry` result computed by this helper.
+"""
     if name not in SHOWCASE_TARGETS_BY_NAME:
         raise KeyError(f"Unsupported showcase entry: {name}")
     return get_entry(name)
 
 
 def _parameters_from_source(name: str) -> tuple[EntryParameter, ...]:
-    """Parse the checked-in source file when import-time reflection is unavailable."""
+    """Parse the checked-in source file when import-time reflection is unavailable.
+
+    Args:
+        name: Registry entry, planner type, or target name being looked up.
+
+    Returns:
+        A `tuple[EntryParameter, ...]` result computed by this helper.
+"""
     source_path = SHOWCASE_TARGETS_BY_NAME[name].source_path
     module = ast.parse(source_path.read_text(), filename=str(source_path))
     for node in module.body:
@@ -128,7 +161,14 @@ def _parameters_from_source(name: str) -> tuple[EntryParameter, ...]:
 
 
 def supported_entry_parameters(name: str) -> tuple[EntryParameter, ...]:
-    """Return supported entry parameters from imports or source fallback."""
+    """Return supported entry parameters from imports or source fallback.
+
+    Args:
+        name: Registry entry, planner type, or target name being looked up.
+
+    Returns:
+        A `tuple[EntryParameter, ...]` result computed by this helper.
+"""
     target = SHOWCASE_TARGETS_BY_NAME.get(name)
     if target is None:
         raise KeyError(f"Unsupported showcase entry: {name}")
@@ -157,7 +197,14 @@ def supported_entry_parameters(name: str) -> tuple[EntryParameter, ...]:
 
 
 def split_entry_inputs(name: str) -> tuple[tuple[PlannedInput, ...], tuple[PlannedInput, ...]]:
-    """Split registry-defined entry inputs into required and optional groups."""
+    """Split registry-defined entry inputs into required and optional groups.
+
+    Args:
+        name: Registry entry, planner type, or target name being looked up.
+
+    Returns:
+        A `tuple[tuple[PlannedInput, ...], tuple[PlannedInput, ...]]` result computed by this helper.
+"""
     entry = _supported_entry(name)
     registry_fields = {field.name: field for field in entry.inputs}
 
@@ -174,12 +221,26 @@ def split_entry_inputs(name: str) -> tuple[tuple[PlannedInput, ...], tuple[Plann
 
 
 def _clean_path(raw_path: str) -> str:
-    """Strip trailing punctuation from one path-like prompt token."""
+    """Strip trailing punctuation from one path-like prompt token.
+
+    Args:
+        raw_path: A filesystem path used by the helper.
+
+    Returns:
+        A `str` result computed by this helper.
+"""
     return raw_path.rstrip(".,);:'\"")
 
 
 def _extract_prompt_paths(request: str) -> tuple[PromptPath, ...]:
-    """Return explicit local path mentions with the prefix text that labels them."""
+    """Return explicit local path mentions with the prefix text that labels them.
+
+    Args:
+        request: The local execution request forwarded by the caller.
+
+    Returns:
+        A `tuple[PromptPath, ...]` result computed by this helper.
+"""
     matches: list[PromptPath] = []
     for match in _PATH_RE.finditer(request):
         path = _clean_path(match.group("path"))
@@ -191,12 +252,26 @@ def _extract_prompt_paths(request: str) -> tuple[PromptPath, ...]:
 
 
 def _is_bam_path(path: str) -> bool:
-    """Return whether a prompt path looks like a BAM file."""
+    """Return whether a prompt path looks like a BAM file.
+
+    Args:
+        path: A filesystem path used by the helper.
+
+    Returns:
+        A `bool` result computed by this helper.
+"""
     return path.lower().endswith(".bam")
 
 
 def _is_fasta_path(path: str) -> bool:
-    """Return whether a prompt path looks like a FASTA file."""
+    """Return whether a prompt path looks like a FASTA file.
+
+    Args:
+        path: A filesystem path used by the helper.
+
+    Returns:
+        A `bool` result computed by this helper.
+"""
     lowered = path.lower()
     if lowered.endswith(".gz"):
         lowered = lowered[:-3]
@@ -204,12 +279,28 @@ def _is_fasta_path(path: str) -> bool:
 
 
 def _last_keyword_index(context: str, keywords: tuple[str, ...]) -> int:
-    """Return the nearest keyword position from a short prompt prefix context."""
+    """Return the nearest keyword position from a short prompt prefix context.
+
+    Args:
+        context: The `context` input processed by this helper.
+        keywords: The `keywords` input processed by this helper.
+
+    Returns:
+        A `int` result computed by this helper.
+"""
     return max((context.rfind(keyword) for keyword in keywords), default=-1)
 
 
 def _extract_braker_workflow_inputs(request: str, prompt_paths: tuple[PromptPath, ...]) -> dict[str, str]:
-    """Map prompt-contained explicit paths to BRAKER3 workflow inputs."""
+    """Map prompt-contained explicit paths to BRAKER3 workflow inputs.
+
+    Args:
+        request: The local execution request forwarded by the caller.
+        prompt_paths: The `prompt_paths` input processed by this helper.
+
+    Returns:
+        A `dict[str, str]` result computed by this helper.
+"""
     extracted: dict[str, str] = {}
     unlabeled_fastas: list[str] = []
 
@@ -248,7 +339,15 @@ def _extract_protein_workflow_inputs(
     request: str,
     prompt_paths: tuple[PromptPath, ...],
 ) -> dict[str, object]:
-    """Map prompt-contained explicit paths to protein-evidence workflow inputs."""
+    """Map prompt-contained explicit paths to protein-evidence workflow inputs.
+
+    Args:
+        request: The local execution request forwarded by the caller.
+        prompt_paths: The `prompt_paths` input processed by this helper.
+
+    Returns:
+        A `dict[str, object]` result computed by this helper.
+"""
     extracted: dict[str, object] = {}
     protein_fastas: list[str] = []
     unlabeled_fastas: list[str] = []
@@ -297,7 +396,15 @@ def _extract_protein_workflow_inputs(
 
 
 def _extract_task_inputs(request: str, prompt_paths: tuple[PromptPath, ...]) -> dict[str, str]:
-    """Map prompt-contained explicit paths to the Exonerate chunk task inputs."""
+    """Map prompt-contained explicit paths to the Exonerate chunk task inputs.
+
+    Args:
+        request: The local execution request forwarded by the caller.
+        prompt_paths: The `prompt_paths` input processed by this helper.
+
+    Returns:
+        A `dict[str, str]` result computed by this helper.
+"""
     extracted: dict[str, str] = {}
     unlabeled_fastas: list[str] = []
 
@@ -330,7 +437,14 @@ def _extract_task_inputs(request: str, prompt_paths: tuple[PromptPath, ...]) -> 
 
 
 def _coerce_resource_spec(value: Mapping[str, Any] | ResourceSpec | None) -> ResourceSpec | None:
-    """Convert caller-supplied resource policy into the typed recipe shape."""
+    """Convert caller-supplied resource policy into the typed recipe shape.
+
+    Args:
+        value: The value or values processed by the helper.
+
+    Returns:
+        A `ResourceSpec | None` result computed by this helper.
+"""
     if value is None:
         return None
     if isinstance(value, ResourceSpec):
@@ -354,7 +468,14 @@ def _coerce_resource_spec(value: Mapping[str, Any] | ResourceSpec | None) -> Res
 
 
 def _coerce_runtime_image_spec(value: Mapping[str, Any] | RuntimeImageSpec | str | None) -> RuntimeImageSpec | None:
-    """Convert caller-supplied runtime image policy into the typed recipe shape."""
+    """Convert caller-supplied runtime image policy into the typed recipe shape.
+
+    Args:
+        value: The value or values processed by the helper.
+
+    Returns:
+        A `RuntimeImageSpec | None` result computed by this helper.
+"""
     if value is None or value == "":
         return None
     if isinstance(value, RuntimeImageSpec):
@@ -382,7 +503,15 @@ def _coerce_runtime_image_spec(value: Mapping[str, Any] | RuntimeImageSpec | str
 
 
 def _merge_resource_specs(base: ResourceSpec | None, override: ResourceSpec | None) -> ResourceSpec | None:
-    """Overlay explicit resource values on top of registry defaults."""
+    """Overlay explicit resource values on top of registry defaults.
+
+    Args:
+        base: The `base` input processed by this helper.
+        override: The `override` input processed by this helper.
+
+    Returns:
+        A `ResourceSpec | None` result computed by this helper.
+"""
     if base is None:
         return override
     if override is None:
@@ -400,7 +529,14 @@ def _merge_resource_specs(base: ResourceSpec | None, override: ResourceSpec | No
 
 
 def _extract_resource_spec_from_prompt(request: str) -> ResourceSpec | None:
-    """Parse conservative resource mentions from prompt text into a ResourceSpec."""
+    """Parse conservative resource mentions from prompt text into a ResourceSpec.
+
+    Args:
+        request: The local execution request forwarded by the caller.
+
+    Returns:
+        A `ResourceSpec | None` result computed by this helper.
+"""
     cpu: str | None = None
     memory: str | None = None
     queue: str | None = None
@@ -444,7 +580,14 @@ def _extract_resource_spec_from_prompt(request: str) -> ResourceSpec | None:
 
 
 def _slurm_resource_spec_defaults(resource_spec: ResourceSpec | None) -> ResourceSpec | None:
-    """Attach cluster-specific Slurm defaults to a selected resource spec."""
+    """Attach cluster-specific Slurm defaults to a selected resource spec.
+
+    Args:
+        resource_spec: Frozen compute resource policy for the recipe or run record.
+
+    Returns:
+        A `ResourceSpec | None` result computed by this helper.
+"""
     if resource_spec is None:
         return ResourceSpec(account=DEFAULT_SLURM_ACCOUNT)
     if resource_spec.execution_class not in (None, "", "slurm"):
@@ -455,7 +598,14 @@ def _slurm_resource_spec_defaults(resource_spec: ResourceSpec | None) -> Resourc
 
 
 def _extract_execution_profile_from_prompt(request: str) -> str | None:
-    """Parse an explicit execution profile name from the prompt when present."""
+    """Parse an explicit execution profile name from the prompt when present.
+
+    Args:
+        request: The local execution request forwarded by the caller.
+
+    Returns:
+        A `str | None` result computed by this helper.
+"""
     profile_match = re.search(
         r"\b(?:execution profile|profile)\s*[:=]?\s*([A-Za-z0-9_.-]+)\b",
         request,
@@ -469,7 +619,14 @@ def _extract_execution_profile_from_prompt(request: str) -> str | None:
 
 
 def _extract_runtime_image_from_prompt(request: str) -> RuntimeImageSpec | None:
-    """Parse a global runtime image request from prompt text when clearly labeled."""
+    """Parse a global runtime image request from prompt text when clearly labeled.
+
+    Args:
+        request: The local execution request forwarded by the caller.
+
+    Returns:
+        A `RuntimeImageSpec | None` result computed by this helper.
+"""
     image_match = re.search(
         r"\b(?:runtime image|container image|apptainer image)\s*[:=]?\s*([A-Za-z0-9_./:-]+)",
         request,
@@ -481,7 +638,14 @@ def _extract_runtime_image_from_prompt(request: str) -> RuntimeImageSpec | None:
 
 
 def _registry_default_resource_spec(entry: RegistryEntry) -> ResourceSpec | None:
-    """Return the registry's default local resource policy for one entry."""
+    """Return the registry's default local resource policy for one entry.
+
+    Args:
+        entry: Registry entry or compatible metadata object being inspected.
+
+    Returns:
+        A `ResourceSpec | None` result computed by this helper.
+"""
     resources = entry.compatibility.execution_defaults.get("resources")
     return _coerce_resource_spec(resources) if isinstance(resources, Mapping) else None
 
@@ -494,7 +658,18 @@ def _select_execution_policy(
     execution_profile: str | None,
     runtime_image: Mapping[str, Any] | RuntimeImageSpec | str | None,
 ) -> tuple[str, ResourceSpec | None, RuntimeImageSpec | None, tuple[str, ...], tuple[str, ...]]:
-    """Resolve profile, resources, and runtime image policy for a typed goal."""
+    """Resolve profile, resources, and runtime image policy for a typed goal.
+
+    Args:
+        goal: Typed planning goal currently being assembled or resolved.
+        request: The local execution request forwarded by the caller.
+        resource_request: Caller-supplied compute resource policy or override.
+        execution_profile: Named execution profile requested or selected for the recipe.
+        runtime_image: Caller-supplied runtime image policy or override.
+
+    Returns:
+        A `tuple[str, ResourceSpec | None, RuntimeImageSpec | None, tuple[str, ...], tuple[str, ...]]` result computed by this helper.
+"""
     entries = tuple(get_entry(entry_name) for entry_name in goal.target_entry_names)
     default_profile = str(entries[0].compatibility.execution_defaults.get("profile", "local")) if entries else "local"
     supported_profiles = set(entries[0].compatibility.supported_execution_profiles if entries else ("local",))
@@ -534,7 +709,14 @@ def _select_execution_policy(
 
 
 def _classify_target(request: str) -> tuple[str | None, float, tuple[str, ...]]:
-    """Classify the prompt as one supported workflow, task, or unsupported."""
+    """Classify the prompt as one supported workflow, task, or unsupported.
+
+    Args:
+        request: The local execution request forwarded by the caller.
+
+    Returns:
+        A `tuple[str | None, float, tuple[str, ...]]` result computed by this helper.
+"""
     normalized_request = _normalize(_PATH_RE.sub(" ", request))
     has_exonerate = "exonerate" in normalized_request
     has_braker = "braker3" in normalized_request or "braker" in normalized_request
@@ -601,8 +783,24 @@ def _classify_target(request: str) -> tuple[str | None, float, tuple[str, ...]]:
 
 
 def _missing_required_inputs(name: str, extracted_inputs: dict[str, object]) -> list[str]:
-    """Return missing required prompt-derived inputs for one supported entry."""
+    """Return missing required prompt-derived inputs for one supported entry.
+
+    Args:
+        name: Registry entry, planner type, or target name being looked up.
+        extracted_inputs: The `extracted_inputs` input processed by this helper.
+
+    Returns:
+        A `list[str]` result computed by this helper.
+"""
     def is_missing(value: object) -> bool:
+        """Return whether one extracted prompt value should count as absent.
+
+    Args:
+        value: The value or values processed by the helper.
+
+    Returns:
+        A `bool` result computed by this helper.
+"""
         if value in (None, ""):
             return True
         if isinstance(value, list) and not value:
@@ -623,17 +821,39 @@ def _missing_required_inputs(name: str, extracted_inputs: dict[str, object]) -> 
 
 
 def declined_downstream_stages(_request: str) -> tuple[str, ...]:
-    """Return no downstream blocklist hits after the MCP recipe cutover."""
+    """Return no downstream blocklist hits after the MCP recipe cutover.
+
+    Args:
+        _request: The `_request` input processed by this helper.
+
+    Returns:
+        A `tuple[str, ...]` result computed by this helper.
+"""
     return ()
 
 
 def showcase_limitations() -> tuple[str, ...]:
-    """Return the hard interface limits for the showcase planner."""
+    """Return the hard interface limits for the showcase planner.
+
+    This helper keeps the relevant planning or execution step explicit and easy to review.
+
+    Returns:
+        A `tuple[str, ...]` result computed by this helper.
+"""
     return SHOWCASE_LIMITATIONS
 
 
 def _typed_field(name: str, planner_type_name: str, description: str) -> TypedFieldSpec:
-    """Build one planner-facing field for a typed workflow spec preview."""
+    """Build one planner-facing field for a typed workflow spec preview.
+
+    Args:
+        name: Registry entry, planner type, or target name being looked up.
+        planner_type_name: The `planner_type_name` input processed by this helper.
+        description: The `description` input processed by this helper.
+
+    Returns:
+        A `TypedFieldSpec` result computed by this helper.
+"""
     return TypedFieldSpec(
         name=name,
         type_name=planner_type_name,
@@ -643,7 +863,14 @@ def _typed_field(name: str, planner_type_name: str, description: str) -> TypedFi
 
 
 def _planning_goal_for_typed_request(request: str) -> TypedPlanningGoal | None:
-    """Classify a prompt into one broader typed-planning goal when possible."""
+    """Classify a prompt into one broader typed-planning goal when possible.
+
+    Args:
+        request: The local execution request forwarded by the caller.
+
+    Returns:
+        A `TypedPlanningGoal | None` result computed by this helper.
+"""
     normalized_request = _normalize(request)
 
     if any(keyword in normalized_request for keyword in ("variant calling", "snv", "snp", "vcf")):
@@ -682,6 +909,10 @@ def _planning_goal_for_typed_request(request: str) -> TypedPlanningGoal | None:
         and ("busco" in normalized_request or "quality" in normalized_request or "qc" in normalized_request)
     )
     if asks_for_generated_spec or asks_for_repeat_then_qc:
+        # In this repo, QC means quality assessment of the repeat-filtered
+        # protein result bundle. BUSCO is the current implementation of that
+        # quality-assessment stage, and later reviewable checks can reuse the
+        # same planner target shape.
         return TypedPlanningGoal(
             name="repeat_filter_then_busco_qc",
             outcome="generated_workflow_spec",
@@ -769,6 +1000,10 @@ def _planning_goal_for_typed_request(request: str) -> TypedPlanningGoal | None:
         )
 
     if "eggnog" in normalized_request or "functional annotation" in normalized_request:
+        # EggNOG is modeled as a downstream quality-assessment style stage
+        # because it consumes the cleaned annotation target produced by the
+        # prior pipeline slice rather than raw user input. The stage still
+        # operates on the repeat-filtered protein boundary.
         return TypedPlanningGoal(
             name="annotation_functional_eggnog",
             outcome="registered_workflow",
@@ -787,6 +1022,9 @@ def _planning_goal_for_typed_request(request: str) -> TypedPlanningGoal | None:
         )
 
     if "busco" in normalized_request or "quality assessment" in normalized_request:
+        # BUSCO is the current canonical quality-assessment stage. It measures
+        # completeness of the repeat-filtered protein set before later
+        # functional annotation or AGAT post-processing steps.
         return TypedPlanningGoal(
             name="annotation_qc_busco",
             outcome="registered_workflow",
@@ -834,7 +1072,14 @@ def _planning_goal_for_typed_request(request: str) -> TypedPlanningGoal | None:
 
 
 def _serialized_resolved_value(result: ResolutionResult) -> object:
-    """Return a JSON-compatible representation of one resolved planner value."""
+    """Return a JSON-compatible representation of one resolved planner value.
+
+    Args:
+        result: A directory path used by the helper.
+
+    Returns:
+        A `object` result computed by this helper.
+"""
     value = result.resolved_value
     if hasattr(value, "to_dict"):
         return value.to_dict()
@@ -849,7 +1094,18 @@ def _resolve_typed_goal_inputs(
     result_bundles: Sequence[Any],
     resolver: AssetResolver,
 ) -> tuple[dict[str, object], dict[str, object], tuple[str, ...], tuple[str, ...]]:
-    """Resolve the planner-facing inputs required by one typed goal."""
+    """Resolve the planner-facing inputs required by one typed goal.
+
+    Args:
+        goal: Typed planning goal currently being assembled or resolved.
+        explicit_bindings: Caller-supplied planner values that should win over discovered inputs.
+        manifest_sources: Manifest paths or inline manifest mappings that may contain planner values.
+        result_bundles: A directory path used by the helper.
+        resolver: Resolver used to discover planner-facing inputs from local sources.
+
+    Returns:
+        A `tuple[dict[str, object], dict[str, object], tuple[str, ...], tuple[str, ...]]` result computed by this helper.
+"""
     resolved_inputs: dict[str, object] = {}
     source_labels: dict[str, object] = {}
     unresolved_requirements: list[str] = []
@@ -876,7 +1132,15 @@ def _resolve_typed_goal_inputs(
 
 
 def _workflow_spec_for_typed_goal(goal: TypedPlanningGoal, *, source_prompt: str) -> WorkflowSpec | None:
-    """Build a metadata-only workflow spec preview for one typed planning goal."""
+    """Build a metadata-only workflow spec preview for one typed planning goal.
+
+    Args:
+        goal: Typed planning goal currently being assembled or resolved.
+        source_prompt: Original prompt text stored in generated metadata.
+
+    Returns:
+        A `WorkflowSpec | None` result computed by this helper.
+"""
     entries = tuple(get_entry(entry_name) for entry_name in goal.target_entry_names)
     inputs = tuple(
         _typed_field(planner_type_name, planner_type_name, f"Resolved planner input `{planner_type_name}`.")
@@ -1041,7 +1305,18 @@ def _binding_plan_for_typed_goal(
     unresolved_requirements: tuple[str, ...],
     assumptions: tuple[str, ...],
 ) -> BindingPlan:
-    """Build the metadata-only binding record for a typed planning result."""
+    """Build the metadata-only binding record for a typed planning result.
+
+    Args:
+        goal: Typed planning goal currently being assembled or resolved.
+        resolved_inputs: Typed planner values resolved before recipe freezing.
+        source_labels: Source labels describing where each resolved planner value came from.
+        unresolved_requirements: Requirements that remained missing after resolution.
+        assumptions: Assumptions recorded alongside the planning result.
+
+    Returns:
+        A `BindingPlan` result computed by this helper.
+"""
     if goal.outcome == "generated_workflow_spec":
         target_kind = "generated_workflow"
     elif goal.outcome == "registered_task":
@@ -1068,7 +1343,16 @@ def _binding_plan_for_typed_goal(
 
 
 def _unsupported_typed_plan(request: str, reason: str, rationale: tuple[str, ...]) -> dict[str, object]:
-    """Build an honest typed-planning decline without falling back to guessing."""
+    """Build an honest typed-planning decline without falling back to guessing.
+
+    Args:
+        request: The local execution request forwarded by the caller.
+        reason: Short explanation for a decline or retryability decision.
+        rationale: Human-readable reasoning for a decision or classification.
+
+    Returns:
+        A `dict[str, object]` result computed by this helper.
+"""
     return {
         "supported": False,
         "original_request": request,
@@ -1092,7 +1376,14 @@ def _unsupported_typed_plan(request: str, reason: str, rationale: tuple[str, ...
 
 
 def _unsupported_day_one_typed_plan(request: str) -> dict[str, object] | None:
-    """Build a decline for recognized day-one targets missing prompt paths."""
+    """Build a decline for recognized day-one targets missing prompt paths.
+
+    Args:
+        request: The local execution request forwarded by the caller.
+
+    Returns:
+        A `dict[str, object] | None` result computed by this helper.
+"""
     normalized_request = _normalize(request)
     matched_name, _, rationale = _classify_target(normalized_request)
     if matched_name is None:
@@ -1147,12 +1438,20 @@ def plan_typed_request(
 ) -> dict[str, object]:
     """Plan a prompt through the Milestone 5 typed resolver and registry path.
 
-    This entrypoint is additive: it previews the broader `realtime` planning
-    flow while `plan_request(...)` continues to preserve the current MCP
-    showcase payload and explicit-path behavior. Optional runtime bindings are
-    frozen into the saved binding plan so recipe preparation can keep them
-    explicit instead of inferring them from prompt text later.
-    """
+    Args:
+        request: The local execution request forwarded by the caller.
+        explicit_bindings: Caller-supplied planner values that should win over discovered inputs.
+        manifest_sources: Manifest paths or inline manifest mappings that may contain planner values.
+        result_bundles: A directory path used by the helper.
+        runtime_bindings: Frozen runtime inputs supplied alongside planner-discovered values.
+        resource_request: Caller-supplied compute resource policy or override.
+        execution_profile: Named execution profile requested or selected for the recipe.
+        runtime_image: Caller-supplied runtime image policy or override.
+        resolver: Resolver used to discover planner-facing inputs from local sources.
+
+    Returns:
+        A `dict[str, object]` result computed by this helper.
+"""
     goal = _planning_goal_for_typed_request(request)
     if goal is None:
         if day_one_decline := _unsupported_day_one_typed_plan(request):
@@ -1230,7 +1529,14 @@ def plan_typed_request(
 
 
 def _assumptions_for_target(name: str) -> tuple[str, ...]:
-    """Return assumptions for the matched supported entry."""
+    """Return assumptions for the matched supported entry.
+
+    Args:
+        name: Registry entry, planner type, or target name being looked up.
+
+    Returns:
+        A `tuple[str, ...]` result computed by this helper.
+"""
     if name == SUPPORTED_WORKFLOW_NAME:
         return (
             "This prompt maps to the BRAKER3 ab initio stage only, not end-to-end annotation.",
@@ -1258,7 +1564,17 @@ def _unsupported_plan(
     rationale: tuple[str, ...],
     declined_stages: tuple[str, ...] = (),
 ) -> dict[str, object]:
-    """Build the stable decline payload for unsupported or out-of-scope prompts."""
+    """Build the stable decline payload for unsupported or out-of-scope prompts.
+
+    Args:
+        request: The local execution request forwarded by the caller.
+        reason: Short explanation for a decline or retryability decision.
+        rationale: Human-readable reasoning for a decision or classification.
+        declined_stages: Downstream stages intentionally not exposed for this prompt.
+
+    Returns:
+        A `dict[str, object]` result computed by this helper.
+"""
     return {
         "supported": False,
         "original_request": request,
@@ -1280,7 +1596,14 @@ def _unsupported_plan(
 
 
 def plan_request(request: str) -> dict[str, object]:
-    """Plan one prompt for the narrow workflow-or-task showcase."""
+    """Plan one prompt for the narrow workflow-or-task showcase.
+
+    Args:
+        request: The local execution request forwarded by the caller.
+
+    Returns:
+        A `dict[str, object]` result computed by this helper.
+"""
     matched_name, confidence, rationale = _classify_target(request)
     if matched_name is None:
         return _unsupported_plan(
@@ -1332,7 +1655,10 @@ def plan_request(request: str) -> dict[str, object]:
 
 
 def main() -> None:
-    """Run the narrow planner from the command line and print JSON."""
+    """Run the narrow planner from the command line and print JSON.
+
+    This helper keeps the relevant planning or execution step explicit and easy to review.
+"""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("request", help="Natural-language prompt to evaluate.")
     args = parser.parse_args()

@@ -1,8 +1,8 @@
 """Saved workflow-spec artifacts for replayable typed planning.
 
-This module saves metadata-only `WorkflowSpec` and `BindingPlan` pairs
-produced by typed planning so a later step can reload the selected workflow
-shape without re-parsing the original prompt.
+    This module saves metadata-only `WorkflowSpec` and `BindingPlan` pairs
+    produced by typed planning so a later step can reload the selected workflow
+    shape without re-parsing the original prompt.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ class SavedWorkflowSpecArtifact(SpecSerializable):
     The artifact records the selected workflow shape, the matching binding plan,
     and the prompt/provenance details needed for review. It is intentionally not
     an execution record and does not contain generated Python code.
-    """
+"""
 
     schema_version: str
     workflow_spec: WorkflowSpec
@@ -44,7 +44,14 @@ class SavedWorkflowSpecArtifact(SpecSerializable):
 
 
 def _artifact_path(path: Path) -> Path:
-    """Resolve a directory or JSON path to the saved artifact file path."""
+    """Resolve a directory or JSON path to the saved artifact file path.
+
+    Args:
+        path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     return path / DEFAULT_SPEC_ARTIFACT_FILENAME if path.is_dir() else path
 
 
@@ -56,10 +63,14 @@ def artifact_from_typed_plan(
 ) -> SavedWorkflowSpecArtifact:
     """Build a saved artifact from a successful typed-planning payload.
 
-    The typed planner still owns prompt interpretation. This helper only
-    freezes the selected spec and binding plan so later replay can start from
-    the saved metadata instead of re-running prompt classification.
-    """
+    Args:
+        typed_plan: A value used by the helper.
+        created_at: A value used by the helper.
+        replay_metadata: A value used by the helper.
+
+    Returns:
+        The returned `SavedWorkflowSpecArtifact` value used by the caller.
+"""
     if not typed_plan.get("supported"):
         raise ValueError("Only supported typed plans can be saved as replayable workflow spec artifacts.")
     if typed_plan.get("workflow_spec") is None or typed_plan.get("binding_plan") is None:
@@ -88,7 +99,15 @@ def artifact_from_typed_plan(
 
 
 def save_workflow_spec_artifact(artifact: SavedWorkflowSpecArtifact, destination: Path) -> Path:
-    """Write one saved workflow-spec artifact as stable, inspectable JSON."""
+    """Write one saved workflow-spec artifact as stable, inspectable JSON.
+
+    Args:
+        artifact: A value used by the helper.
+        destination: A filesystem path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     output_path = destination / DEFAULT_SPEC_ARTIFACT_FILENAME if destination.suffix == "" else destination
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(artifact.to_dict(), indent=2, sort_keys=True) + "\n")
@@ -96,7 +115,14 @@ def save_workflow_spec_artifact(artifact: SavedWorkflowSpecArtifact, destination
 
 
 def load_workflow_spec_artifact(path: Path) -> SavedWorkflowSpecArtifact:
-    """Load a saved workflow-spec artifact from a JSON file or artifact directory."""
+    """Load a saved workflow-spec artifact from a JSON file or artifact directory.
+
+    Args:
+        path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `SavedWorkflowSpecArtifact` value used by the caller.
+"""
     payload = json.loads(_artifact_path(path).read_text())
     schema_version = payload.get("schema_version")
     if schema_version != SPEC_ARTIFACT_SCHEMA_VERSION:
@@ -105,7 +131,14 @@ def load_workflow_spec_artifact(path: Path) -> SavedWorkflowSpecArtifact:
 
 
 def replayable_spec_pair(artifact: SavedWorkflowSpecArtifact) -> tuple[WorkflowSpec, BindingPlan]:
-    """Return the saved spec and binding plan without re-reading the original prompt."""
+    """Return the saved spec and binding plan without re-reading the original prompt.
+
+    Args:
+        artifact: A value used by the helper.
+
+    Returns:
+        The returned `tuple[WorkflowSpec, BindingPlan]` value used by the caller.
+"""
     return artifact.workflow_spec, artifact.binding_plan
 
 

@@ -44,7 +44,7 @@ Current local fixture roots for upstream smoke-test generation:
 - [EVM_docker_and_singularity](https://github.com/EVidenceModeler/EVidenceModeler/wiki/EVM_docker_and_singularity) is the upstream container-oriented run page and includes the small example command shape.
 - The upstream README says to build ParaFly with `make` and points readers to the wiki for documentation.
 
-## Tutorial / Training References
+## Tutorial References
 
 - The upstream README says `make large_sample_data` downloads `EVM_sample_data/` with `runMe.sh` examples.
 - The wiki's container page includes a small test invocation and a link to small sample data for that example.
@@ -66,17 +66,6 @@ Current local fixture roots for upstream smoke-test generation:
 - Apptainer uses the same `exec <container> <command>` style as the upstream Singularity example and supports `.sif` images and bind mounts.
 - A repo-local wrapper would therefore be an inferred `apptainer exec <image.sif> EVidenceModeler ...` call with the same input contract as the native command.
 - Exact image naming, bind paths, and environment modules are deployment-specific and are not defined by the EVM docs.
-
-## At A Glance
-
-```mermaid
-flowchart LR
-    T[Transcript evidence] --> E[EVM input prep]
-    P[Protein evidence] --> E
-    B[BRAKER3 / braker.gff3] --> E
-    E --> M[[EVidenceModeler]]
-    M --> C[Consensus gene models]
-```
 
 ## Prompt Template
 
@@ -114,3 +103,14 @@ Deliver:
 - That validation is synthetic and fixture-backed; it checks the execution boundary and file contract, not biological correctness of the consensus models.
 - The design notes describe weighting categories such as `ABINITIO_PREDICTION`, `PROTEIN`, `TRANSCRIPT`, and `OTHER_PREDICTION`.
 - The figure and notes place PASA updates, repeat filtering, eggNOG-mapper, and AGAT after EVM, and this repo now implements those stages as separate downstream task families.
+
+## At A Glance
+
+```mermaid
+flowchart LR
+    T[Transcript evidence] --> E[EVM input prep]
+    P[Protein evidence] --> E
+    B[BRAKER3 / braker.gff3] --> E
+    E --> M[[EVidenceModeler]]
+    M --> C[Consensus gene models]
+```

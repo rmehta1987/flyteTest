@@ -1,9 +1,9 @@
 """Normalized planning and replay data shapes for the `realtime` architecture.
 
-This module introduces the shared metadata types described in `DESIGN.md`.
-These types are only for planning and saved metadata in this milestone; they do
-not change current execution behavior or mean that runtime workflow generation
-already exists.
+    This module introduces the shared metadata types described in `DESIGN.md`.
+    These types are only for planning and saved metadata in this milestone; they do
+    not change current execution behavior or mean that runtime workflow generation
+    already exists.
 """
 
 from __future__ import annotations
@@ -20,7 +20,14 @@ NodeKind = Literal["task", "workflow", "generated_workflow"]
 
 
 def _serialize(value: Any) -> Any:
-    """Convert spec values into JSON-compatible primitives."""
+    """Convert spec values into JSON-compatible primitives.
+
+    Args:
+        value: The value or values processed by the helper.
+
+    Returns:
+        A `Any` result computed by this helper.
+"""
     # Persist filesystem paths as strings so spec payloads stay JSON-compatible.
     if isinstance(value, Path):
         return str(value)
@@ -38,13 +45,28 @@ def _serialize(value: Any) -> Any:
 
 
 def _is_optional(annotation: Any) -> bool:
-    """Return whether one type hint is an optional union."""
+    """Return whether one type hint is an optional union.
+
+    Args:
+        annotation: Type annotation being inspected by the serializer.
+
+    Returns:
+        A `bool` result computed by this helper.
+"""
     origin = get_origin(annotation)
     return origin in (Union, types.UnionType) and type(None) in get_args(annotation)
 
 
 def _deserialize(annotation: Any, value: Any) -> Any:
-    """Rehydrate one serialized spec value using a dataclass type hint."""
+    """Rehydrate one serialized spec value using a dataclass type hint.
+
+    Args:
+        annotation: Type annotation being inspected by the serializer.
+        value: The value or values processed by the helper.
+
+    Returns:
+        A `Any` result computed by this helper.
+"""
     if value is None:
         return None
 
@@ -82,17 +104,33 @@ def _deserialize(annotation: Any, value: Any) -> Any:
 
 
 class SpecSerializable:
-    """Mixin that gives spec dataclasses stable dict round-trips."""
+    """Mixin that gives spec dataclasses stable dict round-trips.
+
+    This dataclass keeps the planning or execution contract explicit and easy to review.
+"""
 
     def to_dict(self) -> dict[str, Any]:
-        """Serialize one spec dataclass into JSON-compatible data."""
+        """Serialize one spec dataclass into JSON-compatible data.
+
+    This helper keeps the relevant planning or execution step explicit and easy to review.
+
+    Returns:
+        A `dict[str, Any]` result computed by this helper.
+"""
         # Preserve declared field order so serialized specs stay predictable in
         # tests, docs, and any later saved artifact formats.
         return {field.name: _serialize(getattr(self, field.name)) for field in fields(self)}
 
     @classmethod
     def from_dict(cls: type[_SpecSerializableT], payload: Mapping[str, Any]) -> _SpecSerializableT:
-        """Deserialize one spec dataclass from JSON-compatible data."""
+        """Deserialize one spec dataclass from JSON-compatible data.
+
+    Args:
+        payload: The structured payload to serialize or inspect.
+
+    Returns:
+        A `_SpecSerializableT` result computed by this helper.
+"""
         hints = get_type_hints(cls)
         kwargs = {}
         for field_info in fields(cls):
@@ -106,7 +144,10 @@ class SpecSerializable:
 
 @dataclass(frozen=True, slots=True)
 class TypedFieldSpec(SpecSerializable):
-    """Describe one named input or output in a planning-time data shape."""
+    """Describe one named input or output in a planning-time data shape.
+
+    This dataclass keeps the planning or execution contract explicit and easy to review.
+"""
 
     name: str
     type_name: str
@@ -118,7 +159,10 @@ class TypedFieldSpec(SpecSerializable):
 
 @dataclass(frozen=True, slots=True)
 class ResourceSpec(SpecSerializable):
-    """Describe the expected compute resources for one step or workflow."""
+    """Describe the expected compute resources for one step or workflow.
+
+    This dataclass keeps the planning or execution contract explicit and easy to review.
+"""
 
     cpu: str | None = None
     memory: str | None = None
@@ -132,7 +176,10 @@ class ResourceSpec(SpecSerializable):
 
 @dataclass(frozen=True, slots=True)
 class RuntimeImageSpec(SpecSerializable):
-    """Describe the expected container or runtime image for one runnable step."""
+    """Describe the expected container or runtime image for one runnable step.
+
+    This dataclass keeps the planning or execution contract explicit and easy to review.
+"""
 
     container_image: str | None = None
     apptainer_image: str | None = None
@@ -142,7 +189,10 @@ class RuntimeImageSpec(SpecSerializable):
 
 @dataclass(frozen=True, slots=True)
 class ExecutionProfile(SpecSerializable):
-    """Describe one named way to run the same biology with different resources."""
+    """Describe one named way to run the same biology with different resources.
+
+    This dataclass keeps the planning or execution contract explicit and easy to review.
+"""
 
     name: str
     description: str
@@ -154,7 +204,10 @@ class ExecutionProfile(SpecSerializable):
 
 @dataclass(frozen=True, slots=True)
 class DeterministicExecutionContract(SpecSerializable):
-    """Summarize what kind of repeatable behavior one spec is meant to describe."""
+    """Summarize what kind of repeatable behavior one spec is meant to describe.
+
+    This dataclass keeps the planning or execution contract explicit and easy to review.
+"""
 
     deterministic: bool = True
     result_boundary: str = ""
@@ -164,7 +217,10 @@ class DeterministicExecutionContract(SpecSerializable):
 
 @dataclass(frozen=True, slots=True)
 class WorkflowNodeSpec(SpecSerializable):
-    """Describe one step inside a planning-time workflow description."""
+    """Describe one step inside a planning-time workflow description.
+
+    This dataclass keeps the planning or execution contract explicit and easy to review.
+"""
 
     name: str
     kind: NodeKind
@@ -176,7 +232,10 @@ class WorkflowNodeSpec(SpecSerializable):
 
 @dataclass(frozen=True, slots=True)
 class WorkflowEdgeSpec(SpecSerializable):
-    """Describe how the output of one workflow step feeds into another."""
+    """Describe how the output of one workflow step feeds into another.
+
+    This dataclass keeps the planning or execution contract explicit and easy to review.
+"""
 
     source_node: str
     source_output: str
@@ -186,7 +245,10 @@ class WorkflowEdgeSpec(SpecSerializable):
 
 @dataclass(frozen=True, slots=True)
 class WorkflowOutputBinding(SpecSerializable):
-    """Describe how a final workflow output is produced from an earlier step."""
+    """Describe how a final workflow output is produced from an earlier step.
+
+    This dataclass keeps the planning or execution contract explicit and easy to review.
+"""
 
     output_name: str
     source_node: str
@@ -196,7 +258,10 @@ class WorkflowOutputBinding(SpecSerializable):
 
 @dataclass(frozen=True, slots=True)
 class GeneratedEntityRecord(SpecSerializable):
-    """Store the background details for one saved generated workflow record."""
+    """Store the background details for one saved generated workflow record.
+
+    This dataclass keeps the planning or execution contract explicit and easy to review.
+"""
 
     generated_entity_id: str
     source_prompt: str
@@ -209,7 +274,10 @@ class GeneratedEntityRecord(SpecSerializable):
 
 @dataclass(frozen=True, slots=True)
 class TaskSpec(SpecSerializable):
-    """Describe one runnable task in a shared planning-time format."""
+    """Describe one runnable task in a shared planning-time format.
+
+    This dataclass keeps the planning or execution contract explicit and easy to review.
+"""
 
     name: str
     biological_stage: str
@@ -226,7 +294,12 @@ class TaskSpec(SpecSerializable):
 
 @dataclass(frozen=True, slots=True)
 class WorkflowSpec(SpecSerializable):
-    """Describe one workflow in a shared format for planning and saved metadata."""
+    """Describe one workflow in a shared format for planning and saved metadata.
+
+    This dataclass keeps the planning or execution contract explicit and easy to review. It is used
+    for planner-time workflow previews and frozen saved recipes, not for live
+    runtime execution objects.
+"""
 
     name: str
     analysis_goal: str
@@ -247,7 +320,12 @@ class WorkflowSpec(SpecSerializable):
 
 @dataclass(frozen=True, slots=True)
 class BindingPlan(SpecSerializable):
-    """Record how user inputs were matched to concrete files and run settings."""
+    """Record how user inputs were matched to concrete files and run settings.
+
+    This dataclass keeps the planning or execution contract explicit and easy to review. It captures
+    the handoff from prompt or manifest inputs to the concrete runtime
+    bindings that will be used when a workflow spec preview is executed later.
+"""
 
     target_name: str
     target_kind: EntityKind

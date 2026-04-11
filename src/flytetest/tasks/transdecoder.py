@@ -1,10 +1,10 @@
 """TransDecoder task implementations for FLyteTest.
 
-The stage order follows `docs/braker3_evm_notes.md`, while the TransDecoder
-command shapes and input/output expectations follow
-`docs/tool_refs/transdecoder.md`. This module covers the current
-PASA-derived coding-prediction boundary and the stable result collection used
-before later annotation stages.
+    The stage order follows `docs/braker3_evm_notes.md`, while the TransDecoder
+    command shapes and input/output expectations follow
+    `docs/tool_refs/transdecoder.md`. This module covers the current
+    PASA-derived coding-prediction boundary and the stable result collection used
+    before later annotation stages.
 """
 
 from __future__ import annotations
@@ -27,12 +27,21 @@ from flytetest.config import (
     run_tool,
     transdecoder_env,
 )
+from flytetest.manifest_envelope import build_manifest_envelope
+from flytetest.manifest_io import write_json as _write_json
 from flytetest.tasks.pasa import _pasa_assemblies_fasta, _pasa_assemblies_gff3, _sqlite_db_path
 from flytetest.types import PasaAlignmentAssemblyResult, TransDecoderPredictionResult
 
 
 def _as_json_compatible(value: Any) -> Any:
-    """Recursively convert manifest values into JSON-serializable primitives."""
+    """Recursively convert manifest values into JSON-serializable primitives.
+
+    Args:
+        value: The value or values processed by the helper.
+
+    Returns:
+        The returned `Any` value used by the caller.
+"""
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, dict):
@@ -45,7 +54,14 @@ def _as_json_compatible(value: Any) -> Any:
 
 
 def _sample_id_from_pasa_results(results_dir: Path) -> str:
-    """Extract the sample identifier from a PASA results manifest when present."""
+    """Extract the sample identifier from a PASA results manifest when present.
+
+    Args:
+        results_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `str` value used by the caller.
+"""
     manifest_path = results_dir / "run_manifest.json"
     if not manifest_path.exists():
         return "sample"
@@ -54,7 +70,16 @@ def _sample_id_from_pasa_results(results_dir: Path) -> str:
 
 
 def _transdecoder_output(run_dir: Path, transcript_fasta_name: str, suffix: str) -> Path | None:
-    """Resolve one optional TransDecoder output by its standard filename suffix."""
+    """Resolve one optional TransDecoder output by its standard filename suffix.
+
+    Args:
+        run_dir: A directory path used by the helper.
+        transcript_fasta_name: A value used by the helper.
+        suffix: A value used by the helper.
+
+    Returns:
+        The returned `Path | None` value used by the caller.
+"""
     candidate = run_dir / f"{transcript_fasta_name}{suffix}"
     if candidate.exists():
         return candidate
@@ -62,37 +87,93 @@ def _transdecoder_output(run_dir: Path, transcript_fasta_name: str, suffix: str)
 
 
 def _transdecoder_dir(run_dir: Path, transcript_fasta_name: str) -> Path | None:
-    """Resolve the TransDecoder intermediate directory when it is present."""
+    """Resolve the TransDecoder intermediate directory when it is present.
+
+    Args:
+        run_dir: A directory path used by the helper.
+        transcript_fasta_name: A value used by the helper.
+
+    Returns:
+        The returned `Path | None` value used by the caller.
+"""
     return _transdecoder_output(run_dir, transcript_fasta_name, ".transdecoder_dir")
 
 
 def _transdecoder_gff3(run_dir: Path, transcript_fasta_name: str) -> Path | None:
-    """Resolve the transcript-coordinate ORF GFF3 when it is present."""
+    """Resolve the transcript-coordinate ORF GFF3 when it is present.
+
+    Args:
+        run_dir: A directory path used by the helper.
+        transcript_fasta_name: A value used by the helper.
+
+    Returns:
+        The returned `Path | None` value used by the caller.
+"""
     return _transdecoder_output(run_dir, transcript_fasta_name, ".transdecoder.gff3")
 
 
 def _transdecoder_genome_gff3(run_dir: Path, transcript_fasta_name: str) -> Path | None:
-    """Resolve the genome-coordinate ORF GFF3 when it is present."""
+    """Resolve the genome-coordinate ORF GFF3 when it is present.
+
+    Args:
+        run_dir: A directory path used by the helper.
+        transcript_fasta_name: A value used by the helper.
+
+    Returns:
+        The returned `Path | None` value used by the caller.
+"""
     return _transdecoder_output(run_dir, transcript_fasta_name, ".transdecoder.genome.gff3")
 
 
 def _transdecoder_bed(run_dir: Path, transcript_fasta_name: str) -> Path | None:
-    """Resolve the TransDecoder BED output when it is present."""
+    """Resolve the TransDecoder BED output when it is present.
+
+    Args:
+        run_dir: A directory path used by the helper.
+        transcript_fasta_name: A value used by the helper.
+
+    Returns:
+        The returned `Path | None` value used by the caller.
+"""
     return _transdecoder_output(run_dir, transcript_fasta_name, ".transdecoder.bed")
 
 
 def _transdecoder_cds(run_dir: Path, transcript_fasta_name: str) -> Path | None:
-    """Resolve the predicted CDS FASTA when it is present."""
+    """Resolve the predicted CDS FASTA when it is present.
+
+    Args:
+        run_dir: A directory path used by the helper.
+        transcript_fasta_name: A value used by the helper.
+
+    Returns:
+        The returned `Path | None` value used by the caller.
+"""
     return _transdecoder_output(run_dir, transcript_fasta_name, ".transdecoder.cds")
 
 
 def _transdecoder_pep(run_dir: Path, transcript_fasta_name: str) -> Path | None:
-    """Resolve the predicted peptide FASTA when it is present."""
+    """Resolve the predicted peptide FASTA when it is present.
+
+    Args:
+        run_dir: A directory path used by the helper.
+        transcript_fasta_name: A value used by the helper.
+
+    Returns:
+        The returned `Path | None` value used by the caller.
+"""
     return _transdecoder_output(run_dir, transcript_fasta_name, ".transdecoder.pep")
 
 
 def _transdecoder_mrna(run_dir: Path, transcript_fasta_name: str) -> Path | None:
-    """Resolve the predicted mRNA FASTA when it is present."""
+    """Resolve the predicted mRNA FASTA when it is present.
+
+    Args:
+        run_dir: A directory path used by the helper.
+        transcript_fasta_name: A value used by the helper.
+
+    Returns:
+        The returned `Path | None` value used by the caller.
+"""
     return _transdecoder_output(run_dir, transcript_fasta_name, ".transdecoder.mRNA")
 
 
@@ -104,7 +185,18 @@ def transdecoder_train_from_pasa(
     transdecoder_min_protein_length: int = 100,
     transdecoder_genome_orf_script: str = "cdna_alignment_orf_to_genome_orf.pl",
 ) -> Dir:
-    """Run the TransDecoder phase sequence described in `docs/tool_refs/transdecoder.md`."""
+    """Run the TransDecoder phase sequence described in `docs/tool_refs/transdecoder.md`.
+
+    Args:
+        pasa_assemblies_fasta: A value used by the helper.
+        pasa_assemblies_gff3: A value used by the helper.
+        transdecoder_sif: A value used by the helper.
+        transdecoder_min_protein_length: A value used by the helper.
+        transdecoder_genome_orf_script: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     fasta_path = require_path(Path(pasa_assemblies_fasta.download_sync()), "PASA assemblies FASTA")
     gff3_path = require_path(Path(pasa_assemblies_gff3.download_sync()), "PASA assemblies GFF3")
 
@@ -167,7 +259,16 @@ def collect_transdecoder_results(
     transdecoder_run: Dir,
     sample_id: str = "sample",
 ) -> Dir:
-    """Collect a TransDecoder run into a stable manifest-bearing results bundle."""
+    """Collect a TransDecoder run into a stable manifest-bearing results bundle.
+
+    Args:
+        pasa_results: A directory path used by the helper.
+        transdecoder_run: A value used by the helper.
+        sample_id: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     pasa_results_path = require_path(Path(pasa_results.download_sync()), "PASA results directory")
     transdecoder_run_path = require_path(Path(transdecoder_run.download_sync()), "TransDecoder output directory")
 
@@ -221,17 +322,20 @@ def collect_transdecoder_results(
         ),
     )
 
-    manifest = {
-        "workflow": TRANSDECODER_WORKFLOW_NAME,
-        "sample_id": sample_id,
-        "source_pasa_results": str(pasa_results_path),
-        "assumptions": [
-            "This stage consumes the pasa_transcript_alignment results bundle and resolves the PASA assemblies FASTA and PASA assemblies GFF3 from its pasa/ directory.",
-            "The design notes specify a PASA-derived TransDecoder genome GFF3 for later EVM input, but they do not spell out the exact TransDecoder commands. This implementation therefore infers a standard TransDecoder.LongOrfs followed by TransDecoder.Predict sequence.",
-            "Genome-coordinate ORF lifting is performed with the configurable TransDecoder utility script, which defaults to cdna_alignment_orf_to_genome_orf.pl and must be available in the local environment or container image.",
-            "This milestone stops at TransDecoder coding-region prediction and does not yet implement Exonerate, BRAKER3 normalization, EVM, PASA update rounds, repeat filtering, BUSCO, EggNOG, AGAT, or submission preparation.",
-        ],
-        "outputs": {
+    assumptions = [
+        "This stage consumes the pasa_transcript_alignment results bundle and resolves the PASA assemblies FASTA and PASA assemblies GFF3 from its pasa/ directory.",
+        "The design notes specify a PASA-derived TransDecoder genome GFF3 for later EVM input, but they do not spell out the exact TransDecoder commands. This implementation therefore infers a standard TransDecoder.LongOrfs followed by TransDecoder.Predict sequence.",
+        "Genome-coordinate ORF lifting is performed with the configurable TransDecoder utility script, which defaults to cdna_alignment_orf_to_genome_orf.pl and must be available in the local environment or container image.",
+        "This milestone stops at TransDecoder coding-region prediction and does not yet implement Exonerate, BRAKER3 normalization, EVM, PASA update rounds, repeat filtering, BUSCO, EggNOG, AGAT, or submission preparation.",
+    ]
+    manifest = build_manifest_envelope(
+        stage=TRANSDECODER_WORKFLOW_NAME,
+        assumptions=assumptions,
+        inputs={
+            "sample_id": sample_id,
+            "source_pasa_results": str(pasa_results_path),
+        },
+        outputs={
             "transdecoder_dir": str(copied_transdecoder_dir),
             "input_transcripts_fasta": str(transdecoder_asset.input_transcripts_fasta_path),
             "transdecoder_intermediate_dir": str(transdecoder_asset.transdecoder_dir_path)
@@ -262,13 +366,16 @@ def collect_transdecoder_results(
             if source_pasa_asset.pasa_assemblies_gff3_path
             else None,
         },
-        "assets": _as_json_compatible(
-            {
-                "source_pasa_alignment_assembly": asdict(source_pasa_asset),
-                "transdecoder_prediction": asdict(transdecoder_asset),
-            }
-        ),
-        "transdecoder_files": sorted(path.name for path in copied_transdecoder_dir.glob("*")),
-    }
-    (out_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2))
+    )
+    manifest["workflow"] = TRANSDECODER_WORKFLOW_NAME
+    manifest["sample_id"] = sample_id
+    manifest["source_pasa_results"] = str(pasa_results_path)
+    manifest["assets"] = _as_json_compatible(
+        {
+            "source_pasa_alignment_assembly": asdict(source_pasa_asset),
+            "transdecoder_prediction": asdict(transdecoder_asset),
+        }
+    )
+    manifest["transdecoder_files"] = sorted(path.name for path in copied_transdecoder_dir.glob("*"))
+    _write_json(out_dir / "run_manifest.json", manifest)
     return Dir(path=str(out_dir))

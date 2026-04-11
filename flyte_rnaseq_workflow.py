@@ -1,7 +1,7 @@
 """Compatibility exports for `flyte run` against the FLyteTest package layout.
 
-This module preserves the original single-file entry surface while the real
-task and workflow implementations now live under `src/flytetest/`.
+    This module preserves the original single-file entry surface while the real
+    task and workflow implementations now live under `src/flytetest/`.
 """
 
 from __future__ import annotations

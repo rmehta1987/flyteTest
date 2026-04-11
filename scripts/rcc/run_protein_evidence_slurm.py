@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Prepare and submit the protein-evidence Slurm recipe.
 
-This helper is called by `scripts/rcc/run_protein_evidence_slurm.sh` after the
-shell wrapper has chosen repo-relative defaults and activated the expected
-Python environment.
+    This helper is called by `scripts/rcc/run_protein_evidence_slurm.sh` after the
+    shell wrapper has chosen repo-relative defaults and activated the expected
+    Python environment.
 """
 
 from __future__ import annotations
@@ -16,7 +16,13 @@ from flytetest.server import _prepare_run_recipe_impl, _run_slurm_recipe_impl
 
 
 def main() -> int:
-    """Freeze the Slurm recipe, submit it, persist pointer files, and print JSON."""
+    """Freeze the Slurm recipe, submit it, persist pointer files, and print JSON.
+
+    This helper keeps the current behavior explicit and reviewable.
+
+    Returns:
+        The returned `int` value used by the caller.
+"""
     repo_root = Path(os.environ["FLYTETEST_REPO_ROOT"])
     prompt = os.environ.get(
         "FLYTETEST_SLURM_PROMPT",

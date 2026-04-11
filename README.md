@@ -20,19 +20,27 @@ artifact upload semantics.
 
 ## Current Status
 
+### Implemented Now
+
+- Biological scope: transcript evidence, PASA align/assemble, TransDecoder,
+  protein evidence, tutorial-backed BRAKER3, corrected pre-EVM contract
+  assembly, deterministic EVM execution, PASA post-EVM refinement, repeat
+  filtering cleanup, BUSCO-based annotation QC, EggNOG functional annotation,
+  and the AGAT statistics, conversion, and cleanup slices
 - Active biological milestone: `AGAT post-processing after EggNOG`
 - Active architecture milestone: `realtime` refactor Milestones 0 through 14,
-  16, 17, and 18 are complete; the currently planned next sequence is
-  `15 -> 19`. Milestone 15 composition preview is next, and Milestone 19
-  caching/resumability follows that to make composed DAG execution safe
-- Implemented biological scope: transcript evidence, PASA align/assemble,
-  TransDecoder, protein evidence, tutorial-backed BRAKER3, corrected pre-EVM
-  contract assembly, deterministic EVM execution, PASA post-EVM refinement,
-  repeat filtering cleanup, BUSCO-based annotation QC, EggNOG functional
-  annotation, and the AGAT statistics, conversion, and cleanup slices
-- Deferred biological scope: optional `table2asn` submission preparation
-- Deferred execution scope: resumability, remote/indexed discovery, and
-  arbitrary Python task-code generation
+  16, 17, and 18 are complete
+
+### Deferred
+
+- Optional `table2asn` submission preparation
+- Resumability, remote/indexed discovery, and arbitrary Python task-code
+  generation
+
+### Roadmap
+
+- Milestone 15 composition preview
+- Milestone 19 caching/resumability to make composed DAG execution safe
 
 Important terminology:
 

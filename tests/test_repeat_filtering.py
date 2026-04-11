@@ -1,9 +1,10 @@
 """Tests for the repeat-filtering stage added after PASA post-EVM refinement.
 
-The suite keeps the external tool calls synthetic so the repeat-filtering
-boundary can be validated without RepeatMasker, gffread, or funannotate
-binaries, while still checking the local fixture paths used for optional smoke
-tests when those binaries are available.
+    The suite keeps the external tool calls synthetic so the repeat-filtering
+    boundary can be validated without RepeatMasker, gffread, or funannotate
+    binaries, while still checking the local fixture paths used for optional smoke
+    tests when those binaries are available. The tests document the current
+    cleanup and manifest behavior for future refactor passes.
 """
 
 from __future__ import annotations
@@ -32,31 +33,69 @@ from flytetest.workflows.filtering import annotation_repeat_filtering
 
 
 def _artifact_dir(path: Path) -> Dir:
-    """Create a local Flyte directory wrapper from a filesystem path."""
+    """Create a local Flyte directory wrapper from a filesystem path.
+
+    Args:
+        path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     return Dir(path=str(path))
 
 
 def _read_json(path: Path) -> dict[str, object]:
-    """Read a manifest file into a dictionary for assertions."""
+    """Read a manifest file into a dictionary for assertions.
+
+    Args:
+        path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `dict[str, object]` value used by the caller.
+"""
     return json.loads(path.read_text())
 
 
 def _write_json(path: Path, payload: dict[str, object]) -> Path:
-    """Write one JSON payload with indentation for readable failures."""
+    """Write one JSON payload with indentation for readable failures.
+
+    Args:
+        path: A filesystem path used by the helper.
+        payload: The structured payload to serialize or inspect.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2))
     return path
 
 
 def _write_gff3(path: Path, records: list[str]) -> Path:
-    """Write a minimal GFF3 file with a canonical header."""
+    """Write a minimal GFF3 file with a canonical header.
+
+    Args:
+        path: A filesystem path used by the helper.
+        records: The records written into the synthetic file.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("##gff-version 3\n" + "\n".join(records) + "\n")
     return path
 
 
 def _write_fasta(path: Path, records: list[tuple[str, str]]) -> Path:
-    """Write a minimal FASTA file from `(header, sequence)` pairs."""
+    """Write a minimal FASTA file from `(header, sequence)` pairs.
+
+    Args:
+        path: A filesystem path used by the helper.
+        records: The records written into the synthetic file.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     path.parent.mkdir(parents=True, exist_ok=True)
     lines: list[str] = []
     for header, sequence in records:
@@ -67,29 +106,60 @@ def _write_fasta(path: Path, records: list[tuple[str, str]]) -> Path:
 
 
 def _fixed_datetime() -> type:
-    """Return a deterministic timestamp provider for result-directory naming."""
+    """Return a deterministic timestamp provider for result-directory naming.
+
+    This helper keeps the test fixture deterministic and explicit.
+
+    Returns:
+        The returned type value used by the test fixture.
+"""
 
     # Keep the synthetic result-directory name stable for manifest assertions.
     class _Stamp:
-        """Fake datetime stamp that always returns the same test timestamp."""
+        """Fake datetime stamp that always returns the same test timestamp.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
         def strftime(self, fmt: str) -> str:
-            """Return the fixed timestamp string expected by the assertions."""
+            """Return the fixed timestamp string expected by the assertions.
+
+    Args:
+        fmt: A value used by the helper.
+
+    Returns:
+        The returned `str` value used by the caller.
+"""
             return "20260403_120000"
 
     class _FixedDatetime:
-        """Shim object that mimics the subset of `datetime` used by the code."""
+        """Shim object that mimics the subset of `datetime` used by the code.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
         @classmethod
         def now(cls) -> _Stamp:
-            """Return the fixed timestamp stub used by the synthetic tests."""
+            """Return the fixed timestamp stub used by the synthetic tests.
+
+    This helper keeps the test fixture deterministic and explicit.
+
+    Returns:
+        The returned _Stamp value used by the test fixture.
+"""
             return _Stamp()
 
     return _FixedDatetime
 
 
 def _annotation_records() -> list[str]:
-    """Return a small PASA-updated annotation used throughout the synthetic tests."""
+    """Return a small PASA-updated annotation used throughout the synthetic tests.
+
+    This helper keeps the test fixture deterministic and explicit.
+
+    Returns:
+        The returned list[str] value used by the test fixture.
+"""
     return [
         "chr1\tPASA\tgene\t1\t100\t.\t+\t.\tID=evm.model.1",
         "chr1\tPASA\tmRNA\t1\t100\t.\t+\t.\tID=evm.TU.1;Parent=evm.model.1",
@@ -100,7 +170,14 @@ def _annotation_records() -> list[str]:
 
 
 def _create_pasa_update_results(tmp_path: Path) -> Path:
-    """Create a minimal PASA-update bundle with the fields repeat filtering consumes."""
+    """Create a minimal PASA-update bundle with the fields repeat filtering consumes.
+
+    Args:
+        tmp_path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     results_dir = tmp_path / "pasa_update_results"
     staged_reference = results_dir / "staged_inputs" / "reference"
     staged_reference.mkdir(parents=True, exist_ok=True)
@@ -119,10 +196,16 @@ def _create_pasa_update_results(tmp_path: Path) -> Path:
 
 
 class RepeatFilteringTaskTests(TestCase):
-    """Task-level coverage for the repeat-filtering stage boundary."""
+    """Task-level coverage for the repeat-filtering stage boundary.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
     def test_repeatmasker_out_to_bed_converts_generated_gff3_to_downstream_bed(self) -> None:
-        """Extract the deterministic three-column BED described in `docs/tool_refs/repeatmasker.md`."""
+        """Extract the deterministic three-column BED described in the tool reference.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             repeatmasker_out = tmp_path / "genome.fasta.out"
@@ -135,7 +218,16 @@ class RepeatFilteringTaskTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
-                """Test double for `run_tool` that writes a minimal RepeatMasker GFF3 conversion output."""
+                """            Test double for `run_tool` that writes a minimal RepeatMasker GFF3 conversion output.
+
+
+            Args:
+                cmd: The command arguments or command name passed to the helper.
+                sif: The container image reference used for execution.
+                bind_paths: The filesystem paths bound into the execution environment.
+                cwd: The working directory for the helper execution.
+                stdout_path: A filesystem path used by the helper.
+            """
                 self.assertIsNotNone(stdout_path)
                 stdout_path.write_text(
                     "##gff-version 3\n"
@@ -155,7 +247,10 @@ class RepeatFilteringTaskTests(TestCase):
             self.assertIn("rmout_to_gff3_script", manifest["inputs"])
 
     def test_funannotate_remove_bad_models_resolves_clean_gff3_and_removal_list(self) -> None:
-        """Capture the clean GFF3 plus overlap-removal list emitted by the funannotate stage."""
+        """Capture the clean GFF3 plus overlap-removal list emitted by the funannotate stage.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             annotation_gff3 = _write_gff3(tmp_path / "annotation.gff3", _annotation_records())
@@ -170,7 +265,16 @@ class RepeatFilteringTaskTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
-                """Test double for `run_tool` that writes the minimal funannotate-cleaned outputs."""
+                """            Test double for `run_tool` that writes the minimal funannotate-cleaned outputs.
+
+
+            Args:
+                cmd: The command arguments or command name passed to the helper.
+                sif: The container image reference used for execution.
+                bind_paths: The filesystem paths bound into the execution environment.
+                cwd: The working directory for the helper execution.
+                stdout_path: A filesystem path used by the helper.
+            """
                 self.assertIsNotNone(cwd)
                 _write_gff3(cwd / "annotation.clean.gff3", _annotation_records()[1:])
                 (cwd / "genome.repeats.to.remove.gff").write_text(
@@ -192,7 +296,10 @@ class RepeatFilteringTaskTests(TestCase):
             self.assertEqual(Path(str(manifest["outputs"]["models_to_remove"])).name, "genome.repeats.to.remove.gff")
 
     def test_remove_repeat_blast_hits_filters_parent_and_translated_ids(self) -> None:
-        """Remove blast hits using both direct IDs and the repo's deterministic evm.model/evm.TU mapping."""
+        """Remove blast hits using both direct IDs and the deterministic evm.model/evm.TU mapping.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             annotation_gff3 = _write_gff3(tmp_path / "annotation.gff3", _annotation_records())
@@ -214,10 +321,16 @@ class RepeatFilteringTaskTests(TestCase):
 
 
 class RepeatFilteringWorkflowTests(TestCase):
-    """Workflow-level coverage for the repeat-filtering biological stage."""
+    """Workflow-level coverage for the repeat-filtering biological stage.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
     def test_annotation_repeat_filtering_collects_stable_final_outputs(self) -> None:
-        """Run the synthetic repeat-filtering workflow and collect stable final filenames."""
+        """Run the synthetic repeat-filtering workflow and collect stable final filenames.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             pasa_update_results = _create_pasa_update_results(tmp_path)
@@ -233,7 +346,16 @@ class RepeatFilteringWorkflowTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
-                """Test double for `run_tool` that dispatches the repeat-filter subcommands by signature."""
+                """            Test double for `run_tool` that dispatches the repeat-filter subcommands by signature.
+
+
+            Args:
+                cmd: The command arguments or command name passed to the helper.
+                sif: The container image reference used for execution.
+                bind_paths: The filesystem paths bound into the execution environment.
+                cwd: The working directory for the helper execution.
+                stdout_path: A filesystem path used by the helper.
+            """
                 if stdout_path is not None and "rmOutToGFF3.pl" in cmd[1]:
                     stdout_path.write_text(
                         "##gff-version 3\n"
@@ -315,7 +437,10 @@ class RepeatFilteringWorkflowTests(TestCase):
             )
 
     def test_repeatmasker_fixture_inputs_exist_for_optional_smoke_runs(self) -> None:
-        """Keep the local RepeatMasker fixture set visible for later binary-backed smoke tests."""
+        """Keep the local RepeatMasker fixture set visible for later binary-backed smoke tests.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         fixture_root = TESTS_DIR.parent / "data" / "repeatmasker"
         download_script = TESTS_DIR.parent / "scripts" / "rcc" / "download_minimal_repeatmasker_fixture.sh"
         expected = {

@@ -1,10 +1,10 @@
 """PASA workflow entrypoints for FLyteTest.
 
-The workflow composition follows `docs/braker3_evm_notes.md`, while the PASA
-task boundaries and command expectations follow `docs/tool_refs/pasa.md`.
-This module runs PASA align/assemble from the internally collected transcript
-bundle and adds post-EVM PASA annotation refinement with explicit update
-rounds.
+    The workflow composition follows `docs/braker3_evm_notes.md`, while the PASA
+    task boundaries and command expectations follow `docs/tool_refs/pasa.md`.
+    This module runs PASA align/assemble from the internally collected transcript
+    bundle and adds post-EVM PASA annotation refinement with explicit update
+    rounds.
 """
 
 from __future__ import annotations
@@ -48,7 +48,23 @@ def pasa_transcript_alignment(
     pasa_aligners: str = "blat,gmap,minimap2",
     pasa_db_name: str = "pasa.sqlite",
 ) -> Dir:
-    """Run the PASA align/assemble workflow boundary described in `docs/tool_refs/pasa.md`."""
+    """Execute PASA transcript-to-genome alignment and assembly workflow.
+
+    Args:
+        genome: A value used by the helper.
+        transcript_evidence_results: A directory path used by the helper.
+        univec_fasta: A value used by the helper.
+        pasa_config_template: A value used by the helper.
+        pasa_sif: A value used by the helper.
+        seqclean_threads: A value used by the helper.
+        pasa_cpu: A value used by the helper.
+        pasa_max_intron_length: A value used by the helper.
+        pasa_aligners: A value used by the helper.
+        pasa_db_name: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     transcript_evidence_path = require_path(
         Path(transcript_evidence_results.download_sync()),
         "Transcript evidence results directory",
@@ -131,7 +147,23 @@ def annotation_refinement_pasa(
     pasa_sif: str = "",
     pasa_update_cpu: int = 8,
 ) -> Dir:
-    """Run the PASA post-EVM refinement boundary described in `docs/tool_refs/pasa.md`."""
+    """Execute PASA post-EVM gene-model refinement with iterative annotation updates.
+
+    Args:
+        pasa_results: A directory path used by the helper.
+        evm_results: A directory path used by the helper.
+        pasa_annot_compare_template: A value used by the helper.
+        fasta36_binary_path: A filesystem path used by the helper.
+        load_current_annotations_script: A value used by the helper.
+        pasa_update_script: A value used by the helper.
+        gff3sort_script: A value used by the helper.
+        pasa_update_rounds: A value used by the helper.
+        pasa_sif: A value used by the helper.
+        pasa_update_cpu: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     if pasa_update_rounds < 2:
         raise ValueError(
             "annotation_refinement_pasa requires at least two PASA update rounds to match the current PASA refinement contract."

@@ -1,10 +1,10 @@
 """Synthetic coverage for saved workflow-spec executor behavior.
 
-These tests cover the local saved-spec executor path plus the later Slurm
-submission, reconciliation, and cancellation helpers without requiring
-external bioinformatics tools. Registered stage handlers are fake, but the
-executors still use saved `BindingPlan` data, resolver inputs, registry
-references, durable run records, and manifest-shaped result directories.
+    These tests cover the local saved-spec executor path plus the later Slurm
+    submission, reconciliation, and cancellation helpers without requiring
+    external bioinformatics tools. Registered stage handlers are fake, but the
+    executors still use saved `BindingPlan` data, resolver inputs, registry
+    references, durable run records, and manifest-shaped result directories.
 """
 
 from __future__ import annotations
@@ -39,7 +39,11 @@ from flytetest.spec_executor import (
 
 
 def _artifact_with_runtime_bindings(tmp_path: Path):
-    """Build one generated-spec artifact with enough runtime values to run locally."""
+    """Build one generated-spec artifact with enough runtime values to run locally.
+
+    Args:
+        tmp_path: A filesystem path used by the helper.
+"""
     reference_genome = ReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa"))
     consensus_annotation = ConsensusAnnotation(
         reference_genome=reference_genome,
@@ -61,7 +65,11 @@ def _artifact_with_runtime_bindings(tmp_path: Path):
 
 
 def _busco_artifact_with_runtime_bindings(tmp_path: Path):
-    """Build one BUSCO artifact with a manifest-backed quality target and runtime settings."""
+    """Build one BUSCO artifact with a manifest-backed quality target and runtime settings.
+
+    Args:
+        tmp_path: A filesystem path used by the helper.
+"""
     result_dir = tmp_path / "repeat_filter_results"
     result_dir.mkdir()
     (result_dir / "run_manifest.json").write_text(
@@ -100,7 +108,11 @@ def _busco_artifact_with_runtime_bindings(tmp_path: Path):
 
 
 def _slurm_busco_artifact_with_runtime_bindings(tmp_path: Path):
-    """Build one Slurm-profile BUSCO artifact for submission tests."""
+    """Build one Slurm-profile BUSCO artifact for submission tests.
+
+    Args:
+        tmp_path: A filesystem path used by the helper.
+"""
     result_dir = tmp_path / "repeat_filter_results"
     result_dir.mkdir()
     (result_dir / "run_manifest.json").write_text(
@@ -133,7 +145,13 @@ def _quality_target_artifact(
     *,
     runtime_bindings: dict[str, object] | None = None,
 ):
-    """Build a direct registered-workflow artifact from one quality target."""
+    """Build a direct registered-workflow artifact from one quality target.
+
+    Args:
+        prompt: A value used by the helper.
+        target: A filesystem path used by the helper.
+        runtime_bindings: A value used by the helper.
+"""
     typed_plan = plan_typed_request(
         prompt,
         explicit_bindings={"QualityAssessmentTarget": target.to_dict()},
@@ -143,16 +161,31 @@ def _quality_target_artifact(
 
 
 class SpecExecutorTests(TestCase):
-    """Checks for the saved-spec local executor path."""
+    """Checks for the saved-spec local executor path.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
     def test_executes_saved_busco_spec_with_synthetic_registered_handler(self) -> None:
-        """Run a saved BUSCO recipe and derive the repeat-filter input from the target."""
+        """Run a saved BUSCO recipe and derive the repeat-filter input from the target.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             artifact, target = _busco_artifact_with_runtime_bindings(tmp_path)
             calls: list[tuple[str, dict[str, object]]] = []
 
             def busco_handler(request: LocalNodeExecutionRequest) -> dict[str, Path]:
+                """            Capture the BUSCO node inputs and stage a synthetic results directory.
+
+
+            Args:
+                request: The local execution request forwarded by the caller.
+
+            Returns:
+                The returned `dict[str, Path]` value used by the caller.
+            """
                 calls.append((request.node.reference_name, dict(request.inputs)))
                 self.assertEqual(request.inputs["repeat_filter_results"], tmp_path / "repeat_filter_results")
                 self.assertEqual(request.inputs["busco_lineages_text"], "embryophyta_odb10")
@@ -194,7 +227,10 @@ class SpecExecutorTests(TestCase):
         self.assertEqual(result.node_results[0].manifest_paths["results_dir"].name, "run_manifest.json")
 
     def test_executes_saved_eggnog_spec_with_synthetic_registered_handler(self) -> None:
-        """Run a saved EggNOG recipe and derive repeat-filter inputs from the target."""
+        """Run a saved EggNOG recipe and derive repeat-filter inputs from the target.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             repeat_dir = tmp_path / "repeat_filter_results"
@@ -217,6 +253,15 @@ class SpecExecutorTests(TestCase):
             calls: list[dict[str, object]] = []
 
             def eggnog_handler(request: LocalNodeExecutionRequest) -> dict[str, Path]:
+                """            Capture the EggNOG node inputs and stage a synthetic results directory.
+
+
+            Args:
+                request: The local execution request forwarded by the caller.
+
+            Returns:
+                The returned `dict[str, Path]` value used by the caller.
+            """
                 calls.append(dict(request.inputs))
                 result_dir = tmp_path / "eggnog_results"
                 result_dir.mkdir()
@@ -239,7 +284,10 @@ class SpecExecutorTests(TestCase):
         self.assertEqual(result.final_outputs["results_dir"].name, "eggnog_results")
 
     def test_executes_saved_agat_specs_with_synthetic_registered_handlers(self) -> None:
-        """Map EggNOG and AGAT conversion targets into the concrete AGAT inputs."""
+        """Map EggNOG and AGAT conversion targets into the concrete AGAT inputs.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             eggnog_dir = tmp_path / "eggnog_results"
@@ -273,6 +321,15 @@ class SpecExecutorTests(TestCase):
             calls: list[tuple[str, dict[str, object]]] = []
 
             def handler(request: LocalNodeExecutionRequest) -> dict[str, Path]:
+                """            Capture the AGAT node inputs and stage a synthetic results directory.
+
+
+            Args:
+                request: The local execution request forwarded by the caller.
+
+            Returns:
+                The returned `dict[str, Path]` value used by the caller.
+            """
                 calls.append((request.node.reference_name, dict(request.inputs)))
                 result_dir = tmp_path / f"{request.node.reference_name}_results"
                 result_dir.mkdir()
@@ -309,13 +366,25 @@ class SpecExecutorTests(TestCase):
         self.assertEqual(cleanup.final_outputs["results_dir"].name, "annotation_postprocess_agat_cleanup_results")
 
     def test_executes_saved_generated_spec_with_synthetic_registered_handlers(self) -> None:
-        """Run one composed saved spec and preserve manifest-bearing result outputs."""
+        """Run one composed saved spec and preserve manifest-bearing result outputs.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             artifact, consensus_annotation = _artifact_with_runtime_bindings(tmp_path)
             calls: list[tuple[str, dict[str, object]]] = []
 
             def repeat_filtering_handler(request: LocalNodeExecutionRequest) -> dict[str, Path]:
+                """            Capture the repeat-filtering node inputs and stage a synthetic results directory.
+
+
+            Args:
+                request: The local execution request forwarded by the caller.
+
+            Returns:
+                The returned `dict[str, Path]` value used by the caller.
+            """
                 calls.append((request.node.reference_name, dict(request.inputs)))
                 self.assertEqual(request.inputs["pasa_update_results"]["annotation_gff3_path"], "results/evm/evm.out.gff3")
                 self.assertEqual(request.inputs["repeatmasker_out"], str(tmp_path / "repeatmasker.out"))
@@ -334,6 +403,15 @@ class SpecExecutorTests(TestCase):
                 return {"results_dir": result_dir}
 
             def busco_handler(request: LocalNodeExecutionRequest) -> dict[str, Path]:
+                """            Capture the BUSCO node inputs and stage a synthetic results directory.
+
+
+            Args:
+                request: The local execution request forwarded by the caller.
+
+            Returns:
+                The returned `dict[str, Path]` value used by the caller.
+            """
                 calls.append((request.node.reference_name, dict(request.inputs)))
                 self.assertEqual(request.inputs["repeat_filter_results"], tmp_path / "repeat_filter_results")
                 self.assertEqual(request.inputs["busco_lineages_text"], "embryophyta_odb10")
@@ -371,7 +449,10 @@ class SpecExecutorTests(TestCase):
         self.assertEqual(result.resolved_planner_inputs["ConsensusAnnotation"]["annotation_gff3_path"], "results/evm/evm.out.gff3")
 
     def test_executor_reports_missing_resolver_input_before_running_handlers(self) -> None:
-        """Use the resolver path and stop cleanly when saved inputs cannot resolve."""
+        """Use the resolver path and stop cleanly when saved inputs cannot resolve.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             artifact, _ = _artifact_with_runtime_bindings(Path(tmp))
             artifact = replace(
@@ -392,7 +473,10 @@ class SpecExecutorTests(TestCase):
         self.assertIn("No ConsensusAnnotation", result.limitations[0])
 
     def test_executor_reports_missing_registered_handler(self) -> None:
-        """Validate that saved specs only run through explicitly registered handlers."""
+        """Validate that saved specs only run through explicitly registered handlers.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             artifact, consensus_annotation = _artifact_with_runtime_bindings(Path(tmp))
 
@@ -407,11 +491,17 @@ class SpecExecutorTests(TestCase):
         self.assertIn("annotation_qc_busco", result.limitations[0])
 
     def test_parse_sbatch_job_id_accepts_standard_output(self) -> None:
-        """Recover the durable scheduler ID from sbatch output."""
+        """Recover the durable scheduler ID from sbatch output.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         self.assertEqual(parse_sbatch_job_id("Submitted batch job 12345\n"), "12345")
 
     def test_classify_slurm_failure_marks_node_fail_retryable(self) -> None:
-        """Treat scheduler infrastructure failures as conservatively retryable."""
+        """Treat scheduler infrastructure failures as conservatively retryable.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         record = SlurmRunRecord(
             schema_version=SLURM_RUN_RECORD_SCHEMA_VERSION,
             run_id="run-1",
@@ -437,7 +527,10 @@ class SpecExecutorTests(TestCase):
         self.assertEqual(classification.failure_class, "scheduler_infrastructure")
 
     def test_slurm_script_rendering_is_deterministic(self) -> None:
-        """Render the same frozen recipe into the same Slurm script text."""
+        """Render the same frozen recipe into the same Slurm script text.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             artifact = _slurm_busco_artifact_with_runtime_bindings(tmp_path)
@@ -477,7 +570,10 @@ class SpecExecutorTests(TestCase):
         self.assertIn(str(artifact_path), first)
 
     def test_slurm_executor_persists_run_record_after_submission(self) -> None:
-        """Submit through a fake sbatch runner and persist the accepted run record."""
+        """Submit through a fake sbatch runner and persist the accepted run record.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             artifact = _slurm_busco_artifact_with_runtime_bindings(tmp_path)
@@ -485,6 +581,16 @@ class SpecExecutorTests(TestCase):
             captured: dict[str, object] = {}
 
             def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                """            Simulate sbatch submission and return a canned batch-job response.
+
+
+            Args:
+                args: The argument vector forwarded to the helper.
+                kwargs: Keyword arguments forwarded to the helper.
+
+            Returns:
+                The returned `subprocess.CompletedProcess[str]` value used by the caller.
+            """
                 captured["args"] = args
                 captured.update(kwargs)
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 98765\n", stderr="")
@@ -517,18 +623,41 @@ class SpecExecutorTests(TestCase):
         self.assertEqual(result.run_record.attempt_number, 1)
 
     def test_slurm_reconcile_updates_running_job_record(self) -> None:
-        """Reconcile a submitted run record with live scheduler state."""
+        """Reconcile a submitted run record with live scheduler state.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             artifact = _slurm_busco_artifact_with_runtime_bindings(tmp_path)
             artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
 
             def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                """            Simulate sbatch submission and return a canned batch-job response.
+
+
+            Args:
+                args: The argument vector forwarded to the helper.
+                kwargs: Keyword arguments forwarded to the helper.
+
+            Returns:
+                The returned `subprocess.CompletedProcess[str]` value used by the caller.
+            """
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 11111\n", stderr="")
 
             scheduler_calls: list[list[str]] = []
 
             def fake_scheduler(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                """            Simulate scheduler inspection commands and return a canned state snapshot.
+
+
+            Args:
+                args: The argument vector forwarded to the helper.
+                kwargs: Keyword arguments forwarded to the helper.
+
+            Returns:
+                The returned `subprocess.CompletedProcess[str]` value used by the caller.
+            """
                 scheduler_calls.append(args)
                 if args[0] == "squeue":
                     return subprocess.CompletedProcess(args=args, returncode=0, stdout="RUNNING\n", stderr="")
@@ -564,16 +693,39 @@ class SpecExecutorTests(TestCase):
         self.assertEqual(reloaded.scheduler_state, "RUNNING")
 
     def test_slurm_reconcile_uses_sacct_for_terminal_state_when_live_queue_is_empty(self) -> None:
-        """Recover terminal state from accounting when the live queue has no row."""
+        """Recover terminal state from accounting when the live queue has no row.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             artifact = _slurm_busco_artifact_with_runtime_bindings(tmp_path)
             artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
 
             def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                """            Simulate sbatch submission and return a canned batch-job response.
+
+
+            Args:
+                args: The argument vector forwarded to the helper.
+                kwargs: Keyword arguments forwarded to the helper.
+
+            Returns:
+                The returned `subprocess.CompletedProcess[str]` value used by the caller.
+            """
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 22222\n", stderr="")
 
             def fake_scheduler(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                """            Simulate scheduler inspection commands and return a canned state snapshot.
+
+
+            Args:
+                args: The argument vector forwarded to the helper.
+                kwargs: Keyword arguments forwarded to the helper.
+
+            Returns:
+                The returned `subprocess.CompletedProcess[str]` value used by the caller.
+            """
                 if args[0] == "squeue":
                     return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
                 if args[0] == "scontrol":
@@ -599,18 +751,41 @@ class SpecExecutorTests(TestCase):
         self.assertEqual(status.run_record.scheduler_exit_code, "0:0")
 
     def test_slurm_cancel_records_requested_cancellation(self) -> None:
-        """Request cancellation through scancel and persist the lifecycle marker."""
+        """Request cancellation through scancel and persist the lifecycle marker.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             artifact = _slurm_busco_artifact_with_runtime_bindings(tmp_path)
             artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
 
             def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                """            Simulate sbatch submission and return a canned batch-job response.
+
+
+            Args:
+                args: The argument vector forwarded to the helper.
+                kwargs: Keyword arguments forwarded to the helper.
+
+            Returns:
+                The returned `subprocess.CompletedProcess[str]` value used by the caller.
+            """
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 33333\n", stderr="")
 
             scheduler_calls: list[list[str]] = []
 
             def fake_scheduler(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                """            Simulate scheduler inspection commands and return a canned state snapshot.
+
+
+            Args:
+                args: The argument vector forwarded to the helper.
+                kwargs: Keyword arguments forwarded to the helper.
+
+            Returns:
+                The returned `subprocess.CompletedProcess[str]` value used by the caller.
+            """
                 scheduler_calls.append(args)
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
 
@@ -632,7 +807,10 @@ class SpecExecutorTests(TestCase):
         self.assertIsNotNone(reloaded.cancellation_requested_at)
 
     def test_slurm_retry_resubmits_retryable_failure_with_linked_child_record(self) -> None:
-        """Retry a node-failure record by reusing the frozen saved recipe."""
+        """Retry a node-failure record by reusing the frozen saved recipe.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             artifact = _slurm_busco_artifact_with_runtime_bindings(tmp_path)
@@ -640,6 +818,16 @@ class SpecExecutorTests(TestCase):
             job_ids = iter(("90001", "90002"))
 
             def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                """            Simulate sbatch submission and return a canned batch-job response.
+
+
+            Args:
+                args: The argument vector forwarded to the helper.
+                kwargs: Keyword arguments forwarded to the helper.
+
+            Returns:
+                The returned `subprocess.CompletedProcess[str]` value used by the caller.
+            """
                 return subprocess.CompletedProcess(
                     args=args,
                     returncode=0,
@@ -682,13 +870,26 @@ class SpecExecutorTests(TestCase):
         self.assertEqual(child_record.artifact_path, updated_source.artifact_path)
 
     def test_slurm_retry_enforces_attempt_limit(self) -> None:
-        """Decline manual retries once the explicit attempt limit is reached."""
+        """Decline manual retries once the explicit attempt limit is reached.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             artifact = _slurm_busco_artifact_with_runtime_bindings(tmp_path)
             artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
 
             def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                """            Simulate sbatch submission and return a canned batch-job response.
+
+
+            Args:
+                args: The argument vector forwarded to the helper.
+                kwargs: Keyword arguments forwarded to the helper.
+
+            Returns:
+                The returned `subprocess.CompletedProcess[str]` value used by the caller.
+            """
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 90100\n", stderr="")
 
             executor = SlurmWorkflowSpecExecutor(
@@ -715,7 +916,10 @@ class SpecExecutorTests(TestCase):
         self.assertIn(f"attempt {DEFAULT_SLURM_MAX_ATTEMPTS}", retried.limitations[0])
 
     def test_slurm_retry_declines_stale_parent_record_after_child_exists(self) -> None:
-        """Refuse to branch from the same failed parent record twice."""
+        """Refuse to branch from the same failed parent record twice.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             artifact = _slurm_busco_artifact_with_runtime_bindings(tmp_path)
@@ -723,6 +927,16 @@ class SpecExecutorTests(TestCase):
             job_ids = iter(("90201", "90202"))
 
             def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                """            Simulate sbatch submission and return a canned batch-job response.
+
+
+            Args:
+                args: The argument vector forwarded to the helper.
+                kwargs: Keyword arguments forwarded to the helper.
+
+            Returns:
+                The returned `subprocess.CompletedProcess[str]` value used by the caller.
+            """
                 return subprocess.CompletedProcess(
                     args=args,
                     returncode=0,
@@ -754,7 +968,10 @@ class SpecExecutorTests(TestCase):
         self.assertIn("stale parent", second_retry.limitations[0])
 
     def test_slurm_reconcile_reports_missing_record_without_guessing(self) -> None:
-        """Decline status checks when the filesystem record is missing."""
+        """Decline status checks when the filesystem record is missing.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             result = SlurmWorkflowSpecExecutor(
                 run_root=Path(tmp) / "runs",
@@ -765,7 +982,10 @@ class SpecExecutorTests(TestCase):
         self.assertIn("No such file", result.limitations[0])
 
     def test_slurm_submit_reports_missing_sbatch_as_unsupported_environment(self) -> None:
-        """Decline submission cleanly when `sbatch` is unavailable on PATH."""
+        """Decline submission cleanly when `sbatch` is unavailable on PATH.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             artifact = _slurm_busco_artifact_with_runtime_bindings(tmp_path)
@@ -782,13 +1002,26 @@ class SpecExecutorTests(TestCase):
         self.assertIn("`sbatch`", result.limitations[0])
 
     def test_slurm_reconcile_reports_missing_scheduler_commands_as_unsupported_environment(self) -> None:
-        """Decline monitoring cleanly when no scheduler query command is available."""
+        """Decline monitoring cleanly when no scheduler query command is available.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             artifact = _slurm_busco_artifact_with_runtime_bindings(tmp_path)
             artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
 
             def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                """            Simulate sbatch submission and return a canned batch-job response.
+
+
+            Args:
+                args: The argument vector forwarded to the helper.
+                kwargs: Keyword arguments forwarded to the helper.
+
+            Returns:
+                The returned `subprocess.CompletedProcess[str]` value used by the caller.
+            """
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 66666\n", stderr="")
 
             executor = SlurmWorkflowSpecExecutor(
@@ -806,13 +1039,26 @@ class SpecExecutorTests(TestCase):
         self.assertIn("`squeue`, `scontrol`, and `sacct`", status.limitations[0])
 
     def test_slurm_cancel_reports_missing_scancel_as_unsupported_environment(self) -> None:
-        """Decline cancellation cleanly when `scancel` is unavailable on PATH."""
+        """Decline cancellation cleanly when `scancel` is unavailable on PATH.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             artifact = _slurm_busco_artifact_with_runtime_bindings(tmp_path)
             artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
 
             def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                """            Simulate sbatch submission and return a canned batch-job response.
+
+
+            Args:
+                args: The argument vector forwarded to the helper.
+                kwargs: Keyword arguments forwarded to the helper.
+
+            Returns:
+                The returned `subprocess.CompletedProcess[str]` value used by the caller.
+            """
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 77777\n", stderr="")
 
             executor = SlurmWorkflowSpecExecutor(

@@ -1,7 +1,7 @@
 """Typed asset exports for FLyteTest planning and manifests.
 
-This package re-exports the local-first asset dataclasses used to describe
-pipeline stage boundaries without changing current Flyte task contracts.
+    This package re-exports the local-first asset dataclasses used to describe
+    pipeline stage boundaries without changing current Flyte task contracts.
 """
 
 from flytetest.types.assets import (

@@ -38,7 +38,7 @@ Create genome indices and align RNA-seq reads to a reference genome.
 - [STAR GitHub repository](https://github.com/alexdobin/STAR)
 - [STAR manual PDF](https://github.com/alexdobin/STAR/blob/master/doc/STARmanual.pdf)
 
-## Tutorial And Training
+## Tutorial References
 
 - [GTN RNA-seq Alignment with STAR](https://galaxyproject.github.io/training-material/topics/transcriptomics/tutorials/rna-seq-bash-star-align/tutorial.html)
 - [GTN Reference-based RNA-Seq data analysis](https://galaxyproject.github.io/training-material/topics/transcriptomics/tutorials/ref-based/tutorial.html)

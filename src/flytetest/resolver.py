@@ -54,7 +54,10 @@ ResolverSourceKind = Literal["explicit_binding", "manifest", "result_bundle"]
 
 @dataclass(frozen=True, slots=True)
 class ResolverSource:
-    """Describe where one resolved planner value came from."""
+    """Describe where one resolved planner value came from.
+
+    This dataclass keeps the planning or execution contract explicit and easy to review.
+    """
 
     kind: ResolverSourceKind
     label: str
@@ -65,7 +68,10 @@ class ResolverSource:
 
 @dataclass(frozen=True, slots=True)
 class ResolutionCandidate:
-    """Hold one candidate planner value found by the resolver."""
+    """Hold one candidate planner value found by the resolver.
+
+    This dataclass keeps the planning or execution contract explicit and easy to review.
+    """
 
     target_type_name: str
     value: Any
@@ -81,7 +87,7 @@ class ResolutionResult:
     - resolved: exactly one clear value was found, or an explicit binding won
     - ambiguous: multiple possible values were found and the resolver refused to guess
     - missing: no usable value was found
-    """
+"""
 
     target_type_name: str
     resolved_value: Any | None
@@ -93,12 +99,21 @@ class ResolutionResult:
 
     @property
     def is_resolved(self) -> bool:
-        """Return whether the resolver selected one value successfully."""
+        """Return whether the resolver selected one value successfully.
+
+        This helper keeps the relevant planning or execution step explicit and easy to review.
+
+        Returns:
+            ``True`` when the resolver chose exactly one concrete value.
+        """
         return self.resolved_value is not None and self.selected_source is not None
 
 
 class AssetResolver(Protocol):
-    """Describe the local input-resolution behavior used by later planner work."""
+    """Describe the local input-resolution behavior used by later planner work.
+
+    This dataclass keeps the planning or execution contract explicit and easy to review.
+    """
 
     def resolve(
         self,
@@ -108,7 +123,21 @@ class AssetResolver(Protocol):
         manifest_sources: Sequence[Path | Mapping[str, Any]] = (),
         result_bundles: Sequence[Any] = (),
     ) -> ResolutionResult:
-        """Resolve one planner-facing type from bindings, manifests, or result bundles."""
+        """Resolve one planner-facing type from bindings, manifests, or result bundles.
+
+        Args:
+            target_type_name: The planner type name to resolve.
+            explicit_bindings: Optional caller-supplied values that should win
+                over discovered manifests and result bundles.
+            manifest_sources: Local manifest paths or inline manifest mappings
+                that may contain a serializable planner value.
+            result_bundles: Result-bundle objects that can be adapted back into
+                planner-facing biology types.
+
+        Returns:
+            A :class:`ResolutionResult` describing the selected value or the
+            reason resolution was ambiguous or missing.
+        """
 
 
 _PLANNER_TYPES_BY_NAME = {
@@ -150,7 +179,15 @@ _BUNDLE_ADAPTERS: dict[type[Any], dict[str, Any]] = {
 
 
 def _manifest_workflow_name(manifest: Mapping[str, Any]) -> str | None:
-    """Return the workflow label recorded in one current manifest when present."""
+    """Return the workflow label recorded in one current manifest when present.
+
+    Args:
+        manifest: The manifest payload being inspected.
+
+    Returns:
+        The recorded workflow name, or ``None`` when the manifest does not
+        include a usable workflow label.
+    """
     workflow = manifest.get("workflow")
     if isinstance(workflow, str) and workflow.strip():
         return workflow
@@ -158,7 +195,15 @@ def _manifest_workflow_name(manifest: Mapping[str, Any]) -> str | None:
 
 
 def _manifest_payload(source: Path | Mapping[str, Any]) -> tuple[dict[str, Any], Path | None]:
-    """Load one manifest source from a mapping or a local path."""
+    """Load one manifest source from a mapping or a local path.
+
+    Args:
+        source: A manifest path or inline mapping.
+
+    Returns:
+        The parsed manifest payload and, when available, the on-disk path it
+        came from.
+    """
     if isinstance(source, Path):
         manifest_path = source / "run_manifest.json" if source.is_dir() else source
         return json.loads(manifest_path.read_text()), manifest_path
@@ -166,7 +211,15 @@ def _manifest_payload(source: Path | Mapping[str, Any]) -> tuple[dict[str, Any],
 
 
 def _candidate_from_explicit_binding(target_type_name: str, binding: Any) -> Any:
-    """Convert one explicit binding into the requested planner type when possible."""
+    """Convert one explicit binding into the requested planner type when possible.
+
+    Args:
+        target_type_name: The planner type name being resolved.
+        binding: The explicit binding value supplied by the caller.
+
+    Returns:
+        The planner type instance reconstructed from the explicit binding.
+    """
     planner_type = _PLANNER_TYPES_BY_NAME[target_type_name]
     if isinstance(binding, planner_type):
         return binding
@@ -178,7 +231,14 @@ def _candidate_from_explicit_binding(target_type_name: str, binding: Any) -> Any
 
 
 def _candidate_key(candidate: ResolutionCandidate) -> tuple[str, str]:
-    """Return a stable key used to avoid duplicate candidates from the same source."""
+    """Return a stable key used to avoid duplicate candidates from the same source.
+
+    Args:
+        candidate: The candidate being deduplicated.
+
+    Returns:
+        A stable `(source.kind, source.label)` tuple for deduplication.
+    """
     return candidate.source.kind, candidate.source.label
 
 
@@ -191,7 +251,7 @@ class LocalManifestAssetResolver:
     - one discovered candidate resolves successfully
     - more than one discovered candidate is treated as ambiguous
     - no candidates produces a missing-input result
-    """
+"""
 
     def resolve(
         self,
@@ -201,7 +261,17 @@ class LocalManifestAssetResolver:
         manifest_sources: Sequence[Path | Mapping[str, Any]] = (),
         result_bundles: Sequence[Any] = (),
     ) -> ResolutionResult:
-        """Resolve one planner-facing type from local bindings, manifests, or bundles."""
+        """Resolve one planner-facing type from local bindings, manifests, or bundles.
+
+    Args:
+        target_type_name: Planner type name currently being resolved.
+        explicit_bindings: Caller-supplied planner values that should win over discovered inputs.
+        manifest_sources: Manifest paths or inline manifest mappings that may contain planner values.
+        result_bundles: A directory path used by the helper.
+
+    Returns:
+        A `ResolutionResult` result computed by this helper.
+"""
         if target_type_name not in _PLANNER_TYPES_BY_NAME:
             raise KeyError(f"Unsupported planner type for resolution: {target_type_name}")
 
@@ -229,6 +299,8 @@ class LocalManifestAssetResolver:
                 assumptions=assumptions + ("Explicit local bindings take priority over discovered manifest matches.",),
             )
 
+        # Manifest adapter discovery: if this planner type has a manifest
+        # adapter, try to recover it from each provided local manifest source.
         manifest_adapter = _MANIFEST_ADAPTERS.get(target_type_name)
         if manifest_adapter is not None:
             for source in manifest_sources:
@@ -255,10 +327,14 @@ class LocalManifestAssetResolver:
                 )
 
         for bundle in result_bundles:
+            # Match the bundle instance against known result-bundle types so we
+            # can reuse the same planner adapters that the manifest path uses.
             bundle_adapters = {}
             bundle_type_name = type(bundle).__name__
             for bundle_type, candidate_adapters in _BUNDLE_ADAPTERS.items():
                 if isinstance(bundle, bundle_type):
+                    # Found a matching bundle type; use its adapters and record
+                    # the canonical type name for the resolution source.
                     bundle_adapters = candidate_adapters
                     bundle_type_name = bundle_type.__name__
                     break
@@ -281,12 +357,14 @@ class LocalManifestAssetResolver:
                 )
             )
 
+        # Deduplicate by source.kind + source.label so the same asset does not
+        # count twice when it is discoverable through more than one path.
         unique_candidates: list[ResolutionCandidate] = []
         seen_keys: set[tuple[str, str]] = set()
         for candidate in candidates:
-            key = _candidate_key(candidate)
+            key = _candidate_key(candidate)  # Key is (source.kind, source.label)
             if key in seen_keys:
-                continue
+                continue  # Already discovered from this source; skip duplicate.
             seen_keys.add(key)
             unique_candidates.append(candidate)
 
@@ -302,6 +380,8 @@ class LocalManifestAssetResolver:
             )
 
         if len(unique_candidates) > 1:
+            # Ambiguous case: Multiple valid candidates found.
+            # Refuse to guess; caller must provide explicit binding to disambiguate.
             source_text = ", ".join(f"`{candidate.source.label}`" for candidate in unique_candidates)
             return ResolutionResult(
                 target_type_name=target_type_name,

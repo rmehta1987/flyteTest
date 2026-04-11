@@ -52,7 +52,13 @@ baseline unless the change is explicitly needed to support the target design.
 ## 3. Working Rules
 
 - Read `DESIGN.md` before making architecture or behavior changes.
-- Read the relevant `.codex/*.md` guide before editing code, docs, or tests.
+- Read the relevant `.codex/*.md` guide before editing code, docs, or tests,
+  especially [`.codex/documentation.md`](.codex/documentation.md) for
+  documentation-style rules, [`.codex/testing.md`](.codex/testing.md) for
+  test-writing guidance, [`.codex/code-review.md`](.codex/code-review.md) for
+  review expectations, [`.codex/tasks.md`](.codex/tasks.md) for task-module
+  work, and [`.codex/workflows.md`](.codex/workflows.md) for workflow-module
+  work.
 - Prefer registered tasks, workflows, planners, and manifest helpers over new
   one-off runtime logic for ordinary user requests.
 - Keep biological steps narrow and faithful to `docs/braker3_evm_notes.md`.
@@ -70,6 +76,12 @@ baseline unless the change is explicitly needed to support the target design.
 - Avoid broad refactors unless the requested change truly depends on them.
 - If a change affects the biological pipeline order or supported workflow
   families, call that out explicitly in the change notes.
+- Keep the documentation structure consistent across the codebase when adding
+  or revising files. New or touched code assets should follow the same basic
+  shape in the idiom appropriate to that language or file type:
+  module/file header docs with purpose and scope, clear sectioned function or
+  class docs where the language supports them, and explicit notes for
+  assumptions or boundary behavior when they matter.
 
 ## 4. What To Update When Behavior Changes
 
@@ -127,6 +139,17 @@ include:
   intent
 - inline comments for non-obvious setup, path handling, biological assumptions,
   or fixture choices
+
+Treat this as a repo-wide style rule, not just a suggestion for the current
+milestone. When a file is touched, its documentation should match the same
+structure that nearby files use unless there is a clear reason to differ.
+
+Production code in `src/flytetest/tasks/*.py` and
+`src/flytetest/workflows/*.py` should also keep docstrings PEP 257-compliant,
+use verbose Google-style sections where helpful, and add inline comments when
+taking ambiguous shortcuts that would not be obvious to a future reader. For
+non-Python code, use the native documentation or comment conventions with the
+same intent: make purpose, scope, assumptions, and boundary behavior explicit.
 
 The goal is not to comment every line. The goal is to make it clear why the
 test exists and what it is proving.

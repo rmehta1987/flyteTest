@@ -1,7 +1,7 @@
 """Synthetic tests for the FLyteTest MCP recipe-backed server.
 
-These checks keep the server transport MCP-shaped while preserving the explicit
-recipe-backed execution target set.
+    These checks keep the server transport MCP-shaped while preserving the explicit
+    recipe-backed execution target set.
 """
 
 from __future__ import annotations
@@ -82,7 +82,14 @@ EXPECTED_RUNNABLE_TARGETS = supported_runnable_targets_payload()
 
 
 def _repeat_filter_manifest_dir(tmp_path: Path) -> Path:
-    """Create one synthetic repeat-filter result directory with a run manifest."""
+    """Create one synthetic repeat-filter result directory with a run manifest.
+
+    Args:
+        tmp_path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     result_dir = tmp_path / "repeat_filter_results"
     result_dir.mkdir()
     (result_dir / "run_manifest.json").write_text(
@@ -103,7 +110,15 @@ def _repeat_filter_manifest_dir(tmp_path: Path) -> Path:
 
 
 def _eggnog_manifest_dir(tmp_path: Path, name: str = "eggnog_results") -> Path:
-    """Create one synthetic EggNOG result directory with a run manifest."""
+    """Create one synthetic EggNOG result directory with a run manifest.
+
+    Args:
+        tmp_path: A filesystem path used by the helper.
+        name: A value used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     result_dir = tmp_path / name
     result_dir.mkdir()
     (result_dir / "run_manifest.json").write_text(
@@ -123,7 +138,14 @@ def _eggnog_manifest_dir(tmp_path: Path, name: str = "eggnog_results") -> Path:
 
 
 def _agat_conversion_manifest_dir(tmp_path: Path) -> Path:
-    """Create one synthetic AGAT conversion result directory with a run manifest."""
+    """Create one synthetic AGAT conversion result directory with a run manifest.
+
+    Args:
+        tmp_path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     result_dir = tmp_path / "agat_conversion_results"
     result_dir.mkdir()
     (result_dir / "run_manifest.json").write_text(
@@ -142,63 +164,108 @@ def _agat_conversion_manifest_dir(tmp_path: Path) -> Path:
 
 
 class FakeFastMCP:
-    """Small FastMCP stand-in used to capture tool registration."""
+    """Small FastMCP stand-in used to capture tool registration.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
     def __init__(self, name: str) -> None:
-        """Record the server name and the decorators registered during setup."""
+        """Record the server name and the decorators registered during setup.
+
+    Args:
+        name: A value used by the helper.
+"""
         self.name = name
         self.tools: dict[str, object] = {}
         self.resources: dict[str, object] = {}
         self.ran = False
 
     def tool(self):  # type: ignore[no-untyped-def]
-        """Return a decorator that records the registered tool callable."""
+        """Return a decorator that records the registered tool callable.
+
+    This helper keeps the test fixture deterministic and explicit.
+"""
 
         def decorator(fn):  # type: ignore[no-untyped-def]
+            """Record the decorated tool callable and return it unchanged.
+
+    Args:
+        fn: A value used by the helper.
+"""
             self.tools[fn.__name__] = fn
             return fn
 
         return decorator
 
     def resource(self, uri: str):  # type: ignore[no-untyped-def]
-        """Return a decorator that records the registered resource callable."""
+        """Return a decorator that records the registered resource callable.
+
+    Args:
+        uri: A value used by the helper.
+"""
 
         def decorator(fn):  # type: ignore[no-untyped-def]
+            """Record the decorated resource callable and return it unchanged.
+
+    Args:
+        fn: A value used by the helper.
+"""
             self.resources[uri] = fn
             return fn
 
         return decorator
 
     def run(self) -> None:
-        """Record that server execution was requested."""
+        """Record that server execution was requested.
+
+    This helper keeps the test fixture deterministic and explicit.
+
+    Returns:
+        The returned None value used by the test fixture.
+"""
         self.ran = True
 
 
 class ServerTests(TestCase):
-    """Coverage for the FastMCP surface and recipe-backed behavior."""
+    """Coverage for the FastMCP surface and recipe-backed behavior.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
     def test_create_mcp_server_registers_only_the_required_tools(self) -> None:
-        """Keep the MCP tool surface limited to list, plan, and prompt-and-run."""
+        """Keep the MCP tool surface limited to list, plan, and prompt-and-run.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         server = create_mcp_server(fastmcp_cls=FakeFastMCP)
 
         self.assertEqual(server.name, SHOWCASE_SERVER_NAME)
         self.assertEqual(sorted(server.tools), sorted(MCP_TOOL_NAMES))
 
     def test_create_mcp_server_registers_the_read_only_resources(self) -> None:
-        """Expose only the small static resource layer for MCP client discovery."""
+        """Expose only the small static resource layer for MCP client discovery.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         server = create_mcp_server(fastmcp_cls=FakeFastMCP)
 
         self.assertEqual(tuple(SERVER_RESOURCE_URIS), MCP_RESOURCE_URIS)
         self.assertEqual(sorted(server.resources), sorted(MCP_RESOURCE_URIS))
 
     def test_blank_stdio_lines_are_ignored_before_json_parsing(self) -> None:
-        """Ignore whitespace-only stdio lines so tolerant clients do not break the server."""
+        """Ignore whitespace-only stdio lines so tolerant clients do not break the server.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         self.assertTrue(_should_skip_stdio_line("\n"))
         self.assertTrue(_should_skip_stdio_line("   \t  \n"))
         self.assertFalse(_should_skip_stdio_line('{"jsonrpc":"2.0"}\n'))
 
     def test_list_entries_exposes_only_the_supported_targets(self) -> None:
-        """List only the explicitly runnable MCP recipe targets."""
+        """List only the explicitly runnable MCP recipe targets.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         payload = list_entries()
 
         self.assertEqual([entry["name"] for entry in payload["entries"]], EXPECTED_TARGET_NAMES)
@@ -211,7 +278,10 @@ class ServerTests(TestCase):
         self.assertIn("annotation_postprocess_agat_cleanup", payload["limitations"][0])
 
     def test_scope_resource_describes_the_recipe_surface(self) -> None:
-        """Describe the stdio recipe contract without implying broader support."""
+        """Describe the stdio recipe contract without implying broader support.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         payload = resource_scope()
 
         self.assertEqual(payload["transport"], "stdio")
@@ -224,14 +294,20 @@ class ServerTests(TestCase):
         self.assertTrue(any("annotation_fasta_path" in rule for rule in payload["recipe_input_runtime_rules"]))
 
     def test_supported_targets_resource_matches_the_exact_showcase_entries(self) -> None:
-        """Keep the resource target list aligned with the tool-facing entry list."""
+        """Keep the resource target list aligned with the tool-facing entry list.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         payload = resource_supported_targets()
 
         self.assertEqual(payload["primary_tool"], PRIMARY_TOOL_NAME)
         self.assertEqual([entry["name"] for entry in payload["entries"]], EXPECTED_TARGET_NAMES)
 
     def test_example_prompts_resource_requires_explicit_local_paths(self) -> None:
-        """Expose only small example prompts that match the narrow planner contract."""
+        """Expose only small example prompts that match the narrow planner contract.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         payload = resource_example_prompts()
 
         self.assertEqual(payload["primary_tool"], PRIMARY_TOOL_NAME)
@@ -241,7 +317,10 @@ class ServerTests(TestCase):
         self.assertIn("explicit local file paths", payload["prompt_requirements"][0])
 
     def test_prompt_and_run_contract_resource_matches_enforced_summary_behavior(self) -> None:
-        """Document the stable result-summary contract without widening showcase scope."""
+        """Document the stable result-summary contract without widening showcase scope.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         payload = resource_prompt_and_run_contract()
 
         self.assertEqual(payload["primary_tool"], PRIMARY_TOOL_NAME)
@@ -263,7 +342,10 @@ class ServerTests(TestCase):
         self.assertIn("workflow_spec", payload["typed_planning_fields"])
 
     def test_plan_request_builds_workflow_recipe_plan_from_prompt_paths(self) -> None:
-        """Classify the BRAKER3 prompt and freeze explicit local paths."""
+        """Classify the BRAKER3 prompt and freeze explicit local paths.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         prompt = (
             "Annotate the genome sequence of a small eukaryote using BRAKER3 "
             "with genome data/braker3/reference/genome.fa, RNA-seq evidence data/braker3/rnaseq/RNAseq.bam, "
@@ -284,7 +366,10 @@ class ServerTests(TestCase):
         )
 
     def test_plan_request_still_reports_broader_typed_specs(self) -> None:
-        """Expose broader typed planning data without executing it."""
+        """Expose broader typed planning data without executing it.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         payload = plan_request("Create a generated WorkflowSpec for repeat filtering and BUSCO QC.")
 
         self.assertFalse(payload["supported"])
@@ -293,7 +378,10 @@ class ServerTests(TestCase):
         self.assertIsNotNone(payload["workflow_spec"])
 
     def test_plan_request_builds_protein_workflow_recipe_plan(self) -> None:
-        """Classify the protein-evidence prompt and preserve protein FASTA order."""
+        """Classify the protein-evidence prompt and preserve protein FASTA order.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         prompt = (
             "Run protein evidence alignment with genome data/braker3/reference/genome.fa, "
             "protein evidence data/braker3/protein_data/fastas/proteins.fa, and protein evidence data/braker3/protein_data/fastas/proteins_extra.fa"
@@ -315,7 +403,10 @@ class ServerTests(TestCase):
         )
 
     def test_prepare_and_run_local_recipe_round_trips_saved_artifact(self) -> None:
-        """Prepare a frozen recipe and execute it through explicit local handlers."""
+        """Prepare a frozen recipe and execute it through explicit local handlers.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         prompt = (
             "Run protein evidence alignment with genome data/braker3/reference/genome.fa and "
             "protein evidence data/braker3/protein_data/fastas/proteins.fa"
@@ -323,6 +414,11 @@ class ServerTests(TestCase):
         calls: list[dict[str, object]] = []
 
         def handler(request):  # type: ignore[no-untyped-def]
+            """Capture the forwarded workflow inputs and return a stub result path.
+
+    Args:
+        request: The local execution request forwarded by the caller.
+"""
             calls.append(dict(request.inputs))
             return {"results_dir": "/tmp/protein_evidence_results"}
 
@@ -341,7 +437,10 @@ class ServerTests(TestCase):
         self.assertEqual(executed["execution_result"]["output_paths"], ["/tmp/protein_evidence_results"])
 
     def test_run_slurm_recipe_submits_saved_slurm_artifact(self) -> None:
-        """Submit a frozen Slurm-profile recipe and persist a run record."""
+        """Submit a frozen Slurm-profile recipe and persist a run record.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path)
@@ -356,6 +455,16 @@ class ServerTests(TestCase):
             captured: dict[str, object] = {}
 
             def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                """            Simulate sbatch submission and return a canned batch-job response.
+
+
+            Args:
+                args: The argument vector forwarded to the helper.
+                kwargs: Keyword arguments forwarded to the helper.
+
+            Returns:
+                The returned `subprocess.CompletedProcess[str]` value used by the caller.
+            """
                 captured["args"] = args
                 captured.update(kwargs)
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 24680\n", stderr="")
@@ -378,7 +487,10 @@ class ServerTests(TestCase):
         self.assertEqual(submitted["execution_result"]["run_record"]["resource_spec"]["account"], "rcc-staff")
 
     def test_run_slurm_recipe_rejects_local_profile_artifact(self) -> None:
-        """Require Slurm recipes to be explicitly frozen with the Slurm profile."""
+        """Require Slurm recipes to be explicitly frozen with the Slurm profile.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             prepared = _prepare_run_recipe_impl(
                 "Run protein evidence alignment with genome data/braker3/reference/genome.fa and protein evidence data/braker3/protein_data/fastas/proteins.fa",
@@ -395,7 +507,10 @@ class ServerTests(TestCase):
         self.assertIn("execution_profile `slurm`", submitted["limitations"][0])
 
     def test_monitor_slurm_job_reconciles_saved_record(self) -> None:
-        """Expose Slurm status reconciliation through the server helper."""
+        """Expose Slurm status reconciliation through the server helper.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path)
@@ -409,6 +524,16 @@ class ServerTests(TestCase):
             )
 
             def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                """            Simulate sbatch submission and return a canned batch-job response.
+
+
+            Args:
+                args: The argument vector forwarded to the helper.
+                kwargs: Keyword arguments forwarded to the helper.
+
+            Returns:
+                The returned `subprocess.CompletedProcess[str]` value used by the caller.
+            """
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 44444\n", stderr="")
 
             submitted = _run_slurm_recipe_impl(
@@ -419,6 +544,16 @@ class ServerTests(TestCase):
             )
 
             def fake_scheduler(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                """            Simulate scheduler inspection commands and return a canned state snapshot.
+
+
+            Args:
+                args: The argument vector forwarded to the helper.
+                kwargs: Keyword arguments forwarded to the helper.
+
+            Returns:
+                The returned `subprocess.CompletedProcess[str]` value used by the caller.
+            """
                 if args[0] == "squeue":
                     return subprocess.CompletedProcess(args=args, returncode=0, stdout="PENDING\n", stderr="")
                 if args[0] == "scontrol":
@@ -445,7 +580,10 @@ class ServerTests(TestCase):
         self.assertEqual(status["lifecycle_result"]["scheduler_snapshot"]["source"], "squeue")
 
     def test_cancel_slurm_job_records_cancellation_request(self) -> None:
-        """Expose Slurm cancellation through the server helper."""
+        """Expose Slurm cancellation through the server helper.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path)
@@ -458,6 +596,16 @@ class ServerTests(TestCase):
             )
 
             def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                """            Simulate sbatch submission and return a canned batch-job response.
+
+
+            Args:
+                args: The argument vector forwarded to the helper.
+                kwargs: Keyword arguments forwarded to the helper.
+
+            Returns:
+                The returned `subprocess.CompletedProcess[str]` value used by the caller.
+            """
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 55555\n", stderr="")
 
             submitted = _run_slurm_recipe_impl(
@@ -469,6 +617,16 @@ class ServerTests(TestCase):
             calls: list[list[str]] = []
 
             def fake_scheduler(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                """            Simulate scheduler inspection commands and return a canned state snapshot.
+
+
+            Args:
+                args: The argument vector forwarded to the helper.
+                kwargs: Keyword arguments forwarded to the helper.
+
+            Returns:
+                The returned `subprocess.CompletedProcess[str]` value used by the caller.
+            """
                 calls.append(args)
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
 
@@ -484,7 +642,10 @@ class ServerTests(TestCase):
         self.assertEqual(cancelled["lifecycle_result"]["scheduler_state"], "cancellation_requested")
 
     def test_retry_slurm_job_resubmits_retryable_failure(self) -> None:
-        """Expose explicit Slurm retry through the server helper."""
+        """Expose explicit Slurm retry through the server helper.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path)
@@ -498,6 +659,16 @@ class ServerTests(TestCase):
             job_ids = iter(("55601", "55602"))
 
             def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                """            Simulate sbatch submission and return a canned batch-job response.
+
+
+            Args:
+                args: The argument vector forwarded to the helper.
+                kwargs: Keyword arguments forwarded to the helper.
+
+            Returns:
+                The returned `subprocess.CompletedProcess[str]` value used by the caller.
+            """
                 return subprocess.CompletedProcess(
                     args=args,
                     returncode=0,
@@ -538,7 +709,10 @@ class ServerTests(TestCase):
         self.assertEqual(retried["retry_result"]["retry_execution"]["execution_mode"], "slurm-workflow-spec-executor")
 
     def test_retry_slurm_job_declines_nonretryable_failure(self) -> None:
-        """Report terminal resource failures without resubmitting them."""
+        """Report terminal resource failures without resubmitting them.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path)
@@ -551,6 +725,16 @@ class ServerTests(TestCase):
             )
 
             def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                """            Simulate sbatch submission and return a canned batch-job response.
+
+
+            Args:
+                args: The argument vector forwarded to the helper.
+                kwargs: Keyword arguments forwarded to the helper.
+
+            Returns:
+                The returned `subprocess.CompletedProcess[str]` value used by the caller.
+            """
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 55701\n", stderr="")
 
             submitted = _run_slurm_recipe_impl(
@@ -584,7 +768,10 @@ class ServerTests(TestCase):
         self.assertIn("not retryable", retried["limitations"][0])
 
     def test_monitor_slurm_job_reports_missing_record(self) -> None:
-        """Report missing run records instead of inventing state."""
+        """Report missing run records instead of inventing state.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             status = _monitor_slurm_job_impl(Path(tmp) / "missing")
 
@@ -592,7 +779,10 @@ class ServerTests(TestCase):
         self.assertIn("No such file", status["limitations"][0])
 
     def test_run_slurm_recipe_reports_missing_sbatch_as_unsupported_environment(self) -> None:
-        """Expose an authenticated-environment diagnostic when `sbatch` is unavailable."""
+        """Expose an authenticated-environment diagnostic when `sbatch` is unavailable.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path)
@@ -614,7 +804,10 @@ class ServerTests(TestCase):
         self.assertIn("already-authenticated scheduler environment", submitted["limitations"][0])
 
     def test_monitor_slurm_job_reports_missing_scheduler_commands_as_unsupported_environment(self) -> None:
-        """Expose an authenticated-environment diagnostic when monitoring commands are unavailable."""
+        """Expose an authenticated-environment diagnostic when monitoring commands are unavailable.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path)
@@ -627,6 +820,16 @@ class ServerTests(TestCase):
             )
 
             def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                """            Simulate sbatch submission and return a canned batch-job response.
+
+
+            Args:
+                args: The argument vector forwarded to the helper.
+                kwargs: Keyword arguments forwarded to the helper.
+
+            Returns:
+                The returned `subprocess.CompletedProcess[str]` value used by the caller.
+            """
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 88888\n", stderr="")
 
             submitted = _run_slurm_recipe_impl(
@@ -646,7 +849,10 @@ class ServerTests(TestCase):
         self.assertIn("already-authenticated scheduler environment", status["limitations"][0])
 
     def test_prepare_run_recipe_accepts_busco_manifest_sources_and_runtime_bindings(self) -> None:
-        """Freeze BUSCO recipe bindings from an explicit repeat-filter manifest source."""
+        """Freeze BUSCO recipe bindings from an explicit repeat-filter manifest source.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path)
@@ -691,7 +897,10 @@ class ServerTests(TestCase):
         self.assertEqual(artifact.binding_plan.runtime_image.apptainer_image, "busco.sif")
 
     def test_prepare_run_recipe_preserves_explicit_slurm_profile(self) -> None:
-        """Freeze an explicitly requested Slurm profile into the saved recipe artifact."""
+        """Freeze an explicitly requested Slurm profile into the saved recipe artifact.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             prepared = _prepare_run_recipe_impl(
@@ -716,7 +925,10 @@ class ServerTests(TestCase):
         self.assertEqual(artifact.binding_plan.execution_profile, "slurm")
 
     def test_prepare_run_recipe_rejects_missing_manifest_sources(self) -> None:
-        """Return a structured decline when a manifest source cannot be validated."""
+        """Return a structured decline when a manifest source cannot be validated.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             prepared = _prepare_run_recipe_impl(
@@ -731,11 +943,23 @@ class ServerTests(TestCase):
         self.assertEqual(prepared["recipe_input_context"]["manifest_sources"], [str(tmp_path / "missing")])
 
     def test_prompt_and_run_accepts_busco_recipe_context(self) -> None:
-        """Allow the compatibility alias to execute BUSCO from explicit recipe inputs."""
+        """Allow the compatibility alias to execute BUSCO from explicit recipe inputs.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         prompt = "Run BUSCO quality assessment on the annotation."
         captured: dict[str, object] = {}
 
         def fake_workflow_runner(workflow_name: str, inputs: dict[str, object]) -> dict[str, object]:
+            """Capture the workflow name and inputs forwarded by the compatibility path.
+
+    Args:
+        workflow_name: The registered workflow or task name forwarded by the caller.
+        inputs: The inputs forwarded to the workflow or task helper.
+
+    Returns:
+        The returned `dict[str, object]` value used by the caller.
+"""
             captured["workflow_name"] = workflow_name
             captured["inputs"] = inputs
             return {
@@ -800,7 +1024,10 @@ class ServerTests(TestCase):
         self.assertEqual(payload["result_summary"]["resource_spec"]["memory"], "48Gi")
 
     def test_prepare_run_recipe_accepts_eggnog_manifest_sources_and_runtime_bindings(self) -> None:
-        """Freeze EggNOG recipe bindings from a repeat-filter manifest source."""
+        """Freeze EggNOG recipe bindings from a repeat-filter manifest source.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path)
@@ -834,7 +1061,10 @@ class ServerTests(TestCase):
         )
 
     def test_prepare_run_recipe_accepts_agat_manifest_sources(self) -> None:
-        """Freeze AGAT recipes from explicit EggNOG and AGAT conversion manifests."""
+        """Freeze AGAT recipes from explicit EggNOG and AGAT conversion manifests.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             eggnog_dir = _eggnog_manifest_dir(tmp_path)
@@ -874,7 +1104,10 @@ class ServerTests(TestCase):
         )
 
     def test_prepare_run_recipe_declines_ambiguous_eggnog_manifest_sources(self) -> None:
-        """Refuse to choose among multiple compatible EggNOG input manifests."""
+        """Refuse to choose among multiple compatible EggNOG input manifests.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             first = _eggnog_manifest_dir(tmp_path, "eggnog_results_a")
@@ -891,10 +1124,22 @@ class ServerTests(TestCase):
         self.assertIn("choose one explicitly", prepared["limitations"][0])
 
     def test_prompt_and_run_accepts_eggnog_recipe_context(self) -> None:
-        """Execute EggNOG through the recipe context and local workflow handler."""
+        """Execute EggNOG through the recipe context and local workflow handler.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         captured: dict[str, object] = {}
 
         def fake_workflow_runner(workflow_name: str, inputs: dict[str, object]) -> dict[str, object]:
+            """Capture the workflow name and inputs forwarded by the compatibility path.
+
+    Args:
+        workflow_name: The registered workflow or task name forwarded by the caller.
+        inputs: The inputs forwarded to the workflow or task helper.
+
+    Returns:
+        The returned `dict[str, object]` value used by the caller.
+"""
             captured["workflow_name"] = workflow_name
             captured["inputs"] = inputs
             return {
@@ -941,10 +1186,22 @@ class ServerTests(TestCase):
         self.assertEqual(payload["result_summary"]["used_inputs"]["eggnog_data_dir"], "/db/eggnog")
 
     def test_prompt_and_run_accepts_agat_cleanup_recipe_context(self) -> None:
-        """Execute AGAT cleanup from an explicit AGAT conversion manifest source."""
+        """Execute AGAT cleanup from an explicit AGAT conversion manifest source.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         captured: dict[str, object] = {}
 
         def fake_workflow_runner(workflow_name: str, inputs: dict[str, object]) -> dict[str, object]:
+            """Capture the workflow name and inputs forwarded by the compatibility path.
+
+    Args:
+        workflow_name: The registered workflow or task name forwarded by the caller.
+        inputs: The inputs forwarded to the workflow or task helper.
+
+    Returns:
+        The returned `dict[str, object]` value used by the caller.
+"""
             captured["workflow_name"] = workflow_name
             captured["inputs"] = inputs
             return {
@@ -978,7 +1235,10 @@ class ServerTests(TestCase):
         )
 
     def test_prompt_and_run_workflow_prompt_uses_extracted_inputs(self) -> None:
-        """Plan and dispatch the BRAKER3 example prompt through the workflow runner."""
+        """Plan and dispatch the BRAKER3 example prompt through the workflow runner.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         prompt = (
             "Annotate the genome sequence of a small eukaryote using BRAKER3 "
             "with genome data/braker3/reference/genome.fa, RNA-seq evidence data/braker3/rnaseq/RNAseq.bam, "
@@ -987,6 +1247,15 @@ class ServerTests(TestCase):
         captured: dict[str, object] = {}
 
         def fake_workflow_runner(workflow_name: str, inputs: dict[str, object]) -> dict[str, object]:
+            """Capture the workflow name and inputs forwarded by the compatibility path.
+
+    Args:
+        workflow_name: The registered workflow or task name forwarded by the caller.
+        inputs: The inputs forwarded to the workflow or task helper.
+
+    Returns:
+        The returned `dict[str, object]` value used by the caller.
+"""
             captured["workflow_name"] = workflow_name
             captured["inputs"] = inputs
             return {
@@ -1041,7 +1310,10 @@ class ServerTests(TestCase):
         self.assertIn("execution succeeded", payload["result_summary"]["message"])
 
     def test_prompt_and_run_reports_typed_preview_without_executing_broader_request(self) -> None:
-        """Layer broader typed planning into prompt-and-run without changing runnable targets."""
+        """Layer broader typed planning into prompt-and-run without changing runnable targets.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         payload = prompt_and_run("Create a generated WorkflowSpec for repeat filtering and BUSCO QC.")
 
         self.assertFalse(payload["supported"])
@@ -1052,7 +1324,10 @@ class ServerTests(TestCase):
         self.assertIsNotNone(payload["typed_planning"]["workflow_spec"])
 
     def test_prompt_and_run_protein_workflow_prompt_uses_extracted_inputs(self) -> None:
-        """Plan and dispatch the protein-evidence example prompt through the workflow runner."""
+        """Plan and dispatch the protein-evidence example prompt through the workflow runner.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         prompt = (
             "Run protein evidence alignment with genome data/braker3/reference/genome.fa and "
             "protein evidence data/braker3/protein_data/fastas/proteins.fa"
@@ -1060,6 +1335,15 @@ class ServerTests(TestCase):
         captured: dict[str, object] = {}
 
         def fake_workflow_runner(workflow_name: str, inputs: dict[str, object]) -> dict[str, object]:
+            """Capture the workflow name and inputs forwarded by the compatibility path.
+
+    Args:
+        workflow_name: The registered workflow or task name forwarded by the caller.
+        inputs: The inputs forwarded to the workflow or task helper.
+
+    Returns:
+        The returned `dict[str, object]` value used by the caller.
+"""
             captured["workflow_name"] = workflow_name
             captured["inputs"] = inputs
             return {
@@ -1107,7 +1391,10 @@ class ServerTests(TestCase):
         self.assertEqual(payload["result_summary"]["output_paths"], ["/tmp/protein_evidence_results"])
 
     def test_prompt_and_run_task_prompt_uses_extracted_inputs(self) -> None:
-        """Plan and dispatch the Exonerate example prompt through the task runner."""
+        """Plan and dispatch the Exonerate example prompt through the task runner.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         prompt = (
             "Experiment with Exonerate protein-to-genome alignment using genome "
             "data/braker3/reference/genome.fa and protein chunk data/braker3/protein_data/fastas/proteins.fa"
@@ -1115,6 +1402,15 @@ class ServerTests(TestCase):
         captured: dict[str, object] = {}
 
         def fake_task_runner(task_name: str, inputs: dict[str, object]) -> dict[str, object]:
+            """Capture the task name and inputs forwarded by the compatibility path.
+
+    Args:
+        task_name: The registered workflow or task name forwarded by the caller.
+        inputs: The inputs forwarded to the workflow or task helper.
+
+    Returns:
+        The returned `dict[str, object]` value used by the caller.
+"""
             captured["task_name"] = task_name
             captured["inputs"] = inputs
             return {
@@ -1163,18 +1459,38 @@ class ServerTests(TestCase):
         self.assertEqual(payload["result_summary"]["output_paths"], ["/tmp/exonerate_results"])
 
     def test_run_task_supports_busco_fixture_task(self) -> None:
-        """Dispatch the M18 BUSCO fixture task through the direct task runner."""
+        """Dispatch the M18 BUSCO fixture task through the direct task runner.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
 
         class _Result:
-            """Small fake Flyte directory result used by the BUSCO task runner."""
+            """Small fake Flyte directory result used by the BUSCO task runner.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
             def download_sync(self) -> str:
-                """Return the synthetic BUSCO output path."""
+                """Return the synthetic BUSCO output path.
+
+    This helper keeps the test fixture deterministic and explicit.
+
+    Returns:
+        The returned str value used by the test fixture.
+"""
                 return "/tmp/busco_fixture_results"
 
         captured: dict[str, object] = {}
 
         def fake_busco_assess_proteins(**kwargs: object) -> _Result:
+            """Capture the BUSCO task inputs and return a synthetic result object.
+
+    Args:
+        kwargs: Keyword arguments forwarded to the helper.
+
+    Returns:
+        The returned `_Result` value used by the caller.
+"""
             captured.update(kwargs)
             return _Result()
 
@@ -1197,13 +1513,25 @@ class ServerTests(TestCase):
         self.assertEqual(captured["busco_mode"], "geno")
 
     def test_prompt_and_run_no_longer_blocks_downstream_terms(self) -> None:
-        """Execute the day-one target without the old downstream term blocklist."""
+        """Execute the day-one target without the old downstream term blocklist.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         prompt = (
             "Run protein evidence alignment with genome data/braker3/reference/genome.fa and protein evidence data/braker3/protein_data/fastas/proteins.fa, "
             "then continue into EVM and BUSCO."
         )
 
         def fake_workflow_runner(workflow_name: str, inputs: dict[str, object]) -> dict[str, object]:
+            """Capture the workflow name and inputs forwarded by the compatibility path.
+
+    Args:
+        workflow_name: The registered workflow or task name forwarded by the caller.
+        inputs: The inputs forwarded to the workflow or task helper.
+
+    Returns:
+        The returned `dict[str, object]` value used by the caller.
+"""
             self.assertEqual(workflow_name, SUPPORTED_PROTEIN_WORKFLOW_NAME)
             return {
                 "supported": True,
@@ -1230,7 +1558,10 @@ class ServerTests(TestCase):
         self.assertEqual(payload["result_summary"]["target_name"], SUPPORTED_PROTEIN_WORKFLOW_NAME)
 
     def test_prompt_and_run_declines_missing_inputs(self) -> None:
-        """Decline supported language when the prompt omits explicit runnable paths."""
+        """Decline supported language when the prompt omits explicit runnable paths.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         prompt = "Experiment with Exonerate protein-to-genome alignment on this genome."
 
         payload = prompt_and_run(prompt)
@@ -1245,7 +1576,10 @@ class ServerTests(TestCase):
         self.assertEqual(payload["result_summary"]["target_name"], SUPPORTED_TASK_NAME)
 
     def test_prompt_and_run_declines_unsupported_request_with_codes(self) -> None:
-        """Return stable unsupported-request codes when the prompt does not map cleanly."""
+        """Return stable unsupported-request codes when the prompt does not map cleanly.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         payload = prompt_and_run("Summarize the repository status for me.")
 
         self.assertFalse(payload["supported"])
@@ -1256,13 +1590,25 @@ class ServerTests(TestCase):
         self.assertEqual(payload["result_summary"]["reason_code"], "unsupported_or_ambiguous_request")
 
     def test_prompt_and_run_summarizes_execution_failure(self) -> None:
-        """Report a compact failure summary when the matched execution returns non-zero."""
+        """Report a compact failure summary when the matched execution returns non-zero.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         prompt = (
             "Annotate the genome sequence using BRAKER3 "
             "with genome data/braker3/reference/genome.fa and protein evidence data/braker3/protein_data/fastas/proteins.fa"
         )
 
         def fake_workflow_runner(workflow_name: str, inputs: dict[str, object]) -> dict[str, object]:
+            """Capture the workflow name and inputs forwarded by the compatibility path.
+
+    Args:
+        workflow_name: The registered workflow or task name forwarded by the caller.
+        inputs: The inputs forwarded to the workflow or task helper.
+
+    Returns:
+        The returned `dict[str, object]` value used by the caller.
+"""
             self.assertEqual(workflow_name, SUPPORTED_WORKFLOW_NAME)
             self.assertEqual(
                 inputs,
@@ -1308,10 +1654,22 @@ class ServerTests(TestCase):
         self.assertIn("BRAKER3 failed to start", payload["result_summary"]["message"])
 
     def test_run_workflow_builds_expected_flyte_command(self) -> None:
-        """Shell out through the compatibility entrypoint with explicit local inputs."""
+        """Shell out through the compatibility entrypoint with explicit local inputs.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         captured: dict[str, object] = {}
 
         def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            """Simulate an external command invocation and record the provided args.
+
+    Args:
+        args: The argument vector forwarded to the helper.
+        kwargs: Keyword arguments forwarded to the helper.
+
+    Returns:
+        The returned `subprocess.CompletedProcess[str]` value used by the caller.
+"""
             captured["args"] = args
             captured.update(kwargs)
             return subprocess.CompletedProcess(
@@ -1345,7 +1703,10 @@ class ServerTests(TestCase):
         self.assertEqual(response["exit_status"], 0)
 
     def test_prepare_direct_workflow_inputs_wraps_collection_file_values(self) -> None:
-        """Coerce collection-shaped workflow inputs into Flyte file artifacts for direct calls."""
+        """Coerce collection-shaped workflow inputs into Flyte file artifacts for direct calls.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         from flyte.io import File
         from flytetest.workflows.protein_evidence import protein_evidence_alignment
 
@@ -1370,10 +1731,22 @@ class ServerTests(TestCase):
         self.assertEqual(prepared["proteins_per_chunk"], 250)
 
     def test_run_workflow_uses_direct_python_for_collection_inputs(self) -> None:
-        """Bypass the Flyte CLI when a workflow input includes collection-shaped values."""
+        """Bypass the Flyte CLI when a workflow input includes collection-shaped values.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         captured: dict[str, object] = {}
 
         def fake_direct(workflow_name: str, inputs: dict[str, object]) -> dict[str, object]:
+            """Capture direct workflow invocation inputs for the compatibility path.
+
+    Args:
+        workflow_name: The registered workflow or task name forwarded by the caller.
+        inputs: The inputs forwarded to the workflow or task helper.
+
+    Returns:
+        The returned `dict[str, object]` value used by the caller.
+"""
             captured["workflow_name"] = workflow_name
             captured["inputs"] = inputs
             return {
@@ -1421,7 +1794,10 @@ class ServerTests(TestCase):
         self.assertEqual(response["exit_status"], 0)
 
     def test_resolve_flyte_cli_prefers_repo_local_virtualenv_binary(self) -> None:
-        """Use the repo-local `.venv` Flyte CLI when this checkout provides one."""
+        """Use the repo-local `.venv` Flyte CLI when this checkout provides one.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         self.assertEqual(
             _resolve_flyte_cli(),
             str((Path(__file__).resolve().parents[1] / ".venv" / "bin" / "flyte")),

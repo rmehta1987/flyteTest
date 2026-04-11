@@ -36,7 +36,7 @@ Manipulate SAM/BAM alignment files for downstream transcript-evidence and annota
 - [samtools sort manual](https://www.htslib.org/doc/samtools-sort.html)
 - [samtools index manual](https://www.htslib.org/doc/samtools-index.html)
 
-## Tutorial And Training References
+## Tutorial References
 
 - [GTN Reference-based RNA-Seq data analysis tutorial](https://training.galaxyproject.org/training-material/topics/transcriptomics/tutorials/ref-based/tutorial.html)
 - [GTN QC + Mapping + Counting workflow from the same tutorial set](https://training.galaxyproject.org/training-material/topics/transcriptomics/tutorials/ref-based/workflows/qc-mapping-counting-paired-and-single.html)

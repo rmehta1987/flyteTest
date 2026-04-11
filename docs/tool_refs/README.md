@@ -64,6 +64,11 @@ Many existing references still use `Key Inputs` / `Key Outputs` instead of
 `Input Data` / `Output Data`; that is acceptable as long as the file still makes
 the native tool contract explicit and does not fold in stage wiring.
 
+Use `Tutorial References` as the standard heading name for any section that
+points to training material. Older `Tutorial And Training` variants are still
+understandable, but new or touched files should prefer the shorter title so the
+set stays visually consistent.
+
 The command-context sections should stay short and repo-oriented:
 
 - show the kinds of files FLyteTest passes to the tool

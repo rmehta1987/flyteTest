@@ -13,6 +13,14 @@ filtering.
   libraries, or a custom repeat-library FASTA passed with `-lib`
 - options such as masking level, speed, and specific DNA species searches
 
+## Output Data
+
+- masked FASTA (`.masked`)
+- output table (`.out`)
+- summary table (`.tbl`)
+- optional annotation/GFF (`.gff`)
+- optional alignment/map (`.align` or `.map`)
+
 ## Key Inputs
 
 - genome FASTA query sequence, such as `data/repeatmasker/genome_raw.fasta`
@@ -29,14 +37,6 @@ Local fixture context for optional smoke planning:
   `scripts/rcc/download_minimal_repeatmasker_fixture.sh`
 - use synthetic inputs or an external RepeatMasker `.out` file when planning
   the conversion boundary if the GTN fixture has not been staged yet
-
-## Output Data
-
-- masked FASTA (`.masked`)
-- output table (`.out`)
-- summary table (`.tbl`)
-- optional annotation/GFF (`.gff`)
-- optional alignment/map (`.align` or `.map`)
 
 ## Key Outputs
 
@@ -69,25 +69,6 @@ Local fixture context for optional smoke planning:
 
 - [`src/flytetest/tasks/filtering.py`](src/flytetest/tasks/filtering.py)
 - that module implements the downstream RepeatMasker conversion boundary used by repeat filtering
-
-## Repo Smoke Fixture
-
-- The GTN RepeatMasker tutorial links the input genome and two pre-computed
-  Mucor mucedo repeat libraries from Zenodo record `7085837`.
-- Stage those tutorial files under `data/repeatmasker/` with:
-
-```bash
-bash scripts/rcc/download_minimal_repeatmasker_fixture.sh
-```
-
-- The expected staged files are:
-  - `data/repeatmasker/genome_raw.fasta`
-  - `data/repeatmasker/Muco_library_RM2.fasta`
-  - `data/repeatmasker/Muco_library_EDTA.fasta`
-- The source URLs are:
-  - `https://zenodo.org/record/7085837/files/genome_raw.fasta`
-  - `https://zenodo.org/record/7085837/files/Muco_library_RM2.fasta`
-  - `https://zenodo.org/record/7085837/files/Muco_library_EDTA.fasta`
 
 ## Native Command Context
 
@@ -162,3 +143,22 @@ Deliver:
 - The downstream BED coordinates are intentionally copied from the converted
   GFF fields used by the existing BRaker/EVM notes rather than normalized
   further.
+
+## Repo Smoke Fixture
+
+- The GTN RepeatMasker tutorial links the input genome and two pre-computed
+  Mucor mucedo repeat libraries from Zenodo record `7085837`.
+- Stage those tutorial files under `data/repeatmasker/` with:
+
+```bash
+bash scripts/rcc/download_minimal_repeatmasker_fixture.sh
+```
+
+- The expected staged files are:
+  - `data/repeatmasker/genome_raw.fasta`
+  - `data/repeatmasker/Muco_library_RM2.fasta`
+  - `data/repeatmasker/Muco_library_EDTA.fasta`
+- The source URLs are:
+  - `https://zenodo.org/record/7085837/files/genome_raw.fasta`
+  - `https://zenodo.org/record/7085837/files/Muco_library_RM2.fasta`
+  - `https://zenodo.org/record/7085837/files/Muco_library_EDTA.fasta`

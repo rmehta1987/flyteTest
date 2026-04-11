@@ -1,18 +1,16 @@
 """BUSCO-based annotation-QC tasks for the post-repeat-filtering milestone.
 
-This module runs one BUSCO protein assessment per lineage downstream of the
-repeat-filtered annotation boundary and collects deterministic QC bundles
-without broadening into EggNOG, AGAT, or submission-prep work.
+    This module runs one BUSCO protein assessment per lineage downstream of the
+    repeat-filtered annotation boundary and collects deterministic QC bundles
+    without broadening into EggNOG, AGAT, or submission-prep work.
 
-Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
-input/output expectations follow `docs/tool_refs/busco.md`.
+    Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
+    input/output expectations follow `docs/tool_refs/busco.md`.
 """
 
 from __future__ import annotations
 
 import csv
-import json
-import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -28,6 +26,13 @@ from flytetest.config import (
     require_path,
     run_tool,
 )
+from flytetest.manifest_io import (
+    as_json_compatible as _as_json_compatible,
+    copy_file as _copy_file,
+    copy_tree as _copy_tree,
+    read_json as _read_json,
+    write_json as _write_json,
+)
 
 
 DEFAULT_BUSCO_LINEAGES_TEXT = (
@@ -35,52 +40,29 @@ DEFAULT_BUSCO_LINEAGES_TEXT = (
 )
 
 
-def _as_json_compatible(value: Any) -> Any:
-    """Recursively convert manifest values into JSON-serializable primitives."""
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, dict):
-        return {key: _as_json_compatible(item) for key, item in value.items()}
-    if isinstance(value, tuple):
-        return [_as_json_compatible(item) for item in value]
-    if isinstance(value, list):
-        return [_as_json_compatible(item) for item in value]
-    return value
-
-
-def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    """Write an indented JSON payload to a stable path."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(_as_json_compatible(payload), indent=2))
-
-
-def _read_json(path: Path) -> dict[str, Any]:
-    """Read one JSON manifest into a dictionary."""
-    return json.loads(path.read_text())
-
-
-def _copy_file(source: Path, destination: Path) -> Path:
-    """Copy one file into a deterministic destination path."""
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, destination)
-    return destination
-
-
-def _copy_tree(source: Path, destination: Path) -> Path:
-    """Copy one directory tree into a deterministic destination path."""
-    if destination.exists():
-        shutil.rmtree(destination)
-    shutil.copytree(source, destination)
-    return destination
-
-
 def _manifest_path(directory: Path, label: str) -> Path:
-    """Resolve the manifest expected under one staged or collected directory."""
+    """Resolve the manifest expected under one staged or collected directory.
+
+    Args:
+        directory: A value used by the helper.
+        label: A value used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     return require_path(directory / "run_manifest.json", f"{label} manifest")
 
 
 def _manifest_output_path(manifest: dict[str, Any], key: str) -> Path | None:
-    """Resolve one manifest-recorded output path when present."""
+    """Resolve one manifest-recorded output path when present.
+
+    Args:
+        manifest: A value used by the helper.
+        key: A value used by the helper.
+
+    Returns:
+        The returned `Path | None` value used by the caller.
+"""
     output_path = manifest.get("outputs", {}).get(key)
     if not output_path:
         return None
@@ -88,7 +70,14 @@ def _manifest_output_path(manifest: dict[str, Any], key: str) -> Path | None:
 
 
 def _lineages_from_text(busco_lineages_text: str) -> list[str]:
-    """Split a comma-separated lineage list into deterministic BUSCO inputs."""
+    """Split a comma-separated lineage list into deterministic BUSCO inputs.
+
+    Args:
+        busco_lineages_text: A value used by the helper.
+
+    Returns:
+        The returned `list[str]` value used by the caller.
+"""
     lineages = [item.strip() for item in busco_lineages_text.split(",") if item.strip()]
     if not lineages:
         raise ValueError("At least one BUSCO lineage must be supplied.")
@@ -96,19 +85,40 @@ def _lineages_from_text(busco_lineages_text: str) -> list[str]:
 
 
 def _lineage_slug(lineage_dataset: str) -> str:
-    """Return a filesystem-safe slug for one BUSCO lineage dataset input."""
+    """Return a filesystem-safe slug for one BUSCO lineage dataset input.
+
+    Args:
+        lineage_dataset: A value used by the helper.
+
+    Returns:
+        The returned `str` value used by the caller.
+"""
     base_name = Path(lineage_dataset).name or lineage_dataset
     slug = "".join(char if char.isalnum() or char in {"_", "-", "."} else "_" for char in base_name)
     return slug or "busco_lineage"
 
 
 def _busco_output_name(lineage_dataset: str) -> str:
-    """Return the deterministic BUSCO output-name prefix for one lineage."""
+    """Return the deterministic BUSCO output-name prefix for one lineage.
+
+    Args:
+        lineage_dataset: A value used by the helper.
+
+    Returns:
+        The returned `str` value used by the caller.
+"""
     return f"busco_output_{_lineage_slug(lineage_dataset)}"
 
 
 def _busco_short_summary(run_dir: Path) -> Path | None:
-    """Resolve the short BUSCO summary text file when the run emitted one."""
+    """Resolve the short BUSCO summary text file when the run emitted one.
+
+    Args:
+        run_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `Path | None` value used by the caller.
+"""
     candidates = sorted(run_dir.glob("short_summary*.txt"))
     if not candidates:
         return None
@@ -116,7 +126,14 @@ def _busco_short_summary(run_dir: Path) -> Path | None:
 
 
 def _busco_full_table(run_dir: Path) -> Path | None:
-    """Resolve the BUSCO full table when the run emitted one."""
+    """Resolve the BUSCO full table when the run emitted one.
+
+    Args:
+        run_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `Path | None` value used by the caller.
+"""
     candidate = run_dir / "full_table.tsv"
     if candidate.exists():
         return candidate
@@ -124,7 +141,14 @@ def _busco_full_table(run_dir: Path) -> Path | None:
 
 
 def _busco_summary_notation(summary_path: Path | None) -> str | None:
-    """Extract the BUSCO `C:/S:/D:/F:/M:` notation line when present."""
+    """Extract the BUSCO `C:/S:/D:/F:/M:` notation line when present.
+
+    Args:
+        summary_path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `str | None` value used by the caller.
+"""
     if summary_path is None:
         return None
     for raw_line in summary_path.read_text().splitlines():
@@ -135,7 +159,14 @@ def _busco_summary_notation(summary_path: Path | None) -> str | None:
 
 
 def _repeat_filter_final_proteins(results_dir: Path) -> Path:
-    """Resolve the final repeat-filtered protein FASTA from a results bundle."""
+    """Resolve the final repeat-filtered protein FASTA from a results bundle.
+
+    Args:
+        results_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     manifest_path = results_dir / "run_manifest.json"
     if manifest_path.exists():
         manifest = _read_json(manifest_path)
@@ -149,7 +180,15 @@ def _repeat_filter_final_proteins(results_dir: Path) -> Path:
 
 
 def _write_busco_summary(rows: list[dict[str, str]], destination: Path) -> Path:
-    """Write a deterministic TSV summarizing copied BUSCO lineage runs."""
+    """Write a deterministic TSV summarizing copied BUSCO lineage runs.
+
+    Args:
+        rows: A value used by the helper.
+        destination: A filesystem path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     destination.parent.mkdir(parents=True, exist_ok=True)
     with destination.open("w", newline="") as handle:
         writer = csv.DictWriter(
@@ -177,7 +216,18 @@ def busco_assess_proteins(
     busco_cpu: int = 8,
     busco_mode: str = "prot",
 ) -> Dir:
-    """Run BUSCO on one protein FASTA against one selected lineage dataset."""
+    """Run BUSCO on one protein FASTA against one selected lineage dataset.
+
+    Args:
+        proteins_fasta: A value used by the helper.
+        lineage_dataset: A value used by the helper.
+        busco_sif: A value used by the helper.
+        busco_cpu: A value used by the helper.
+        busco_mode: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     proteins_path = require_path(Path(proteins_fasta.download_sync()), "Proteins FASTA")
     work_root = project_mkdtemp("busco_run_") / "busco"
     work_root.mkdir(parents=True, exist_ok=True)
@@ -237,7 +287,16 @@ def collect_busco_results(
     busco_runs: list[Dir],
     busco_lineages_text: str = DEFAULT_BUSCO_LINEAGES_TEXT,
 ) -> Dir:
-    """Collect BUSCO lineage runs into a manifest-bearing QC bundle."""
+    """Collect BUSCO lineage runs into a manifest-bearing QC bundle.
+
+    Args:
+        repeat_filter_results: A directory path used by the helper.
+        busco_runs: A value used by the helper.
+        busco_lineages_text: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     if not busco_runs:
         raise ValueError("collect_busco_results requires at least one BUSCO run directory.")
 

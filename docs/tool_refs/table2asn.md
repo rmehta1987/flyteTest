@@ -43,7 +43,7 @@ Create NCBI GenBank submission records from genome sequence plus annotation inpu
 - [NCBI Eukaryotic Annotated Genome Submission Guide](https://www.ncbi.nlm.nih.gov/genbank/eukaryotic_genome_submission/)
 - [NCBI Genome Submission Portal](https://submit.ncbi.nlm.nih.gov/about/genome/)
 
-## Tutorial / Training References
+## Tutorial References
 
 - GTN coverage appears weak or absent for `table2asn`; I did not find a direct table2asn tutorial in current GTN search results.
 - For broader submission context, the GTN genome-annotation material points users back to NCBI submission documentation rather than a detailed table2asn walkthrough.

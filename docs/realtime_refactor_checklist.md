@@ -1048,20 +1048,20 @@ Status: Complete
 Goal: extract shared manifest and file-operation helpers so task modules stop
 duplicating the same JSON and copy logic.
 
-Status: Not started
+Status: Complete
 
-### Still required
+### Done
 
-- [ ] Add a shared manifest helper module for JSON-compatible conversion,
+- [x] Add a shared manifest helper module for JSON-compatible conversion,
       read/write, and deterministic file-copy helpers used by task modules.
-- [ ] Migrate the most duplicated task modules to the shared helpers without
+- [x] Migrate the most duplicated task modules to the shared helpers without
       changing manifest behavior or result-bundle paths.
-- [ ] Keep current `run_manifest.json` shapes readable and truthful during the
+- [x] Keep current `run_manifest.json` shapes readable and truthful during the
       transition.
-- [ ] Add focused tests for the shared helpers and one or two migrated call
+- [x] Add focused tests for the shared helpers and one or two migrated call
       sites.
-- [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
-      after the behavior lands.
+- [x] Update the 18a handoff prompt and this checklist after the behavior
+      landed.
 
 ### Milestone 18a implementation note
 
@@ -1091,20 +1091,20 @@ Status: Not started
 Goal: centralize GFF3 attribute parsing, formatting, escaping, and common
 filtering helpers used by EggNOG and repeat filtering.
 
-Status: Not started
+Status: Complete
 
-### Still required
+### Done
 
-- [ ] Add a shared `gff3` utility module with ordered attribute parsing and
+- [x] Add a shared `gff3` utility module with ordered attribute parsing and
       formatting helpers.
-- [ ] Centralize escaping and ID / Parent filtering helpers needed by EggNOG
+- [x] Centralize escaping and ID / Parent filtering helpers needed by EggNOG
       propagation and repeat-filter cleanup.
-- [ ] Migrate the current EggNOG and repeat-filter callers while preserving
+- [x] Migrate the current EggNOG and repeat-filter callers while preserving
       exact GFF3 output ordering and behavior.
-- [ ] Add focused tests that prove the shared helpers preserve the current
+- [x] Add focused tests that prove the shared helpers preserve the current
       file outputs.
-- [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
-      after the behavior lands.
+- [x] Update the 18b handoff prompt and this checklist after the behavior
+      landed.
 
 ### Milestone 18b implementation note
 
@@ -1134,20 +1134,21 @@ Status: Not started
 Goal: standardize the common manifest envelope so task modules record
 assumptions, inputs, outputs, and code references consistently.
 
-Status: Not started
+Status: Complete
 
-### Still required
+### Done
 
-- [ ] Add a small manifest-envelope helper that standardizes the common
+- [x] Add a small manifest-envelope helper that standardizes the common
       `stage` / `assumptions` / `inputs` / `outputs` shape.
-- [ ] Decide whether `code_reference` or `tool_ref` should be a required or
-      optional field in the shared envelope.
-- [ ] Update task modules to use the helper while preserving their task-
+- [x] Decide that `code_reference` and `tool_ref` remain optional in the
+      shared envelope so task-specific manifests can opt in without a schema
+      rewrite.
+- [x] Update task modules to use the helper while preserving their task-
       specific fields and current result-bundle paths.
-- [ ] Add focused tests that check the standardized envelope without forcing a
+- [x] Add focused tests that check the standardized envelope without forcing a
       global manifest schema rewrite.
-- [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
-      after the behavior lands.
+- [x] Update the 18c handoff prompt, this checklist, and the capability
+      snapshot after the behavior landed.
 
 ### Milestone 18c implementation note
 

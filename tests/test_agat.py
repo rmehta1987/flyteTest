@@ -1,8 +1,8 @@
 """Synthetic tests for the AGAT post-EggNOG milestone slices.
 
-These checks keep the EggNOG-annotated GFF3 boundary, AGAT statistics,
-conversion command wiring, deterministic cleanup, and result-bundle collection
-honest without requiring a local AGAT installation.
+    These checks keep the EggNOG-annotated GFF3 boundary, AGAT statistics,
+    conversion command wiring, deterministic cleanup, and result-bundle collection
+    honest without requiring a local AGAT installation.
 """
 
 from __future__ import annotations
@@ -35,26 +35,56 @@ from flytetest.workflows.agat import (
 
 
 def _read_json(path: Path) -> dict[str, object]:
-    """Read one JSON manifest into a dictionary for assertions."""
+    """Read one JSON manifest into a dictionary for assertions.
+
+    Args:
+        path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `dict[str, object]` value used by the caller.
+"""
     return json.loads(path.read_text())
 
 
 def _write_json(path: Path, payload: dict[str, object]) -> Path:
-    """Write one JSON payload with indentation for readable failures."""
+    """Write one JSON payload with indentation for readable failures.
+
+    Args:
+        path: A filesystem path used by the helper.
+        payload: The structured payload to serialize or inspect.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2))
     return path
 
 
 def _write_text(path: Path, contents: str) -> Path:
-    """Write one small text file used as a synthetic annotation fixture."""
+    """Write one small text file used as a synthetic annotation fixture.
+
+    Args:
+        path: A filesystem path used by the helper.
+        contents: The text content written into the synthetic file.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(contents)
     return path
 
 
 def _write_gff3(path: Path) -> Path:
-    """Write a minimal EggNOG-annotated GFF3 boundary."""
+    """Write a minimal EggNOG-annotated GFF3 boundary.
+
+    Args:
+        path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         "\n".join(
@@ -73,7 +103,14 @@ def _write_gff3(path: Path) -> Path:
 
 
 def _create_eggnog_results(tmp_path: Path) -> Path:
-    """Create a minimal EggNOG results bundle with a decorated GFF3 boundary."""
+    """Create a minimal EggNOG results bundle with a decorated GFF3 boundary.
+
+    Args:
+        tmp_path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     results_dir = tmp_path / "eggnog_results"
     gff3_path = _write_gff3(results_dir / "all_repeats_removed.eggnog.gff3")
     _write_json(
@@ -89,7 +126,14 @@ def _create_eggnog_results(tmp_path: Path) -> Path:
 
 
 def _create_agat_conversion_results(tmp_path: Path) -> Path:
-    """Create a minimal AGAT conversion results bundle with a converted GFF3."""
+    """Create a minimal AGAT conversion results bundle with a converted GFF3.
+
+    Args:
+        tmp_path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     results_dir = tmp_path / "agat_conversion_results"
     gff3_path = _write_gff3(results_dir / "all_repeats_removed.agat.gff3")
     _write_json(
@@ -105,32 +149,64 @@ def _create_agat_conversion_results(tmp_path: Path) -> Path:
 
 
 def _fixed_datetime(stamp: str = "20260404_160000") -> type:
-    """Return a deterministic timestamp provider for result-directory naming."""
+    """Return a deterministic timestamp provider for result-directory naming.
+
+    Args:
+        stamp: The timestamp value used by the synthetic datetime shim.
+
+    Returns:
+        The returned `type` value used by the caller.
+"""
 
     # Keep the synthetic result-directory name stable for manifest assertions.
     class _Stamp:
-        """Fake datetime stamp that always returns the same test timestamp."""
+        """Fake datetime stamp that always returns the same test timestamp.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
         def strftime(self, fmt: str) -> str:
-            """Return the fixed timestamp string expected by the assertions."""
+            """Return the fixed timestamp string expected by the assertions.
+
+    Args:
+        fmt: A value used by the helper.
+
+    Returns:
+        The returned `str` value used by the caller.
+"""
             return stamp
 
     class _FixedDatetime:
-        """Shim object that mimics the subset of `datetime` used by the code."""
+        """Shim object that mimics the subset of `datetime` used by the code.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
         @classmethod
         def now(cls) -> _Stamp:
-            """Return the fixed timestamp stub used by the synthetic tests."""
+            """Return the fixed timestamp stub used by the synthetic tests.
+
+    This helper keeps the test fixture deterministic and explicit.
+
+    Returns:
+        The returned _Stamp value used by the test fixture.
+"""
             return _Stamp()
 
     return _FixedDatetime
 
 
 class AgatTaskTests(TestCase):
-    """Task-level coverage for the AGAT post-processing slices."""
+    """Task-level coverage for the AGAT post-processing slices.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
     def test_agat_statistics_runs_the_statistics_command_with_optional_fasta(self) -> None:
-        """Keep the AGAT command and output collection aligned with the AGAT task ref."""
+        """Keep the AGAT command and output collection aligned with the AGAT task ref.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             eggnog_results = _create_eggnog_results(tmp_path)
@@ -144,6 +220,16 @@ class AgatTaskTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
+                """            Capture the AGAT statistics command and stage a synthetic output file.
+
+
+            Args:
+                cmd: The command arguments or command name passed to the helper.
+                sif: The container image reference used for execution.
+                bind_paths: The filesystem paths bound into the execution environment.
+                cwd: The working directory for the helper execution.
+                stdout_path: A filesystem path used by the helper.
+            """
                 captured["cmd"] = cmd
                 captured["bind_paths"] = bind_paths
                 self.assertIsNotNone(cwd)
@@ -191,7 +277,10 @@ class AgatTaskTests(TestCase):
             self.assertEqual(manifest["outputs"]["agat_statistics_tsv"], str(results_dir / "agat_statistics.tsv"))
 
     def test_agat_convert_sp_gxf2gxf_runs_the_conversion_command(self) -> None:
-        """Keep the AGAT conversion command and output collection aligned with the AGAT task ref."""
+        """Keep the AGAT conversion command and output collection aligned with the AGAT task ref.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             eggnog_results = _create_eggnog_results(tmp_path)
@@ -204,6 +293,16 @@ class AgatTaskTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
+                """            Capture the AGAT conversion command and stage a synthetic output file.
+
+
+            Args:
+                cmd: The command arguments or command name passed to the helper.
+                sif: The container image reference used for execution.
+                bind_paths: The filesystem paths bound into the execution environment.
+                cwd: The working directory for the helper execution.
+                stdout_path: A filesystem path used by the helper.
+            """
                 captured["cmd"] = cmd
                 captured["bind_paths"] = bind_paths
                 self.assertIsNotNone(cwd)
@@ -247,7 +346,10 @@ class AgatTaskTests(TestCase):
             self.assertEqual(manifest["outputs"]["agat_converted_gff3"], str(results_dir / "all_repeats_removed.agat.gff3"))
 
     def test_agat_cleanup_gff3_applies_the_notes_backed_attribute_cleanup(self) -> None:
-        """Apply the post-AGAT cleanup rules without running table2asn."""
+        """Apply the post-AGAT cleanup rules without running table2asn.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             conversion_results = _create_agat_conversion_results(tmp_path)
@@ -279,10 +381,16 @@ class AgatTaskTests(TestCase):
 
 
 class AgatWorkflowTests(TestCase):
-    """Workflow-level coverage for the AGAT post-processing entrypoints."""
+    """Workflow-level coverage for the AGAT post-processing entrypoints.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
     def test_annotation_postprocess_agat_collects_the_statistics_only_slice(self) -> None:
-        """Run the workflow wrapper without an optional FASTA and keep the bundle stable."""
+        """Run the workflow wrapper without an optional FASTA and keep the bundle stable.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             eggnog_results = _create_eggnog_results(tmp_path)
@@ -294,6 +402,16 @@ class AgatWorkflowTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
+                """            Stage the synthetic AGAT statistics output without optional FASTA input.
+
+
+            Args:
+                cmd: The command arguments or command name passed to the helper.
+                sif: The container image reference used for execution.
+                bind_paths: The filesystem paths bound into the execution environment.
+                cwd: The working directory for the helper execution.
+                stdout_path: A filesystem path used by the helper.
+            """
                 self.assertIsNotNone(cwd)
                 work_dir = Path(cwd)
                 (work_dir / "agat_output").mkdir(parents=True, exist_ok=True)
@@ -321,7 +439,10 @@ class AgatWorkflowTests(TestCase):
             )
 
     def test_annotation_postprocess_agat_conversion_collects_the_normalized_gff3_slice(self) -> None:
-        """Run the conversion workflow wrapper and keep the normalized bundle stable."""
+        """Run the conversion workflow wrapper and keep the normalized bundle stable.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             eggnog_results = _create_eggnog_results(tmp_path)
@@ -333,6 +454,16 @@ class AgatWorkflowTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
+                """            Stage the synthetic AGAT conversion output for the workflow wrapper.
+
+
+            Args:
+                cmd: The command arguments or command name passed to the helper.
+                sif: The container image reference used for execution.
+                bind_paths: The filesystem paths bound into the execution environment.
+                cwd: The working directory for the helper execution.
+                stdout_path: A filesystem path used by the helper.
+            """
                 self.assertIsNotNone(cwd)
                 work_dir = Path(cwd)
                 (work_dir / "agat_output").mkdir(parents=True, exist_ok=True)
@@ -361,7 +492,10 @@ class AgatWorkflowTests(TestCase):
             )
 
     def test_annotation_postprocess_agat_cleanup_collects_the_cleaned_gff3_slice(self) -> None:
-        """Run the cleanup workflow wrapper and keep table2asn out of scope."""
+        """Run the cleanup workflow wrapper and keep table2asn out of scope.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             conversion_results = _create_agat_conversion_results(tmp_path)

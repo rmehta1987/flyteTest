@@ -1,8 +1,8 @@
 """Shared contract data for the FLyteTest MCP recipe surface.
 
-This module centralizes the stdio MCP surface exposed by the recipe-backed
-server: explicit runnable targets, tool and resource names, example prompts,
-stable prompt-and-run result codes, and typed-planning fields.
+    This module centralizes the stdio MCP surface exposed by the recipe-backed
+    server: explicit runnable targets, tool and resource names, example prompts,
+    stable prompt-and-run result codes, and typed-planning fields.
 """
 
 from __future__ import annotations
@@ -23,7 +23,10 @@ from flytetest.config import (
 
 @dataclass(frozen=True, slots=True)
 class ShowcaseTarget:
-    """Describe one runnable workflow or task exposed by the MCP showcase."""
+    """Describe one runnable workflow or task exposed by the MCP showcase.
+
+    This class keeps the current contract explicit and reviewable.
+"""
 
     name: str
     category: str
@@ -247,5 +250,11 @@ DECLINE_CATEGORY_CODES = {
 
 
 def supported_runnable_targets_payload() -> list[dict[str, str]]:
-    """Return the exact runnable target payload exposed through MCP resources."""
+    """Return the exact runnable target payload exposed through MCP resources.
+
+    This helper keeps the current behavior explicit and reviewable.
+
+    Returns:
+        The returned `list[dict[str, str]]` value used by the caller.
+"""
     return [{"name": target.name, "category": target.category} for target in SHOWCASE_TARGETS]

@@ -1,7 +1,7 @@
 """Tests for the PASA post-EVM refinement boundary.
 
-The suite keeps PASA update staging, round promotion, finalization, and
-collection synthetic so the boundary can be validated without PASA binaries.
+    The suite keeps PASA update staging, round promotion, finalization, and
+    collection synthetic so the boundary can be validated without PASA binaries.
 """
 
 from __future__ import annotations
@@ -31,53 +31,115 @@ from flytetest.workflows.pasa import annotation_refinement_pasa
 
 
 def _artifact_dir(path: Path) -> Dir:
-    """Create a local Flyte directory wrapper from a filesystem path."""
+    """Create a local Flyte directory wrapper from a filesystem path.
+
+    Args:
+        path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     return Dir(path=str(path))
 
 
 def _read_json(path: Path) -> dict[str, object]:
-    """Read a manifest file into a dictionary for assertions."""
+    """Read a manifest file into a dictionary for assertions.
+
+    Args:
+        path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `dict[str, object]` value used by the caller.
+"""
     return json.loads(path.read_text())
 
 
 def _write_json(path: Path, payload: dict[str, object]) -> Path:
-    """Write a JSON payload with indentation for readable failures."""
+    """Write a JSON payload with indentation for readable failures.
+
+    Args:
+        path: A filesystem path used by the helper.
+        payload: The structured payload to serialize or inspect.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2))
     return path
 
 
 def _write_gff3(path: Path, records: list[str]) -> Path:
-    """Write a minimal GFF3 file with a canonical header."""
+    """Write a minimal GFF3 file with a canonical header.
+
+    Args:
+        path: A filesystem path used by the helper.
+        records: The records written into the synthetic file.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("##gff-version 3\n" + "\n".join(records) + "\n")
     return path
 
 
 def _fixed_datetime() -> type:
-    """Return a deterministic timestamp provider for result-directory naming."""
+    """Return a deterministic timestamp provider for result-directory naming.
+
+    This helper keeps the test fixture deterministic and explicit.
+
+    Returns:
+        The returned type value used by the test fixture.
+"""
 
     # Keep the synthetic result-directory name stable for manifest assertions.
     class _Stamp:
-        """Fake datetime stamp that always returns the same test timestamp."""
+        """Fake datetime stamp that always returns the same test timestamp.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
         def strftime(self, fmt: str) -> str:
-            """Return the fixed timestamp string expected by the assertions."""
+            """Return the fixed timestamp string expected by the assertions.
+
+    Args:
+        fmt: A value used by the helper.
+
+    Returns:
+        The returned `str` value used by the caller.
+"""
             return "20260402_120000"
 
     class _FixedDatetime:
-        """Shim object that mimics the subset of `datetime` used by the code."""
+        """Shim object that mimics the subset of `datetime` used by the code.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
         @classmethod
         def now(cls) -> _Stamp:
-            """Return the fixed timestamp stub used by the synthetic tests."""
+            """Return the fixed timestamp stub used by the synthetic tests.
+
+    This helper keeps the test fixture deterministic and explicit.
+
+    Returns:
+        The returned _Stamp value used by the test fixture.
+"""
             return _Stamp()
 
     return _FixedDatetime
 
 
 def _create_pasa_results(tmp_path: Path) -> Path:
-    """Create a minimal PASA bundle with the fields the update path consumes."""
+    """Create a minimal PASA bundle with the fields the update path consumes.
+
+    Args:
+        tmp_path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     results_dir = tmp_path / "pasa_results"
     seqclean_dir = results_dir / "seqclean"
     config_dir = results_dir / "config"
@@ -111,7 +173,14 @@ def _create_pasa_results(tmp_path: Path) -> Path:
 
 
 def _create_evm_results(tmp_path: Path) -> Path:
-    """Create a minimal EVM bundle with the fields the update path consumes."""
+    """Create a minimal EVM bundle with the fields the update path consumes.
+
+    Args:
+        tmp_path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     results_dir = tmp_path / "evm_results"
     execution_dir = results_dir / "evm_execution_inputs"
     execution_dir.mkdir(parents=True, exist_ok=True)
@@ -135,10 +204,16 @@ def _create_evm_results(tmp_path: Path) -> Path:
 
 
 class PasaUpdateTaskTests(TestCase):
-    """Task-level coverage for the PASA post-EVM boundary."""
+    """Task-level coverage for the PASA post-EVM boundary.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
     def test_prepare_pasa_update_inputs_stages_existing_pasa_and_evm_bundles(self) -> None:
-        """Stage the PASA database state and sorted EVM GFF3 without rebuilding upstream evidence."""
+        """Stage the PASA database state and sorted EVM GFF3 without rebuilding upstream evidence.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             pasa_results = _create_pasa_results(tmp_path)
@@ -174,7 +249,10 @@ class PasaUpdateTaskTests(TestCase):
             )
 
     def test_pasa_update_gene_models_promotes_new_round_output_to_current_annotations(self) -> None:
-        """Promote the new PASA round output to the canonical current annotations path."""
+        """Promote the new PASA round output to the canonical current annotations path.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             pasa_results = _create_pasa_results(tmp_path)
@@ -201,6 +279,16 @@ class PasaUpdateTaskTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
+                """            Stage the synthetic PASA update output for the promotion test.
+
+
+            Args:
+                cmd: The command arguments or command name passed to the helper.
+                sif: The container image reference used for execution.
+                bind_paths: The filesystem paths bound into the execution environment.
+                cwd: The working directory for the helper execution.
+                stdout_path: A filesystem path used by the helper.
+            """
                 self.assertIsNotNone(cwd)
                 _write_gff3(
                     cwd / "test.sqlite.gene_structures_post_PASA_updates.1001.gff3",
@@ -223,7 +311,10 @@ class PasaUpdateTaskTests(TestCase):
             self.assertEqual(manifest["relative_outputs"]["updated_gff3"], "test.sqlite.gene_structures_post_PASA_updates.1001.gff3")
 
     def test_annotation_refinement_pasa_collects_stable_final_outputs(self) -> None:
-        """Run the synthetic workflow and collect stable post-PASA final filenames."""
+        """Run the synthetic workflow and collect stable post-PASA final filenames.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             pasa_results = _create_pasa_results(tmp_path)
@@ -239,6 +330,16 @@ class PasaUpdateTaskTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
+                """            Stage the synthetic PASA update output for the workflow collection test.
+
+
+            Args:
+                cmd: The command arguments or command name passed to the helper.
+                sif: The container image reference used for execution.
+                bind_paths: The filesystem paths bound into the execution environment.
+                cwd: The working directory for the helper execution.
+                stdout_path: A filesystem path used by the helper.
+            """
                 self.assertIsNotNone(cwd)
                 script_name = cmd[1]
                 if script_name == "Launch_PASA_pipeline.pl":
@@ -294,10 +395,16 @@ class PasaUpdateTaskTests(TestCase):
 
 
 class PasaUpdateWorkflowTests(TestCase):
-    """Workflow-level coverage for the PASA post-EVM entrypoint contract."""
+    """Workflow-level coverage for the PASA post-EVM entrypoint contract.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
     def test_annotation_refinement_pasa_requires_at_least_two_rounds(self) -> None:
-        """Reject round counts below the current PASA refinement contract minimum of two."""
+        """Reject round counts below the current PASA refinement contract minimum of two.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             pasa_results = _create_pasa_results(tmp_path)
@@ -314,7 +421,10 @@ class PasaUpdateWorkflowTests(TestCase):
                 )
 
     def test_annotation_refinement_pasa_consumes_pasa_and_evm_bundles_only(self) -> None:
-        """Use PASA and EVM bundles as the sole workflow-level biological inputs."""
+        """Use PASA and EVM bundles as the sole workflow-level biological inputs.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             pasa_results = _create_pasa_results(tmp_path)
@@ -324,30 +434,75 @@ class PasaUpdateWorkflowTests(TestCase):
             calls: list[tuple[str, tuple[str, ...]]] = []
 
             def fake_prepare(**kwargs: object) -> Dir:
+                """            Record the PASA prepare inputs and return a synthetic staging directory.
+
+
+            Args:
+                kwargs: Keyword arguments forwarded to the helper.
+
+            Returns:
+                The returned `Dir` value used by the caller.
+            """
                 calls.append(("prepare", tuple(sorted(kwargs.keys()))))
                 prepared_dir = tmp_path / "prepared"
                 prepared_dir.mkdir(parents=True, exist_ok=True)
                 return _artifact_dir(prepared_dir)
 
             def fake_load(**kwargs: object) -> Dir:
+                """            Record the PASA load inputs and return a synthetic load-round directory.
+
+
+            Args:
+                kwargs: Keyword arguments forwarded to the helper.
+
+            Returns:
+                The returned `Dir` value used by the caller.
+            """
                 calls.append(("load", tuple(sorted(kwargs.keys()))))
                 load_dir = tmp_path / f"load_{len([item for item in calls if item[0] == 'load'])}"
                 load_dir.mkdir(parents=True, exist_ok=True)
                 return _artifact_dir(load_dir)
 
             def fake_update(**kwargs: object) -> Dir:
+                """            Record the PASA update inputs and return a synthetic update-round directory.
+
+
+            Args:
+                kwargs: Keyword arguments forwarded to the helper.
+
+            Returns:
+                The returned `Dir` value used by the caller.
+            """
                 calls.append(("update", tuple(sorted(kwargs.keys()))))
                 update_dir = tmp_path / f"update_{len([item for item in calls if item[0] == 'update'])}"
                 update_dir.mkdir(parents=True, exist_ok=True)
                 return _artifact_dir(update_dir)
 
             def fake_finalize(**kwargs: object) -> Dir:
+                """            Record the PASA finalize inputs and return a synthetic finalized directory.
+
+
+            Args:
+                kwargs: Keyword arguments forwarded to the helper.
+
+            Returns:
+                The returned `Dir` value used by the caller.
+            """
                 calls.append(("finalize", tuple(sorted(kwargs.keys()))))
                 finalized_dir = tmp_path / "finalized"
                 finalized_dir.mkdir(parents=True, exist_ok=True)
                 return _artifact_dir(finalized_dir)
 
             def fake_collect(**kwargs: object) -> Dir:
+                """            Record the PASA collect inputs and return a synthetic results directory.
+
+
+            Args:
+                kwargs: Keyword arguments forwarded to the helper.
+
+            Returns:
+                The returned `Dir` value used by the caller.
+            """
                 calls.append(("collect", tuple(sorted(kwargs.keys()))))
                 results_dir = tmp_path / "results"
                 results_dir.mkdir(parents=True, exist_ok=True)

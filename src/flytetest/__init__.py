@@ -1,7 +1,7 @@
 """Public package exports for FLyteTest.
 
-This module re-exports registry helpers and typed assets so callers can inspect
-the supported pipeline surface from the package root.
+    This module re-exports registry helpers and typed assets so callers can inspect
+    the supported pipeline surface from the package root.
 """
 
 from flytetest.registry import REGISTRY_ENTRIES, get_entry, list_entries

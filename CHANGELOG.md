@@ -31,6 +31,48 @@ Entry template:
 
 ## Unreleased
 
+### Milestone 16 Slurm lifecycle observability
+
+- added:
+  - durable Slurm run-record loading and reconciliation through `squeue`,
+    `scontrol show job`, and `sacct`
+  - explicit `monitor_slurm_job` and `cancel_slurm_job` MCP operations for
+    submitted jobs
+  - terminal-state recording for stdout, stderr, exit code, and cancellation
+    details in the durable run record
+  - focused tests for reconciliation, cancellation, and stale-record handling
+- changed:
+  - the Slurm execution boundary now tracks job lifecycle state explicitly
+    instead of treating submission as the end of the scheduler contract
+
+### Protein-evidence Slurm smoke
+
+- added:
+  - RCC wrapper scripts for submitting, monitoring, and cancelling the
+    protein-evidence Slurm recipe from frozen run records
+  - a validated protein-evidence Slurm path that freezes the recipe, submits
+    it, and persists the latest run-record and artifact pointers under
+    `.runtime/runs/`
+  - supporting smoke and debug helpers for the protein-evidence HPC workflow
+- changed:
+  - the protein-evidence stage now has an explicit HPC validation path in
+    addition to the local fixture and workflow tests
+
+### Tool reference normalization
+
+- added:
+  - normalized `docs/tool_refs/` so every tool reference now includes
+    `Input Data`, `Output Data`, and `Code Reference` sections
+  - added code back-links from the tool refs to the relevant task and workflow
+    modules, including the deferred `table2asn` boundary
+  - updated `docs/tool_refs/README.md` and `docs/tool_refs/stage_index.md` so
+    the stage index and tool-reference guidance reflect the implemented
+    workflow surface more honestly
+- changed:
+  - refreshed stale stage notes in the BRaker3, PASA, EVM, TransDecoder,
+    Trinity, BUSCO, EggNOG, AGAT, Exonerate, Salmon, FastQC, and repeat-
+    filtering references to match the current code paths
+
 ### Authenticated Slurm access boundary
 
 - changed:

@@ -1,9 +1,9 @@
 """Optional live smoke tests for the Slurm submission boundary.
 
-The synthetic coverage in `tests/test_spec_executor.py` already checks script
-rendering, `sbatch` parsing, and durable run-record persistence with injected
-subprocess fakes. This module adds one real cluster smoke test that is skipped
-unless `sbatch` is available on the local machine.
+    The synthetic coverage in `tests/test_spec_executor.py` already checks script
+    rendering, `sbatch` parsing, and durable run-record persistence with injected
+    subprocess fakes. This module adds one real cluster smoke test that is skipped
+    unless `sbatch` is available on the local machine.
 """
 
 from __future__ import annotations
@@ -27,11 +27,17 @@ SBATCH_AVAILABLE = shutil.which("sbatch") is not None
 
 
 class SlurmSpecExecutorSmokeTests(unittest.TestCase):
-    """Live Slurm smoke tests that remain optional in CI."""
+    """Live Slurm smoke tests that remain optional in CI.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
     @unittest.skipUnless(SBATCH_AVAILABLE, "sbatch is required for the live Slurm smoke test")
     def test_sbatch_accepts_a_tiny_hello_script(self) -> None:
-        """Submit one trivial Slurm script and confirm it writes the expected stdout."""
+        """Submit one trivial Slurm script and confirm it writes the expected stdout.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             output_dir = tmp_path / "FlyteTest"

@@ -1,19 +1,17 @@
 """EggNOG functional-annotation tasks for the post-BUSCO milestone.
 
-This module runs EggNOG-mapper on the repeat-filtered protein boundary,
-derives a deterministic `tx2gene` bridge from the repeat-filtered GFF3, and
-propagates the resulting annotations into a reviewable GFF3 bundle without
-broadenings into AGAT or submission-prep work.
+    This module runs EggNOG-mapper on the repeat-filtered protein boundary,
+    derives a deterministic `tx2gene` bridge from the repeat-filtered GFF3, and
+    propagates the resulting annotations into a reviewable GFF3 bundle without
+    broadenings into AGAT or submission-prep work.
 
-Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
-input/output expectations follow `docs/tool_refs/eggnog-mapper.md`.
+    Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
+    input/output expectations follow `docs/tool_refs/eggnog-mapper.md`.
 """
 
 from __future__ import annotations
 
 import csv
-import json
-import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -29,57 +27,47 @@ from flytetest.config import (
     require_path,
     run_tool,
 )
+from flytetest.gff3 import (
+    attribute_value as _attribute_value,
+    escape_value as _escape_gff3_value,
+    format_attributes as _format_gff3_attributes,
+    parse_attributes as _parse_gff3_attributes,
+)
+from flytetest.manifest_io import (
+    as_json_compatible as _as_json_compatible,
+    copy_file as _copy_file,
+    copy_tree as _copy_tree,
+    read_json as _read_json,
+    write_json as _write_json,
+)
 
 
 _EGGNOG_OUTPUT_PREFIX = "eggnog_output"
 
 
-def _as_json_compatible(value: Any) -> Any:
-    """Recursively convert manifest values into JSON-serializable primitives."""
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, dict):
-        return {key: _as_json_compatible(item) for key, item in value.items()}
-    if isinstance(value, tuple):
-        return [_as_json_compatible(item) for item in value]
-    if isinstance(value, list):
-        return [_as_json_compatible(item) for item in value]
-    return value
-
-
-def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    """Write an indented JSON payload to a stable path."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(_as_json_compatible(payload), indent=2))
-
-
-def _read_json(path: Path) -> dict[str, Any]:
-    """Read one JSON manifest into a dictionary."""
-    return json.loads(path.read_text())
-
-
-def _copy_file(source: Path, destination: Path) -> Path:
-    """Copy one file into a deterministic destination path."""
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, destination)
-    return destination
-
-
-def _copy_tree(source: Path, destination: Path) -> Path:
-    """Copy one directory tree into a deterministic destination path."""
-    if destination.exists():
-        shutil.rmtree(destination)
-    shutil.copytree(source, destination)
-    return destination
-
-
 def _manifest_path(directory: Path, label: str) -> Path:
-    """Resolve the manifest expected under one staged or collected directory."""
+    """Resolve the manifest expected under one staged or collected directory.
+
+    Args:
+        directory: A value used by the helper.
+        label: A value used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     return require_path(directory / "run_manifest.json", f"{label} manifest")
 
 
 def _manifest_output_path(manifest: dict[str, Any], key: str) -> Path | None:
-    """Resolve one manifest-recorded output path when present."""
+    """Resolve one manifest-recorded output path when present.
+
+    Args:
+        manifest: A value used by the helper.
+        key: A value used by the helper.
+
+    Returns:
+        The returned `Path | None` value used by the caller.
+"""
     output_path = manifest.get("outputs", {}).get(key)
     if not output_path:
         return None
@@ -87,7 +75,14 @@ def _manifest_output_path(manifest: dict[str, Any], key: str) -> Path | None:
 
 
 def _repeat_filter_final_proteins(results_dir: Path) -> Path:
-    """Resolve the final repeat-filtered protein FASTA from a results bundle."""
+    """Resolve the final repeat-filtered protein FASTA from a results bundle.
+
+    Args:
+        results_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     manifest_path = results_dir / "run_manifest.json"
     if manifest_path.exists():
         manifest = _read_json(manifest_path)
@@ -101,7 +96,14 @@ def _repeat_filter_final_proteins(results_dir: Path) -> Path:
 
 
 def _repeat_filter_final_gff3(results_dir: Path) -> Path:
-    """Resolve the final repeat-filtered GFF3 from a results bundle."""
+    """Resolve the final repeat-filtered GFF3 from a results bundle.
+
+    Args:
+        results_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     manifest_path = results_dir / "run_manifest.json"
     if manifest_path.exists():
         manifest = _read_json(manifest_path)
@@ -112,55 +114,17 @@ def _repeat_filter_final_gff3(results_dir: Path) -> Path:
         results_dir / "all_repeats_removed.gff3",
         "Repeat-filtered GFF3",
     )
-
-
-def _escape_gff3_value(value: str) -> str:
-    """Escape a GFF3 attribute value deterministically."""
-    return (
-        value.replace("%", "%25")
-        .replace(";", "%3B")
-        .replace("=", "%3D")
-        .replace("&", "%26")
-        .replace(",", "%2C")
-        .replace("\t", "%09")
-        .replace("\n", "%0A")
-        .replace("\r", "%0D")
-    )
-
-
-def _parse_gff3_attributes(attribute_text: str) -> list[tuple[str, str]]:
-    """Parse a GFF3 attribute field into a stable list of key-value pairs."""
-    if not attribute_text or attribute_text == ".":
-        return []
-    parsed: list[tuple[str, str]] = []
-    for item in attribute_text.split(";"):
-        if not item:
-            continue
-        if "=" in item:
-            key, value = item.split("=", 1)
-        else:
-            key, value = item, ""
-        parsed.append((key, value))
-    return parsed
-
-
-def _format_gff3_attributes(attributes: list[tuple[str, str]]) -> str:
-    """Format ordered GFF3 attributes back into a semicolon-delimited string."""
-    if not attributes:
-        return "."
-    return ";".join(f"{key}={value}" if value else key for key, value in attributes)
-
-
-def _attribute_value(attributes: list[tuple[str, str]], key: str) -> str | None:
-    """Return the first matching GFF3 attribute value for one key."""
-    for current_key, current_value in attributes:
-        if current_key == key:
-            return current_value
-    return None
-
-
 def _set_attribute(attributes: list[tuple[str, str]], key: str, value: str) -> list[tuple[str, str]]:
-    """Replace or append one GFF3 attribute while preserving order."""
+    """Replace or append one GFF3 attribute while preserving order.
+
+    Args:
+        attributes: A value used by the helper.
+        key: A value used by the helper.
+        value: The value or values processed by the helper.
+
+    Returns:
+        The returned `list[tuple[str, str]]` value used by the caller.
+"""
     escaped = _escape_gff3_value(value)
     updated: list[tuple[str, str]] = []
     replaced = False
@@ -178,7 +142,14 @@ def _set_attribute(attributes: list[tuple[str, str]], key: str, value: str) -> l
 
 
 def _tx2gene_rows_from_gff3(gff3_path: Path) -> list[tuple[str, str]]:
-    """Extract transcript-to-gene rows from a repeat-filtered GFF3."""
+    """Extract transcript-to-gene rows from a repeat-filtered GFF3.
+
+    Args:
+        gff3_path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `list[tuple[str, str]]` value used by the caller.
+"""
     rows: list[tuple[str, str]] = []
     fallback_rows: list[tuple[str, str]] = []
     for raw_line in gff3_path.read_text().splitlines():
@@ -203,7 +174,15 @@ def _tx2gene_rows_from_gff3(gff3_path: Path) -> list[tuple[str, str]]:
 
 
 def _write_tx2gene(rows: list[tuple[str, str]], destination: Path) -> Path:
-    """Write a transcript-to-gene map with deterministic ordering."""
+    """Write a transcript-to-gene map with deterministic ordering.
+
+    Args:
+        rows: A value used by the helper.
+        destination: A filesystem path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     destination.parent.mkdir(parents=True, exist_ok=True)
     with destination.open("w", newline="") as handle:
         writer = csv.writer(handle, delimiter="\t")
@@ -212,7 +191,15 @@ def _write_tx2gene(rows: list[tuple[str, str]], destination: Path) -> Path:
 
 
 def _annotation_label_from_row(header: list[str], columns: list[str]) -> tuple[str, str] | None:
-    """Extract the query ID and preferred annotation label from one EggNOG row."""
+    """Extract the query ID and preferred annotation label from one EggNOG row.
+
+    Args:
+        header: A value used by the helper.
+        columns: A value used by the helper.
+
+    Returns:
+        The returned `tuple[str, str] | None` value used by the caller.
+"""
     if not columns:
         return None
     row = dict(zip(header, columns)) if header and len(header) == len(columns) else {}
@@ -233,7 +220,14 @@ def _annotation_label_from_row(header: list[str], columns: list[str]) -> tuple[s
 
 
 def _read_eggnog_annotations(annotations_path: Path) -> dict[str, str]:
-    """Read EggNOG annotations into a deterministic query-to-label mapping."""
+    """Read EggNOG annotations into a deterministic query-to-label mapping.
+
+    Args:
+        annotations_path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `dict[str, str]` value used by the caller.
+"""
     header: list[str] = []
     annotations: dict[str, str] = {}
     for raw_line in annotations_path.read_text().splitlines():
@@ -254,7 +248,15 @@ def _read_eggnog_annotations(annotations_path: Path) -> dict[str, str]:
 
 
 def _build_gene_annotations(gff3_path: Path, annotations: dict[str, str]) -> dict[str, str]:
-    """Lift transcript-level EggNOG labels to gene IDs via the transcript-to-gene boundary."""
+    """Lift transcript-level EggNOG labels to gene IDs via the transcript-to-gene boundary.
+
+    Args:
+        gff3_path: A filesystem path used by the helper.
+        annotations: A value used by the helper.
+
+    Returns:
+        The returned `dict[str, str]` value used by the caller.
+"""
     gene_to_transcripts: dict[str, list[str]] = {}
     for raw_line in gff3_path.read_text().splitlines():
         if not raw_line or raw_line.startswith("#"):
@@ -284,7 +286,16 @@ def _build_gene_annotations(gff3_path: Path, annotations: dict[str, str]) -> dic
 
 
 def _write_annotated_gff3(source_gff3: Path, annotations: dict[str, str], destination: Path) -> Path:
-    """Propagate EggNOG labels into a deterministic GFF3 annotation boundary."""
+    """Propagate EggNOG labels into a deterministic GFF3 annotation boundary.
+
+    Args:
+        source_gff3: A value used by the helper.
+        annotations: A value used by the helper.
+        destination: A filesystem path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     gene_annotations = _build_gene_annotations(source_gff3, annotations)
     out_lines: list[str] = []
     for raw_line in source_gff3.read_text().splitlines():
@@ -322,7 +333,19 @@ def eggnog_map(
     eggnog_database: str = "Diptera",
     eggnog_mode: str = "hmmer",
 ) -> Dir:
-    """Run EggNOG-mapper on the repeat-filtered protein boundary."""
+    """Run EggNOG-mapper on the repeat-filtered protein boundary.
+
+    Args:
+        repeat_filter_results: A directory path used by the helper.
+        eggnog_data_dir: A directory path used by the helper.
+        eggnog_sif: A value used by the helper.
+        eggnog_cpu: A value used by the helper.
+        eggnog_database: A value used by the helper.
+        eggnog_mode: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     repeat_filter_dir = require_path(
         Path(repeat_filter_results.download_sync()),
         "Repeat-filtering results directory",
@@ -416,7 +439,15 @@ def collect_eggnog_results(
     repeat_filter_results: Dir,
     eggnog_run: Dir,
 ) -> Dir:
-    """Collect an EggNOG functional-annotation run into a stable results bundle."""
+    """Collect an EggNOG functional-annotation run into a stable results bundle.
+
+    Args:
+        repeat_filter_results: A directory path used by the helper.
+        eggnog_run: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     repeat_filter_dir = require_path(
         Path(repeat_filter_results.download_sync()),
         "Repeat-filtering results directory",

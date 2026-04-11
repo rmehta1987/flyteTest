@@ -47,7 +47,7 @@ Align transcript assemblies to the genome, refine transcript structures, and lat
 - Comprehensive transcriptome database notes: https://github.com/PASApipeline/PASApipeline/wiki/PASA_comprehensive_db
 - Upstream PASA documentation index: https://raw.githubusercontent.com/PASApipeline/PASApipeline/refs/heads/master/docs/index.asciidoc
 
-## Tutorial And Training References
+## Tutorial References
 
 - GTN genome annotation topic: https://training.galaxyproject.org/training-material/topics/genome-annotation/
 - GTN genome annotation tutorial: https://training.galaxyproject.org/training-material/topics/genome-annotation/tutorials/genome-annotation/tutorial.html

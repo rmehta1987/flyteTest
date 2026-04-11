@@ -1,7 +1,7 @@
 """Coverage for saved replayable workflow-spec artifacts.
 
-These tests cover metadata persistence and reloads. They do not execute saved
-specs and do not imply general runtime code generation.
+    These tests cover metadata persistence and reloads. They do not execute saved
+    specs and do not imply general runtime code generation.
 """
 
 from __future__ import annotations
@@ -27,10 +27,16 @@ from flytetest.spec_artifacts import (
 
 
 class SpecArtifactTests(TestCase):
-    """Checks for saving and reloading typed planning artifacts."""
+    """Checks for saving and reloading typed planning artifacts.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
     def test_generated_workflow_spec_artifact_round_trips_from_typed_plan(self) -> None:
-        """Save and reload a generated spec preview with prompt provenance."""
+        """Save and reload a generated spec preview with prompt provenance.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         reference_genome = ReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa"))
         consensus_annotation = ConsensusAnnotation(
             reference_genome=reference_genome,
@@ -62,7 +68,10 @@ class SpecArtifactTests(TestCase):
         self.assertEqual(loaded.replay_metadata["request_id"], "test-request")
 
     def test_save_workflow_spec_artifact_creates_missing_parent_directories(self) -> None:
-        """Write artifacts into a fresh nested directory without precreating it."""
+        """Write artifacts into a fresh nested directory without precreating it.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         reference_genome = ReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa"))
         consensus_annotation = ConsensusAnnotation(
             reference_genome=reference_genome,
@@ -84,7 +93,10 @@ class SpecArtifactTests(TestCase):
             self.assertTrue(destination.exists())
 
     def test_replayable_spec_pair_does_not_reparse_prompt(self) -> None:
-        """Reload the saved spec and binding plan directly for future replay work."""
+        """Reload the saved spec and binding plan directly for future replay work.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         reference_genome = ReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa"))
         consensus_annotation = ConsensusAnnotation(
             reference_genome=reference_genome,
@@ -105,7 +117,10 @@ class SpecArtifactTests(TestCase):
         self.assertIn("WorkflowSpec and BindingPlan outputs are metadata-only", binding_plan.assumptions[-1])
 
     def test_declined_typed_plan_cannot_be_saved(self) -> None:
-        """Reject transient decline payloads as non-replayable artifacts."""
+        """Reject transient decline payloads as non-replayable artifacts.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         typed_plan = plan_typed_request("Run SNP variant calling and emit a VCF.")
 
         with self.assertRaises(ValueError):

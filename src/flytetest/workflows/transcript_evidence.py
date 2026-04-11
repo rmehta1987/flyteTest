@@ -1,12 +1,12 @@
 """Transcript-evidence workflow entrypoint for FLyteTest.
 
-Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
-input/output expectations follow the tool references under `docs/tool_refs/`
-(notably `trinity.md`, `star.md`, `samtools.md`, and `stringtie.md`).
+    Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
+    input/output expectations follow the tool references under `docs/tool_refs/`
+    (notably `trinity.md`, `star.md`, `samtools.md`, and `stringtie.md`).
 
-This module composes the current transcript branch upstream of PASA: de novo
-Trinity, STAR indexing and alignment, one-BAM merge, genome-guided Trinity,
-StringTie, and stable result collection.
+    This module composes the current transcript branch upstream of PASA: de novo
+    Trinity, STAR indexing and alignment, one-BAM merge, genome-guided Trinity,
+    StringTie, and stable result collection.
 """
 
 from __future__ import annotations
@@ -43,7 +43,26 @@ def transcript_evidence_generation(
     genome_guided_max_intron: int = 10000,
     stringtie_threads: int = 4,
 ) -> Dir:
-    """Generate the current single-sample transcript-evidence bundle upstream of PASA."""
+    """Orchestrate comprehensive transcript evidence generation from paired-end RNA-seq reads.
+
+    Args:
+        genome: A value used by the helper.
+        left: A value used by the helper.
+        right: A value used by the helper.
+        sample_id: A value used by the helper.
+        star_sif: A value used by the helper.
+        samtools_sif: A value used by the helper.
+        trinity_sif: A value used by the helper.
+        stringtie_sif: A value used by the helper.
+        star_threads: A value used by the helper.
+        trinity_cpu: A value used by the helper.
+        trinity_max_memory_gb: A value used by the helper.
+        genome_guided_max_intron: A value used by the helper.
+        stringtie_threads: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     trinity_denovo = trinity_denovo_assemble(
         left=left,
         right=right,

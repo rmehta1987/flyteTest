@@ -14,23 +14,6 @@ Assign functional annotations, orthology-informed names, and related annotation 
 - functional annotation tables
 - name or function mappings that can be propagated into GFF3 features
 
-## Official Documentation
-
-- upstream project README: [github.com/eggnogdb/eggnog-mapper](https://github.com/eggnogdb/eggnog-mapper)
-- canonical docs hub from the upstream README: [github.com/jhcepas/eggnog-mapper/wiki](https://github.com/jhcepas/eggnog-mapper/wiki)
-- the upstream repo exposes `emapper.py` for annotation runs and `download_eggnog_data.py` / `create_dbs.py` for database staging
-
-## Tutorial / Training References
-
-- GTN tutorial: [Functional annotation of protein sequences](https://training.galaxyproject.org/training-material/topics/genome-annotation/tutorials/functional/tutorial.html)
-- GTN workflow page: [Functional annotation](https://training.galaxyproject.org/training-material/topics/genome-annotation/tutorials/functional/workflows/functional.html)
-- the GTN material is the clearest hands-on reference for the common EggNOG-mapper protein annotation flow
-
-## Code Reference
-
-- [`src/flytetest/tasks/eggnog.py`](src/flytetest/tasks/eggnog.py)
-- that module implements the repeat-filtered protein boundary, `tx2gene` bridge derivation, EggNOG invocation, and annotated GFF3 collection
-
 ## Key Inputs
 
 - predicted proteins or other supported sequence inputs
@@ -44,6 +27,23 @@ Assign functional annotations, orthology-informed names, and related annotation 
 ## Pipeline Fit
 
 - downstream functional annotation after structural annotation and QC
+
+## Official Documentation
+
+- upstream project README: [github.com/eggnogdb/eggnog-mapper](https://github.com/eggnogdb/eggnog-mapper)
+- canonical docs hub from the upstream README: [github.com/jhcepas/eggnog-mapper/wiki](https://github.com/jhcepas/eggnog-mapper/wiki)
+- the upstream repo exposes `emapper.py` for annotation runs and `download_eggnog_data.py` / `create_dbs.py` for database staging
+
+## Tutorial References
+
+- GTN tutorial: [Functional annotation of protein sequences](https://training.galaxyproject.org/training-material/topics/genome-annotation/tutorials/functional/tutorial.html)
+- GTN workflow page: [Functional annotation](https://training.galaxyproject.org/training-material/topics/genome-annotation/tutorials/functional/workflows/functional.html)
+- the GTN material is the clearest hands-on reference for the common EggNOG-mapper protein annotation flow
+
+## Code Reference
+
+- [`src/flytetest/tasks/eggnog.py`](src/flytetest/tasks/eggnog.py)
+- that module implements the repeat-filtered protein boundary, `tx2gene` bridge derivation, EggNOG invocation, and annotated GFF3 collection
 
 ## Native Command Context
 

@@ -1,20 +1,18 @@
 """Repeat-filtering and cleanup tasks for the post-PASA FLyteTest milestone.
 
-This module starts from the PASA-updated annotation boundary, converts an
-external RepeatMasker `.out` file into interval data, runs the gffread and
-funannotate cleanup steps, and collects stable final repeat-filtered outputs
-before functional annotation.
+    This module starts from the PASA-updated annotation boundary, converts an
+    external RepeatMasker `.out` file into interval data, runs the gffread and
+    funannotate cleanup steps, and collects stable final repeat-filtered outputs
+    before functional annotation.
 
-Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
-input/output expectations follow the tool references under `docs/tool_refs/`
-(notably `repeatmasker.md`, `gffread.md`, and `funannotate.md`).
-Those refs match the repeat-filtering slices implemented here.
+    Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
+    input/output expectations follow the tool references under `docs/tool_refs/`
+    (notably `repeatmasker.md`, `gffread.md`, and `funannotate.md`).
+    Those refs match the repeat-filtering slices implemented here.
 """
 
 from __future__ import annotations
 
-import json
-import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -30,59 +28,50 @@ from flytetest.config import (
     require_path,
     run_tool,
 )
-
-
-def _as_json_compatible(value: Any) -> Any:
-    """Recursively convert manifest values into JSON-serializable primitives."""
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, dict):
-        return {key: _as_json_compatible(item) for key, item in value.items()}
-    if isinstance(value, tuple):
-        return [_as_json_compatible(item) for item in value]
-    if isinstance(value, list):
-        return [_as_json_compatible(item) for item in value]
-    return value
-
-
-def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    """Write an indented JSON manifest to a stable path."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(_as_json_compatible(payload), indent=2))
-
-
-def _read_json(path: Path) -> dict[str, Any]:
-    """Read a JSON manifest into a dictionary."""
-    return json.loads(path.read_text())
-
-
-def _copy_file(source: Path, destination: Path) -> Path:
-    """Copy one file into a deterministic destination path."""
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, destination)
-    return destination
-
-
-def _copy_tree(source: Path, destination: Path) -> Path:
-    """Copy one directory tree into a deterministic destination path."""
-    if destination.exists():
-        shutil.rmtree(destination)
-    shutil.copytree(source, destination)
-    return destination
+from flytetest.gff3 import attribute_values as _attribute_values, parse_attributes as _parse_attributes
+from flytetest.manifest_io import (
+    as_json_compatible as _as_json_compatible,
+    copy_file as _copy_file,
+    copy_tree as _copy_tree,
+    read_json as _read_json,
+    write_json as _write_json,
+)
 
 
 def _manifest_path(directory: Path, label: str) -> Path:
-    """Resolve the manifest file expected under one stage directory."""
+    """Resolve the manifest file expected within a stage output directory.
+
+    Args:
+        directory: A value used by the helper.
+        label: A value used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     return require_path(directory / "run_manifest.json", f"{label} manifest")
 
 
 def _pasa_update_sorted_gff3(results_dir: Path) -> Path:
-    """Resolve the final PASA-sorted GFF3 that feeds repeat filtering."""
+    """Resolve the PASA-sorted GFF3 annotation file that feeds repeat filtering.
+
+    Args:
+        results_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     return require_path(results_dir / "post_pasa_updates.sort.gff3", "PASA-updated sorted GFF3")
 
 
 def _pasa_update_reference_genome(results_dir: Path) -> Path:
-    """Resolve the reference genome preserved in the PASA-update bundle."""
+    """Resolve the reference genome FASTA from the PASA result bundle.
+
+    Args:
+        results_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     return require_path(
         results_dir / "staged_inputs" / "reference" / "genome.fa",
         "PASA-update reference genome FASTA",
@@ -90,17 +79,38 @@ def _pasa_update_reference_genome(results_dir: Path) -> Path:
 
 
 def _repeatmasker_gff3_path(results_dir: Path) -> Path:
-    """Resolve the RepeatMasker GFF3 staged by the downstream conversion."""
+    """Resolve the RepeatMasker GFF3 file converted from the `.out` format.
+
+    Args:
+        results_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     return require_path(results_dir / "repeatmasker.gff3", "RepeatMasker-derived GFF3")
 
 
 def _repeatmasker_bed_path(results_dir: Path) -> Path:
-    """Resolve the downstream RepeatMasker BED file."""
+    """Resolve the RepeatMasker BED interval file (three-column format).
+
+    Args:
+        results_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     return require_path(results_dir / "repeatmasker.bed", "RepeatMasker BED")
 
 
 def _gffread_protein_fasta(results_dir: Path) -> Path:
-    """Resolve the primary protein FASTA emitted by gffread."""
+    """Resolve the primary protein FASTA emitted by gffread during extraction.
+
+    Args:
+        results_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     candidates = sorted(results_dir.glob("*.proteins.fa"))
     if len(candidates) == 1:
         return candidates[0]
@@ -108,7 +118,14 @@ def _gffread_protein_fasta(results_dir: Path) -> Path:
 
 
 def _sanitized_protein_fasta(results_dir: Path) -> Path:
-    """Resolve the period-stripped protein FASTA emitted for repeat blasting."""
+    """Resolve the period-stripped protein FASTA used for repeat diamond blasting.
+
+    Args:
+        results_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     candidates = sorted(results_dir.glob("*.proteins.no_periods.fa"))
     if len(candidates) == 1:
         return candidates[0]
@@ -118,7 +135,14 @@ def _sanitized_protein_fasta(results_dir: Path) -> Path:
 
 
 def _clean_gff3_path(results_dir: Path) -> Path:
-    """Resolve the clean GFF3 emitted by funannotate overlap filtering."""
+    """Resolve the clean GFF3 annotation emitted by the funannotate overlap filter.
+
+    Args:
+        results_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     candidates = sorted(results_dir.glob("*.clean.gff3"))
     if len(candidates) == 1:
         return candidates[0]
@@ -126,7 +150,14 @@ def _clean_gff3_path(results_dir: Path) -> Path:
 
 
 def _models_to_remove_path(results_dir: Path) -> Path:
-    """Resolve the funannotate overlap-removal list written for later filtering."""
+    """Resolve the overlap-removal list emitted by funannotate RemoveBadModels.
+
+    Args:
+        results_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     exact_candidates = [
         results_dir / "genome.repeats.to.remove.gff3",
         results_dir / "genome.repeats.to.remove.gff",
@@ -144,7 +175,14 @@ def _models_to_remove_path(results_dir: Path) -> Path:
 
 
 def _filtered_gff3_path(results_dir: Path) -> Path:
-    """Resolve the single filtered GFF3 emitted by a deterministic removal step."""
+    """Resolve the single filtered GFF3 produced by a deterministic removal step.
+
+    Args:
+        results_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     candidates = sorted(path for path in results_dir.glob("*.gff3") if path.name != "run_manifest.json")
     if len(candidates) == 1:
         return candidates[0]
@@ -152,12 +190,27 @@ def _filtered_gff3_path(results_dir: Path) -> Path:
 
 
 def _repeat_blast_hits_path(results_dir: Path) -> Path:
-    """Resolve the repeat blast hits file emitted by funannotate."""
+    """Resolve the repeat blast hits file emitted by funannotate RepeatBlast.
+
+    Args:
+        results_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     return require_path(results_dir / "repeat.dmnd.blast.txt", "repeat.dmnd blast hits")
 
 
 def _write_repeatmasker_bed(gff3_path: Path, bed_path: Path) -> Path:
-    """Write the downstream BED extracted from the converted RepeatMasker GFF3."""
+    """Extract and write a three-column BED file from RepeatMasker GFF3.
+
+    Args:
+        gff3_path: A filesystem path used by the helper.
+        bed_path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     bed_lines: list[str] = []
     for raw_line in gff3_path.read_text().splitlines():
         if not raw_line or raw_line.startswith("#"):
@@ -174,7 +227,15 @@ def _write_repeatmasker_bed(gff3_path: Path, bed_path: Path) -> Path:
 
 
 def _strip_periods_from_fasta(input_fasta: Path, output_fasta: Path) -> Path:
-    """Remove periods from FASTA sequence lines while preserving headers."""
+    """Remove periods from protein FASTA sequences while preserving headers.
+
+    Args:
+        input_fasta: A value used by the helper.
+        output_fasta: A value used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     cleaned_lines: list[str] = []
     for raw_line in input_fasta.read_text().splitlines():
         if raw_line.startswith(">"):
@@ -185,20 +246,17 @@ def _strip_periods_from_fasta(input_fasta: Path, output_fasta: Path) -> Path:
     return output_fasta
 
 
-def _parse_attributes(attribute_text: str) -> dict[str, tuple[str, ...]]:
-    """Parse a GFF3 attribute column into a mapping of keys to tuple values."""
-    parsed: dict[str, tuple[str, ...]] = {}
-    for field in attribute_text.split(";"):
-        if "=" not in field:
-            continue
-        key, value = field.split("=", 1)
-        values = tuple(part for part in value.split(",") if part)
-        parsed[key] = values
-    return parsed
-
-
 def _remove_exact_feature_lines(annotation_gff3: Path, removal_list: Path, output_gff3: Path) -> Path:
-    """Remove exact feature lines listed in a line-oriented removal file."""
+    """Remove exact feature lines matching entries in a removal list from GFF3.
+
+    Args:
+        annotation_gff3: A value used by the helper.
+        removal_list: A value used by the helper.
+        output_gff3: A value used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     removal_lines = {
         line.rstrip("\n")
         for line in removal_list.read_text().splitlines()
@@ -214,7 +272,16 @@ def _remove_exact_feature_lines(annotation_gff3: Path, removal_list: Path, outpu
 
 
 def _remove_repeat_blast_ids(annotation_gff3: Path, repeat_blast_hits: Path, output_gff3: Path) -> Path:
-    """Remove blast-hit gene models using the existing Parent/ID filtering logic."""
+    """Remove blast-hit gene models from GFF3 using ID and Parent attribute filtering.
+
+    Args:
+        annotation_gff3: A value used by the helper.
+        repeat_blast_hits: A value used by the helper.
+        output_gff3: A value used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     blast_ids = {
         line.split()[0]
         for line in repeat_blast_hits.read_text().splitlines()
@@ -232,8 +299,8 @@ def _remove_repeat_blast_ids(annotation_gff3: Path, repeat_blast_hits: Path, out
             kept_lines.append(raw_line)
             continue
         attributes = _parse_attributes(fields[8])
-        feature_ids = set(attributes.get("ID", ()))
-        parent_ids = set(attributes.get("Parent", ()))
+        feature_ids = set(_attribute_values(attributes, "ID"))
+        parent_ids = set(_attribute_values(attributes, "Parent"))
         if feature_ids & blast_ids:
             continue
         if parent_ids & blast_ids:
@@ -252,7 +319,16 @@ def repeatmasker_out_to_bed(
     rmout_to_gff3_script: str = "rmOutToGFF3.pl",
     repeat_filter_sif: str = "",
 ) -> Dir:
-    """Convert a RepeatMasker `.out` file into the downstream GFF3 and BED pair."""
+    """Convert a RepeatMasker `.out` file into a downstream GFF3 and BED pair.
+
+    Args:
+        repeatmasker_out: A value used by the helper.
+        rmout_to_gff3_script: A value used by the helper.
+        repeat_filter_sif: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     repeatmasker_out_path = require_path(Path(repeatmasker_out.download_sync()), "RepeatMasker .out file")
     out_dir = project_mkdtemp("repeatmasker_convert_") / "repeatmasker"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -299,7 +375,18 @@ def gffread_proteins(
     gffread_binary: str = "gffread",
     repeat_filter_sif: str = "",
 ) -> Dir:
-    """Extract proteins with gffread and emit a period-stripped FASTA for repeat blasting."""
+    """Extract protein sequences from GFF3 annotation and sanitize for repeat blasting.
+
+    Args:
+        annotation_gff3: A value used by the helper.
+        genome_fasta: A value used by the helper.
+        protein_output_stem: A value used by the helper.
+        gffread_binary: A value used by the helper.
+        repeat_filter_sif: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     annotation_path = require_path(Path(annotation_gff3.download_sync()), "Annotation GFF3")
     genome_path = require_path(Path(genome_fasta.download_sync()), "Reference genome FASTA")
     out_dir = project_mkdtemp("gffread_proteins_") / "proteins"
@@ -348,7 +435,20 @@ def funannotate_remove_bad_models(
     repeat_filter_sif: str = "",
     min_protlen: int = 50,
 ) -> Dir:
-    """Run the funannotate overlap filter to mark repeat-overlapping models."""
+    """Run the funannotate overlap filter to identify repeat-overlapping gene models.
+
+    Args:
+        annotation_gff3: A value used by the helper.
+        proteins_fasta: A value used by the helper.
+        repeatmasker_bed: A value used by the helper.
+        clean_output_name: A value used by the helper.
+        funannotate_python: A value used by the helper.
+        repeat_filter_sif: A value used by the helper.
+        min_protlen: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     annotation_path = require_path(Path(annotation_gff3.download_sync()), "Annotation GFF3")
     proteins_path = require_path(Path(proteins_fasta.download_sync()), "Protein FASTA for overlap filtering")
     repeatmasker_bed_path = require_path(Path(repeatmasker_bed.download_sync()), "RepeatMasker BED")
@@ -415,7 +515,16 @@ def remove_overlap_repeat_models(
     models_to_remove: File,
     output_name: str = "bed_repeats_removed.gff3",
 ) -> Dir:
-    """Remove exact overlap-listed feature lines from the current annotation GFF3."""
+    """Remove exact overlap-listed feature lines from the annotation GFF3.
+
+    Args:
+        annotation_gff3: A value used by the helper.
+        models_to_remove: A value used by the helper.
+        output_name: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     annotation_path = require_path(Path(annotation_gff3.download_sync()), "Annotation GFF3")
     removal_path = require_path(Path(models_to_remove.download_sync()), "Overlap removal list")
     out_dir = project_mkdtemp("overlap_removed_") / "overlap_removed"
@@ -449,7 +558,19 @@ def funannotate_repeat_blast(
     repeat_blast_cpu: int = 1,
     repeat_blast_evalue: float = 1e-10,
 ) -> Dir:
-    """Run the funannotate repeat blast against `repeats.dmnd`."""
+    """Run the funannotate repeat-blasting stage against the repeats DIAMOND database.
+
+    Args:
+        proteins_fasta: A value used by the helper.
+        funannotate_db_path: A filesystem path used by the helper.
+        funannotate_python: A value used by the helper.
+        repeat_filter_sif: A value used by the helper.
+        repeat_blast_cpu: A value used by the helper.
+        repeat_blast_evalue: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     proteins_path = require_path(Path(proteins_fasta.download_sync()), "Protein FASTA for repeat blasting")
     fundb_path = require_path(Path(funannotate_db_path), "funannotate database root")
     out_dir = project_mkdtemp("repeat_blast_") / "repeat_blast"
@@ -507,7 +628,16 @@ def remove_repeat_blast_hits(
     repeat_blast_results: Dir,
     output_name: str = "all_repeats_removed.gff3",
 ) -> Dir:
-    """Remove repeat-blast-hit models from a GFF3 using the existing attribute rules."""
+    """Remove repeat-blast-hit gene models from GFF3 using attribute filtering rules.
+
+    Args:
+        annotation_gff3: A value used by the helper.
+        repeat_blast_results: A directory path used by the helper.
+        output_name: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     annotation_path = require_path(Path(annotation_gff3.download_sync()), "Annotation GFF3")
     repeat_blast_dir = require_path(Path(repeat_blast_results.download_sync()), "Repeat blast results directory")
     blast_hits_path = _repeat_blast_hits_path(repeat_blast_dir)
@@ -546,7 +676,22 @@ def collect_repeat_filter_results(
     blast_removed: Dir,
     final_proteins: Dir,
 ) -> Dir:
-    """Collect repeat-filtering stages into one manifest-bearing results bundle."""
+    """Collect repeat-filtering stages into a unified manifest-bearing results bundle.
+
+    Args:
+        pasa_update_results: A directory path used by the helper.
+        repeatmasker_conversion: A value used by the helper.
+        initial_proteins: A value used by the helper.
+        overlap_filter: A value used by the helper.
+        overlap_removed: A value used by the helper.
+        bed_filtered_proteins: A value used by the helper.
+        repeat_blast: A value used by the helper.
+        blast_removed: A value used by the helper.
+        final_proteins: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     pasa_update_dir = require_path(Path(pasa_update_results.download_sync()), "PASA update results directory")
     repeatmasker_dir = require_path(Path(repeatmasker_conversion.download_sync()), "RepeatMasker conversion directory")
     initial_proteins_dir = require_path(Path(initial_proteins.download_sync()), "Initial gffread directory")

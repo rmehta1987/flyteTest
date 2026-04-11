@@ -35,7 +35,7 @@ Generate per-FASTQ quality control reports for raw or trimmed sequencing reads.
 - [What is FastQC?](https://www.bioinformatics.babraham.ac.uk/projects/fastqc/Help/1%20Introduction/1.1%20What%20is%20FastQC.html)
 - [Opening a sequence file](https://www.bioinformatics.babraham.ac.uk/projects/fastqc/Help/2%20Basic%20Operations/2.1%20Opening%20a%20sequence%20file.html)
 
-## Tutorial And Training
+## Tutorial References
 
 - [GTN FastQC tool reference](https://training.galaxyproject.org/training-material/by-tool/devteam/fastqc.html)
 - [GTN Quality Control tutorial](https://training.galaxyproject.org/topics/sequence-analysis/tutorials/quality-control/tutorial.html)

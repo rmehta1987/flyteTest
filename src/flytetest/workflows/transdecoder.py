@@ -1,10 +1,10 @@
 """TransDecoder workflow entrypoint for PASA-derived coding prediction.
 
-The workflow composition follows `docs/braker3_evm_notes.md`, while the
-TransDecoder task boundary and command expectations follow
-`docs/tool_refs/transdecoder.md`. This module resolves PASA assemblies from
-the current results bundle, runs the TransDecoder boundary, and collects
-stable downstream-ready outputs.
+    The workflow composition follows `docs/braker3_evm_notes.md`, while the
+    TransDecoder task boundary and command expectations follow
+    `docs/tool_refs/transdecoder.md`. This module resolves PASA assemblies from
+    the current results bundle, runs the TransDecoder boundary, and collects
+    stable downstream-ready outputs.
 """
 
 from __future__ import annotations
@@ -31,7 +31,17 @@ def transdecoder_from_pasa(
     transdecoder_min_protein_length: int = 100,
     transdecoder_genome_orf_script: str = "cdna_alignment_orf_to_genome_orf.pl",
 ) -> Dir:
-    """Run the TransDecoder workflow boundary described in `docs/tool_refs/transdecoder.md`."""
+    """Predict coding sequences and open reading frames from PASA transcript assemblies.
+
+    Args:
+        pasa_results: A directory path used by the helper.
+        transdecoder_sif: A value used by the helper.
+        transdecoder_min_protein_length: A value used by the helper.
+        transdecoder_genome_orf_script: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     pasa_results_path = require_path(Path(pasa_results.download_sync()), "PASA results directory")
     pasa_dir = require_path(
         pasa_results_path / "pasa",

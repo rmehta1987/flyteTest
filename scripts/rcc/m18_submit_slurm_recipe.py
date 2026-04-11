@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Submit a frozen Milestone 18 Slurm recipe and print JSON."""
+"""Submit a frozen Milestone 18 Slurm recipe and print JSON.
+
+    This module keeps the current repo contract explicit and reviewable.
+"""
 
 from __future__ import annotations
 
@@ -12,7 +15,14 @@ from flytetest.server import _run_slurm_recipe_impl
 
 
 def main(argv: list[str]) -> int:
-    """Submit the requested recipe, persist pointer files, and print JSON."""
+    """Submit the requested recipe, persist pointer files, and print JSON.
+
+    Args:
+        argv: The argument vector forwarded to the helper.
+
+    Returns:
+        The returned `int` value used by the caller.
+"""
     if len(argv) != 2:
         raise SystemExit("usage: m18_submit_slurm_recipe.py ARTIFACT_PATH")
 

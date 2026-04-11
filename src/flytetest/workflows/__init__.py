@@ -1,7 +1,7 @@
 """Workflow exports for the implemented FLyteTest entrypoints.
 
-This package-level module preserves one import surface for composed biological
-stage entrypoints while optional workflow families remain modular.
+    This package-level module preserves one import surface for composed biological
+    stage entrypoints while optional workflow families remain modular.
 """
 
 from importlib.util import find_spec

@@ -1,7 +1,7 @@
 """Synthetic coverage for the first manifest-backed resolver layer.
 
-These tests cover local input resolution rules without changing the current
-prompt planner or execution paths.
+    These tests cover local input resolution rules without changing the current
+    prompt planner or execution paths.
 """
 
 from __future__ import annotations
@@ -22,10 +22,16 @@ from flytetest.types.assets import ReferenceGenome as AssetReferenceGenome
 
 
 class ResolverTests(TestCase):
-    """Coverage for explicit, manifest-backed, and bundle-backed resolution."""
+    """Coverage for explicit, manifest-backed, and bundle-backed resolution.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
     def test_explicit_binding_wins_over_discovered_sources(self) -> None:
-        """Prefer an explicit local planner value over any discovered manifest candidate."""
+        """Prefer an explicit local planner value over any discovered manifest candidate.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         resolver = LocalManifestAssetResolver()
         explicit_reference = ReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa"))
 
@@ -40,7 +46,10 @@ class ResolverTests(TestCase):
         self.assertEqual(result.selected_source.kind, "explicit_binding")
 
     def test_resolver_can_build_transcript_evidence_from_manifest_path(self) -> None:
-        """Resolve transcript evidence from a current manifest-shaped local results directory."""
+        """Resolve transcript evidence from a current manifest-shaped local results directory.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         resolver = LocalManifestAssetResolver()
         with tempfile.TemporaryDirectory() as tmp:
             result_dir = Path(tmp) / "transcript_results"
@@ -91,7 +100,10 @@ class ResolverTests(TestCase):
         self.assertEqual(result.resolved_value.read_sets[0].sample_id, "sampleA")
 
     def test_resolver_reports_ambiguity_instead_of_guessing(self) -> None:
-        """Return an unresolved ambiguity when more than one candidate is found."""
+        """Return an unresolved ambiguity when more than one candidate is found.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         resolver = LocalManifestAssetResolver()
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -140,7 +152,10 @@ class ResolverTests(TestCase):
         self.assertIn("choose one explicitly", result.unresolved_requirements[0])
 
     def test_resolver_reports_missing_when_nothing_matches(self) -> None:
-        """Return a missing-input message when no source can satisfy the request."""
+        """Return a missing-input message when no source can satisfy the request.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         resolver = LocalManifestAssetResolver()
 
         result = resolver.resolve("QualityAssessmentTarget")
@@ -150,7 +165,10 @@ class ResolverTests(TestCase):
         self.assertIn("No QualityAssessmentTarget", result.unresolved_requirements[0])
 
     def test_resolver_can_use_current_result_bundle_objects(self) -> None:
-        """Resolve from current registered-workflow result bundle objects when provided directly."""
+        """Resolve from current registered-workflow result bundle objects when provided directly.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         resolver = LocalManifestAssetResolver()
         bundle = ProteinEvidenceResultBundle(
             result_dir=Path("results/protein"),
@@ -176,7 +194,10 @@ class ResolverTests(TestCase):
         self.assertEqual(result.resolved_value.evm_ready_gff3_path, Path("results/protein/protein_evidence.evm.gff3"))
 
     def test_resolver_accepts_generic_ab_initio_bundle_objects(self) -> None:
-        """Resolve generic ab initio bundles without losing legacy compatibility."""
+        """Resolve generic ab initio bundles without losing legacy compatibility.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         resolver = LocalManifestAssetResolver()
         bundle = AbInitioResultBundle(
             result_dir=Path("results/ab_initio"),
@@ -201,7 +222,10 @@ class ResolverTests(TestCase):
         self.assertIn("BRAKER3", result.resolved_value.notes[0])
 
     def test_resolver_can_satisfy_downstream_qc_target_from_prior_result_manifest(self) -> None:
-        """Resolve a downstream QC target from a prior repeat-filter result bundle manifest."""
+        """Resolve a downstream QC target from a prior repeat-filter result bundle manifest.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         resolver = LocalManifestAssetResolver()
         with tempfile.TemporaryDirectory() as tmp:
             result_dir = Path(tmp) / "repeat_filter_results"

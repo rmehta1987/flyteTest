@@ -1,12 +1,12 @@
 """Consensus-stage preparation and EVM execution tasks for FLyteTest.
 
-Stage ordering and the pre-EVM file contract follow `docs/braker3_evm_notes.md`.
-Tool-level command and input/output expectations follow the tool references
-under `docs/tool_refs/` (notably `evidencemodeler.md`).
+    Stage ordering and the pre-EVM file contract follow `docs/braker3_evm_notes.md`.
+    Tool-level command and input/output expectations follow the tool references
+    under `docs/tool_refs/` (notably `evidencemodeler.md`).
 
-This module preserves the current pre-EVM contract assembly boundary, then runs
-deterministic EVidenceModeler partitioning, command generation, execution, and
-recombination strictly downstream of that existing bundle.
+    This module preserves the current pre-EVM contract assembly boundary, then runs
+    deterministic EVidenceModeler partitioning, command generation, execution, and
+    recombination strictly downstream of that existing bundle.
 """
 
 from __future__ import annotations
@@ -49,7 +49,14 @@ from flytetest.types import (
 
 
 def _as_json_compatible(value: Any) -> Any:
-    """Recursively convert manifest values into JSON-serializable primitives."""
+    """Convert manifest values into JSON-serializable primitives for persistent staging.
+
+    Args:
+        value: The value or values processed by the helper.
+
+    Returns:
+        The returned `Any` value used by the caller.
+"""
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, dict):
@@ -62,24 +69,56 @@ def _as_json_compatible(value: Any) -> Any:
 
 
 def _read_json(path: Path) -> dict[str, Any]:
-    """Read a JSON manifest into a dictionary."""
+    """Read a JSON manifest file into a Python dictionary.
+
+    Args:
+        path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `dict[str, Any]` value used by the caller.
+"""
     return json.loads(path.read_text())
 
 
 def _copy_file(source: Path, destination: Path) -> Path:
-    """Copy one file into a deterministic destination and return the new path."""
+    """Copy a file into a deterministic staging location and preserve metadata.
+
+    Args:
+        source: A filesystem path used by the helper.
+        destination: A filesystem path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, destination)
     return destination
 
 
 def _manifest_path(results_dir: Path, label: str) -> Path:
-    """Resolve the run manifest for one upstream or prepared bundle."""
+    """Locate the canonical `run_manifest.json` file in a results bundle directory.
+
+    Args:
+        results_dir: A directory path used by the helper.
+        label: A value used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     return require_path(results_dir / "run_manifest.json", f"{label} manifest")
 
 
 def _manifest_output_path(manifest: dict[str, Any], key: str, description: str) -> Path | None:
-    """Resolve one output path recorded in a manifest when it is present."""
+    """Resolve a named output path from a stage manifest's `outputs` section if present.
+
+    Args:
+        manifest: A value used by the helper.
+        key: A value used by the helper.
+        description: A value used by the helper.
+
+    Returns:
+        The returned `Path | None` value used by the caller.
+"""
     output_path = manifest.get("outputs", {}).get(key)
     if not output_path:
         return None
@@ -87,7 +126,15 @@ def _manifest_output_path(manifest: dict[str, Any], key: str, description: str) 
 
 
 def _pasa_assemblies_gff3_from_results(results_dir: Path, manifest: dict[str, Any]) -> Path:
-    """Resolve `${db}.pasa_assemblies.gff3` from a PASA results bundle."""
+    """Locate the PASA assemblies GFF3 file from an upstream PASA results bundle.
+
+    Args:
+        results_dir: A directory path used by the helper.
+        manifest: A value used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     manifest_path = _manifest_output_path(
         manifest,
         "pasa_assemblies_gff3",
@@ -108,7 +155,15 @@ def _pasa_assemblies_gff3_from_results(results_dir: Path, manifest: dict[str, An
 
 
 def _transdecoder_genome_gff3_from_results(results_dir: Path, manifest: dict[str, Any]) -> Path:
-    """Resolve the PASA-derived TransDecoder genome GFF3 from a results bundle."""
+    """Locate the TransDecoder genome GFF3 from PASA/TransDecoder results.
+
+    Args:
+        results_dir: A directory path used by the helper.
+        manifest: A value used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     manifest_path = _manifest_output_path(
         manifest,
         "transdecoder_genome_gff3",
@@ -136,7 +191,15 @@ def _transdecoder_genome_gff3_from_results(results_dir: Path, manifest: dict[str
 
 
 def _protein_evidence_gff3_from_results(results_dir: Path, manifest: dict[str, Any]) -> Path:
-    """Resolve the downstream-ready protein evidence GFF3 from a results bundle."""
+    """Locate the final processed protein evidence GFF3 file from upstream Exonerate results.
+
+    Args:
+        results_dir: A directory path used by the helper.
+        manifest: A value used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     manifest_path = _manifest_output_path(
         manifest,
         "concatenated_evm_protein_gff3",
@@ -148,7 +211,15 @@ def _protein_evidence_gff3_from_results(results_dir: Path, manifest: dict[str, A
 
 
 def _normalized_braker_gff3_from_results(results_dir: Path, manifest: dict[str, Any]) -> Path:
-    """Resolve the normalized BRAKER3 GFF3 prepared for later EVM use."""
+    """Resolve the normalized BRAKER3 GFF3 file prepared for evidence integration.
+
+    Args:
+        results_dir: A directory path used by the helper.
+        manifest: A value used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     manifest_path = _manifest_output_path(
         manifest,
         "normalized_braker_gff3",
@@ -163,13 +234,28 @@ def _normalized_braker_gff3_from_results(results_dir: Path, manifest: dict[str, 
 
 
 def _braker_genome_fasta(results_dir: Path) -> Path:
-    """Resolve the authoritative staged genome copied through the BRAKER3 bundle."""
+    """Retrieve the reference genome FASTA from the BRAKER3 results staging area.
+
+    Args:
+        results_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     staged_inputs_dir = require_path(results_dir / "staged_inputs", "BRAKER3 staged inputs directory")
     return _staged_genome_fasta(staged_inputs_dir)
 
 
 def _write_concatenated_gff3(source_paths: list[Path], destination: Path) -> Path:
-    """Concatenate one or more GFF3 files while emitting a single canonical header."""
+    """Concatenate multiple GFF3 files into one canonical merged file with unified header.
+
+    Args:
+        source_paths: A value used by the helper.
+        destination: A filesystem path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     destination.parent.mkdir(parents=True, exist_ok=True)
     with destination.open("w") as out_handle:
         out_handle.write("##gff-version 3\n")
@@ -183,7 +269,15 @@ def _write_concatenated_gff3(source_paths: list[Path], destination: Path) -> Pat
 
 
 def _prepared_prediction_transdecoder_gff3(prepared_dir: Path, manifest: dict[str, Any]) -> Path:
-    """Resolve the staged TransDecoder genome GFF3 after the prepared directory is copied."""
+    """Resolve the staged TransDecoder genome GFF3 within a prepared prediction bundle.
+
+    Args:
+        prepared_dir: A directory path used by the helper.
+        manifest: A value used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     recorded_path = manifest.get("outputs", {}).get("transdecoder_genome_gff3")
     if recorded_path:
         return require_path(
@@ -201,9 +295,16 @@ def _prepared_prediction_transdecoder_gff3(prepared_dir: Path, manifest: dict[st
 
 @consensus_prep_env.task
 def prepare_evm_transcript_inputs(
-    pasa_results: Dir,
+    passa_results: Dir,
 ) -> Dir:
-    """Stage `${db}.pasa_assemblies.gff3` as the final `transcripts.gff3` channel."""
+    """Stage PASA transcript evidence as the EVM transcript channel input.
+
+    Args:
+        passa_results: A directory path used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     results_dir = require_path(Path(pasa_results.download_sync()), "PASA results directory")
     manifest = _read_json(_manifest_path(results_dir, "PASA"))
     pasa_assemblies_gff3 = _pasa_assemblies_gff3_from_results(results_dir, manifest)
@@ -245,7 +346,14 @@ def prepare_evm_transcript_inputs(
 def prepare_evm_protein_inputs(
     protein_evidence_results: Dir,
 ) -> Dir:
-    """Stage Exonerate-derived protein evidence as the final `proteins.gff3` channel."""
+    """Stage protein homology evidence as the EVM protein channel input.
+
+    Args:
+        protein_evidence_results: A directory path used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     results_dir = require_path(
         Path(protein_evidence_results.download_sync()),
         "Protein evidence results directory",
@@ -291,7 +399,15 @@ def prepare_evm_prediction_inputs(
     transdecoder_results: Dir,
     braker3_results: Dir,
 ) -> Dir:
-    """Assemble `predictions.gff3` from normalized BRAKER3 and TransDecoder genome GFF3."""
+    """Assemble ab initio and coding predictions as the EVM predictions channel.
+
+    Args:
+        transdecoder_results: A directory path used by the helper.
+        braker3_results: A directory path used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     transdecoder_results_dir = require_path(
         Path(transdecoder_results.download_sync()),
         "TransDecoder results directory",
@@ -387,7 +503,20 @@ def collect_evm_prep_results(
     protein_evidence_results: Dir,
     braker3_results: Dir,
 ) -> Dir:
-    """Collect the final pre-EVM contract files and their upstream provenance."""
+    """Finalize the pre-EVM evidence bundle with consolidated provenance.
+
+    Args:
+        transcript_inputs: A value used by the helper.
+        protein_inputs: A value used by the helper.
+        prediction_inputs: A value used by the helper.
+        pasa_results: A directory path used by the helper.
+        transdecoder_results: A directory path used by the helper.
+        protein_evidence_results: A directory path used by the helper.
+        braker3_results: A directory path used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     transcript_inputs_dir = require_path(Path(transcript_inputs.download_sync()), "Prepared transcript inputs")
     protein_inputs_dir = require_path(Path(protein_inputs.download_sync()), "Prepared protein inputs")
     prediction_inputs_dir = require_path(Path(prediction_inputs.download_sync()), "Prepared prediction inputs")
@@ -586,25 +715,56 @@ def collect_evm_prep_results(
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> Path:
-    """Write one JSON payload with indentation and return the written path."""
+    """Write a JSON manifest to disk with indentation for human readability.
+
+    Args:
+        path: A filesystem path used by the helper.
+        payload: The structured payload to serialize or inspect.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2))
     return path
 
 
 def _copy_tree(source: Path, destination: Path) -> Path:
-    """Copy one directory tree into a deterministic destination and return it."""
+    """Copy an entire directory tree to a deterministic staging location.
+
+    Args:
+        source: A filesystem path used by the helper.
+        destination: A filesystem path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     shutil.copytree(source, destination, dirs_exist_ok=True)
     return destination
 
 
 def _manifest_from_dir(results_dir: Path, label: str) -> dict[str, Any]:
-    """Read the manifest emitted for one staged or collected directory."""
+    """Load the run manifest associated with a staged or results collection directory.
+
+    Args:
+        results_dir: A directory path used by the helper.
+        label: A value used by the helper.
+
+    Returns:
+        The returned `dict[str, Any]` value used by the caller.
+"""
     return _read_json(_manifest_path(results_dir, label))
 
 
 def _gff3_source_names(gff3_path: Path) -> tuple[str, ...]:
-    """Resolve the unique GFF3 source-column values in first-appearance order."""
+    """Extract unique GFF3 source-column values in first-appearance order.
+
+    Args:
+        gff3_path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `tuple[str, ...]` value used by the caller.
+"""
     source_names: list[str] = []
     seen: set[str] = set()
     for raw_line in gff3_path.read_text().splitlines():
@@ -621,22 +781,53 @@ def _gff3_source_names(gff3_path: Path) -> tuple[str, ...]:
 
 
 def _workspace_file(workspace_dir: Path, name: str, description: str) -> Path:
-    """Resolve one required file from an EVM workspace directory."""
+    """Validate and resolve a required file within an EVM execution workspace.
+
+    Args:
+        workspace_dir: A directory path used by the helper.
+        name: A value used by the helper.
+        description: A value used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     return require_path(workspace_dir / name, description)
 
 
 def _partition_listing_path(workspace_dir: Path) -> Path:
-    """Resolve the canonical partition listing emitted by EVM partitioning."""
+    """Locate the `partitions_list.out` file produced by EVM partitioning.
+
+    Args:
+        workspace_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     return _workspace_file(workspace_dir, "partitions_list.out", "EVM partition listing")
 
 
 def _commands_path(workspace_dir: Path) -> Path:
-    """Resolve the canonical command list emitted by EVM command generation."""
+    """Locate the `commands.list` file produced by EVM command generation.
+
+    Args:
+        workspace_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     return _workspace_file(workspace_dir, "commands.list", "EVM commands list")
 
 
 def _recombined_gff3_paths(workspace_dir: Path, output_file_name: str) -> list[Path]:
-    """Resolve converted partition GFF3 files in deterministic relative-path order."""
+    """Collect per-partition GFF3 result files in deterministic lexicographic order.
+
+    Args:
+        workspace_dir: A directory path used by the helper.
+        output_file_name: A value used by the helper.
+
+    Returns:
+        The returned `list[Path]` value used by the caller.
+"""
     candidates = sorted(
         workspace_dir.rglob(f"{output_file_name}.gff3"),
         key=lambda path: str(path.relative_to(workspace_dir)),
@@ -649,17 +840,38 @@ def _recombined_gff3_paths(workspace_dir: Path, output_file_name: str) -> list[P
 
 
 def _partition_entries(partition_listing: Path) -> list[str]:
-    """Return non-empty partition-listing rows without trailing whitespace."""
+    """Parse the EVM partition listing file into a normalized entry list.
+
+    Args:
+        partition_listing: A value used by the helper.
+
+    Returns:
+        The returned `list[str]` value used by the caller.
+"""
     return [line.strip() for line in partition_listing.read_text().splitlines() if line.strip()]
 
 
 def _command_lines(commands_path: Path) -> list[str]:
-    """Return normalized non-empty command lines in file order."""
+    """Parse the EVM commands.list file into a normalized command set.
+
+    Args:
+        commands_path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `list[str]` value used by the caller.
+"""
     return [line.strip() for line in commands_path.read_text().splitlines() if line.strip()]
 
 
 def _weight_spec_for_source(source_name: str) -> tuple[str, int]:
-    """Map one source name to the inferred EVM weight spec for this repo."""
+    """Infer EVM evidence category and default weight from a GFF3 source name.
+
+    Args:
+        source_name: A value used by the helper.
+
+    Returns:
+        The returned `tuple[str, int]` value used by the caller.
+"""
     normalized = source_name.strip().lower()
     if normalized in {"exonerate", "exonerate_protein"}:
         return ("PROTEIN", 5)
@@ -675,7 +887,16 @@ def _inferred_evm_weight_lines(
     protein_sources: tuple[str, ...],
     prediction_sources: tuple[str, ...],
 ) -> list[str]:
-    """Build deterministic inferred EVM weight lines from the staged source fields."""
+    """Generate EVM weight file lines from discovered GFF3 source names.
+
+    Args:
+        transcript_sources: A value used by the helper.
+        protein_sources: A value used by the helper.
+        prediction_sources: A value used by the helper.
+
+    Returns:
+        The returned `list[str]` value used by the caller.
+"""
     grouped: dict[str, list[str]] = {
         "ABINITIO_PREDICTION": [],
         "PROTEIN": [],
@@ -713,7 +934,18 @@ def _write_evm_weights(
     prediction_sources: tuple[str, ...],
     evm_weights_text: str,
 ) -> Path:
-    """Write either explicit or inferred EVM weights into the workspace."""
+    """Write an EVM weights file from explicit text or inferred source categories.
+
+    Args:
+        destination: A filesystem path used by the helper.
+        transcript_sources: A value used by the helper.
+        protein_sources: A value used by the helper.
+        prediction_sources: A value used by the helper.
+        evm_weights_text: A value used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     destination.parent.mkdir(parents=True, exist_ok=True)
     if evm_weights_text.strip():
         weight_lines = [line.rstrip() for line in evm_weights_text.strip().splitlines() if line.strip()]
@@ -728,7 +960,15 @@ def _write_evm_weights(
 
 
 def _write_blank_line_filtered_gff3(source: Path, destination: Path) -> Path:
-    """Remove blank lines from a GFF3 file without changing record order."""
+    """Remove blank lines from a GFF3 file to produce syntactically clean output.
+
+    Args:
+        source: A filesystem path used by the helper.
+        destination: A filesystem path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     destination.parent.mkdir(parents=True, exist_ok=True)
     filtered_lines = [line for line in source.read_text().splitlines() if line.strip()]
     destination.write_text("\n".join(filtered_lines) + "\n")
@@ -740,7 +980,15 @@ def prepare_evm_execution_inputs(
     evm_prep_results: Dir,
     evm_weights_text: str = "",
 ) -> Dir:
-    """Stage the pre-EVM bundle into an EVM execution workspace plus weights file."""
+    """Stage pre-EVM evidence into an execution workspace with computed weights.
+
+    Args:
+        evm_prep_results: A directory path used by the helper.
+        evm_weights_text: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     prep_results_dir = require_path(
         Path(evm_prep_results.download_sync()),
         "Pre-EVM results directory",
@@ -837,7 +1085,18 @@ def evm_partition_inputs(
     evm_overlap_size: int = 300000,
     evm_sif: str = "",
 ) -> Dir:
-    """Run deterministic EVM partitioning from one staged execution workspace."""
+    """Partition genome and evidence tracks into segments for distributed EVM execution.
+
+    Args:
+        evm_execution_inputs: A value used by the helper.
+        evm_partition_script: A value used by the helper.
+        evm_segment_size: A value used by the helper.
+        evm_overlap_size: A value used by the helper.
+        evm_sif: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     execution_inputs_dir = require_path(
         Path(evm_execution_inputs.download_sync()),
         "EVM execution input directory",
@@ -939,7 +1198,17 @@ def evm_write_commands(
     evm_output_file_name: str = "evm.out",
     evm_sif: str = "",
 ) -> Dir:
-    """Generate and normalize the deterministic per-partition EVM command list."""
+    """Generate the EvidenceModeler command list for each partition and normalize it.
+
+    Args:
+        partitioned_evm_inputs: A value used by the helper.
+        evm_write_commands_script: A value used by the helper.
+        evm_output_file_name: A value used by the helper.
+        evm_sif: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     partitioned_dir = require_path(
         Path(partitioned_evm_inputs.download_sync()),
         "Partitioned EVM directory",
@@ -1019,7 +1288,15 @@ def evm_execute_commands(
     evm_commands: Dir,
     evm_sif: str = "",
 ) -> Dir:
-    """Execute EVM partition commands sequentially in deterministic file order."""
+    """Execute the generated EVM partition commands sequentially in deterministic order.
+
+    Args:
+        evm_commands: A value used by the helper.
+        evm_sif: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     commands_dir = require_path(Path(evm_commands.download_sync()), "EVM commands directory")
     commands_manifest = _manifest_from_dir(commands_dir, "EVM commands")
 
@@ -1081,7 +1358,19 @@ def evm_recombine_outputs(
     evm_output_file_name: str = "evm.out",
     evm_sif: str = "",
 ) -> Dir:
-    """Recombine partition outputs, convert them to GFF3, and finalize sorting."""
+    """Recombine partitioned EVM outputs and convert them into a final sorted GFF3.
+
+    Args:
+        executed_evm_commands: A value used by the helper.
+        evm_recombine_script: A value used by the helper.
+        evm_convert_script: A value used by the helper.
+        gff3sort_script: A value used by the helper.
+        evm_output_file_name: A value used by the helper.
+        evm_sif: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     executed_dir = require_path(
         Path(executed_evm_commands.download_sync()),
         "Executed EVM command directory",
@@ -1181,7 +1470,19 @@ def collect_evm_results(
     executed_evm_commands: Dir,
     recombined_evm_outputs: Dir,
 ) -> Dir:
-    """Collect stage-explicit EVM outputs into one manifest-bearing results bundle."""
+    """Collect the full EVM result hierarchy into a single manifest-bearing bundle.
+
+    Args:
+        evm_prep_results: A directory path used by the helper.
+        evm_execution_inputs: A value used by the helper.
+        partitioned_evm_inputs: A value used by the helper.
+        evm_commands: A value used by the helper.
+        executed_evm_commands: A value used by the helper.
+        recombined_evm_outputs: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     prep_results_dir = require_path(Path(evm_prep_results.download_sync()), "Pre-EVM results directory")
     execution_inputs_dir = require_path(
         Path(evm_execution_inputs.download_sync()),

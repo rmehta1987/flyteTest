@@ -41,7 +41,7 @@ Lightweight local fixture examples for milestone-scoped testing:
 - BRAKER User Guide and source repository: https://github.com/Gaius-Augustus/BRAKER
 - BRAKER output and mode notes in the user guide: `braker.pl`, `braker.gff3`, RNA-seq and protein-supported modes
 
-## Tutorial / Training References
+## Tutorial References
 
 - GTN Braker3 tutorial: https://training.galaxyproject.org/training-material/topics/genome-annotation/tutorials/braker3/tutorial.html
 - GTN Braker3 workflow: https://training.galaxyproject.org/training-material/topics/genome-annotation/tutorials/braker3/workflows/braker.html
@@ -74,18 +74,6 @@ braker.pl --genome=genome.fa --bam=RNAseq.bam --prot_seq=proteins.fa --gff3
 
 ```bash
 apptainer exec --bind "$PWD:$PWD" data/images/braker3.sif braker.pl --genome=genome.fa --bam=RNAseq.bam --prot_seq=proteins.fa --gff3
-```
-
-## At A Glance
-
-```mermaid
-flowchart LR
-    G[Genome FASTA] --> S[BRAKER3 staging]
-    R[RNA-seq BAM] --> S
-    P[Protein FASTA] --> S
-    S --> B[BRAKER3 run]
-    B --> N[Normalize braker.gff3]
-    N --> E[EVM prep]
 ```
 
 ## Prompt Template
@@ -124,3 +112,15 @@ Deliver:
 - The local fixture paths above are intended for lightweight smoke testing only, not for production-scale annotation benchmarks.
 - This BRAKER3-only workflow preserves raw BRAKER3 outputs and produces a deterministic later-EVM-ready normalized GFF3.
 - The repo now implements EVM, PASA post-EVM refinement, repeat filtering, functional annotation, and submission-prep stages elsewhere; this reference stays focused on the BRAKER3 boundary rather than those later milestones.
+
+## At A Glance
+
+```mermaid
+flowchart LR
+    G[Genome FASTA] --> S[BRAKER3 staging]
+    R[RNA-seq BAM] --> S
+    P[Protein FASTA] --> S
+    S --> B[BRAKER3 run]
+    B --> N[Normalize braker.gff3]
+    N --> E[EVM prep]
+```

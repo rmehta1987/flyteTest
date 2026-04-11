@@ -33,28 +33,6 @@ Generate annotation statistics, GFF/GTF conversion, and deterministic cleanup sl
 - downstream post-processing, reporting, and GFF3 cleanup after annotation refinement and functional annotation
 - this repo now implements the statistics, conversion, and cleanup boundaries after EggNOG functional annotation
 
-## Notes And Caveats
-
-- AGAT is now implemented in FLyteTest as separate statistics, conversion, and
-  cleanup slices after EggNOG functional annotation.
-- AGAT is a task family rather than one monolithic behavior, so future
-  implementations should keep statistics, conversion, cleanup, and submission
-  preparation steps separate.
-- This repo should keep any format normalization explicit so downstream
-  submission preparation remains auditable.
-- The statistics slice models the core `agat_sp_statistics.pl` command from the
-  notes and the official AGAT docs. The notes also mention a companion FASTA
-  and `-d` histogram output; those details stay explicit and optional.
-- The conversion slice models the core `agat_convert_sp_gxf2gxf.pl` command
-  family. The notes show a GTF-to-GFF3 example; using the same AGAT converter
-  on the EggNOG-annotated GFF3 bundle is an inferred normalization step and is
-  kept explicit in the manifest.
-- The cleanup slice consumes the AGAT conversion bundle and applies the
-  notes-backed deterministic GFF3 attribute edits: propagate parent mRNA `Name`
-  values onto child CDS `product` attributes, remove gene-level `Note`
-  attributes, and replace CDS products beginning with `-` with `putative`.
-- `table2asn` remains deferred and should not be folded into AGAT cleanup.
-
 ## Official Documentation
 
 - Project home and command family overview: [nbisweden.github.io/AGAT](https://nbisweden.github.io/AGAT/)
@@ -64,15 +42,15 @@ Generate annotation statistics, GFF/GTF conversion, and deterministic cleanup sl
   - [agat_sp_statistics.pl](https://nbisweden.github.io/AGAT/tools/agat_sp_statistics/)
 - The official docs clearly treat AGAT as many small scripts, split across `_sp_` and `_sq_` families.
 
+## Tutorial References
+
+- GTN coverage for AGAT specifically is weak; we did not find a dedicated AGAT walkthrough.
+- The closest training context is general genome annotation and GFF/GTF format material, which is useful background but not AGAT-specific implementation guidance.
+
 ## Code Reference
 
 - [`src/flytetest/tasks/agat.py`](src/flytetest/tasks/agat.py)
 - that module implements the statistics and conversion shell boundaries plus the deterministic in-repo cleanup slice
-
-## Tutorial And Training References
-
-- GTN coverage for AGAT specifically is weak; we did not find a dedicated AGAT walkthrough.
-- The closest training context is general genome annotation and GFF/GTF format material, which is useful background but not AGAT-specific implementation guidance.
 
 ## Native Command Context
 
@@ -109,3 +87,25 @@ Deliver:
 - expected statistics, conversion, or cleaned-GFF3 outputs
 - any assumptions that need to stay explicit
 ```
+
+## Notes And Caveats
+
+- AGAT is now implemented in FLyteTest as separate statistics, conversion, and
+  cleanup slices after EggNOG functional annotation.
+- AGAT is a task family rather than one monolithic behavior, so future
+  implementations should keep statistics, conversion, cleanup, and submission
+  preparation steps separate.
+- This repo should keep any format normalization explicit so downstream
+  submission preparation remains auditable.
+- The statistics slice models the core `agat_sp_statistics.pl` command from the
+  notes and the official AGAT docs. The notes also mention a companion FASTA
+  and `-d` histogram output; those details stay explicit and optional.
+- The conversion slice models the core `agat_convert_sp_gxf2gxf.pl` command
+  family. The notes show a GTF-to-GFF3 example; using the same AGAT converter
+  on the EggNOG-annotated GFF3 bundle is an inferred normalization step and is
+  kept explicit in the manifest.
+- The cleanup slice consumes the AGAT conversion bundle and applies the
+  notes-backed deterministic GFF3 attribute edits: propagate parent mRNA `Name`
+  values onto child CDS `product` attributes, remove gene-level `Note`
+  attributes, and replace CDS products beginning with `-` with `putative`.
+- `table2asn` remains deferred and should not be folded into AGAT cleanup.

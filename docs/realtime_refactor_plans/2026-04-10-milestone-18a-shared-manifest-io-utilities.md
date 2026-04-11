@@ -1,7 +1,7 @@
 # Milestone 18a Shared Manifest IO Utilities
 
 Date: 2026-04-10
-Status: Proposed
+Status: Complete
 
 Related checklist milestone:
 - `docs/realtime_refactor_checklist.md` Milestone 18a

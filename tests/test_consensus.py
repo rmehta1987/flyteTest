@@ -1,8 +1,8 @@
 """Tests for the consensus-stage pre-EVM and EVM execution boundaries.
 
-The suite keeps deterministic staging, partitioning, command assembly, and
-result collection synthetic so these boundaries can be validated without
-requiring installed EVM utilities.
+    The suite keeps deterministic staging, partitioning, command assembly, and
+    result collection synthetic so these boundaries can be validated without
+    requiring installed EVM utilities.
 """
 
 from __future__ import annotations
@@ -37,53 +37,115 @@ from flytetest.workflows.consensus import consensus_annotation_evm, consensus_an
 
 
 def _artifact_dir(path: Path) -> Dir:
-    """Create a local Flyte directory wrapper from a filesystem path."""
+    """Create a local Flyte directory wrapper from a filesystem path.
+
+    Args:
+        path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     return Dir(path=str(path))
 
 
 def _read_json(path: Path) -> dict[str, object]:
-    """Read a manifest file into a dictionary for assertions."""
+    """Read a manifest file into a dictionary for assertions.
+
+    Args:
+        path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `dict[str, object]` value used by the caller.
+"""
     return json.loads(path.read_text())
 
 
 def _fixed_datetime() -> type:
-    """Return a deterministic timestamp provider for result-directory naming."""
+    """Return a deterministic timestamp provider for result-directory naming.
+
+    This helper keeps the test fixture deterministic and explicit.
+
+    Returns:
+        The returned type value used by the test fixture.
+"""
 
     # Keep the synthetic result-directory name stable for manifest assertions.
     class _Stamp:
-        """Fake datetime stamp that always returns the same test timestamp."""
+        """Fake datetime stamp that always returns the same test timestamp.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
         def strftime(self, fmt: str) -> str:
-            """Return the fixed timestamp string expected by the assertions."""
+            """Return the fixed timestamp string expected by the assertions.
+
+    Args:
+        fmt: A value used by the helper.
+
+    Returns:
+        The returned `str` value used by the caller.
+"""
             return "20260401_120000"
 
     class _FixedDatetime:
-        """Shim object that mimics the subset of `datetime` used by the code."""
+        """Shim object that mimics the subset of `datetime` used by the code.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
         @classmethod
         def now(cls) -> _Stamp:
-            """Return the fixed timestamp stub used by the synthetic tests."""
+            """Return the fixed timestamp stub used by the synthetic tests.
+
+    This helper keeps the test fixture deterministic and explicit.
+
+    Returns:
+        The returned _Stamp value used by the test fixture.
+"""
             return _Stamp()
 
     return _FixedDatetime
 
 
 def _write_gff3(path: Path, records: list[str]) -> Path:
-    """Write a minimal GFF3 file with a canonical header."""
+    """Write a minimal GFF3 file with a canonical header.
+
+    Args:
+        path: A filesystem path used by the helper.
+        records: The records written into the synthetic file.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("##gff-version 3\n" + "\n".join(records) + "\n")
     return path
 
 
 def _write_json(path: Path, payload: dict[str, object]) -> Path:
-    """Write a JSON payload with indentation for readability in failures."""
+    """Write a JSON payload with indentation for readability in failures.
+
+    Args:
+        path: A filesystem path used by the helper.
+        payload: The structured payload to serialize or inspect.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2))
     return path
 
 
 def _create_pasa_results(tmp_path: Path) -> Path:
-    """Create a minimal PASA results bundle that exposes a PASA assemblies GFF3."""
+    """Create a minimal PASA results bundle that exposes a PASA assemblies GFF3.
+
+    Args:
+        tmp_path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     results_dir = tmp_path / "pasa_results"
     pasa_dir = results_dir / "pasa"
     config_dir = results_dir / "config"
@@ -108,7 +170,14 @@ def _create_pasa_results(tmp_path: Path) -> Path:
 
 
 def _create_transdecoder_results(tmp_path: Path) -> Path:
-    """Create a minimal TransDecoder results bundle with a genome-coordinate GFF3."""
+    """Create a minimal TransDecoder results bundle with a genome-coordinate GFF3.
+
+    Args:
+        tmp_path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     results_dir = tmp_path / "transdecoder_results"
     transdecoder_dir = results_dir / "transdecoder"
     transdecoder_dir.mkdir(parents=True, exist_ok=True)
@@ -133,7 +202,15 @@ def _create_transdecoder_results(tmp_path: Path) -> Path:
 
 
 def _create_protein_results(tmp_path: Path, source_protein_fasta: Path | None = None) -> Path:
-    """Create a minimal protein-evidence results bundle with a concatenated GFF3."""
+    """Create a minimal protein-evidence results bundle with a concatenated GFF3.
+
+    Args:
+        tmp_path: A filesystem path used by the helper.
+        source_protein_fasta: A value used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     results_dir = tmp_path / "protein_results"
     results_dir.mkdir(parents=True, exist_ok=True)
 
@@ -163,7 +240,18 @@ def _create_braker_results(
     protein_fasta_path: Path | None = None,
     source_records: list[str] | None = None,
 ) -> Path:
-    """Create a minimal BRAKER3 results bundle with staged genome and normalized GFF3."""
+    """Create a minimal BRAKER3 results bundle with staged genome and normalized GFF3.
+
+    Args:
+        tmp_path: A filesystem path used by the helper.
+        genome_source: A value used by the helper.
+        rnaseq_bam_path: A filesystem path used by the helper.
+        protein_fasta_path: A filesystem path used by the helper.
+        source_records: A value used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     results_dir = tmp_path / "braker_results"
     staged_genome_dir = results_dir / "staged_inputs" / "genome"
     normalized_dir = results_dir / "braker3_normalized"
@@ -209,7 +297,14 @@ def _create_braker_results(
 
 
 def _create_pre_evm_results(tmp_path: Path) -> Path:
-    """Create the corrected pre-EVM bundle fixture used by the EVM tests."""
+    """Create the corrected pre-EVM bundle fixture used by the EVM tests.
+
+    Args:
+        tmp_path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     results_dir = tmp_path / "evm_prep_results"
     reference_dir = results_dir / "reference"
     reference_dir.mkdir(parents=True, exist_ok=True)
@@ -253,7 +348,14 @@ def _create_pre_evm_results(tmp_path: Path) -> Path:
 
 
 def _create_partitioned_workspace(tmp_path: Path) -> Path:
-    """Create a minimal partitioned EVM workspace for command-generation tests."""
+    """Create a minimal partitioned EVM workspace for command-generation tests.
+
+    Args:
+        tmp_path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     workspace_dir = tmp_path / "partitioned_workspace"
     workspace_dir.mkdir(parents=True, exist_ok=True)
     (workspace_dir / "genome.fa").write_text(">chr1\nACGTACGT\n")
@@ -287,7 +389,15 @@ def _create_partitioned_workspace(tmp_path: Path) -> Path:
 
 
 def _create_commands_workspace(tmp_path: Path, commands: list[str]) -> Path:
-    """Create a minimal EVM command workspace with one commands.list file."""
+    """Create a minimal EVM command workspace with one commands.list file.
+
+    Args:
+        tmp_path: A filesystem path used by the helper.
+        commands: A value used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     workspace_dir = _create_partitioned_workspace(tmp_path)
     (workspace_dir / "commands.list").write_text("\n".join(commands) + "\n")
     _write_json(
@@ -307,10 +417,16 @@ def _create_commands_workspace(tmp_path: Path, commands: list[str]) -> Path:
 
 
 class ConsensusPrepTaskTests(TestCase):
-    """Task-level coverage for the pre-EVM file assembly boundary."""
+    """Task-level coverage for the pre-EVM file assembly boundary.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
     def test_prepare_evm_transcript_inputs_copies_pasa_assemblies_to_transcripts_gff3(self) -> None:
-        """Stage PASA assemblies GFF3 under the corrected pre-EVM transcript filename."""
+        """Stage PASA assemblies GFF3 under the corrected pre-EVM transcript filename.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             pasa_results = _create_pasa_results(tmp_path)
@@ -326,7 +442,10 @@ class ConsensusPrepTaskTests(TestCase):
             self.assertEqual(Path(manifest["outputs"]["transcripts_gff3"]).name, "transcripts.gff3")
 
     def test_prepare_evm_prediction_inputs_concatenates_braker_and_transdecoder(self) -> None:
-        """Assemble predictions.gff3 in the required BRAKER-first then TransDecoder order."""
+        """Assemble predictions.gff3 in the required BRAKER-first then TransDecoder order.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             transdecoder_results = _create_transdecoder_results(tmp_path)
@@ -355,7 +474,10 @@ class ConsensusPrepTaskTests(TestCase):
             self.assertIn("repo_policy", manifest)
 
     def test_prepare_evm_protein_inputs_copies_exonerate_gff3_to_proteins_gff3(self) -> None:
-        """Stage the downstream-ready protein evidence under the corrected filename."""
+        """Stage the downstream-ready protein evidence under the corrected filename.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             protein_results = _create_protein_results(tmp_path)
@@ -371,7 +493,10 @@ class ConsensusPrepTaskTests(TestCase):
             self.assertEqual(Path(manifest["outputs"]["proteins_gff3"]).name, "proteins.gff3")
 
     def test_consensus_annotation_evm_prep_materializes_root_level_contract_files(self) -> None:
-        """Collect the corrected `transcripts.gff3`, `predictions.gff3`, and `proteins.gff3` files."""
+        """Collect the corrected `transcripts.gff3`, `predictions.gff3`, and `proteins.gff3` files.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             pasa_results = _create_pasa_results(tmp_path)
@@ -431,7 +556,10 @@ class ConsensusPrepTaskTests(TestCase):
             self.assertIn("repo_policy", manifest)
 
     def test_consensus_annotation_evm_prep_preserves_fixture_rooted_provenance(self) -> None:
-        """Keep local tutorial fixture paths visible when the pre-EVM bundle is assembled."""
+        """Keep local tutorial fixture paths visible when the pre-EVM bundle is assembled.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             pasa_results = _create_pasa_results(tmp_path)
@@ -463,10 +591,16 @@ class ConsensusPrepTaskTests(TestCase):
 
 
 class ConsensusEvmTaskTests(TestCase):
-    """Task-level coverage for the downstream EVM execution boundary."""
+    """Task-level coverage for the downstream EVM execution boundary.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
     def test_prepare_evm_execution_inputs_infers_repo_local_weights_from_prep_bundle(self) -> None:
-        """Infer a deterministic repo-local weights file from the staged source columns."""
+        """Infer a deterministic repo-local weights file from the staged source columns.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             prep_results = _create_pre_evm_results(Path(tmp))
 
@@ -491,7 +625,10 @@ class ConsensusEvmTaskTests(TestCase):
             self.assertIn("repo_policy", manifest)
 
     def test_evm_partition_inputs_runs_note_faithful_partition_command_deterministically(self) -> None:
-        """Use the documented EVM partition flags and preserve a stable partition listing."""
+        """Use the documented EVM partition flags and preserve a stable partition listing.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             prep_results = _create_pre_evm_results(tmp_path)
@@ -507,6 +644,16 @@ class ConsensusEvmTaskTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
+                """            Stage the synthetic partition output for the EVM partition test.
+
+
+            Args:
+                cmd: The command arguments or command name passed to the helper.
+                sif: The container image reference used for execution.
+                bind_paths: The filesystem paths bound into the execution environment.
+                cwd: The working directory for the helper execution.
+                stdout_path: A filesystem path used by the helper.
+            """
                 self.assertIsNone(stdout_path)
                 self.assertIsNotNone(cwd)
                 captured_cmds.append(cmd)
@@ -528,7 +675,10 @@ class ConsensusEvmTaskTests(TestCase):
             self.assertTrue((partitioned_dir / "Partitions" / "part001").exists())
 
     def test_evm_write_commands_normalizes_commands_and_tracks_count(self) -> None:
-        """Keep one non-empty EVM command per line while preserving file order."""
+        """Keep one non-empty EVM command per line while preserving file order.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             partitioned_workspace = _create_partitioned_workspace(Path(tmp))
 
@@ -539,6 +689,16 @@ class ConsensusEvmTaskTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
+                """            Stage the synthetic commands list for the EVM write test.
+
+
+            Args:
+                cmd: The command arguments or command name passed to the helper.
+                sif: The container image reference used for execution.
+                bind_paths: The filesystem paths bound into the execution environment.
+                cwd: The working directory for the helper execution.
+                stdout_path: A filesystem path used by the helper.
+            """
                 self.assertEqual(cmd[:2], ["perl", "write_EVM_commands.pl"])
                 self.assertIsNotNone(stdout_path)
                 stdout_path.write_text("  perl run_part2  \n\nperl run_part1\n")
@@ -554,7 +714,10 @@ class ConsensusEvmTaskTests(TestCase):
             self.assertEqual(manifest["command_count"], 2)
 
     def test_evm_execute_commands_runs_in_file_order(self) -> None:
-        """Execute generated EVM commands sequentially in the order listed on disk."""
+        """Execute generated EVM commands sequentially in the order listed on disk.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             commands_workspace = _create_commands_workspace(
                 Path(tmp),
@@ -569,6 +732,16 @@ class ConsensusEvmTaskTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
+                """            Stage the synthetic execution logs for the EVM execute test.
+
+
+            Args:
+                cmd: The command arguments or command name passed to the helper.
+                sif: The container image reference used for execution.
+                bind_paths: The filesystem paths bound into the execution environment.
+                cwd: The working directory for the helper execution.
+                stdout_path: A filesystem path used by the helper.
+            """
                 executed_commands.append(cmd[2])
                 if stdout_path is not None:
                     stdout_path.write_text(f"ran {cmd[2]}\n")
@@ -586,7 +759,10 @@ class ConsensusEvmTaskTests(TestCase):
             self.assertTrue((executed_dir / "execution_logs" / "command_0001.stdout.txt").exists())
 
     def test_evm_recombine_outputs_emits_stable_final_gff3_files(self) -> None:
-        """Materialize deterministic final GFF3 filenames from synthetic partition outputs."""
+        """Materialize deterministic final GFF3 filenames from synthetic partition outputs.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             executed_workspace = _create_commands_workspace(Path(tmp), ["perl do_first"])
             _write_json(
@@ -607,6 +783,16 @@ class ConsensusEvmTaskTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
+                """            Stage the synthetic recombined EVM outputs for the final bundle test.
+
+
+            Args:
+                cmd: The command arguments or command name passed to the helper.
+                sif: The container image reference used for execution.
+                bind_paths: The filesystem paths bound into the execution environment.
+                cwd: The working directory for the helper execution.
+                stdout_path: A filesystem path used by the helper.
+            """
                 self.assertIsNotNone(cwd)
                 if cmd[1] == "convert_EVM_outputs_to_GFF3.pl":
                     _write_gff3(
@@ -640,7 +826,10 @@ class ConsensusEvmTaskTests(TestCase):
             )
 
     def test_collect_evm_results_copies_final_outputs_and_stage_manifests(self) -> None:
-        """Collect the deterministic EVM boundary into one manifest-bearing results bundle."""
+        """Collect the deterministic EVM boundary into one manifest-bearing results bundle.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             prep_results = _create_pre_evm_results(tmp_path)
@@ -736,35 +925,96 @@ class ConsensusEvmTaskTests(TestCase):
 
 
 class ConsensusEvmWorkflowTests(TestCase):
-    """Workflow-level coverage for the EVM entrypoint contract."""
+    """Workflow-level coverage for the EVM entrypoint contract.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
     def test_consensus_annotation_evm_consumes_existing_prep_bundle_only(self) -> None:
-        """Use the pre-EVM bundle as the sole upstream workflow input."""
+        """Use the pre-EVM bundle as the sole upstream workflow input.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             prep_results = _create_pre_evm_results(Path(tmp))
             calls: list[tuple[str, tuple[str, ...]]] = []
 
             def fake_prepare(*, evm_prep_results: Dir, evm_weights_text: str = "") -> Dir:
+                """            Record the EVM prep inputs and return a synthetic prepared directory.
+
+
+            Args:
+                evm_prep_results: A directory path used by the helper.
+                evm_weights_text: A value used by the helper.
+
+            Returns:
+                The returned `Dir` value used by the caller.
+            """
                 calls.append(("prepare", tuple(sorted(["evm_prep_results", "evm_weights_text"]))))
                 return _artifact_dir(Path(tmp) / "prepared")
 
             def fake_partition(**kwargs: object) -> Dir:
+                """            Record the EVM partition inputs and return a synthetic partitioned directory.
+
+
+            Args:
+                kwargs: Keyword arguments forwarded to the helper.
+
+            Returns:
+                The returned `Dir` value used by the caller.
+            """
                 calls.append(("partition", tuple(sorted(kwargs.keys()))))
                 return _artifact_dir(Path(tmp) / "partitioned")
 
             def fake_write(**kwargs: object) -> Dir:
+                """            Record the EVM write inputs and return a synthetic command directory.
+
+
+            Args:
+                kwargs: Keyword arguments forwarded to the helper.
+
+            Returns:
+                The returned `Dir` value used by the caller.
+            """
                 calls.append(("write", tuple(sorted(kwargs.keys()))))
                 return _artifact_dir(Path(tmp) / "commands")
 
             def fake_execute(**kwargs: object) -> Dir:
+                """            Record the EVM execute inputs and return a synthetic executed directory.
+
+
+            Args:
+                kwargs: Keyword arguments forwarded to the helper.
+
+            Returns:
+                The returned `Dir` value used by the caller.
+            """
                 calls.append(("execute", tuple(sorted(kwargs.keys()))))
                 return _artifact_dir(Path(tmp) / "executed")
 
             def fake_recombine(**kwargs: object) -> Dir:
+                """            Record the EVM recombine inputs and return a synthetic recombined directory.
+
+
+            Args:
+                kwargs: Keyword arguments forwarded to the helper.
+
+            Returns:
+                The returned `Dir` value used by the caller.
+            """
                 calls.append(("recombine", tuple(sorted(kwargs.keys()))))
                 return _artifact_dir(Path(tmp) / "recombined")
 
             def fake_collect(**kwargs: object) -> Dir:
+                """            Record the EVM collect inputs and return a synthetic results directory.
+
+
+            Args:
+                kwargs: Keyword arguments forwarded to the helper.
+
+            Returns:
+                The returned `Dir` value used by the caller.
+            """
                 calls.append(("collect", tuple(sorted(kwargs.keys()))))
                 return _artifact_dir(Path(tmp) / "results")
 

@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Reconcile one Milestone 18 Slurm run record and print JSON."""
+"""Reconcile one Milestone 18 Slurm run record and print JSON.
+
+    This module keeps the current repo contract explicit and reviewable.
+"""
 
 from __future__ import annotations
 
@@ -12,7 +15,14 @@ from flytetest.server import _monitor_slurm_job_impl
 
 
 def main(argv: list[str]) -> int:
-    """Load the requested run record, reconcile scheduler state, and print JSON."""
+    """Load the requested run record, reconcile scheduler state, and print JSON.
+
+    Args:
+        argv: The argument vector forwarded to the helper.
+
+    Returns:
+        The returned `int` value used by the caller.
+"""
     if len(argv) != 2:
         raise SystemExit("usage: m18_monitor_slurm_job.py RUN_RECORD_PATH")
 

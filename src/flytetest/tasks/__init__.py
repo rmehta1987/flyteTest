@@ -1,7 +1,7 @@
 """Task exports for the implemented FLyteTest pipeline stages.
 
-This package-level shim keeps optional task families importable from one place
-while newer annotation modules continue to land incrementally.
+    This package-level shim keeps optional task families importable from one place
+    while newer annotation modules continue to land incrementally.
 """
 
 from importlib.util import find_spec

@@ -1,10 +1,10 @@
 """AGAT post-processing tasks for the post-EggNOG milestone slices.
 
-This module keeps the AGAT boundary split into narrow slices: statistics,
-conversion, and deterministic post-conversion cleanup before table2asn. The
-tool-level command shapes and input/output expectations follow
-`docs/tool_refs/agat.md`, while the current milestone keeps the cleanup rules as
-deterministic in-repo transforms.
+    This module keeps the AGAT boundary split into narrow slices: statistics,
+    conversion, and deterministic post-conversion cleanup before table2asn. The
+    tool-level command shapes and input/output expectations follow
+    `docs/tool_refs/agat.md`, while the current milestone keeps the cleanup rules as
+    deterministic in-repo transforms.
 """
 
 from __future__ import annotations
@@ -42,7 +42,14 @@ _AGAT_CLEANUP_SUMMARY_FILENAME = "agat_cleanup_summary.json"
 
 
 def _as_json_compatible(value: Any) -> Any:
-    """Recursively convert manifest values into JSON-serializable primitives."""
+    """Recursively convert manifest values into JSON-serializable primitives.
+
+    Args:
+        value: The value or values processed by the helper.
+
+    Returns:
+        The returned `Any` value used by the caller.
+"""
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, dict):
@@ -55,25 +62,53 @@ def _as_json_compatible(value: Any) -> Any:
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    """Write an indented JSON payload to a stable path."""
+    """Write an indented JSON payload to a stable path.
+
+    Args:
+        path: A filesystem path used by the helper.
+        payload: The structured payload to serialize or inspect.
+"""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(_as_json_compatible(payload), indent=2))
 
 
 def _read_json(path: Path) -> dict[str, Any]:
-    """Read one JSON manifest into a dictionary."""
+    """Read one JSON manifest into a dictionary.
+
+    Args:
+        path: A filesystem path used by the helper.
+
+    Returns:
+        The returned `dict[str, Any]` value used by the caller.
+"""
     return json.loads(path.read_text())
 
 
 def _copy_file(source: Path, destination: Path) -> Path:
-    """Copy one file into a deterministic destination path."""
+    """Copy one file into a deterministic destination path.
+
+    Args:
+        source: A filesystem path used by the helper.
+        destination: A filesystem path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, destination)
     return destination
 
 
 def _copy_tree(source: Path, destination: Path) -> Path:
-    """Copy one directory tree into a deterministic destination path."""
+    """Copy one directory tree into a deterministic destination path.
+
+    Args:
+        source: A filesystem path used by the helper.
+        destination: A filesystem path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     if destination.exists():
         shutil.rmtree(destination)
     shutil.copytree(source, destination)
@@ -81,12 +116,28 @@ def _copy_tree(source: Path, destination: Path) -> Path:
 
 
 def _manifest_path(directory: Path, label: str) -> Path:
-    """Resolve the manifest expected under one staged or collected directory."""
+    """Resolve the manifest expected under one staged or collected directory.
+
+    Args:
+        directory: A value used by the helper.
+        label: A value used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     return require_path(directory / "run_manifest.json", f"{label} manifest")
 
 
 def _manifest_output_path(manifest: dict[str, Any], key: str) -> Path | None:
-    """Resolve one manifest-recorded output path when present."""
+    """Resolve one manifest-recorded output path when present.
+
+    Args:
+        manifest: A value used by the helper.
+        key: A value used by the helper.
+
+    Returns:
+        The returned `Path | None` value used by the caller.
+"""
     output_path = manifest.get("outputs", {}).get(key)
     if not output_path:
         return None
@@ -94,7 +145,14 @@ def _manifest_output_path(manifest: dict[str, Any], key: str) -> Path | None:
 
 
 def _eggnog_annotated_gff3(results_dir: Path) -> Path:
-    """Resolve the EggNOG-annotated GFF3 boundary from one results bundle."""
+    """Resolve the EggNOG-annotated GFF3 boundary from one results bundle.
+
+    Args:
+        results_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     manifest_path = results_dir / "run_manifest.json"
     if manifest_path.exists():
         manifest = _read_json(manifest_path)
@@ -110,7 +168,14 @@ def _eggnog_annotated_gff3(results_dir: Path) -> Path:
 
 
 def _agat_converted_gff3(results_dir: Path) -> Path:
-    """Resolve the AGAT-converted GFF3 boundary from one results bundle."""
+    """Resolve the AGAT-converted GFF3 boundary from one results bundle.
+
+    Args:
+        results_dir: A directory path used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     manifest_path = results_dir / "run_manifest.json"
     if manifest_path.exists():
         manifest = _read_json(manifest_path)
@@ -127,7 +192,14 @@ def _agat_converted_gff3(results_dir: Path) -> Path:
 
 
 def _parse_gff3_attributes(raw_attributes: str) -> list[tuple[str, str | None]]:
-    """Parse a simple GFF3 attribute column while preserving attribute order."""
+    """Parse a simple GFF3 attribute column while preserving attribute order.
+
+    Args:
+        raw_attributes: A value used by the helper.
+
+    Returns:
+        The returned `list[tuple[str, str | None]]` value used by the caller.
+"""
     if raw_attributes in ("", "."):
         return []
     attributes: list[tuple[str, str | None]] = []
@@ -143,7 +215,14 @@ def _parse_gff3_attributes(raw_attributes: str) -> list[tuple[str, str | None]]:
 
 
 def _format_gff3_attributes(attributes: list[tuple[str, str | None]]) -> str:
-    """Format parsed GFF3 attributes back into one column."""
+    """Format parsed GFF3 attributes back into one column.
+
+    Args:
+        attributes: A value used by the helper.
+
+    Returns:
+        The returned `str` value used by the caller.
+"""
     if not attributes:
         return "."
     formatted = []
@@ -156,7 +235,15 @@ def _format_gff3_attributes(attributes: list[tuple[str, str | None]]) -> str:
 
 
 def _attribute_value(attributes: list[tuple[str, str | None]], key: str) -> str | None:
-    """Return the first value for one GFF3 attribute key."""
+    """Return the first value for one GFF3 attribute key.
+
+    Args:
+        attributes: A value used by the helper.
+        key: A value used by the helper.
+
+    Returns:
+        The returned `str | None` value used by the caller.
+"""
     for attribute_key, value in attributes:
         if attribute_key == key:
             return value
@@ -164,13 +251,30 @@ def _attribute_value(attributes: list[tuple[str, str | None]], key: str) -> str 
 
 
 def _remove_attribute(attributes: list[tuple[str, str | None]], key: str) -> tuple[list[tuple[str, str | None]], int]:
-    """Remove all attributes matching one key and return the removal count."""
+    """Remove all attributes matching one key and return the removal count.
+
+    Args:
+        attributes: A value used by the helper.
+        key: A value used by the helper.
+
+    Returns:
+        The returned `tuple[list[tuple[str, str | None]], int]` value used by the caller.
+"""
     kept = [(attribute_key, value) for attribute_key, value in attributes if attribute_key != key]
     return kept, len(attributes) - len(kept)
 
 
 def _set_attribute(attributes: list[tuple[str, str | None]], key: str, value: str) -> tuple[list[tuple[str, str | None]], bool]:
-    """Set one attribute value, preserving position when the key already exists."""
+    """Set one attribute value, preserving position when the key already exists.
+
+    Args:
+        attributes: A value used by the helper.
+        key: A value used by the helper.
+        value: The value or values processed by the helper.
+
+    Returns:
+        The returned `tuple[list[tuple[str, str | None]], bool]` value used by the caller.
+"""
     updated: list[tuple[str, str | None]] = []
     found = False
     changed = False
@@ -191,7 +295,15 @@ def _set_attribute(attributes: list[tuple[str, str | None]], key: str, value: st
 
 
 def _matching_mrna_name(parent_value: str | None, mrna_names: dict[str, str]) -> str | None:
-    """Resolve a CDS parent to the first mRNA Name value available."""
+    """Resolve a CDS parent to the first mRNA Name value available.
+
+    Args:
+        parent_value: A value used by the helper.
+        mrna_names: A value used by the helper.
+
+    Returns:
+        The returned `str | None` value used by the caller.
+"""
     if parent_value is None:
         return None
     for parent_id in parent_value.split(","):
@@ -204,9 +316,13 @@ def _matching_mrna_name(parent_value: str | None, mrna_names: dict[str, str]) ->
 def _cleanup_gff3_attributes(source_gff3: Path, cleaned_gff3: Path) -> dict[str, int]:
     """Apply the deterministic post-AGAT GFF3 attribute cleanup rules.
 
-    See `docs/tool_refs/agat.md` for the cleanup contract and its notes-derived
-    provenance.
-    """
+    Args:
+        source_gff3: A value used by the helper.
+        cleaned_gff3: A value used by the helper.
+
+    Returns:
+        The returned `dict[str, int]` value used by the caller.
+"""
     lines = source_gff3.read_text().splitlines(keepends=True)
     mrna_names: dict[str, str] = {}
     for line in lines:
@@ -268,7 +384,14 @@ def _cleanup_gff3_attributes(source_gff3: Path, cleaned_gff3: Path) -> dict[str,
 def agat_cleanup_gff3(
     agat_conversion_results: Dir,
 ) -> Dir:
-    """Clean the AGAT-converted GFF3 with the deterministic attribute edits."""
+    """Clean the AGAT-converted GFF3 with the deterministic attribute edits.
+
+    Args:
+        agat_conversion_results: A directory path used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     conversion_dir = require_path(
         Path(agat_conversion_results.download_sync()),
         "AGAT conversion results directory",
@@ -337,7 +460,15 @@ def agat_convert_sp_gxf2gxf(
     eggnog_results: Dir,
     agat_sif: str = "",
 ) -> Dir:
-    """Run AGAT conversion on the EggNOG-annotated GFF3 boundary."""
+    """Run AGAT conversion on the EggNOG-annotated GFF3 boundary.
+
+    Args:
+        eggnog_results: A directory path used by the helper.
+        agat_sif: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     eggnog_dir = require_path(Path(eggnog_results.download_sync()), "EggNOG results directory")
     eggnog_gff3 = _eggnog_annotated_gff3(eggnog_dir)
 
@@ -413,7 +544,16 @@ def agat_statistics(
     annotation_fasta_path: str = "",
     agat_sif: str = "",
 ) -> Dir:
-    """Run AGAT statistics on the EggNOG-annotated GFF3 boundary."""
+    """Run AGAT statistics on the EggNOG-annotated GFF3 boundary.
+
+    Args:
+        eggnog_results: A directory path used by the helper.
+        annotation_fasta_path: A filesystem path used by the helper.
+        agat_sif: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     eggnog_dir = require_path(Path(eggnog_results.download_sync()), "EggNOG results directory")
     eggnog_gff3 = _eggnog_annotated_gff3(eggnog_dir)
     annotation_fasta = require_path(Path(annotation_fasta_path), "Annotation FASTA") if annotation_fasta_path else None

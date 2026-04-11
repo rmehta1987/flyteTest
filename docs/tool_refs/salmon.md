@@ -41,7 +41,7 @@ Build transcriptome indices and quantify transcript abundance from RNA-seq reads
 - [Quantifying in mapping-based mode](https://salmon.readthedocs.io/en/latest/salmon.html#quantifying-in-mapping-based-mode)
 - [Salmon output file formats](https://salmon.readthedocs.io/en/latest/file_formats.html)
 
-## Tutorial And Training References
+## Tutorial References
 
 - [GTN Reference-based RNA-Seq data analysis](https://training.galaxyproject.org/training-material/topics/transcriptomics/tutorials/ref-based/tutorial.html)
 - [GTN QC + Mapping + Counting workflow](https://training.galaxyproject.org/training-material/topics/transcriptomics/tutorials/ref-based/workflows/qc-mapping-counting-paired-and-single.html)

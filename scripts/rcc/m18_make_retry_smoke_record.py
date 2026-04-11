@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Create a synthetic retryable copy of a Slurm run record for Milestone 18."""
+"""Create a synthetic retryable copy of a Slurm run record for Milestone 18.
+
+    This module keeps the current repo contract explicit and reviewable.
+"""
 
 from __future__ import annotations
 
@@ -11,7 +14,14 @@ from pathlib import Path
 
 
 def main(argv: list[str]) -> int:
-    """Copy a run record, mark the copy retryable, and print JSON."""
+    """Copy a run record, mark the copy retryable, and print JSON.
+
+    Args:
+        argv: The argument vector forwarded to the helper.
+
+    Returns:
+        The returned `int` value used by the caller.
+"""
     if len(argv) != 2:
         raise SystemExit("usage: m18_make_retry_smoke_record.py RUN_RECORD_PATH")
 

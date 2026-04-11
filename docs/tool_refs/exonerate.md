@@ -27,14 +27,6 @@ Lightweight local fixture examples for milestone-scoped testing:
 - `data/braker3/protein_data/fastas/proteins.fa`
 - `data/braker3/reference/genome.fa`
 
-## Key Tasks
-
-- stage local protein FASTA inputs
-- chunk protein FASTA files deterministically
-- run Exonerate per chunk
-- convert each Exonerate chunk output into EVM-ready GFF3
-- concatenate raw and converted chunk outputs into stable final artifacts
-
 ## Key Outputs
 
 - raw Exonerate alignments
@@ -47,21 +39,13 @@ Lightweight local fixture examples for milestone-scoped testing:
 - design notes describe chunked execution across many jobs
 - this milestone keeps protein FASTAs local and explicit rather than fetching UniProt or RefSeq automatically
 
-## Notes And Caveats
-
-- Exonerate is implemented in FLyteTest as a local-input protein-evidence milestone.
-- Raw and converted outputs are both important in the design notes and should remain distinct artifacts.
-- The current task family keeps chunk alignment, conversion, and concatenation as separate deterministic steps.
-- The current real-data test suite uses the local fixture layout in `tests/test_protein_evidence.py` with subsets copied from `data/braker3/protein_data/fastas/proteins.fa`.
-- This milestone does not include BRAKER3, EVM, PASA update rounds, repeat filtering, BUSCO, EggNOG, AGAT, or submission prep.
-
 ## Official Documentation
 
 - Maintained fork README: [github.com/nathanweeks/exonerate](https://github.com/nathanweeks/exonerate)
 - Legacy manpage reference: [animalgenome.org/bioinfo/resources/manuals/exonerate/exonerate.man.html](https://www.animalgenome.org/bioinfo/resources/manuals/exonerate/exonerate.man.html)
 - The manpage is the clearest primary source for command-line flags; the fork README is the clearest current source for build and container notes.
 
-## Tutorial And Training References
+## Tutorial References
 
 - GTN coverage is weak for Exonerate specifically; we did not find a dedicated Exonerate walkthrough.
 - Closest adjacent GTN material is the broader genome annotation track, including [Genome annotation with Funannotate](https://training.galaxyproject.org/training-material/topics/genome-annotation/tutorials/funannotate/tutorial.html).
@@ -109,3 +93,19 @@ Deliver:
 - expected chunk outputs and EVM-ready GFF3 artifacts
 - any assumptions that are inferred from current pipeline notes
 ```
+
+## Notes And Caveats
+
+- Exonerate is implemented in FLyteTest as a local-input protein-evidence milestone.
+- Raw and converted outputs are both important in the design notes and should remain distinct artifacts.
+- The current task family keeps chunk alignment, conversion, and concatenation as separate deterministic steps.
+- The current real-data test suite uses the local fixture layout in `tests/test_protein_evidence.py` with subsets copied from `data/braker3/protein_data/fastas/proteins.fa`.
+- This milestone does not include BRAKER3, EVM, PASA update rounds, repeat filtering, BUSCO, EggNOG, AGAT, or submission prep.
+
+## Key Tasks
+
+- stage local protein FASTA inputs
+- chunk protein FASTA files deterministically
+- run Exonerate per chunk
+- convert each Exonerate chunk output into EVM-ready GFF3
+- concatenate raw and converted chunk outputs into stable final artifacts

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Prepare a Slurm-profile BUSCO fixture recipe for Milestone 18 retry testing.
 
-This helper follows the RCC Slurm helper style: the shell or user environment
-chooses concrete cluster paths and resource settings, then the script freezes a
-small BUSCO genome-mode fixture recipe and prints a compact JSON summary.
+    This helper follows the RCC Slurm helper style: the shell or user environment
+    chooses concrete cluster paths and resource settings, then the script freezes a
+    small BUSCO genome-mode fixture recipe and prints a compact JSON summary.
 """
 
 from __future__ import annotations
@@ -34,19 +34,39 @@ BUSCO_FIXTURE_TASK_NAME = "busco_assess_proteins"
 
 
 def _created_at() -> str:
-    """Return a UTC timestamp suitable for a saved smoke recipe."""
+    """Return a UTC timestamp suitable for a saved smoke recipe.
+
+    This helper keeps the current behavior explicit and reviewable.
+
+    Returns:
+        The returned `str` value used by the caller.
+"""
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _artifact_destination(repo_root: Path, created_at: str) -> Path:
-    """Build a stable, inspectable artifact path for the M18 BUSCO smoke."""
+    """Build a stable, inspectable artifact path for the M18 BUSCO smoke.
+
+    Args:
+        repo_root: A value used by the helper.
+        created_at: A value used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     digest = hashlib.sha256(f"m18-busco-fixture|{created_at}".encode("utf-8")).hexdigest()[:12]
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     return repo_root / ".runtime/specs" / f"{timestamp}-m18-busco-fixture-{digest}.json"
 
 
 def main() -> int:
-    """Freeze the BUSCO fixture recipe, persist a pointer file, and print JSON."""
+    """Freeze the BUSCO fixture recipe, persist a pointer file, and print JSON.
+
+    This helper keeps the current behavior explicit and reviewable.
+
+    Returns:
+        The returned `int` value used by the caller.
+"""
     repo_root = Path(os.environ["FLYTETEST_REPO_ROOT"])
     raw_genome_fasta = Path(
         os.environ.get("FLYTETEST_BUSCO_GENOME_FASTA", "data/busco/test_data/eukaryota/genome.fna")

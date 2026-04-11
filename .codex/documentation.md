@@ -58,6 +58,46 @@ When documenting a workflow in `README.md`, include:
 - what this milestone does not yet include
 - runtime/tooling notes
 
+## Code Documentation Expectations
+
+For all code files in the repository, documentation comments and docstrings
+should follow these rules, using the idiomatic style for the language or file
+type in question:
+
+- comply with PEP 257
+- use verbose Google-style docstrings for modules, functions, tasks, and
+  workflows
+- describe inputs, outputs, side effects, assumptions, and any workflow-stage
+  boundaries explicitly
+- stay aligned with the current code path rather than describing an idealized
+  or future implementation
+
+Apply the same documentation structure consistently across the codebase when
+adding or revising files. In practice, that means:
+
+- Python module docstrings should explain purpose, scope, and any notable
+  boundary assumptions
+- Python function, task, workflow, and class docstrings should use the same
+  Google-style sections that the surrounding files use
+- test files should mirror the same structure with an opening module docstring,
+  class-level intent, and concise method-level purpose statements
+- shell scripts, R files, notebooks, C/C++ sources, and other code assets
+  should use the equivalent language-native documentation mechanism or comment
+  conventions to capture purpose, scope, inputs, outputs, assumptions, and
+  boundary behavior
+- when a file is touched, prefer bringing its documentation into the same
+  structural pattern as nearby files instead of leaving a one-off style behind
+
+If implementation or documentation relies on an ambiguous shortcut, include a
+short inline comment near the shortcut explaining why it is intentional. This
+is especially important for:
+
+- path handling
+- biological assumptions
+- manifest shaping
+- data filtering or normalization shortcuts
+- fallback behavior that would not be obvious from the code alone
+
 ## Tool Reference Expectations
 
 Tool refs under `docs/tool_refs/` should stay concise.

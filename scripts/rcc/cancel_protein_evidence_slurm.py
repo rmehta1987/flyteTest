@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Request cancellation for one durable protein-evidence Slurm run record."""
+"""Request cancellation for one durable protein-evidence Slurm run record.
+
+    This module keeps the current repo contract explicit and reviewable.
+"""
 
 from __future__ import annotations
 
@@ -12,7 +15,14 @@ from flytetest.server import _cancel_slurm_job_impl
 
 
 def main(argv: list[str]) -> int:
-    """Load the requested run record, request cancellation, and print JSON."""
+    """Load the requested run record, request cancellation, and print JSON.
+
+    Args:
+        argv: The argument vector forwarded to the helper.
+
+    Returns:
+        The returned `int` value used by the caller.
+"""
     if len(argv) != 2:
         raise SystemExit("usage: cancel_protein_evidence_slurm.py RUN_RECORD_PATH")
 

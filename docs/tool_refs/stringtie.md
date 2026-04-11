@@ -34,7 +34,7 @@ Assemble transcripts and summarize transcript abundance from genome-aligned RNA-
 - [StringTie manual](https://ccb.jhu.edu/software/stringtie/index.shtml?t=manual)
 - [StringTie FAQ](https://ccb.jhu.edu/software/stringtie/index.shtml?t=faq)
 
-## Tutorial / Training References
+## Tutorial References
 
 - [GTN StringTie tool page](https://training.galaxyproject.org/training-material/by-tool/iuc/stringtie/stringtie.html)
 - [GTN: De novo transcriptome reconstruction with RNA-Seq](https://training.galaxyproject.org/training-material/topics/transcriptomics/tutorials/de-novo/tutorial.html)

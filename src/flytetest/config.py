@@ -1,8 +1,8 @@
 """Shared runtime helpers and Flyte task environments for FLyteTest.
 
-This module centralizes task-environment names, result-bundle prefixes, and
-local or containerized subprocess execution helpers used across pipeline
-stages.
+    This module centralizes task-environment names, result-bundle prefixes, and
+    local or containerized subprocess execution helpers used across pipeline
+    stages.
 """
 
 from __future__ import annotations
@@ -24,14 +24,25 @@ DEFAULT_TASK_RESOURCES = flyte.Resources(cpu="1", memory="1Gi")
 
 @dataclass(frozen=True, slots=True)
 class TaskEnvironmentConfig:
-    """Declarative construction data for one task-family environment."""
+    """Declarative construction data for one task-family environment.
+
+    This class keeps the current contract explicit and reviewable.
+"""
 
     name: str
     kwargs: Mapping[str, object] = field(default_factory=dict)
 
 
 def make_task_environment(config: TaskEnvironmentConfig | str, **kwargs: object) -> flyte.TaskEnvironment:
-    """Create one Flyte `TaskEnvironment` with shared task defaults."""
+    """Create one Flyte `TaskEnvironment` with shared task defaults.
+
+    Args:
+        config: A value used by the helper.
+        kwargs: Keyword arguments forwarded to the helper.
+
+    Returns:
+        The returned `flyte.TaskEnvironment` value used by the caller.
+"""
     if isinstance(config, str):
         config = TaskEnvironmentConfig(name=config)
 
@@ -138,7 +149,13 @@ DEFAULT_SLURM_ACCOUNT = os.environ.get("FLYTETEST_SLURM_ACCOUNT", "rcc-staff")
 
 
 def project_tmp_root() -> Path:
-    """Return the project-local scratch root used by task work directories."""
+    """Return the project-local scratch root used by task work directories.
+
+    This helper keeps the current behavior explicit and reviewable.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     configured = os.environ.get(PROJECT_TMP_ENV_VAR)
     root = Path(configured) if configured else Path.cwd() / RESULTS_ROOT / ".tmp"
     root.mkdir(parents=True, exist_ok=True)
@@ -146,12 +163,25 @@ def project_tmp_root() -> Path:
 
 
 def project_mkdtemp(prefix: str) -> Path:
-    """Create one temporary work directory under the project-local results tree."""
+    """Create one temporary work directory under the project-local results tree.
+
+    Args:
+        prefix: A value used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     return Path(tempfile.mkdtemp(prefix=prefix, dir=project_tmp_root()))
 
 
 def configure_project_tmpdir() -> Path:
-    """Point Python's default temp directory at the project-local scratch root."""
+    """Point Python's default temp directory at the project-local scratch root.
+
+    This helper keeps the current behavior explicit and reviewable.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     root = project_tmp_root()
     os.environ["TMPDIR"] = str(root)
     tempfile.tempdir = str(root)
@@ -166,7 +196,13 @@ def run(
     cwd: Path | None = None,
     stdout_path: Path | None = None,
 ) -> None:
-    """Run a subprocess, optionally writing stdout into a stable output file."""
+    """Run a subprocess, optionally writing stdout into a stable output file.
+
+    Args:
+        cmd: The command arguments or command name passed to the helper.
+        cwd: The working directory for the helper execution.
+        stdout_path: A filesystem path used by the helper.
+"""
     if stdout_path is None:
         subprocess.run(cmd, check=True, cwd=cwd)
         return
@@ -177,14 +213,28 @@ def run(
 
 
 def require_path(path: Path, description: str) -> Path:
-    """Return an existing path or raise a descriptive `FileNotFoundError`."""
+    """Return an existing path or raise a descriptive `FileNotFoundError`.
+
+    Args:
+        path: A filesystem path used by the helper.
+        description: A value used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+"""
     if not path.exists():
         raise FileNotFoundError(f"{description} not found: {path}")
     return path
 
 
 def container_runtime() -> str:
-    """Resolve the first available Apptainer-compatible runtime."""
+    """Resolve the first available Apptainer-compatible runtime.
+
+    This helper keeps the current behavior explicit and reviewable.
+
+    Returns:
+        The returned `str` value used by the caller.
+"""
     for candidate in ("apptainer", "singularity"):
         if shutil.which(candidate):
             return candidate
@@ -200,7 +250,15 @@ def run_tool(
     cwd: Path | None = None,
     stdout_path: Path | None = None,
 ) -> None:
-    """Run a tool natively or inside a bound Singularity or Apptainer image."""
+    """Run a tool natively or inside a bound Singularity or Apptainer image.
+
+    Args:
+        cmd: The command arguments or command name passed to the helper.
+        sif: The container image reference used for execution.
+        bind_paths: The filesystem paths bound into the execution environment.
+        cwd: The working directory for the helper execution.
+        stdout_path: A filesystem path used by the helper.
+"""
     if not sif:
         run(cmd, cwd=cwd, stdout_path=stdout_path)
         return

@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Retry a Milestone 18 Slurm smoke run from a durable run record."""
+"""Retry a Milestone 18 Slurm smoke run from a durable run record.
+
+    This module keeps the current repo contract explicit and reviewable.
+"""
 
 from __future__ import annotations
 
@@ -12,7 +15,14 @@ from flytetest.server import _retry_slurm_job_impl
 
 
 def main(argv: list[str]) -> int:
-    """Retry the requested run record, persist a child pointer, and print JSON."""
+    """Retry the requested run record, persist a child pointer, and print JSON.
+
+    Args:
+        argv: The argument vector forwarded to the helper.
+
+    Returns:
+        The returned `int` value used by the caller.
+"""
     if len(argv) != 2:
         raise SystemExit("usage: m18_retry_slurm_job.py RUN_RECORD_PATH")
 

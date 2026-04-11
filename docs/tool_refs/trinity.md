@@ -39,7 +39,7 @@ transcript-evidence branch.
 - Genome-guided Trinity: https://github.com/trinityrnaseq/trinityrnaseq/wiki/Genome-Guided-Trinity-Transcriptome-Assembly
 - Installing Trinity: https://github.com/trinityrnaseq/trinityrnaseq/wiki/Installing-Trinity
 
-## Tutorial And Training References
+## Tutorial References
 
 - GTN Trinity tool page: https://training.galaxyproject.org/training-material/by-tool/iuc/trinity/trinity.html
 - GTN de novo transcriptome assembly tutorial: https://training.galaxyproject.org/training-material/topics/transcriptomics/tutorials/full-de-novo/tutorial.html

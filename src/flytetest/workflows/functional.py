@@ -1,11 +1,11 @@
 """BUSCO-based annotation-QC workflow entrypoints for FLyteTest.
 
-This module runs multi-lineage BUSCO protein assessments strictly downstream of
-the repeat-filtered annotation boundary and stops before EggNOG, AGAT, or
-submission-prep work.
+    This module runs multi-lineage BUSCO protein assessments strictly downstream of
+    the repeat-filtered annotation boundary and stops before EggNOG, AGAT, or
+    submission-prep work.
 
-Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
-input/output expectations follow `docs/tool_refs/busco.md`.
+    Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
+    input/output expectations follow `docs/tool_refs/busco.md`.
 """
 
 from __future__ import annotations
@@ -33,7 +33,17 @@ def annotation_qc_busco(
     busco_sif: str = "",
     busco_cpu: int = 8,
 ) -> Dir:
-    """Run BUSCO annotation QC across one or more selected lineages."""
+    """Assess annotated protein set completeness and evolutionary conservation across multiple lineage datasets.
+
+    Args:
+        repeat_filter_results: A directory path used by the helper.
+        busco_lineages_text: A value used by the helper.
+        busco_sif: A value used by the helper.
+        busco_cpu: A value used by the helper.
+
+    Returns:
+        The returned `Dir` value used by the caller.
+"""
     repeat_filter_dir = require_path(
         Path(repeat_filter_results.download_sync()),
         "Repeat-filtering results directory",

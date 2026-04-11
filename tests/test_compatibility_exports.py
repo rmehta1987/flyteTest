@@ -1,7 +1,7 @@
 """Compatibility export checks for the `flyte run` entry surface.
 
-These tests keep `flyte_rnaseq_workflow.py` aligned with the package modules
-while the `realtime` refactor changes internals behind that compatibility shim.
+    These tests keep `flyte_rnaseq_workflow.py` aligned with the package modules
+    while the `realtime` refactor changes internals behind that compatibility shim.
 """
 
 from __future__ import annotations
@@ -36,10 +36,16 @@ from flytetest.workflows import (
 
 
 class CompatibilityExportTests(TestCase):
-    """Freeze the current single-file compatibility surface for `flyte run`."""
+    """Freeze the current single-file compatibility surface for `flyte run`.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
     def test_entrypoint_exports_current_runnable_workflow_names(self) -> None:
-        """Keep the public workflow names importable from the compatibility shim."""
+        """Keep the public workflow names importable from the compatibility shim.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         self.assertIn("ab_initio_annotation_braker3", compatibility_exports.__all__)
         self.assertIn("annotation_functional_eggnog", compatibility_exports.__all__)
         self.assertIn("annotation_postprocess_agat", compatibility_exports.__all__)
@@ -50,7 +56,10 @@ class CompatibilityExportTests(TestCase):
         self.assertIn("transcript_evidence_generation", compatibility_exports.__all__)
 
     def test_entrypoint_reexports_current_workflow_callables(self) -> None:
-        """Expose the package workflow callables unchanged through the shim module."""
+        """Expose the package workflow callables unchanged through the shim module.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         self.assertIs(compatibility_exports.ab_initio_annotation_braker3, ab_initio_annotation_braker3)
         self.assertIs(compatibility_exports.annotation_functional_eggnog, annotation_functional_eggnog)
         self.assertIs(compatibility_exports.annotation_postprocess_agat, annotation_postprocess_agat)
@@ -67,6 +76,9 @@ class CompatibilityExportTests(TestCase):
         self.assertIs(compatibility_exports.transcript_evidence_generation, transcript_evidence_generation)
 
     def test_entrypoint_reexports_showcase_task_callable(self) -> None:
-        """Keep the supported showcase task reachable from the compatibility entrypoint."""
+        """Keep the supported showcase task reachable from the compatibility entrypoint.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         self.assertIn("exonerate_align_chunk", compatibility_exports.__all__)
         self.assertIs(compatibility_exports.exonerate_align_chunk, exonerate_align_chunk)
