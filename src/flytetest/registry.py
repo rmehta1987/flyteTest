@@ -2228,9 +2228,20 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
 
 # Workflow compatibility is layered on after the base entries so the original
 # catalog list remains easy to scan and older callers still see the same entry
-# names, descriptions, inputs, and outputs. Task entries intentionally keep the
-# safe default metadata until a later planner milestone needs task-level edges.
+# names, descriptions, inputs, and outputs. Most task entries keep the safe
+# default metadata; `busco_assess_proteins` has an explicit M18 fixture recipe
+# path because it is exposed through the MCP saved-recipe surface.
 _WORKFLOW_COMPATIBILITY_METADATA: dict[str, RegistryCompatibilityMetadata] = {
+    "busco_assess_proteins": RegistryCompatibilityMetadata(
+        biological_stage="BUSCO fixture and lineage assessment",
+        accepted_planner_types=(),
+        produced_planner_types=("Dir",),
+        reusable_as_reference=True,
+        execution_defaults={"profile": "local", "result_manifest": "run_manifest.json"},
+        composition_constraints=(
+            "The M18 fixture path uses genome mode against the upstream BUSCO eukaryota test FASTA while the annotation QC workflow still runs BUSCO on repeat-filtered proteins.",
+        ),
+    ),
     "rnaseq_qc_quant": RegistryCompatibilityMetadata(
         biological_stage="RNA-seq QC and transcript quantification",
         accepted_planner_types=("ReadSet",),
@@ -2403,6 +2414,7 @@ _WORKFLOW_COMPATIBILITY_METADATA: dict[str, RegistryCompatibilityMetadata] = {
 
 
 _WORKFLOW_LOCAL_RESOURCE_DEFAULTS: dict[str, dict[str, str]] = {
+    "busco_assess_proteins": {"cpu": "2", "memory": "8Gi", "execution_class": "local"},
     "rnaseq_qc_quant": {"cpu": "4", "memory": "16Gi", "execution_class": "local"},
     "transcript_evidence_generation": {"cpu": "8", "memory": "32Gi", "execution_class": "local"},
     "pasa_transcript_alignment": {"cpu": "8", "memory": "32Gi", "execution_class": "local"},

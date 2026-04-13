@@ -69,6 +69,7 @@ MCP_RESOURCE_URIS = (
 SUPPORTED_WORKFLOW_NAME = ANNOTATION_WORKFLOW_NAME
 SUPPORTED_PROTEIN_WORKFLOW_NAME = PROTEIN_EVIDENCE_WORKFLOW_NAME
 SUPPORTED_TASK_NAME = "exonerate_align_chunk"
+SUPPORTED_BUSCO_FIXTURE_TASK_NAME = "busco_assess_proteins"
 SUPPORTED_BUSCO_WORKFLOW_NAME = FUNCTIONAL_QC_WORKFLOW_NAME
 SUPPORTED_EGGNOG_WORKFLOW_NAME = EGGNOG_WORKFLOW_NAME
 SUPPORTED_AGAT_WORKFLOW_NAME = AGAT_WORKFLOW_NAME
@@ -95,6 +96,12 @@ SHOWCASE_TARGETS = (
         category="task",
         module_name="flytetest.tasks.protein_evidence",
         source_path=_PACKAGE_ROOT / "tasks" / "protein_evidence.py",
+    ),
+    ShowcaseTarget(
+        name=SUPPORTED_BUSCO_FIXTURE_TASK_NAME,
+        category="task",
+        module_name="flytetest.tasks.functional",
+        source_path=_PACKAGE_ROOT / "tasks" / "functional.py",
     ),
     ShowcaseTarget(
         name=SUPPORTED_BUSCO_WORKFLOW_NAME,
@@ -154,6 +161,7 @@ RECIPE_INPUT_RUNTIME_RULES = (
     "Runtime bindings are frozen into the saved recipe and are not inferred from prompt text.",
     "Direct MCP clients must send `runtime_bindings`, `resource_request`, and `runtime_image` as real JSON/object mappings.",
     "If an LLM-driven client drops optional tool arguments, encode the execution profile and resource choices in the prompt text and verify the returned frozen profile before Slurm submission.",
+    "The M18 BUSCO fixture task uses `proteins_fasta`, `lineage_dataset`, `busco_mode`, optional `busco_sif`, and `busco_cpu` runtime bindings.",
     "BUSCO runtime bindings begin with `busco_lineages_text`, optional `busco_sif`, and `busco_cpu`.",
     "EggNOG runtime bindings are `eggnog_data_dir`, optional `eggnog_sif`, `eggnog_cpu`, and `eggnog_database`.",
     "AGAT runtime bindings are `annotation_fasta_path` and optional `agat_sif` for statistics, and optional `agat_sif` for conversion.",
@@ -179,12 +187,12 @@ TASK_EXAMPLE_PROMPT = (
     "data/braker3/reference/genome.fa and protein chunk data/braker3/protein_data/fastas/proteins.fa"
 )
 SHOWCASE_LIMITATIONS = (
-    "The MCP recipe surface executes `ab_initio_annotation_braker3`, `protein_evidence_alignment`, `exonerate_align_chunk`, `annotation_qc_busco`, `annotation_functional_eggnog`, `annotation_postprocess_agat`, `annotation_postprocess_agat_conversion`, and `annotation_postprocess_agat_cleanup` through explicit local handlers.",
+    "The MCP recipe surface executes `ab_initio_annotation_braker3`, `protein_evidence_alignment`, `exonerate_align_chunk`, `busco_assess_proteins`, `annotation_qc_busco`, `annotation_functional_eggnog`, `annotation_postprocess_agat`, `annotation_postprocess_agat_conversion`, and `annotation_postprocess_agat_cleanup` through explicit local handlers.",
     "Prompt-contained local file paths and explicit recipe inputs are frozen into saved WorkflowSpec artifacts before execution.",
     "Additional registered workflows require explicit local handlers before they are exposed as runnable MCP targets.",
 )
 LIST_ENTRIES_LIMITATIONS = (
-    "The MCP recipe surface exposes only `ab_initio_annotation_braker3`, `protein_evidence_alignment`, `exonerate_align_chunk`, `annotation_qc_busco`, `annotation_functional_eggnog`, `annotation_postprocess_agat`, `annotation_postprocess_agat_conversion`, and `annotation_postprocess_agat_cleanup` as runnable targets.",
+    "The MCP recipe surface exposes only `ab_initio_annotation_braker3`, `protein_evidence_alignment`, `exonerate_align_chunk`, `busco_assess_proteins`, `annotation_qc_busco`, `annotation_functional_eggnog`, `annotation_postprocess_agat`, `annotation_postprocess_agat_conversion`, and `annotation_postprocess_agat_cleanup` as runnable targets.",
     "The primary MCP flow is `prompt_and_run(prompt)`, which prepares and executes a saved WorkflowSpec artifact.",
 )
 PROMPT_REQUIREMENTS = (

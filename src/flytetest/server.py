@@ -132,6 +132,8 @@ def _entry_payload(name: str) -> dict[str, object]:
         "name": entry.name,
         "category": entry.category,
         "description": entry.description,
+        "supported_execution_profiles": list(entry.compatibility.supported_execution_profiles),
+        "default_execution_profile": entry.compatibility.execution_defaults.get("profile", "local"),
         "required_inputs": [asdict(field) for field in required_inputs],
         "optional_inputs": [asdict(field) for field in optional_inputs],
         "outputs": [asdict(field) for field in entry.outputs],

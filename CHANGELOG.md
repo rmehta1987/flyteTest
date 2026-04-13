@@ -52,6 +52,15 @@ Entry template:
 - [x] 2026-04-13 updated `scripts/rcc/README.md` and `README.md` to document
   the M18 BUSCO image path behavior, retry-child success criteria, and current
   Slurm retry support status
+- [x] 2026-04-13 added MCP recipe planning support for the M18 BUSCO eukaryota
+  fixture: `prepare_run_recipe` can now freeze `busco_assess_proteins` as a
+  registered-task Slurm recipe with the fixture FASTA, `auto-lineage`, genome
+  mode, `busco_cpu`, and optional `busco_sif` runtime bindings; updated the
+  MCP docs with a client prompt for Codex/OpenCode-style testing
+- [x] 2026-04-13 extended `list_entries` / `flytetest://supported-targets`
+  payloads with `supported_execution_profiles` and `default_execution_profile`
+  so clients can ask which runnable targets are Slurm-capable before calling
+  `prepare_run_recipe`
 
 ### Milestone 19 HPC Cluster Validation Helpers
 

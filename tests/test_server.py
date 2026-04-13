@@ -35,6 +35,7 @@ from flytetest.mcp_contract import (
     SUPPORTED_AGAT_CLEANUP_WORKFLOW_NAME,
     SUPPORTED_AGAT_CONVERSION_WORKFLOW_NAME,
     SUPPORTED_AGAT_WORKFLOW_NAME,
+    SUPPORTED_BUSCO_FIXTURE_TASK_NAME,
     SUPPORTED_BUSCO_WORKFLOW_NAME,
     SUPPORTED_EGGNOG_WORKFLOW_NAME,
     SUPPORTED_PROTEIN_WORKFLOW_NAME,
@@ -225,12 +226,18 @@ class ServerTests(TestCase):
     This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         payload = list_entries()
+        entries_by_name = {entry["name"]: entry for entry in payload["entries"]}
 
         self.assertEqual([entry["name"] for entry in payload["entries"]], EXPECTED_TARGET_NAMES)
+        self.assertIn("slurm", entries_by_name[SUPPORTED_WORKFLOW_NAME]["supported_execution_profiles"])
+        self.assertIn("slurm", entries_by_name[SUPPORTED_BUSCO_FIXTURE_TASK_NAME]["supported_execution_profiles"])
+        self.assertEqual(entries_by_name[SUPPORTED_TASK_NAME]["supported_execution_profiles"], ["local"])
+        self.assertEqual(entries_by_name[SUPPORTED_WORKFLOW_NAME]["default_execution_profile"], "local")
         self.assertEqual(payload["server_tools"], list(MCP_TOOL_NAMES))
         self.assertIn(f"`{SUPPORTED_WORKFLOW_NAME}`", payload["limitations"][0])
         self.assertIn(f"`{SUPPORTED_PROTEIN_WORKFLOW_NAME}`", payload["limitations"][0])
         self.assertIn(f"`{SUPPORTED_TASK_NAME}`", payload["limitations"][0])
+        self.assertIn(f"`{SUPPORTED_BUSCO_FIXTURE_TASK_NAME}`", payload["limitations"][0])
         self.assertIn("annotation_qc_busco", payload["limitations"][0])
         self.assertIn("annotation_functional_eggnog", payload["limitations"][0])
         self.assertIn("annotation_postprocess_agat_cleanup", payload["limitations"][0])
@@ -257,9 +264,11 @@ class ServerTests(TestCase):
     This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         payload = resource_supported_targets()
+        entries_by_name = {entry["name"]: entry for entry in payload["entries"]}
 
         self.assertEqual(payload["primary_tool"], PRIMARY_TOOL_NAME)
         self.assertEqual([entry["name"] for entry in payload["entries"]], EXPECTED_TARGET_NAMES)
+        self.assertIn("slurm", entries_by_name[SUPPORTED_BUSCO_WORKFLOW_NAME]["supported_execution_profiles"])
 
     def test_example_prompts_resource_requires_explicit_local_paths(self) -> None:
         """Expose only small example prompts that match the narrow planner contract.
@@ -876,6 +885,34 @@ class ServerTests(TestCase):
         self.assertEqual(prepared["typed_plan"]["execution_profile"], "slurm")
         self.assertEqual(prepared["typed_plan"]["binding_plan"]["execution_profile"], "slurm")
         self.assertEqual(artifact.binding_plan.execution_profile, "slurm")
+
+    def test_prepare_run_recipe_accepts_m18_busco_fixture_prompt(self) -> None:
+        """Freeze the M18 BUSCO fixture task through the MCP recipe path."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            prepared = _prepare_run_recipe_impl(
+                (
+                    "Run the Milestone 18 BUSCO eukaryota fixture using execution profile slurm "
+                    "with BUSCO_SIF data/images/busco_v6.0.0_cv1.sif, busco_cpu 2, "
+                    "2 CPUs, memory 8Gi, queue caslake, account rcc-staff, walltime 00:10:00."
+                ),
+                recipe_dir=tmp_path,
+            )
+            artifact = load_workflow_spec_artifact(Path(str(prepared["artifact_path"])))
+
+        self.assertTrue(prepared["supported"])
+        self.assertEqual(prepared["typed_plan"]["biological_goal"], "busco_assess_proteins")
+        self.assertEqual(prepared["typed_plan"]["candidate_outcome"], "registered_task")
+        self.assertEqual(prepared["typed_plan"]["execution_profile"], "slurm")
+        self.assertEqual(artifact.binding_plan.target_name, "busco_assess_proteins")
+        self.assertEqual(artifact.binding_plan.target_kind, "task")
+        self.assertEqual(artifact.binding_plan.runtime_bindings["proteins_fasta"], "data/busco/test_data/eukaryota/genome.fna")
+        self.assertEqual(artifact.binding_plan.runtime_bindings["lineage_dataset"], "auto-lineage")
+        self.assertEqual(artifact.binding_plan.runtime_bindings["busco_mode"], "geno")
+        self.assertEqual(artifact.binding_plan.runtime_bindings["busco_cpu"], 2)
+        self.assertEqual(artifact.binding_plan.runtime_bindings["busco_sif"], "data/images/busco_v6.0.0_cv1.sif")
+        self.assertEqual(artifact.binding_plan.resource_spec.cpu, "2")
+        self.assertEqual(artifact.binding_plan.resource_spec.memory, "8Gi")
 
     def test_prepare_run_recipe_rejects_missing_manifest_sources(self) -> None:
         """Return a structured decline when a manifest source cannot be validated.

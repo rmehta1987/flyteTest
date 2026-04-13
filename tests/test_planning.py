@@ -346,6 +346,28 @@ class PlanningTests(TestCase):
         self.assertEqual(payload["resource_spec"]["execution_class"], "slurm")
         self.assertEqual(payload["resource_spec"]["account"], "rcc-staff")
 
+    def test_typed_plan_prepares_m18_busco_fixture_task(self) -> None:
+        """Freeze the M18 BUSCO fixture as a registered task recipe."""
+        payload = plan_typed_request(
+            (
+                "Run the Milestone 18 BUSCO eukaryota fixture on Slurm with "
+                "BUSCO_SIF data/images/busco_v6.0.0_cv1.sif, busco_cpu 2, "
+                "2 CPUs, account rcc-staff, queue caslake, memory 8Gi, walltime 00:10:00."
+            )
+        )
+
+        self.assertTrue(payload["supported"])
+        self.assertEqual(payload["candidate_outcome"], "registered_task")
+        self.assertEqual(payload["biological_goal"], "busco_assess_proteins")
+        self.assertEqual(payload["execution_profile"], "slurm")
+        self.assertEqual(payload["resource_spec"]["cpu"], "2")
+        self.assertEqual(payload["resource_spec"]["memory"], "8Gi")
+        self.assertEqual(payload["binding_plan"]["runtime_bindings"]["proteins_fasta"], "data/busco/test_data/eukaryota/genome.fna")
+        self.assertEqual(payload["binding_plan"]["runtime_bindings"]["lineage_dataset"], "auto-lineage")
+        self.assertEqual(payload["binding_plan"]["runtime_bindings"]["busco_mode"], "geno")
+        self.assertEqual(payload["binding_plan"]["runtime_bindings"]["busco_cpu"], 2)
+        self.assertEqual(payload["binding_plan"]["runtime_bindings"]["busco_sif"], "data/images/busco_v6.0.0_cv1.sif")
+
     def test_typed_plan_reports_ambiguous_busco_manifest_sources(self) -> None:
         """Decline BUSCO planning when multiple manifests could satisfy the QC target.
 

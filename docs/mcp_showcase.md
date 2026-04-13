@@ -50,6 +50,7 @@ The local recipe runner can currently handle:
 - workflow: `ab_initio_annotation_braker3`
 - workflow: `protein_evidence_alignment`
 - task: `exonerate_align_chunk`
+- task: `busco_assess_proteins`
 - workflow: `annotation_qc_busco`
 - workflow: `annotation_functional_eggnog`
 - workflow: `annotation_postprocess_agat`
@@ -68,6 +69,7 @@ MCP surface.
 - `run_local_recipe`
 - `run_slurm_recipe`
 - `monitor_slurm_job`
+- `retry_slurm_job`
 - `cancel_slurm_job`
 - `prompt_and_run`
 
@@ -82,6 +84,9 @@ What the tools do:
 
 - `list_entries`
   - shows the currently runnable targets and their inputs and outputs
+  - includes `supported_execution_profiles` so clients can distinguish
+    local-only targets from targets that can be frozen and submitted through
+    Slurm
 - `plan_request`
   - makes a plan without saving it yet
 - `prepare_run_recipe`
@@ -92,6 +97,8 @@ What the tools do:
   - submits a previously saved Slurm recipe and writes a run record
 - `monitor_slurm_job`
   - checks a Slurm run record against the live scheduler state
+- `retry_slurm_job`
+  - resubmits a terminal, retryable Slurm run record from its frozen recipe
 - `cancel_slurm_job`
   - records that a scheduler cancellation was requested
 - `prompt_and_run`
@@ -286,6 +293,12 @@ Example Exonerate task prompt:
 Experiment with Exonerate protein-to-genome alignment using genome data/braker3/reference/genome.fa and protein chunk data/braker3/protein_data/fastas/proteins.fa
 ```
 
+Example M18 BUSCO fixture prompt:
+
+```text
+Run the Milestone 18 BUSCO eukaryota fixture using execution profile slurm with BUSCO_SIF data/images/busco_v6.0.0_cv1.sif, busco_cpu 2, 2 CPUs, memory 8Gi, queue caslake, account rcc-staff, and walltime 00:10:00.
+```
+
 ## Recipe Flow
 
 `prepare_run_recipe(prompt, manifest_sources=[], explicit_bindings={}, runtime_bindings={}, resource_request={}, execution_profile="local", runtime_image={})`
@@ -341,6 +354,11 @@ stringified pseudo-dict such as `{exonerate_sif:data/images/exonerate_2.2.0--1.s
 For Slurm preparation, also verify that the returned `typed_plan.execution_profile`
 and `typed_plan.binding_plan.execution_profile` are both `slurm` before passing
 the saved artifact to `run_slurm_recipe`.
+For the M18 BUSCO fixture, verify that
+`typed_plan.binding_plan.runtime_bindings` contains
+`proteins_fasta=data/busco/test_data/eukaryota/genome.fna`,
+`lineage_dataset=auto-lineage`, `busco_mode=geno`, and the intended
+`busco_sif` before submission.
 If an LLM-driven client does not preserve optional tool arguments reliably,
 encode the execution profile and resource choices directly in the prompt text,
 then verify the frozen recipe before submission.
@@ -432,6 +450,19 @@ Quick sanity check:
 Use the flytetest MCP server and call list_entries.
 ```
 
+To list only targets that can be submitted through Slurm, ask the client:
+
+```text
+Use the flytetest MCP server and call list_entries.
+
+Print only entries where supported_execution_profiles contains "slurm".
+For each one, print:
+- name
+- category
+- default_execution_profile
+- supported_execution_profiles
+```
+
 Prepare a Slurm recipe:
 
 ```text
@@ -447,6 +478,26 @@ Then print exactly:
 - typed_plan.binding_plan.execution_profile
 - typed_plan.binding_plan.runtime_bindings
 - typed_plan.resource_spec
+- typed_plan.binding_plan.resource_spec
+- artifact_path
+- limitations
+```
+
+Prepare the M18 BUSCO fixture Slurm recipe:
+
+```text
+Use the flytetest MCP server.
+
+Call prepare_run_recipe with exactly these arguments:
+- prompt: "Run the Milestone 18 BUSCO eukaryota fixture using execution profile slurm with BUSCO_SIF data/images/busco_v6.0.0_cv1.sif, busco_cpu 2, 2 CPUs, memory 8Gi, queue caslake, account rcc-staff, and walltime 00:10:00."
+
+Then print exactly:
+- supported
+- typed_plan.biological_goal
+- typed_plan.candidate_outcome
+- typed_plan.execution_profile
+- typed_plan.binding_plan.execution_profile
+- typed_plan.binding_plan.runtime_bindings
 - typed_plan.binding_plan.resource_spec
 - artifact_path
 - limitations

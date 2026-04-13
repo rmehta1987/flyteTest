@@ -278,6 +278,7 @@ targets:
 - workflow: `ab_initio_annotation_braker3`
 - workflow: `protein_evidence_alignment`
 - task: `exonerate_align_chunk`
+- task: `busco_assess_proteins`
 - workflow: `annotation_qc_busco`
 - workflow: `annotation_functional_eggnog`
 - workflow: `annotation_postprocess_agat`
@@ -337,6 +338,8 @@ Client examples and the full HPC runbook live in:
 
 Current MCP behavior:
 
+- `list_entries` returns each runnable target's supported execution profiles
+  so clients can filter for Slurm-capable entries before preparing a recipe
 - `plan_request` returns the typed planning payload used for recipe preparation
 - `prepare_run_recipe` saves a frozen recipe under `.runtime/specs/`
 - `run_local_recipe` executes a previously saved recipe through explicit local
@@ -375,6 +378,10 @@ Current MCP behavior:
   `typed_plan.binding_plan.execution_profile` are both `slurm` before calling
   `run_slurm_recipe`; if those fields still read `local`, the client likely did
   not pass the structured argument through to the tool call
+- the M18 BUSCO eukaryota fixture can be prepared through `prepare_run_recipe`
+  by asking for the Milestone 18 BUSCO fixture on Slurm; the planner freezes
+  the fixture FASTA, `auto-lineage`, genome mode, and any supplied `busco_sif`
+  or `busco_cpu` runtime bindings before submission
 - `manifest_sources` must be `run_manifest.json` paths or result directories
   containing one
 - BUSCO and EggNOG recipe preparation can resolve a

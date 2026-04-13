@@ -33,6 +33,7 @@ from flytetest.composition import compose_workflow_path
 from flytetest.mcp_contract import (
     SHOWCASE_LIMITATIONS,
     SHOWCASE_TARGETS_BY_NAME,
+    SUPPORTED_BUSCO_FIXTURE_TASK_NAME,
     SUPPORTED_PROTEIN_WORKFLOW_NAME,
     SUPPORTED_TASK_NAME,
     SUPPORTED_WORKFLOW_NAME,
@@ -452,6 +453,36 @@ def _extract_task_inputs(request: str, prompt_paths: tuple[PromptPath, ...]) -> 
     return extracted
 
 
+def _extract_busco_fixture_inputs(request: str, prompt_paths: tuple[PromptPath, ...]) -> dict[str, object]:
+    """Build default runtime bindings for the M18 BUSCO fixture smoke."""
+    extracted: dict[str, object] = {
+        "proteins_fasta": "data/busco/test_data/eukaryota/genome.fna",
+        "lineage_dataset": "auto-lineage",
+        "busco_mode": "geno",
+    }
+
+    for mention in prompt_paths:
+        path = mention.value
+        if path.lower().endswith(".sif") and "busco" in mention.context:
+            extracted.setdefault("busco_sif", path)
+            continue
+        if _is_fasta_path(path) and any(keyword in mention.context for keyword in ("busco", "fixture", "genome")):
+            extracted["proteins_fasta"] = path
+
+    cpu_match = re.search(r"\bbusco[_ -]?cpu\s*[:=]?\s*(\d+)\b", request, flags=re.IGNORECASE)
+    if cpu_match:
+        extracted["busco_cpu"] = int(cpu_match.group(1))
+
+    lineage_match = re.search(r"\b(?:lineage|lineage_dataset)\s*[:=]?\s*([A-Za-z0-9_.-]+)\b", request, flags=re.IGNORECASE)
+    if lineage_match:
+        extracted["lineage_dataset"] = lineage_match.group(1)
+
+    mode_match = re.search(r"\bbusco[_ -]?mode\s*[:=]?\s*([A-Za-z0-9_.-]+)\b", request, flags=re.IGNORECASE)
+    if mode_match:
+        extracted["busco_mode"] = mode_match.group(1)
+    return extracted
+
+
 def _coerce_resource_spec(value: Mapping[str, Any] | ResourceSpec | None) -> ResourceSpec | None:
     """Convert caller-supplied resource policy into the typed recipe shape.
 
@@ -564,7 +595,7 @@ def _extract_resource_spec_from_prompt(request: str) -> ResourceSpec | None:
         cpu = cpu_match.group(1)
 
     memory_match = re.search(
-        r"\b(?:memory|mem|ram)\s*[:=]?\s*(\d+\s*(?:gib|gb|mib|mb))\b|\b(\d+\s*(?:gib|gb|mib|mb))\s*(?:memory|mem|ram)\b",
+        r"\b(?:memory|mem|ram)\s*[:=]?\s*(\d+\s*(?:gib|gb|gi|mib|mb|mi))\b|\b(\d+\s*(?:gib|gb|gi|mib|mb|mi))\s*(?:memory|mem|ram)\b",
         request,
         flags=re.IGNORECASE,
     )
@@ -890,6 +921,25 @@ def _planning_goal_for_typed_request(request: str) -> TypedPlanningGoal | None:
 
     if any(keyword in normalized_request for keyword in ("variant calling", "snv", "snp", "vcf")):
         return None
+
+    if (
+        "busco" in normalized_request
+        and ("m18" in normalized_request or "milestone 18" in normalized_request or "fixture" in normalized_request)
+        and ("genome" in normalized_request or "eukaryota" in normalized_request or "fixture" in normalized_request)
+    ):
+        return TypedPlanningGoal(
+            name=SUPPORTED_BUSCO_FIXTURE_TASK_NAME,
+            outcome="registered_task",
+            target_entry_names=(SUPPORTED_BUSCO_FIXTURE_TASK_NAME,),
+            required_planner_types=(),
+            produced_planner_types=("Dir",),
+            rationale=(
+                "The prompt asks for the Milestone 18 BUSCO eukaryota fixture smoke.",
+                "That maps to the registered BUSCO task with explicit fixture-native runtime bindings.",
+            ),
+            analysis_goal="Run the M18 BUSCO genome-mode fixture smoke from a frozen recipe.",
+            runtime_bindings=_extract_busco_fixture_inputs(request, _extract_prompt_paths(request)),
+        )
 
     matched_name, _, _ = _classify_target(request)
     if matched_name is not None:
