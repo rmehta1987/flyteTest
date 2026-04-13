@@ -38,6 +38,177 @@ Entry template:
 
 ## Unreleased
 
+### Milestone 19 Phase D: Deterministic Cache-Key Normalization
+
+- [x] 2026-04-12 added `HANDLER_SCHEMA_VERSION = "1"` constant in
+  `spec_executor.py`; included in every cache key so bumping the version
+  invalidates all prior records when handler output shapes change
+- [x] 2026-04-12 added `cache_identity_key()` pure function that computes a
+  stable SHA-256 hex digest (16-char prefix) from frozen `WorkflowSpec`,
+  `BindingPlan`, resolved planner inputs, and handler schema version; path
+  normalization strips repo-root prefix and converts to POSIX separators
+- [x] 2026-04-12 added `cache_identity_key: str | None` optional field to
+  both `LocalRunRecord` and `SlurmRunRecord`; persisted in the durable JSON
+  record and survives save/load round-trips
+- [x] 2026-04-12 extended `_validate_resume_identity()` with an optional
+  `current_cache_key` parameter; the cache key comparison is the authoritative
+  content-level gate for resume acceptance (workflow name and artifact path
+  remain as fast pre-filters)
+- [x] 2026-04-12 wired `cache_identity_key` computation into
+  `LocalWorkflowSpecExecutor.execute()` and
+  `SlurmWorkflowSpecExecutor._submit_saved_artifact()`; the key is computed
+  from frozen dicts and persisted in every new run record
+- [x] 2026-04-12 added 12 Phase D tests in `CacheIdentityKeyTests`:
+  determinism, node change, runtime binding change, resource spec change,
+  runtime image change, repo-root normalization, handler version invalidation,
+  cache key match/mismatch resume, LocalRunRecord/SlurmRunRecord round-trip,
+  and executor integration
+- [x] 2026-04-12 marked the Phase A cache-key checklist item as complete;
+  resolved the cache-key normalization and cache invalidation open blockers
+
+### Milestone 19 Core Phase B: Local Resume Semantics
+
+- [x] 2026-04-12 added `resume_from: Path | None` parameter to
+  `LocalWorkflowSpecExecutor.execute()`; when provided, the prior
+  `LocalRunRecord` is loaded, identity-validated (workflow name + artifact
+  path), and used to skip nodes whose `node_completion_state` entry is `True`
+- [x] 2026-04-12 added `node_skip_reasons: dict[str, str]` field to
+  `LocalRunRecord`; each skipped node gets a human-readable reason referencing
+  the prior run ID and completion status
+- [x] 2026-04-12 added `_validate_resume_identity()` helper that rejects
+  resume when workflow name or artifact path differs between prior record and
+  current artifact; returns a structured mismatch description
+- [x] 2026-04-12 added 6 Phase B tests to `LocalResumeTests` in
+  `tests/test_spec_executor.py`: full-skip resume, skip-reason recording,
+  workflow-name mismatch rejection, artifact-path mismatch rejection,
+  partial-completion re-execution, and `node_skip_reasons` round-trip
+
+### Milestone 19 Core Phase C: Slurm Parity And Safe Composed Execution
+
+Design decision — resume alignment between `LocalRunRecord` and `SlurmRunRecord`:
+
+The two record types remain separate dataclasses.  Alignment is achieved by:
+(a) `SlurmWorkflowSpecExecutor.submit()` accepts an optional
+`resume_from_local_record: Path | None`; when provided and identity-matched,
+completed nodes from the local record are recorded as pre-done in the new
+`SlurmRunRecord` via a `local_resume_node_state` dict.
+(b) The Slurm submission script can use the pre-done node list to skip
+already-completed stages.
+(c) Both paths use the same `_validate_resume_identity()` helper for identity
+checking.
+(d) Approval state lives in a companion `RecipeApprovalRecord(SpecSerializable)`
+alongside the saved artifact, not inside the artifact itself, so approval is
+explicit, durable, and independently inspectable.
+
+- [x] 2026-04-12 added `local_resume_node_state: dict[str, bool]` and
+  `local_resume_run_id: str | None` fields to `SlurmRunRecord`; these carry
+  forward completed node state from a prior local run without merging the two
+  record types
+- [x] 2026-04-12 added `resume_from_local_record: Path | None` parameter to
+  `SlurmWorkflowSpecExecutor.submit()` and `_submit_saved_artifact()`; when
+  identity-matched, prior local completion state is recorded in the new
+  `SlurmRunRecord` and noted in assumptions
+- [x] 2026-04-12 introduced `RecipeApprovalRecord(SpecSerializable)` in
+  `spec_artifacts.py` with `RECIPE_APPROVAL_SCHEMA_VERSION = "recipe-approval-v1"`;
+  includes `save_recipe_approval()`, `load_recipe_approval()`, and
+  `check_recipe_approval()` helpers using atomic temp-file writes
+- [x] 2026-04-12 added `approve_composed_recipe` MCP tool in `server.py` that
+  writes a durable approval record alongside the artifact; added
+  `APPROVE_COMPOSED_RECIPE_TOOL_NAME` to `MCP_TOOL_NAMES` in `mcp_contract.py`
+- [x] 2026-04-12 `run_local_recipe` and `run_slurm_recipe` now check
+  `check_recipe_approval()` before executing `generated_workflow` artifacts;
+  unapproved composed recipes are blocked with a clear limitation message
+- [x] 2026-04-12 added 3 Slurm resume tests in `SlurmResumeFromLocalRecordTests`
+  (pre-completed state, identity mismatch rejection, round-trip) and 10
+  approval tests in `tests/test_recipe_approval.py` (record round-trip, schema
+  validation, missing/approved/rejected/expired checks, MCP tool, run_local gate)
+- [x] 2026-04-12 full suite: 297 tests pass (284 pre-Phase C + 13 new), 1
+  live-Slurm smoke skipped
+
+### Milestone 19 Part B: Async Slurm Monitoring
+
+- [x] 2026-04-12 created `src/flytetest/slurm_monitor.py` as the standalone
+  async monitoring module — contains `SlurmPollingConfig`, batched Slurm
+  parsing helpers, file-locking helpers, `reconcile_active_slurm_jobs()`, and
+  the `slurm_poll_loop()` async entry point
+- [x] 2026-04-12 implemented `batch_query_slurm_job_states()` that issues a
+  single `squeue --format="%i %T"` call and a single `sacct
+  --format=JobID,State,ExitCode` call per poll cycle for all active job IDs,
+  replacing the per-job query loop that M16 relied on
+- [x] 2026-04-12 added `_parse_batch_squeue_output()` and
+  `_parse_batch_sacct_output()` to handle multi-job scheduler output; sacct
+  parser prefers bare-JobID rows over step rows (e.g. `123.batch`)
+- [x] 2026-04-12 introduced `fcntl.flock`-based exclusive locks on a companion
+  `.lock` file alongside each `slurm_run_record.json`; both the async updater
+  and synchronous MCP handlers can coexist safely via `save_slurm_run_record_locked()`
+  and `load_slurm_run_record_locked()`
+- [x] 2026-04-12 implemented `discover_active_slurm_run_dirs()` to scan
+  `.runtime/runs/` for non-terminal, non-cancelled Slurm run records before
+  each poll cycle, avoiding unnecessary scheduler queries for completed jobs
+- [x] 2026-04-12 attached `slurm_poll_loop` to the MCP server event loop in
+  `_run_stdio_server_async()` via `anyio.create_task_group()`; the poll task
+  is cancelled cleanly when the server's stdio transport closes
+- [x] 2026-04-12 configured `SlurmPollingConfig` with defaults: 30-second
+  poll interval, 300-second backoff cap, factor-of-2 exponential backoff,
+  30-second per-command timeout; a single `sacct` timeout causes backoff only,
+  not a server crash
+- [x] 2026-04-12 added `tests/test_slurm_async_monitor.py` covering batch
+  squeue/sacct parsing, mocked batch queries (including squeue timeout and
+  failure), run-directory discovery across mixed states, full reconcile
+  end-to-end, locked round-trips, lock-file creation, and async loop lifecycle
+- [x] 2026-04-12 updated `docs/capability_maturity.md` to mark async Slurm
+  monitoring as `Current`; module is observational only — does not alter
+  submission, retry, or cancellation semantics
+- [x] 2026-04-12 marked all Milestone 19 Part B checklist items complete in
+  `docs/realtime_refactor_checklist.md`
+
+### Planning assessment refresh
+
+- [x] 2026-04-13 added `synchronous-twirling-panda-assessment.md` with a
+  current-state agree / disagree critique of `synchronous-twirling-panda.md`,
+  reflecting that the Slurm design update is complete and Milestone 19 Phase A
+  has landed while Phase B/C resume and cache-key work remain open
+
+### Milestone 19 Core Phase A: Durable Local Run Records
+
+- [x] 2026-04-12 introduced `LocalRunRecord(SpecSerializable)` in
+  `src/flytetest/spec_executor.py` — the first durable local run-record shape
+  for saved-spec execution; stage completion state is no longer in-memory only
+- [x] 2026-04-12 added schema version constant `LOCAL_RUN_RECORD_SCHEMA_VERSION
+  = "local-run-record-v1"` and `DEFAULT_LOCAL_RUN_RECORD_FILENAME =
+  "local_run_record.json"`; schema version is validated on deserialize and
+  rejected when mismatched so stale records cannot silently produce wrong data
+- [x] 2026-04-12 persists per-node completion state (`node_completion_state`
+  dict keyed by node name), output references (`node_results`, `final_outputs`),
+  timestamps (`created_at`, `completed_at`), resolved planner inputs, and
+  assumptions; all fields round-trip exactly via `SpecSerializable`
+- [x] 2026-04-12 added `save_local_run_record()` + `load_local_run_record()`
+  helpers in `spec_executor.py`, following the same atomic temp-file pattern
+  as the Slurm helpers from M16/18
+- [x] 2026-04-12 extended `LocalWorkflowSpecExecutor.__init__` with optional
+  `run_root: Path | None = None`; writes a durable record after every
+  successful run when set; no record written when `None` (backward compat)
+- [x] 2026-04-12 made `LocalNodeExecutionResult` extend `SpecSerializable`
+  (changed `manifest_paths` annotation to `dict[str, Path]` for full round-trip
+  fidelity); no behavioral change to existing callers
+- [x] 2026-04-12 added 4 Phase A tests to `tests/test_spec_executor.py`:
+  round-trip, schema-version validation, executor-persistence integration, and
+  backward-compat with no `run_root`
+- [x] 2026-04-12 full suite: 241 tests pass (237 pre-existing + 4 new), 0
+  failures, 1 live-Slurm smoke skipped
+- [ ] Phase B (resume semantics) — completed under Phase C session
+- [ ] Phase C (cache keys + Slurm parity) — completed: Slurm resume alignment,
+  approval gate, and composed-recipe execution gating landed
+
+### Design alignment for scheduler-backed execution
+
+- [x] 2026-04-12 updated `DESIGN.md` to replace the Flyte Slurm plugin model
+  with the supported authenticated-session `sbatch` topology
+- [x] 2026-04-12 aligned the Slurm execution, MCP tool, and test guidance in
+  `DESIGN.md` with the already-implemented scheduler-bound execution path
+- [x] 2026-04-12 normalized the Milestone 16 authenticated-Slurm handoff note
+  so older Flyte Slurm plugin language is clearly historical
+
 ### Validation sweep after Milestone 15 review
 
 - [x] 2026-04-11 fixed the `prepare_evm_transcript_inputs` signature typo so

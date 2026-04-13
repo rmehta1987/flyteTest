@@ -71,7 +71,15 @@ from flytetest.planning import (
     supported_entry_parameters,
 )
 from flytetest.registry import RegistryEntry, get_entry
-from flytetest.spec_artifacts import artifact_from_typed_plan, save_workflow_spec_artifact
+from flytetest.spec_artifacts import (
+    artifact_from_typed_plan,
+    check_recipe_approval,
+    load_workflow_spec_artifact,
+    RecipeApprovalRecord,
+    RECIPE_APPROVAL_SCHEMA_VERSION,
+    save_recipe_approval,
+    save_workflow_spec_artifact,
+)
 from flytetest.spec_executor import (
     LocalNodeExecutionRequest,
     LocalSpecExecutionResult,
@@ -1374,6 +1382,29 @@ def _run_local_recipe_impl(
     Returns:
         A JSON-compatible payload built for the caller.
 """
+    # Check approval for composed recipes before execution.
+    try:
+        artifact = load_workflow_spec_artifact(Path(artifact_path))
+        if artifact.binding_plan.target_kind == "generated_workflow":
+            approved, reason = check_recipe_approval(Path(artifact_path))
+            if not approved:
+                return {
+                    "supported": False,
+                    "artifact_path": str(artifact_path),
+                    "execution_result": {
+                        "supported": False,
+                        "execution_mode": "local-workflow-spec-executor",
+                        "exit_status": 1,
+                        "stdout": "",
+                        "stderr": reason,
+                        "output_paths": [],
+                        "limitations": [reason],
+                    },
+                    "limitations": [reason],
+                }
+    except Exception:
+        pass  # Let the executor handle load errors normally.
+
     try:
         result = LocalWorkflowSpecExecutor(handlers or _local_node_handlers()).execute(Path(artifact_path))
     except Exception as exc:
@@ -1433,6 +1464,25 @@ def _run_slurm_recipe_impl(
     Returns:
         A JSON-compatible payload built for the caller.
 """
+    # Check approval for composed recipes before submission.
+    try:
+        artifact = load_workflow_spec_artifact(Path(artifact_path))
+        if artifact.binding_plan.target_kind == "generated_workflow":
+            approved, reason = check_recipe_approval(Path(artifact_path))
+            if not approved:
+                return {
+                    "supported": False,
+                    "artifact_path": str(artifact_path),
+                    "execution_result": {
+                        "supported": False,
+                        "execution_mode": "slurm-workflow-spec-executor",
+                        "limitations": [reason],
+                    },
+                    "limitations": [reason],
+                }
+    except Exception:
+        pass  # Let the executor handle load errors normally.
+
     result = SlurmWorkflowSpecExecutor(
         run_root=run_dir or DEFAULT_RUN_DIR,
         repo_root=REPO_ROOT,
@@ -1598,6 +1648,72 @@ def retry_slurm_job(run_record_path: str) -> dict[str, object]:
         A JSON-compatible payload built for the caller.
 """
     return _retry_slurm_job_impl(run_record_path)
+
+
+def approve_composed_recipe(
+    artifact_path: str,
+    *,
+    approved_by: str = "mcp_client",
+    expires_at: str | None = None,
+    reason: str = "",
+) -> dict[str, object]:
+    """Grant or record explicit approval for a composed-recipe artifact.
+
+    Composed recipes cannot be executed by ``run_local_recipe`` or
+    ``run_slurm_recipe`` until a valid approval record exists alongside the
+    artifact.  This tool writes that record.
+
+    Args:
+        artifact_path: Path to the frozen workflow-spec artifact that needs approval.
+        approved_by: Human-readable identifier for the approving party.
+        expires_at: Optional ISO-8601 timestamp after which approval is no longer valid.
+        reason: Optional human-readable note about why approval was granted.
+
+    Returns:
+        A JSON-compatible payload with the approval outcome.
+    """
+    from datetime import datetime, UTC
+
+    path = Path(artifact_path)
+    if not path.exists():
+        return {
+            "supported": False,
+            "artifact_path": artifact_path,
+            "approved": False,
+            "limitations": [f"Artifact not found: {artifact_path}"],
+        }
+
+    try:
+        artifact = load_workflow_spec_artifact(path)
+    except (ValueError, json.JSONDecodeError, FileNotFoundError) as exc:
+        return {
+            "supported": False,
+            "artifact_path": artifact_path,
+            "approved": False,
+            "limitations": [f"Could not load artifact: {exc}"],
+        }
+
+    approved_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    record = RecipeApprovalRecord(
+        schema_version=RECIPE_APPROVAL_SCHEMA_VERSION,
+        artifact_path=str(path),
+        workflow_name=artifact.workflow_spec.name,
+        approved=True,
+        approved_at=approved_at,
+        approved_by=approved_by,
+        expires_at=expires_at,
+        reason=reason,
+    )
+    approval_path = save_recipe_approval(record, path)
+    return {
+        "supported": True,
+        "artifact_path": artifact_path,
+        "approved": True,
+        "approval_path": str(approval_path),
+        "approved_at": approved_at,
+        "approved_by": approved_by,
+        "expires_at": expires_at,
+    }
 
 
 def _supported_target_names() -> list[str]:
@@ -2096,6 +2212,7 @@ def create_mcp_server(fastmcp_cls: Any | None = None) -> Any:
     mcp.tool()(monitor_slurm_job)
     mcp.tool()(retry_slurm_job)
     mcp.tool()(cancel_slurm_job)
+    mcp.tool()(approve_composed_recipe)
     mcp.tool()(prompt_and_run)
     mcp.resource(SERVER_RESOURCE_URIS[0])(resource_scope)
     mcp.resource(SERVER_RESOURCE_URIS[1])(resource_supported_targets)
@@ -2107,15 +2224,28 @@ def create_mcp_server(fastmcp_cls: Any | None = None) -> Any:
 async def _run_stdio_server_async() -> None:
     """Run the FastMCP server over stdio with blank-line-tolerant input parsing.
 
-    This helper keeps the supported planner or executor path explicit and easy to review.
+    A background Slurm polling task is started alongside the MCP server via an
+    anyio task group.  The poll loop reconciles active Slurm run records in
+    ``.runtime/runs/`` every ``SlurmPollingConfig.poll_interval_seconds``
+    seconds without blocking the event loop.  The task is cancelled
+    automatically when the server exits (i.e. when the stdio transport closes).
 """
+    import anyio
+    from flytetest.slurm_monitor import SlurmPollingConfig, slurm_poll_loop
+
     server = create_mcp_server()
-    async with _filtered_stdio_server() as (read_stream, write_stream):
-        await server._mcp_server.run(  # pyright: ignore[reportPrivateUsage]
-            read_stream,
-            write_stream,
-            server._mcp_server.create_initialization_options(),  # pyright: ignore[reportPrivateUsage]
-        )
+    config = SlurmPollingConfig()
+
+    async with anyio.create_task_group() as tg:
+        tg.start_soon(slurm_poll_loop, DEFAULT_RUN_DIR, config)
+        async with _filtered_stdio_server() as (read_stream, write_stream):
+            await server._mcp_server.run(  # pyright: ignore[reportPrivateUsage]
+                read_stream,
+                write_stream,
+                server._mcp_server.create_initialization_options(),  # pyright: ignore[reportPrivateUsage]
+            )
+        # Server transport closed; cancel the background poll task.
+        tg.cancel_scope.cancel()
 
 
 def main() -> None:

@@ -49,7 +49,11 @@ Each module should open with a short docstring that tells a future reader:
 
 Good module docstrings are usually 2-5 lines.
 
-Example:
+The opening `"""` and all continuation lines should be flush with the left
+margin (column 0) at the module level. Do not indent the body 4 spaces — that
+pattern exists in some files in this repo and should not be continued.
+
+Correct:
 
 ```python
 """BRAKER3 task implementations for FLyteTest.
@@ -60,18 +64,50 @@ stable result bundles.
 """
 ```
 
+Incorrect (4-space indent on continuation lines — avoid this):
+
+```python
+"""BRAKER3 task implementations for FLyteTest.
+
+    This module stages local ab initio annotation inputs, runs the documented
+    BRAKER3 boundary, normalizes `braker.gff3` for later EVM use, and collects
+    stable result bundles.
+"""
+```
+
 ## Function Docstrings
 
-Every top-level function should answer the most useful short questions:
+Every top-level function should give a maintainer everything they need to
+understand the function's role without reading the body:
 
-- what does this function do
-- what boundary does it represent
-- what important assumption or output contract should a maintainer know
+- what the function does and where it lives in the system
+- what boundary or contract it represents
+- any non-obvious lifecycle behavior, error handling, or output invariants
 
-Prefer short docstrings over long ones.
-Most helper functions only need a single sentence.
+**The depth target is `slurm_poll_loop` in `slurm_monitor.py`.** That docstring
+explains deployment context (started inside the MCP server event loop), lifecycle
+("never returns normally; runs until cancelled"), error handling strategy
+(exponential backoff on failure, cancellation re-raised immediately), and each
+Args entry explains *why the parameter exists*, not just its type.  Use that
+level of substance as the standard for any function with non-trivial behavior.
 
-Examples:
+A one-liner is correct when it captures everything a maintainer needs to know.
+Use sub-sections (`Error handling:`, `Output contract:`, `Retry logic:`) when
+the behavior in those areas is complex enough that a reader would otherwise need
+to read the full body.
+
+Include Args and Returns sections only when they add content beyond the type
+hints.  Each Args entry must answer why the stage or function needs that
+input — its biological role, the constraint on its value, or the pipeline
+contract it participates in.  Each Returns entry must say what invariant the
+caller can rely on, not just name the returned type.
+
+If the honest answer is "the name and type hint already say it all," omit
+the section.  If you cannot write a description more informative than "A value
+used by the helper," that is a signal to omit the section, not to keep the
+boilerplate.
+
+Good examples — one-liners that are complete on their own:
 
 ```python
 def _braker_gff3(run_dir: Path) -> Path:
@@ -84,23 +120,166 @@ def normalize_braker3_for_evm(braker_run: Dir) -> Dir:
     """Normalize resolved `braker.gff3` into a stable later-EVM-ready GFF3 directory."""
 ```
 
+Good example — each Args entry explains the engineering reason the parameter
+exists, not just its type:
+
+```python
+def batch_query_slurm_job_states(
+    job_ids: Sequence[str],
+    *,
+    command_timeout: float = _DEFAULT_COMMAND_TIMEOUT,
+) -> dict[str, SlurmSchedulerSnapshot]:
+    """Fetch Slurm states for multiple jobs in a single scheduler call.
+
+    Issues one squeue call and one sacct call for all IDs at once to avoid
+    the per-job request loop that would require N round-trips per poll cycle.
+    Jobs absent from scheduler output are omitted from the result rather than
+    returned as empty snapshots, so callers can distinguish "unknown to Slurm"
+    from "seen but not yet in a terminal state."
+
+    Args:
+        job_ids: Slurm job IDs to query in one batch.  Batching is the
+            entire point of this function; passing a single ID works but
+            misses the efficiency goal.  Duplicates are deduplicated so the
+            scheduler does not receive redundant job-ID entries.
+        command_timeout: Wall-clock limit per scheduler command.  Exists to
+            prevent a hung squeue or sacct call from stalling the async poll
+            loop indefinitely; raises subprocess.TimeoutExpired on breach.
+    """
+```
+
+A biological example — the Args entry explains the pipeline contract, not the type:
+
+```python
+@busco_env.task
+def busco_assess_proteins(
+    repeat_filter_results: Dir,
+    busco_lineages_text: str,
+    busco_sif: str = "",
+) -> Dir:
+    """Assess repeat-filtered protein completeness against a BUSCO lineage dataset.
+
+    Args:
+        repeat_filter_results: Result bundle from annotation_repeat_filtering.
+            Must contain run_manifest.json and the final repeat-masked protein
+            FASTA.  BUSCO runs against this protein set, not the raw BRAKER3
+            output, so the repeat-filtering stage must complete first.
+        busco_lineages_text: Comma-separated BUSCO lineage names
+            (e.g. "eukaryota_odb10").  Each name must match a lineage
+            directory installed in the BUSCO data path; the value controls
+            which single-copy ortholog set the completeness assessment uses.
+        busco_sif: Path to the BUSCO Apptainer image.  When empty, BUSCO
+            runs from PATH; set this for cluster runs where the binary is
+            not globally available.
+    """
+```
+
+Anti-pattern — boilerplate that adds no information. This pattern exists in
+parts of the codebase and should not be continued when touching those files:
+
+```python
+def _manifest_path(directory: Path, label: str) -> Path:
+    """Resolve the manifest expected under one staged directory.
+
+    Args:
+        directory: A value used by the helper.
+        label: A value used by the helper.
+
+    Returns:
+        The returned `Path` value used by the caller.
+    """
+```
+
 ## Inline Comments
 
-Use inline comments only where they save real reader effort.
+Use inline comments only where they save real reader effort.  Every inline
+comment must answer *why*, not *what*.  The code already says what it does;
+a comment that restates the code adds noise.  A comment that explains a
+biological assumption, a constraint from the pipeline notes, or an
+engineering reason that is not visible from the code itself is worth keeping.
 
-Good uses:
+Good uses — each explains a reason that is not visible from the code alone:
 
-- explaining why a path-discovery heuristic is safe
-- clarifying a repo-specific Flyte workaround
-- marking where an assumption from the notes is being implemented conservatively
-- explaining a normalization rule that is not obvious from the code
-- explaining a shortcut or abbreviated code path that would otherwise surprise a future reader
+```python
+# squeue wins over sacct when both respond; squeue reflects live state
+# while sacct may lag for recently completed jobs.
+state = sq_state or sa_state
+```
+
+```python
+# Exclusive lock for reads prevents a reader from seeing a partially-replaced
+# record during a concurrent atomic write, even though os.replace is inode-
+# atomic — the lock closes the read/write race window at the application level.
+with _exclusive_record_lock(record_path):
+    return load_slurm_run_record(source)
+```
+
+```python
+# Deduplicate before building the CSV to avoid sending redundant job-ID
+# entries to the scheduler; some Slurm versions treat duplicates as an error.
+unique_ids = list(dict.fromkeys(job_ids))
+```
+
+```python
+# Use the PASA-updated sorted GFF3, not the raw EVM output — repeat
+# filtering must start from the post-PASA annotation boundary per the notes.
+gff3 = _pasa_update_sorted_gff3(results_dir)
+```
 
 Avoid:
 
-- repeating the code literally
-- narrating simple assignments
-- leaving comments that will go stale faster than the code
+- restating what the code already says (`# increment counter` above `count += 1`)
+- narrating simple assignments or obvious type conversions
+- comments that describe *what* without saying *why* it is safe or necessary
+- leaving comments that will go stale faster than the code they annotate
+
+## Dataclass Docstrings
+
+For dataclasses with non-obvious fields, add an `Attributes:` section to the
+class docstring.  A good example in this repo is `SlurmPollingConfig` in
+`slurm_monitor.py`, which documents each field's role and constraint rather
+than just its type.
+
+Simple dataclasses whose field names are self-evident do not need an
+`Attributes:` section.  The threshold is whether a future reader would have
+to check the default value or a calling site to understand what the field
+controls.
+
+Watch for copy-paste docstring drift among dataclasses.  Several dataclasses
+in `spec_executor.py` share a boilerplate body ("It captures the node
+metadata, resolved planner inputs, and frozen runtime policy...") that
+describes `LocalNodeExecutionRequest` but was pasted into classes with
+different purposes.  When touching any of those classes, replace the
+boilerplate with a description that matches the actual class.
+
+## Nested Functions and Closures in Tests
+
+Inner functions defined inside test methods should use a one-liner docstring,
+not a full Google-style Args/Returns block.  The caller is always the enclosing
+test method; the context is already visible.
+
+Correct:
+
+```python
+def handler(request: LocalNodeExecutionRequest) -> dict[str, Path]:
+    """Stage a synthetic result directory and record the node call."""
+    ...
+```
+
+Avoid (full Args/Returns sections on a 5-line closure add noise without value):
+
+```python
+def handler(request: LocalNodeExecutionRequest) -> dict[str, Path]:
+    """Stage a synthetic result directory and record the node call.
+
+    Args:
+        request: The local execution request forwarded by the caller.
+
+    Returns:
+        The returned `dict[str, Path]` value used by the caller.
+    """
+    ...
+```
 
 ## Comments Do Not Replace Manifests Or Docs
 

@@ -950,36 +950,159 @@ Status: Complete
 Goal: support caching and resumability for frozen recipes so interrupted work
 can continue without recomputing completed stages.
 
-Status: Not started
+Status: Not started; split into core resumability phases plus a separate async
+monitoring follow-on
 
-### Still required
+### Core Phase A: Cache Identity And Durable Local Run Records
 
-- [ ] Define cache keys for frozen `WorkflowSpec` artifacts and resolved
-      inputs.
-- [ ] Decide what resume means for local saved-spec execution versus Slurm
-      execution.
-- [ ] Persist stage completion state in run records.
-- [ ] Re-run only missing or invalidated stages when a run is resumed.
-- [ ] Add synthetic tests for cache hits, cache misses, and interrupted-run
-      recovery.
-- [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
-      after the behavior lands.
+- [x] 2026-04-12 defined `LOCAL_RUN_RECORD_SCHEMA_VERSION = "local-run-record-v1"`
+  as the schema version constant that identifies the initial Phase A record
+  shape; schema version is validated on load and rejected when mismatched.
+- [x] 2026-04-12 introduced `LocalRunRecord(SpecSerializable)` in
+  `src/flytetest/spec_executor.py` as the durable local run-record shape;
+  stage state is no longer implicit or in-memory only.
+- [x] 2026-04-12 persisted per-node completion state (`node_completion_state`
+  dict), output references (`node_results`, `final_outputs`), timestamps
+  (`created_at`, `completed_at`), and assumptions in every durable record.
+- [x] 2026-04-12 added `save_local_run_record()` and `load_local_run_record()`
+  helpers with atomic temp-file writes (same pattern as Slurm M16/18);
+  `LocalWorkflowSpecExecutor` writes a record when `run_root` is set.
+- [x] 2026-04-12 Define deterministic cache-key inputs from frozen `WorkflowSpec`,
+  `BindingPlan`, resolved inputs, runtime bindings, execution profile, and
+  runtime-image or resource policy that should invalidate reuse of a prior
+  record.  Implemented as `cache_identity_key()` in `spec_executor.py` using
+  SHA-256 over normalized JSON; `HANDLER_SCHEMA_VERSION` invalidates stale
+  handler outputs; repo-root prefix is stripped for path normalization.
+  `cache_identity_key` field added to both `LocalRunRecord` and
+  `SlurmRunRecord`; `_validate_resume_identity()` uses the key as the
+  authoritative content-level gate for resume acceptance.
+
+### Core Phase B: Local Resume Semantics
+
+- [x] 2026-04-12 Implement resume-from-record for local saved-spec execution using the
+  frozen recipe and recorded bindings as the only authority.
+  `LocalWorkflowSpecExecutor.execute()` accepts `resume_from: Path | None`;
+  prior record is loaded, identity-validated (workflow name + artifact path),
+  and used to skip nodes whose `node_completion_state` entry is `True`.
+- [x] 2026-04-12 Skip completed nodes and rerun only missing or invalidated stages when
+  resuming a local run.  Completed nodes reuse their prior outputs as
+  `upstream_outputs` without calling the handler.
+- [x] 2026-04-12 Record why a node was reused, rerun, or invalidated so resume behavior
+  stays inspectable in the durable run record.  `LocalRunRecord.node_skip_reasons`
+  dict records a human-readable reason for each skipped node.
+- [x] 2026-04-12 Add focused tests for local cache hits, local cache misses, interrupted
+  local runs, and explicit invalidation when the frozen identity changes.
+  Six new tests in `LocalResumeTests`: full-skip resume, skip-reason recording,
+  workflow-name mismatch rejection, artifact-path mismatch rejection,
+  partial-completion re-execution, and node_skip_reasons round-trip.
+
+### Core Phase C: Slurm Parity And Safe Composed Execution
+
+- [x] 2026-04-12 Align the local run-record model with the existing Slurm run-record layer
+  so both paths can honor the same explicit replay and resume rules.
+  Both `LocalRunRecord` and `SlurmRunRecord` remain separate dataclasses.
+  `SlurmRunRecord` gained `local_resume_node_state` and `local_resume_run_id`
+  fields.  Both paths share `_validate_resume_identity()` for identity checking.
+- [x] 2026-04-12 Extend resumability to Slurm-backed execution without weakening the
+  durable run-record boundary from Milestones 13, 16, and 18.
+  `SlurmWorkflowSpecExecutor.submit()` accepts `resume_from_local_record: Path | None`;
+  when identity-matched, prior local node completion state is recorded in the
+  new `SlurmRunRecord`.
+- [x] 2026-04-12 Add an explicit approval-acceptance path for composed recipes before
+  enabling execution-capable composed DAGs.
+  `RecipeApprovalRecord(SpecSerializable)` in `spec_artifacts.py` with
+  `save_recipe_approval()`, `load_recipe_approval()`, `check_recipe_approval()`.
+  `approve_composed_recipe` MCP tool in `server.py` writes the approval record.
+  `run_local_recipe` and `run_slurm_recipe` check approval before executing
+  composed (`generated_workflow`) recipes.  `APPROVE_COMPOSED_RECIPE_TOOL_NAME`
+  added to `MCP_TOOL_NAMES` in `mcp_contract.py`.
+- [x] 2026-04-12 Add tests covering resume behavior across local and Slurm execution,
+  plus guardrails that prevent stale or mismatched reuse.
+  3 tests in `SlurmResumeFromLocalRecordTests` (Slurm resume with local record,
+  identity mismatch rejection, round-trip of new fields).
+  10 tests in `tests/test_recipe_approval.py` covering approval round-trip,
+  schema validation, missing/approved/rejected/expired checks, MCP tool
+  behavior, and run_local_recipe approval gate (block and allow).
+- [x] 2026-04-12 Update README, `docs/capability_maturity.md`, and the handoff prompt
+  after the core behavior lands.
+
+### Milestone 19 Part B: Async Monitoring Follow-On
+
+- [x] 2026-04-12 created `src/flytetest/slurm_monitor.py` with
+  `SlurmPollingConfig`, `batch_query_slurm_job_states()`,
+  `discover_active_slurm_run_dirs()`, `reconcile_active_slurm_jobs()`,
+  `save_slurm_run_record_locked()`, `load_slurm_run_record_locked()`, and
+  `slurm_poll_loop()`; the async loop batches all active job queries into a
+  single `squeue`/`sacct` call per cycle rather than one call per job.
+- [x] 2026-04-12 introduced `fcntl.flock`-based exclusive file locking via
+  companion `.lock` files to guard concurrent writes between the background
+  async updater and synchronous MCP handlers that read or update durable run
+  records.
+- [x] 2026-04-12 attached the background `slurm_poll_loop` to the main MCP
+  server event loop inside `_run_stdio_server_async()` using an `anyio`
+  task group; the loop is cancelled cleanly when the MCP server shuts down.
+- [x] 2026-04-12 configured `SlurmPollingConfig` with a 30-second default
+  poll interval, 300-second backoff cap, factor-of-2 exponential backoff, and
+  a 30-second per-command timeout; a single scheduler error backs off rather
+  than crashing the server.
+- [x] 2026-04-12 added `tests/test_slurm_async_monitor.py` with 28 tests
+  covering batch squeue/sacct parsing, mocked batch queries, run-directory
+  discovery, reconciliation end-to-end, locked round-trips, and async loop
+  lifecycle (starts, survives errors, cancels cleanly).
+- [x] 2026-04-12 updated `docs/capability_maturity.md` to mark async Slurm
+  monitoring as `Current`; removed it from the future-optimization note.
+- [x] 2026-04-12 kept continuous async Slurm monitoring separate from the
+  core cache and resume work; the module is observational only and does not
+  alter submission or retry semantics.
 
 ### Milestone 19 implementation note
 
 - This slice should keep caching and resumability explicit and inspectable.
 - It should key reuse off the frozen recipe, resolved inputs, and relevant
   runtime bindings rather than hidden mutable state.
+- The safest implementation order is: generic local run record first, local
+  resume second, Slurm parity third, and async monitoring after that.
 - Resume behavior should be compatible with both local saved-spec execution
-  and the Slurm path that Milestones 13, 16, and 18 establish.
+  and the Slurm path that Milestones 13, 16, and 18 establish, but the first
+  implementation pass should not try to solve cross-run reuse, local resume,
+  Slurm parity, and async monitoring in one risky batch.
 - It follows Milestone 15 rather than preceding it: Milestone 15 defines the
   composition preview and approval boundary first, while Milestone 19 later
   adds the caching and resumability needed to make execution-capable composed
   DAGs safe to expose.
 
+### Open blockers and design questions
+
+- ~~There is not yet a generic durable local run-record model comparable to the
+  Slurm run-record layer.~~
+  - resolved: Phase A added `LocalRunRecord(SpecSerializable)` (2026-04-12)
+- ~~Cache-key normalization still needs an explicit decision for manifest-backed
+  inputs, local paths, runtime-image data, and resource-policy overrides.~~
+  - resolved: Phase D added `cache_identity_key()` with path normalization, repo-root
+    prefix stripping, and frozen JSON hashing (2026-04-12)
+- ~~Cache invalidation needs a versioned rule so handler or schema changes do not
+  silently reuse stale outputs.~~
+  - resolved: Phase D added `HANDLER_SCHEMA_VERSION` constant included in the cache key;
+    bumping the version invalidates all prior records (2026-04-12)
+- The current composition work added approval gating, but there is still no
+  explicit approval-acceptance path for executing a composed recipe.
+- Local and Slurm resumability should probably share a common run-state model
+  before broader cache reuse is attempted.
+
+### Suggested implementation order
+
+- [ ] Audit `src/flytetest/spec_executor.py`, `src/flytetest/spec_artifacts.py`,
+  and `src/flytetest/server.py` for the smallest durable local run-record
+  insertion point.
+- [ ] Land the local run-record and cache-identity model before adding reuse.
+- [ ] Land local resume behavior before extending the same rules to Slurm.
+- [ ] Add approval acceptance only after the executor can resume deterministically.
+- [ ] Defer async polling until the core resume semantics are stable.
+
 ### Acceptance evidence
 
 - `docs/realtime_refactor_plans/2026-04-08-milestone-19-caching-resumability.md`
+- `docs/realtime_refactor_plans/2026-04-10-milestone-19-part-b-async-slurm-monitoring.md`
 - `docs/realtime_refactor_milestone_19_submission_prompt.md`
 - Tests likely to include `tests/test_spec_executor.py`, `tests/test_server.py`,
   and any focused cache / resume coverage
@@ -990,9 +1113,12 @@ Status: Not started
 
 - Reusing stale results when the frozen spec or resolved inputs no longer
   match
-- Making resume behavior ambiguous between local and Slurm execution paths
+- Making resume behavior ambiguous between local and Slurm execution paths or
+  trying to force both paths into one first-pass implementation batch
 - Hiding stage-completion state in memory instead of the durable run record
 - Turning caching into an implicit behavior instead of an explicit replay rule
+- Treating async Slurm monitoring as a prerequisite for the first resumability
+  pass instead of a follow-on optimization
 
 ## Milestone 18
 

@@ -27,9 +27,10 @@ Implementation note:
 - The current implementation works when those scheduler commands are available
   in the environment where FLyteTest is running, but the docs do not yet state
   clearly how that boundary behaves on HPC systems that require SSH plus 2FA.
-- The repo also contains design references to the Flyte Slurm plugin and
-  SSH-oriented approaches, but those assumptions are not a safe default when
-  scheduler access depends on an already-authenticated user session.
+- The repo also contains older design references to the Flyte Slurm plugin and
+  SSH-oriented approaches, but those assumptions are historical rather than a
+  safe default when scheduler access depends on an already-authenticated user
+  session.
 - The repo does not yet state clearly that a user may need to start the MCP
   server manually inside a login-node shell, `tmux` session, `screen` session,
   or another already-authenticated environment before Slurm tools should be
@@ -98,7 +99,8 @@ Out of scope:
 - Replacing the current local-first executor with a generic remote orchestration
   system.
 - Making `slurmrestd`, Open OnDemand, or the Flyte Slurm plugin the default
-  execution path in this slice.
+  execution path in this slice, beyond treating them as historical comparison
+  points.
 - Requiring a long-lived background polling daemon as the only valid lifecycle
   model.
 

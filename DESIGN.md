@@ -427,26 +427,17 @@ saved recipe as-is.
 
 Slurm support should make FLyteTest feel closer to Nextflow or Snakemake on
 HPC: the system should send jobs to the cluster, watch them, and cancel them
-when needed from frozen run recipes. The target design should use the Flyte
-Slurm plugin rather than inventing a separate Slurm runner. In that model,
-Flyte owns the task graph and the Slurm agent handles the scheduler
-interaction.
-
-The Flyte Slurm plugin exposes two useful shapes for FLyteTest:
-
-- `SlurmFunction` for running a Python Flyte task function through Slurm.
-- `SlurmTask` / `SlurmRemoteScript` or `SlurmShellTask` for a prepared shell
-  script when that is the better boundary.
+when needed from frozen run recipes. The supported topology is a local
+MCP/server process running inside an already-authenticated scheduler-capable
+session. In that model, FLyteTest renders the scheduler submission itself and
+drives `sbatch` directly instead of delegating to a separate Flyte Slurm
+plugin.
 
 The job settings still come from the saved run recipe. Natural-language
-resource requests are interpreted before execution and then frozen into
-`sbatch_conf`.
+resource requests are interpreted before execution and then frozen into a
+Slurm execution profile that can be rendered into `sbatch` options.
 
 ```python
-from flytekit import task, workflow
-from flytekitplugins.slurm import SlurmFunction
-
-
 @dataclass(frozen=True)
 class SlurmExecutionProfile:
     """Cluster settings chosen before the run starts."""
@@ -471,55 +462,32 @@ def sbatch_conf_for_recipe(recipe: RunRecipe, profile: SlurmExecutionProfile) ->
     }
 
 
-@task(
-    task_config=SlurmFunction(
-        ssh_config={
-            "host": "hpc-login.example.edu",
-            "username": "researcher",
-            "client_keys": ["~/.ssh/flytetest_slurm"],
-        },
-        sbatch_conf={
-            "partition": "highmem",
-            "job-name": "flytetest-transcript-evidence",
-            "cpus-per-task": "16",
-            "mem": "64G",
-            "time": "08:00:00",
-            "output": "/shared/flytetest/logs/transcript-evidence-%j.out",
-        },
-        script="""#!/usr/bin/env bash
-set -euo pipefail
-
-# The Flyte Slurm plugin inserts the task function at this placeholder.
-# Do not reinterpret the original prompt inside the Slurm job.
-{task.fn}
-""",
-    )
-)
-def run_registered_stage_on_slurm(recipe_path: str) -> str:
-    """Execute one saved run recipe stage on a Slurm compute node."""
+def submit_registered_stage_on_slurm(recipe_path: str) -> str:
+    """Render and submit one frozen run recipe through the scheduler."""
 
     recipe = load_run_recipe(recipe_path)
     verify_offline_inputs(recipe)
-    result_dir = execute_registered_stage(recipe)
-    return str(result_dir)
+    sbatch_script = render_slurm_script(recipe)
+    job_id = submit_sbatch_script(sbatch_script)
+    record_job_submission(recipe, job_id)
+    return job_id
 
 
-@workflow
 def slurm_backed_workflow(recipe_path: str) -> str:
-    """Submit the selected stage through the Flyte Slurm plugin."""
+    """Submit the selected stage through the scheduler-bound execution layer."""
 
-    return run_registered_stage_on_slurm(recipe_path=recipe_path)
+    return submit_registered_stage_on_slurm(recipe_path=recipe_path)
 ```
 
-The design should preserve Flyte's scheduler lifecycle: the Slurm agent submits
-jobs with `srun` or `sbatch`, checks state with `scontrol show job <job-id>`,
-and cancels jobs with `scancel`. FLyteTest should record those job IDs and
+The design should preserve the scheduler lifecycle explicitly: submit jobs with
+`sbatch`, check state with `squeue`, `scontrol show job <job-id>`, and `sacct`,
+and cancel jobs with `scancel`. FLyteTest should record those job IDs and
 state changes in the run record alongside the prompt, inputs, containers, logs,
 and outputs.
 
-For offline compute-node environments, the Slurm task must verify that
-containers, databases, input files, and the saved run recipe are staged on
-filesystems visible to compute nodes before submission.
+For offline compute-node environments, the scheduler-bound execution layer must
+verify that containers, databases, input files, and the saved run recipe are
+staged on filesystems visible to compute nodes before submission.
 
 ## 5. Biological Pipeline Scope
 
@@ -682,8 +650,8 @@ Target tools:
 - `run_local_recipe`: execute a saved run recipe locally when supported.
 - `prepare_slurm_recipe`: convert a saved run recipe into a Slurm-backed Flyte
   execution plan.
-- `submit_slurm_recipe`: submit a Slurm-backed recipe through the Flyte Slurm
-  plugin after validation.
+- `submit_slurm_recipe`: submit a Slurm-backed recipe through the supported
+  authenticated-session `sbatch` path after validation.
 - `monitor_slurm_job`: inspect scheduler state, logs, and job IDs.
 - `inspect_result`: read result manifests and summarize produced outputs.
 
@@ -773,27 +741,26 @@ Flyte-managed execution should:
 
 ### 7.4 Slurm-Backed Execution
 
-Slurm is a first-class execution goal. FLyteTest should support Slurm through the
-Flyte Slurm plugin so that scheduling, monitoring, and cancellation are handled
-as part of the Flyte execution model rather than as hidden ad hoc shell
-behavior.
+Slurm is a first-class execution goal. FLyteTest should support Slurm through
+the scheduler-bound execution layer that runs inside an already-authenticated
+scheduler-capable session, renders `sbatch` scripts from frozen run recipes,
+and manages the job lifecycle directly.
 
 Slurm-backed execution should:
 
-- translate a saved run recipe and resource request into Flyte Slurm plugin
+- translate a saved run recipe and resource request into explicit `sbatch`
   settings
-- use `SlurmFunction` when a Python task function should run on the cluster
-- use `SlurmTask` with `SlurmRemoteScript` or `SlurmShellTask` when a prepared
-  cluster-side script is the right boundary
-- submit jobs through the Slurm agent
+- render the job script from the frozen recipe and execution profile
+- submit jobs with `sbatch`
 - track scheduler job IDs
-- monitor job state through the Slurm agent
-- support cancellation through the Slurm agent
+- monitor job state with `squeue`, `scontrol show job`, and `sacct`
+- support cancellation through `scancel`
 - collect task logs and connect completed outputs back to the run record
 
 The goal is a user experience similar to Nextflow or Snakemake on HPC: the user
 asks for the analysis and resources, FLyteTest builds the run record, and the
-execution system handles submission, scheduling, monitoring, logs, and outputs.
+execution system handles submission, scheduling, monitoring, logs, and outputs
+without requiring a separate plugin-backed SSH control path.
 
 ### 7.5 Offline Compute Nodes
 
@@ -967,8 +934,8 @@ available.
 
 Tests should cover:
 
-- translation from run recipe resources to Flyte Slurm plugin `sbatch_conf`
-- validation of required SSH configuration
+- translation from run recipe resources to `sbatch` settings and script text
+- validation of authenticated-session scheduler access
 - validation that containers, databases, inputs, and run recipes are staged on compute-visible filesystems
 - scheduler job ID capture, polling, cancellation, and log path recording
 
@@ -1093,8 +1060,8 @@ This phase should:
 - interpret CPU, memory, walltime, and partition requests from prompts
 - freeze resource choices into the saved run recipe
 - generate Slurm-ready execution records and `sbatch`-aligned settings
-- use the Flyte Slurm plugin for submission, scheduling, monitoring, and
-  cancellation
+- use the scheduler-bound authenticated-session topology for submission,
+  scheduling, monitoring, and cancellation
 - validate offline compute-node assumptions before submission
 - refactor workflow or execution code if current shapes cannot support these
   resource decisions cleanly

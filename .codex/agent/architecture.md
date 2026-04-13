@@ -75,14 +75,36 @@ Pay special attention to:
 
 ## Deliverables
 
-Architecture work should usually produce one or more of:
+Choose the output type based on what the work actually requires:
 
-- a detailed checklist or phased plan
-- a refined contract in `DESIGN.md`
-- a handoff prompt
-- a dated slice plan under `docs/realtime_refactor_plans/`
-- a verification matrix
-- a compatibility guardrail list
+| Situation | Output |
+|---|---|
+| New feature or refactor spanning multiple files | Dated slice plan under `docs/realtime_refactor_plans/` + checklist entry |
+| Contract change in planner, registry, MCP, or manifest | Updated section in `DESIGN.md` + note in the checklist |
+| Sequencing or dependency question only | Checklist update or inline comment; no new plan doc needed |
+| Work that the next agent must implement in one session | Handoff prompt with exact file targets, constraints, and stop rules |
+| Compatibility risk identified but not yet resolved | Compatibility guardrail list appended to the relevant plan doc |
+
+Do not produce a new plan doc for every piece of architecture work. A checklist
+entry is enough when the scope is small or the implementation is obvious. Reserve
+dated plan docs for slices where the sequencing, dependencies, or contract
+decisions are non-trivial enough to need a record.
+
+## Cross-Agent Write Scope
+
+When planning work that will be split across agents or sessions, resolve write
+scope conflicts before handing off:
+
+- identify which files each agent will modify
+- flag any file that more than one agent needs to touch (e.g. `registry.py`,
+  `server.py`, `planning.py`)
+- for shared files, either sequence the agents so only one writes at a time, or
+  split the plan so each agent owns a non-overlapping section of the file
+- record the agreed scope boundary in the handoff prompt so the implementing
+  agent does not have to infer it
+
+If a shared file cannot be cleanly partitioned, prefer serializing the agents
+over parallelizing them.
 
 ## Handoff
 
@@ -90,5 +112,6 @@ When finishing architecture work, report:
 
 - the exact document or contract updated
 - what current behavior must remain unchanged
-- the next recommended implementable slice
+- the next recommended implementable slice with file targets
+- any cross-agent write scope conflicts and how they are resolved
 - any open risks or assumptions that still need engineering confirmation

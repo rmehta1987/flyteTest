@@ -35,6 +35,81 @@ SLURM_RUN_RECORD_SCHEMA_VERSION = "slurm-run-record-v1"
 DEFAULT_SLURM_RUN_RECORD_FILENAME = "slurm_run_record.json"
 DEFAULT_SLURM_SCRIPT_FILENAME = "submit_slurm.sh"
 DEFAULT_SLURM_MAX_ATTEMPTS = 2
+LOCAL_RUN_RECORD_SCHEMA_VERSION = "local-run-record-v1"
+DEFAULT_LOCAL_RUN_RECORD_FILENAME = "local_run_record.json"
+HANDLER_SCHEMA_VERSION = "1"
+
+
+def _normalize_path_for_cache_key(value: str, repo_root: str | None = None) -> str:
+    """Convert a path string to a stable POSIX form for cache-key hashing.
+
+    Strips the *repo_root* prefix when present so the same logical input from a
+    different checkout directory does not invalidate the cache.  All backslash
+    separators are converted to forward slashes.
+
+    Only the repo-root prefix is stripped.  Every path component below it is
+    kept so that genuinely different inputs still produce different keys.
+    """
+    posix = value.replace("\\", "/")
+    if repo_root:
+        prefix = repo_root.replace("\\", "/").rstrip("/") + "/"
+        if posix.startswith(prefix):
+            posix = posix[len(prefix):]
+    return posix
+
+
+def _normalize_value_for_cache_key(value: Any, repo_root: str | None = None) -> Any:
+    """Recursively normalize a JSON-compatible value for deterministic hashing.
+
+    * ``Path`` instances are converted to POSIX strings.
+    * Strings that look like absolute filesystem paths have the *repo_root*
+      prefix stripped so cosmetic checkout-location differences do not
+      invalidate the cache.
+    * Dicts are rebuilt with sorted keys.
+    * Lists/tuples are recursively normalized.
+    """
+    if isinstance(value, Path):
+        return _normalize_path_for_cache_key(str(value), repo_root)
+    if isinstance(value, str):
+        if value.startswith("/") or (len(value) > 2 and value[1] == ":"):
+            return _normalize_path_for_cache_key(value, repo_root)
+        return value
+    if isinstance(value, dict):
+        return {k: _normalize_value_for_cache_key(v, repo_root) for k, v in sorted(value.items())}
+    if isinstance(value, (list, tuple)):
+        return [_normalize_value_for_cache_key(v, repo_root) for v in value]
+    return value
+
+
+def cache_identity_key(
+    workflow_spec_dict: dict[str, Any],
+    binding_plan_dict: dict[str, Any],
+    resolved_planner_inputs: dict[str, Any],
+    *,
+    handler_schema_version: str = HANDLER_SCHEMA_VERSION,
+    repo_root: str | None = None,
+) -> str:
+    """Compute a deterministic hex digest that identifies a frozen execution.
+
+    The key is built from the JSON serialization of four normalized inputs:
+    the full workflow shape, the binding plan, the resolved planner inputs,
+    and an explicit handler-schema version that invalidates prior records
+    when handler output shapes or internal behavior change.
+
+    Path normalization strips the *repo_root* prefix and uses POSIX
+    separators so the same biology from a different checkout path produces
+    the same key.
+
+    This function is pure: no filesystem reads or network calls.
+    """
+    normalized = {
+        "workflow_spec": _normalize_value_for_cache_key(workflow_spec_dict, repo_root),
+        "binding_plan": _normalize_value_for_cache_key(binding_plan_dict, repo_root),
+        "resolved_planner_inputs": _normalize_value_for_cache_key(resolved_planner_inputs, repo_root),
+        "handler_schema_version": handler_schema_version,
+    }
+    canonical = json.dumps(normalized, sort_keys=True, default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,17 +131,18 @@ class LocalNodeExecutionRequest:
 
 
 @dataclass(frozen=True, slots=True)
-class LocalNodeExecutionResult:
+class LocalNodeExecutionResult(SpecSerializable):
     """Execution details recorded for one saved-spec node.
 
-    It captures the node metadata, resolved planner inputs, and frozen runtime
-    policy that a local handler needs in order to execute one stage.
+    It captures the node identifier, outputs, and manifest references for each
+    stage that ran during local saved-spec execution. Extending SpecSerializable
+    allows these records to round-trip through the durable LocalRunRecord JSON.
 """
 
     node_name: str
     reference_name: str
     outputs: Mapping[str, Any]
-    manifest_paths: Mapping[str, Path] = field(default_factory=dict)
+    manifest_paths: dict[str, Path] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +163,43 @@ class LocalSpecExecutionResult:
     final_outputs: Mapping[str, Any] = field(default_factory=dict)
     limitations: tuple[str, ...] = field(default_factory=tuple)
     assumptions: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class LocalRunRecord(SpecSerializable):
+    """Durable run record for one local saved-spec execution.
+
+    It captures frozen recipe identity, resolved inputs, per-node completion
+    state, and output references so interrupted work can resume without
+    recomputing already-completed stages.  The record is written atomically
+    after every successful local execution and can be reloaded by Phase B
+    resume logic using only the frozen recipe and recorded bindings.
+
+    Schema version:
+        ``local-run-record-v1`` — initial Phase A shape.  Increment the
+        version constant if fields are added or semantics change so that
+        stale records are rejected rather than silently misinterpreted.
+"""
+
+    schema_version: str
+    run_id: str
+    workflow_name: str
+    run_record_path: Path
+    created_at: str
+    execution_profile: str
+    resolved_planner_inputs: Mapping[str, Any]
+    binding_plan_target: str
+    node_completion_state: dict[str, bool]
+    node_results: tuple[LocalNodeExecutionResult, ...]
+    artifact_path: Path | None = None
+    resource_spec: ResourceSpec | None = None
+    runtime_image: RuntimeImageSpec | None = None
+    final_outputs: Mapping[str, Any] = field(default_factory=dict)
+    completed_at: str | None = None
+    node_skip_reasons: dict[str, str] = field(default_factory=dict)
+    cache_identity_key: str | None = None
+    assumptions: tuple[str, ...] = field(default_factory=tuple)
+    limitations: tuple[str, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,6 +270,9 @@ class SlurmRunRecord(SpecSerializable):
     retry_child_run_ids: tuple[str, ...] = field(default_factory=tuple)
     retry_child_run_record_paths: tuple[Path, ...] = field(default_factory=tuple)
     failure_classification: SlurmFailureClassification | None = None
+    local_resume_node_state: dict[str, bool] = field(default_factory=dict)
+    local_resume_run_id: str | None = None
+    cache_identity_key: str | None = None
     assumptions: tuple[str, ...] = field(default_factory=tuple)
     limitations: tuple[str, ...] = field(default_factory=tuple)
 
@@ -674,6 +790,105 @@ def save_slurm_run_record(record: SlurmRunRecord) -> Path:
 """
     _write_json_atomically(record.run_record_path, record.to_dict())
     return record.run_record_path
+
+
+def _local_run_record_path(source: Path) -> Path:
+    """Resolve a directory or JSON path to the local run record file.
+
+    Args:
+        source: A filesystem path used by the helper.  A directory resolves to
+            the default local run record filename inside it; a file path is
+            returned as-is.
+
+    Returns:
+        The path to the ``local_run_record.json`` file.
+"""
+    return source / DEFAULT_LOCAL_RUN_RECORD_FILENAME if source.is_dir() else source
+
+
+def load_local_run_record(source: Path) -> "LocalRunRecord":
+    """Load one durable local run record from a directory or JSON path.
+
+    The schema version is validated before deserializing so stale or
+    mismatched records are rejected explicitly rather than silently
+    producing wrong data.
+
+    Args:
+        source: A directory containing ``local_run_record.json`` or a direct
+            path to a ``local_run_record.json`` file.
+
+    Returns:
+        The deserialized :class:`LocalRunRecord`.
+
+    Raises:
+        ValueError: When the file's ``schema_version`` does not match
+            :data:`LOCAL_RUN_RECORD_SCHEMA_VERSION`.
+"""
+    record_path = _local_run_record_path(source)
+    payload = json.loads(record_path.read_text())
+    schema_version = payload.get("schema_version")
+    if schema_version != LOCAL_RUN_RECORD_SCHEMA_VERSION:
+        raise ValueError(f"Unsupported local run record schema version: {schema_version!r}")
+    return LocalRunRecord.from_dict(payload)
+
+
+def save_local_run_record(record: "LocalRunRecord") -> Path:
+    """Persist one local run record atomically.
+
+    Uses a temporary file and :func:`os.replace` so the target file is never
+    left in a partially-written state.
+
+    Args:
+        record: The :class:`LocalRunRecord` to persist.
+
+    Returns:
+        The path where the record was written.
+"""
+    _write_json_atomically(record.run_record_path, record.to_dict())
+    return record.run_record_path
+
+
+def _validate_resume_identity(
+    prior: LocalRunRecord,
+    workflow_name: str,
+    artifact_path: Path | None,
+    *,
+    current_cache_key: str | None = None,
+) -> str | None:
+    """Check that a prior run record matches the current execution identity.
+
+    The workflow name and artifact path are checked first as fast pre-filters.
+    When *current_cache_key* is provided the prior record's
+    ``cache_identity_key`` is compared as the authoritative content-level gate.
+
+    Returns ``None`` when identity matches, or a human-readable mismatch
+    description when the prior record should not be reused.
+    """
+    mismatches: list[str] = []
+    if prior.workflow_name != workflow_name:
+        mismatches.append(
+            f"workflow name mismatch: prior={prior.workflow_name!r}, "
+            f"current={workflow_name!r}"
+        )
+    if artifact_path is not None and prior.artifact_path is not None:
+        if prior.artifact_path != artifact_path:
+            mismatches.append(
+                f"artifact path mismatch: prior={prior.artifact_path!r}, "
+                f"current={artifact_path!r}"
+            )
+    # Content-level cache-key comparison as the authoritative gate.
+    if current_cache_key is not None and prior.cache_identity_key is not None:
+        if prior.cache_identity_key != current_cache_key:
+            mismatches.append(
+                f"cache identity key mismatch: prior={prior.cache_identity_key!r}, "
+                f"current={current_cache_key!r}"
+            )
+    if mismatches:
+        return (
+            "Resume identity mismatch — prior run record does not match "
+            "the current artifact: " + "; ".join(mismatches)
+        )
+    return None
 
 
 def parse_sbatch_job_id(stdout: str, stderr: str = "") -> str:
@@ -1282,15 +1497,22 @@ class LocalWorkflowSpecExecutor:
         handlers: Mapping[str, RegisteredNodeHandler],
         *,
         resolver: AssetResolver | None = None,
+        run_root: Path | None = None,
     ) -> None:
         """Create an executor with explicit handlers for supported stages.
 
     Args:
         handlers: The `handlers` input processed by this helper.
         resolver: Resolver used to discover planner-facing inputs from local sources.
+        run_root: Optional root directory under which a dated run folder is
+            created for each execution.  When provided, the executor writes a
+            durable :class:`LocalRunRecord` after every successful run.  When
+            ``None`` (the default), the executor behaves exactly as before and
+            no record is written.
 """
         self._handlers = dict(handlers)
         self._resolver = resolver or LocalManifestAssetResolver()
+        self._run_root = run_root
 
     def execute(
         self,
@@ -1299,14 +1521,25 @@ class LocalWorkflowSpecExecutor:
         explicit_bindings: Mapping[str, Any] | None = None,
         manifest_sources: Sequence[Path | Mapping[str, Any]] = (),
         result_bundles: Sequence[Any] = (),
+        resume_from: Path | None = None,
     ) -> LocalSpecExecutionResult:
         """Execute one saved spec artifact through local supported handlers.
+
+    When *resume_from* points to an existing :class:`LocalRunRecord` directory
+    or JSON path, the executor loads the prior record, validates that its
+    identity (workflow name and artifact path) matches the current artifact,
+    and skips nodes whose ``node_completion_state`` entry is ``True``.  Skipped
+    nodes reuse their prior outputs and a human-readable reason is recorded in
+    the new record's ``node_skip_reasons`` dict.
 
     Args:
         artifact_source: Saved workflow-spec artifact or path that should be loaded first.
         explicit_bindings: Caller-supplied planner values that should win over discovered inputs.
         manifest_sources: Manifest paths or inline manifest mappings that may contain planner values.
         result_bundles: A directory path used by the helper.
+        resume_from: Optional path to a prior ``LocalRunRecord`` directory or
+            JSON file.  When provided, completed nodes are skipped and their
+            prior outputs are reused.
 
     Returns:
         The computed result returned by this helper.
@@ -1315,6 +1548,28 @@ class LocalWorkflowSpecExecutor:
         workflow_spec = artifact.workflow_spec
         binding_plan = artifact.binding_plan
 
+        # Load and validate the prior run record when resuming (fast pre-filters).
+        prior_record: LocalRunRecord | None = None
+        if resume_from is not None:
+            prior_record = load_local_run_record(resume_from)
+            artifact_path_for_check = _artifact_path_from_source(artifact_source)
+            mismatch = _validate_resume_identity(prior_record, workflow_spec.name, artifact_path_for_check)
+            if mismatch:
+                return LocalSpecExecutionResult(
+                    supported=False,
+                    workflow_name=workflow_spec.name,
+                    execution_profile=binding_plan.execution_profile,
+                    resolved_planner_inputs={},
+                    limitations=(mismatch,),
+                )
+            # Index prior node results for fast lookup when skipping.
+            prior_node_outputs: dict[str, Mapping[str, Any]] = {
+                nr.node_name: nr.outputs for nr in prior_record.node_results
+            }
+            prior_node_results_by_name: dict[str, LocalNodeExecutionResult] = {
+                nr.node_name: nr for nr in prior_record.node_results
+            }
+
         resolved_planner_inputs, resolver_limitations, resolver_assumptions = _resolve_planner_inputs(
             artifact,
             explicit_bindings=explicit_bindings or {},
@@ -1322,6 +1577,31 @@ class LocalWorkflowSpecExecutor:
             result_bundles=result_bundles,
             resolver=self._resolver,
         )
+
+        # Compute the deterministic cache identity key from frozen inputs.
+        computed_cache_key = cache_identity_key(
+            workflow_spec.to_dict(),
+            binding_plan.to_dict(),
+            dict(resolved_planner_inputs),
+        )
+
+        # Authoritative cache-key gate for resume (runs after planner inputs
+        # are resolved so the key is available).
+        if prior_record is not None and computed_cache_key is not None:
+            artifact_path_for_check = _artifact_path_from_source(artifact_source)
+            key_mismatch = _validate_resume_identity(
+                prior_record, workflow_spec.name, artifact_path_for_check,
+                current_cache_key=computed_cache_key,
+            )
+            if key_mismatch:
+                return LocalSpecExecutionResult(
+                    supported=False,
+                    workflow_name=workflow_spec.name,
+                    execution_profile=binding_plan.execution_profile,
+                    resolved_planner_inputs=dict(resolved_planner_inputs),
+                    limitations=(key_mismatch,),
+                )
+
         if resolver_limitations:
             return LocalSpecExecutionResult(
                 supported=False,
@@ -1336,9 +1616,24 @@ class LocalWorkflowSpecExecutor:
 
         upstream_outputs: dict[str, Mapping[str, Any]] = {}
         node_results: list[LocalNodeExecutionResult] = []
+        node_skip_reasons: dict[str, str] = {}
         assumptions = [*artifact.assumptions, *binding_plan.assumptions, *resolver_assumptions]
 
         for node in workflow_spec.nodes:
+            # Check whether this node can be skipped from the prior record.
+            if (
+                prior_record is not None
+                and prior_record.node_completion_state.get(node.name) is True
+                and node.name in prior_node_outputs
+            ):
+                upstream_outputs[node.name] = prior_node_outputs[node.name]
+                node_results.append(prior_node_results_by_name[node.name])
+                node_skip_reasons[node.name] = (
+                    f"Reused from prior run {prior_record.run_id}: "
+                    f"node was completed in the prior record."
+                )
+                continue
+
             get_entry(node.reference_name)
             handler = self._handlers.get(node.reference_name)
             if handler is None:
@@ -1385,6 +1680,54 @@ class LocalWorkflowSpecExecutor:
             binding.output_name: upstream_outputs[binding.source_node][binding.source_output]
             for binding in workflow_spec.final_output_bindings
         }
+
+        # Persist a durable local run record when the executor was constructed
+        # with a run_root and the artifact was loaded from a filesystem path.
+        # Records are only written after every node succeeds so incomplete
+        # runs do not produce a partially-filled record that could be
+        # mistaken for a completed execution.
+        if self._run_root is not None:
+            artifact_path = _artifact_path_from_source(artifact_source)
+            completed_at = _created_at()
+            if artifact_path is not None:
+                run_id, run_dir = _allocate_run_dir(
+                    self._run_root,
+                    _run_id_for_artifact(artifact, artifact_path, completed_at),
+                )
+            else:
+                # Artifact provided as an in-memory object; use workflow name
+                # and timestamp for the run directory without a path digest.
+                run_id = f"{completed_at.replace(':', '').replace('-', '').replace('Z', 'Z')}-{_slug(workflow_spec.name)}"
+                run_id, run_dir = _allocate_run_dir(self._run_root, run_id)
+            run_dir.mkdir(parents=True, exist_ok=True)
+            resume_assumptions = list(assumptions)
+            if prior_record is not None:
+                resume_assumptions.append(
+                    f"Resumed from prior run {prior_record.run_id}; "
+                    f"{len(node_skip_reasons)} node(s) reused."
+                )
+            local_run_record = LocalRunRecord(
+                schema_version=LOCAL_RUN_RECORD_SCHEMA_VERSION,
+                run_id=run_id,
+                workflow_name=workflow_spec.name,
+                run_record_path=run_dir / DEFAULT_LOCAL_RUN_RECORD_FILENAME,
+                created_at=completed_at,
+                execution_profile=binding_plan.execution_profile or "local",
+                resolved_planner_inputs=dict(resolved_planner_inputs),
+                binding_plan_target=binding_plan.target_name,
+                node_completion_state={nr.node_name: True for nr in node_results},
+                node_results=tuple(node_results),
+                artifact_path=artifact_path,
+                resource_spec=binding_plan.resource_spec,
+                runtime_image=binding_plan.runtime_image,
+                final_outputs=dict(final_outputs),
+                completed_at=completed_at,
+                node_skip_reasons=dict(node_skip_reasons),
+                cache_identity_key=computed_cache_key,
+                assumptions=tuple(dict.fromkeys(resume_assumptions)),
+            )
+            save_local_run_record(local_run_record)
+
         return LocalSpecExecutionResult(
             supported=True,
             workflow_name=workflow_spec.name,
@@ -1611,12 +1954,14 @@ class SlurmWorkflowSpecExecutor:
         artifact_path: Path,
         *,
         retry_parent: SlurmRunRecord | None = None,
+        resume_from_local_record: Path | None = None,
     ) -> SlurmSpecExecutionResult:
         """Render, submit, and persist one saved Slurm recipe artifact.
 
     Args:
         artifact_path: A filesystem path used by the helper.
         retry_parent: The `retry_parent` input processed by this helper.
+        resume_from_local_record: Optional prior ``LocalRunRecord`` path.
 
     Returns:
         The computed result returned by this helper.
@@ -1624,6 +1969,24 @@ class SlurmWorkflowSpecExecutor:
         artifact = _artifact_from_source(artifact_path)
         workflow_spec = artifact.workflow_spec
         binding_plan = artifact.binding_plan
+
+        # Validate and load local resume record when provided.
+        local_resume_node_state: dict[str, bool] = {}
+        local_resume_run_id: str | None = None
+        if resume_from_local_record is not None:
+            prior_local = load_local_run_record(resume_from_local_record)
+            mismatch = _validate_resume_identity(prior_local, workflow_spec.name, artifact_path)
+            if mismatch:
+                return SlurmSpecExecutionResult(
+                    supported=False,
+                    workflow_name=workflow_spec.name,
+                    execution_profile=binding_plan.execution_profile,
+                    resource_spec=binding_plan.resource_spec,
+                    runtime_image=binding_plan.runtime_image,
+                    limitations=(mismatch,),
+                )
+            local_resume_node_state = dict(prior_local.node_completion_state)
+            local_resume_run_id = prior_local.run_id
         if binding_plan.execution_profile != "slurm":
             return SlurmSpecExecutionResult(
                 supported=False,
@@ -1719,6 +2082,12 @@ class SlurmWorkflowSpecExecutor:
             assumptions.append(
                 "This submission is an explicit retry attempt linked to a prior failed Slurm run record."
             )
+        if local_resume_node_state:
+            completed_count = sum(1 for v in local_resume_node_state.values() if v)
+            assumptions.append(
+                f"Resumed from local run {local_resume_run_id}; "
+                f"{completed_count} node(s) pre-completed from prior local record."
+            )
 
         retry_policy = retry_parent.retry_policy if retry_parent is not None else SlurmRetryPolicy()
         attempt_number = retry_parent.attempt_number + 1 if retry_parent is not None else 1
@@ -1756,6 +2125,13 @@ class SlurmWorkflowSpecExecutor:
             lineage_root_run_record_path=lineage_root_run_record_path,
             retry_parent_run_id=retry_parent.run_id if retry_parent is not None else None,
             retry_parent_run_record_path=retry_parent.run_record_path if retry_parent is not None else None,
+            local_resume_node_state=local_resume_node_state,
+            local_resume_run_id=local_resume_run_id,
+            cache_identity_key=cache_identity_key(
+                workflow_spec.to_dict(),
+                binding_plan.to_dict(),
+                dict(binding_plan.explicit_user_bindings),
+            ),
             assumptions=tuple(dict.fromkeys(assumptions)),
         )
         record = replace(record, failure_classification=classify_slurm_failure(record))
@@ -1810,11 +2186,20 @@ class SlurmWorkflowSpecExecutor:
     def submit(
         self,
         artifact_source: SavedWorkflowSpecArtifact | Path,
+        *,
+        resume_from_local_record: Path | None = None,
     ) -> SlurmSpecExecutionResult:
         """Render, submit, and persist a durable record for one Slurm recipe.
 
+    When *resume_from_local_record* points to an existing :class:`LocalRunRecord`,
+    the local record's completed node state is copied into the new
+    :class:`SlurmRunRecord` so that the Slurm job can skip already-done stages.
+
     Args:
         artifact_source: Saved workflow-spec artifact or path that should be loaded first.
+        resume_from_local_record: Optional path to a prior ``LocalRunRecord``
+            directory or JSON file whose completed nodes should be treated as
+            pre-done in the new Slurm submission.
 
     Returns:
         The computed result returned by this helper.
@@ -1829,7 +2214,10 @@ class SlurmWorkflowSpecExecutor:
                 runtime_image=artifact_source.binding_plan.runtime_image,
                 limitations=("Slurm submission requires a saved recipe artifact path, not only an in-memory artifact.",),
             )
-        return self._submit_saved_artifact(artifact_path)
+        return self._submit_saved_artifact(
+            artifact_path,
+            resume_from_local_record=resume_from_local_record,
+        )
 
     def reconcile(self, run_record_source: Path) -> SlurmLifecycleResult:
         """Reload a Slurm run record and reconcile it with scheduler state.
@@ -2092,11 +2480,14 @@ class SlurmWorkflowSpecExecutor:
 
 
 __all__ = [
+    "DEFAULT_LOCAL_RUN_RECORD_FILENAME",
     "DEFAULT_SLURM_MAX_ATTEMPTS",
     "DEFAULT_SLURM_RUN_RECORD_FILENAME",
     "DEFAULT_SLURM_SCRIPT_FILENAME",
+    "LOCAL_RUN_RECORD_SCHEMA_VERSION",
     "LocalNodeExecutionRequest",
     "LocalNodeExecutionResult",
+    "LocalRunRecord",
     "LocalSpecExecutionResult",
     "LocalWorkflowSpecExecutor",
     "RegisteredNodeHandler",
@@ -2110,8 +2501,10 @@ __all__ = [
     "SlurmSpecExecutionResult",
     "SlurmWorkflowSpecExecutor",
     "classify_slurm_failure",
+    "load_local_run_record",
     "load_slurm_run_record",
     "parse_sbatch_job_id",
     "render_slurm_script",
+    "save_local_run_record",
     "save_slurm_run_record",
 ]

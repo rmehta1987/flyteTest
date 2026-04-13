@@ -2,12 +2,15 @@
 
     This module saves metadata-only `WorkflowSpec` and `BindingPlan` pairs
     produced by typed planning so a later step can reload the selected workflow
-    shape without re-parsing the original prompt.
+    shape without re-parsing the original prompt.  It also owns the durable
+    `RecipeApprovalRecord` that gates composed-recipe execution.
 """
 
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
@@ -17,6 +20,8 @@ from flytetest.specs import BindingPlan, SpecSerializable, WorkflowSpec
 
 SPEC_ARTIFACT_SCHEMA_VERSION = "workflow-spec-artifact-v1"
 DEFAULT_SPEC_ARTIFACT_FILENAME = "workflow_spec_artifact.json"
+RECIPE_APPROVAL_SCHEMA_VERSION = "recipe-approval-v1"
+DEFAULT_RECIPE_APPROVAL_FILENAME = "recipe_approval.json"
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,12 +147,126 @@ def replayable_spec_pair(artifact: SavedWorkflowSpecArtifact) -> tuple[WorkflowS
     return artifact.workflow_spec, artifact.binding_plan
 
 
+@dataclass(frozen=True, slots=True)
+class RecipeApprovalRecord(SpecSerializable):
+    """Durable approval state for a composed recipe artifact.
+
+    Execution tools must check for a valid (non-expired, approved) record
+    before running a composed recipe.  Approval is never auto-granted by the
+    planner; it must be written explicitly by a human client through the
+    ``approve_composed_recipe`` MCP tool.
+    """
+
+    schema_version: str
+    artifact_path: str
+    workflow_name: str
+    approved: bool
+    approved_at: str | None = None
+    approved_by: str | None = None
+    expires_at: str | None = None
+    reason: str = ""
+
+
+def _approval_path_for_artifact(artifact_path: Path) -> Path:
+    """Return the companion approval-record path for a given artifact path."""
+    if artifact_path.suffix == "":
+        return artifact_path / DEFAULT_RECIPE_APPROVAL_FILENAME
+    return artifact_path.parent / DEFAULT_RECIPE_APPROVAL_FILENAME
+
+
+def save_recipe_approval(record: RecipeApprovalRecord, artifact_path: Path) -> Path:
+    """Persist a recipe approval record as a companion file alongside the artifact.
+
+    Uses atomic temp-file writes so the approval file is never partially written.
+
+    Args:
+        record: The approval record to persist.
+        artifact_path: Path to the frozen artifact; the approval file is written
+            as a sibling.
+
+    Returns:
+        The path where the approval record was written.
+    """
+    output_path = _approval_path_for_artifact(artifact_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(record.to_dict(), indent=2, sort_keys=True) + "\n"
+    fd, tmp_path = tempfile.mkstemp(dir=output_path.parent, suffix=".tmp")
+    try:
+        os.write(fd, payload.encode())
+        os.close(fd)
+        os.replace(tmp_path, output_path)
+    except BaseException:
+        os.close(fd) if not os.get_inheritable(fd) else None
+        if Path(tmp_path).exists():
+            os.unlink(tmp_path)
+        raise
+    return output_path
+
+
+def load_recipe_approval(artifact_path: Path) -> RecipeApprovalRecord:
+    """Load the companion approval record for a given artifact path.
+
+    Args:
+        artifact_path: Path to the frozen artifact or its parent directory.
+
+    Returns:
+        The deserialized :class:`RecipeApprovalRecord`.
+
+    Raises:
+        FileNotFoundError: When no companion approval record exists.
+        ValueError: When the schema version does not match.
+    """
+    record_path = _approval_path_for_artifact(artifact_path)
+    payload = json.loads(record_path.read_text())
+    schema_version = payload.get("schema_version")
+    if schema_version != RECIPE_APPROVAL_SCHEMA_VERSION:
+        raise ValueError(f"Unsupported recipe approval schema version: {schema_version!r}")
+    return RecipeApprovalRecord.from_dict(payload)
+
+
+def check_recipe_approval(artifact_path: Path, now: str | None = None) -> tuple[bool, str]:
+    """Check whether a composed recipe has a valid, non-expired approval.
+
+    Args:
+        artifact_path: Path to the frozen artifact.
+        now: ISO-8601 timestamp to use as the current time for expiry checks.
+            Defaults to the current UTC time.
+
+    Returns:
+        ``(True, "")`` when approved and not expired, or ``(False, reason)``
+        when approval is missing, rejected, or expired.
+    """
+    try:
+        record = load_recipe_approval(artifact_path)
+    except FileNotFoundError:
+        return False, "No approval record found for this composed recipe."
+    except (ValueError, json.JSONDecodeError) as exc:
+        return False, f"Invalid approval record: {exc}"
+
+    if not record.approved:
+        return False, f"Approval was explicitly rejected: {record.reason or 'no reason given'}"
+
+    if record.expires_at:
+        from datetime import datetime, UTC
+        check_time = now or datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        if check_time > record.expires_at:
+            return False, f"Approval expired at {record.expires_at}."
+
+    return True, ""
+
+
 __all__ = [
+    "DEFAULT_RECIPE_APPROVAL_FILENAME",
     "DEFAULT_SPEC_ARTIFACT_FILENAME",
+    "RECIPE_APPROVAL_SCHEMA_VERSION",
     "SPEC_ARTIFACT_SCHEMA_VERSION",
+    "RecipeApprovalRecord",
     "SavedWorkflowSpecArtifact",
     "artifact_from_typed_plan",
+    "check_recipe_approval",
+    "load_recipe_approval",
     "load_workflow_spec_artifact",
     "replayable_spec_pair",
+    "save_recipe_approval",
     "save_workflow_spec_artifact",
 ]

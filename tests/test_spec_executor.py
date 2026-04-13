@@ -24,15 +24,21 @@ from flytetest.planner_types import ConsensusAnnotation, QualityAssessmentTarget
 from flytetest.planning import plan_typed_request
 from flytetest.spec_artifacts import artifact_from_typed_plan, save_workflow_spec_artifact
 from flytetest.spec_executor import (
+    DEFAULT_LOCAL_RUN_RECORD_FILENAME,
     DEFAULT_SLURM_MAX_ATTEMPTS,
     DEFAULT_SLURM_RUN_RECORD_FILENAME,
+    LOCAL_RUN_RECORD_SCHEMA_VERSION,
     LocalNodeExecutionRequest,
+    LocalNodeExecutionResult,
+    LocalRunRecord,
     LocalWorkflowSpecExecutor,
     SLURM_RUN_RECORD_SCHEMA_VERSION,
     SlurmWorkflowSpecExecutor,
     classify_slurm_failure,
+    load_local_run_record,
     load_slurm_run_record,
     parse_sbatch_job_id,
+    save_local_run_record,
     save_slurm_run_record,
     SlurmRunRecord,
 )
@@ -1073,3 +1079,741 @@ class SpecExecutorTests(TestCase):
         self.assertFalse(cancelled.supported)
         self.assertIn("already-authenticated scheduler environment", cancelled.limitations[0])
         self.assertIn("`scancel`", cancelled.limitations[0])
+
+
+class LocalRunRecordTests(TestCase):
+    """Phase A checks for durable local run-record persistence and round-trip fidelity.
+
+    These tests cover three properties required before Phase B resume logic can
+    be added: (1) a LocalRunRecord serializes and deserializes without loss,
+    (2) the schema version is validated on load so stale records are rejected,
+    and (3) the executor writes a record to disk when a run_root is configured.
+"""
+
+    def _minimal_run_record(self, run_dir: Path) -> LocalRunRecord:
+        """Build a minimal LocalRunRecord with all required fields filled.
+
+        Args:
+            run_dir: Temporary directory where run_record_path will point.
+
+        Returns:
+            A fully populated LocalRunRecord ready for save/load tests.
+"""
+        node_result = LocalNodeExecutionResult(
+            node_name="test_stage",
+            reference_name="annotation_qc_busco",
+            outputs={"results_dir": str(run_dir / "busco_out")},
+            manifest_paths={"results_dir": run_dir / "busco_out" / "run_manifest.json"},
+        )
+        return LocalRunRecord(
+            schema_version=LOCAL_RUN_RECORD_SCHEMA_VERSION,
+            run_id="20260412T120000Z-test-workflow-abc123",
+            workflow_name="test_workflow",
+            run_record_path=run_dir / DEFAULT_LOCAL_RUN_RECORD_FILENAME,
+            created_at="2026-04-12T12:00:00Z",
+            execution_profile="local",
+            resolved_planner_inputs={"QualityAssessmentTarget": {"source_result_dir": "/tmp/src"}},
+            binding_plan_target="test_target",
+            node_completion_state={"test_stage": True},
+            node_results=(node_result,),
+            artifact_path=run_dir / "workflow_spec_artifact.json",
+            final_outputs={"results_dir": str(run_dir / "busco_out")},
+            completed_at="2026-04-12T12:00:01Z",
+            assumptions=("Test run assumption.",),
+        )
+
+    def test_local_run_record_round_trips_cleanly(self) -> None:
+        """Save a LocalRunRecord and reload it; all fields must survive the round-trip.
+
+        This test proves that the durable record format is stable and that
+        Phase B resume logic can rely on the loaded record matching the original.
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run_001"
+            run_dir.mkdir()
+
+            record = self._minimal_run_record(run_dir)
+            saved_path = save_local_run_record(record)
+
+            self.assertTrue(saved_path.exists())
+            self.assertEqual(saved_path, run_dir / DEFAULT_LOCAL_RUN_RECORD_FILENAME)
+
+            loaded = load_local_run_record(run_dir)
+
+            self.assertEqual(loaded.schema_version, record.schema_version)
+            self.assertEqual(loaded.run_id, record.run_id)
+            self.assertEqual(loaded.workflow_name, record.workflow_name)
+            self.assertEqual(loaded.execution_profile, record.execution_profile)
+            self.assertEqual(loaded.created_at, record.created_at)
+            self.assertEqual(loaded.completed_at, record.completed_at)
+            self.assertEqual(loaded.binding_plan_target, record.binding_plan_target)
+            self.assertEqual(loaded.node_completion_state, {"test_stage": True})
+            self.assertEqual(len(loaded.node_results), 1)
+            self.assertEqual(loaded.node_results[0].node_name, "test_stage")
+            self.assertEqual(loaded.node_results[0].reference_name, "annotation_qc_busco")
+            self.assertEqual(
+                loaded.node_results[0].manifest_paths["results_dir"],
+                run_dir / "busco_out" / "run_manifest.json",
+            )
+            self.assertEqual(loaded.final_outputs["results_dir"], str(run_dir / "busco_out"))
+            self.assertEqual(loaded.assumptions, ("Test run assumption.",))
+            self.assertEqual(loaded.artifact_path, run_dir / "workflow_spec_artifact.json")
+            self.assertEqual(
+                loaded.resolved_planner_inputs["QualityAssessmentTarget"]["source_result_dir"],
+                "/tmp/src",
+            )
+
+    def test_local_run_record_schema_version_is_validated_on_load(self) -> None:
+        """Loading a record with an unrecognised schema version must raise ValueError.
+
+        This test guards the Phase B resume path against silently accepting stale
+        or schema-mismatched records that could produce wrong skip decisions.
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run_002"
+            run_dir.mkdir()
+
+            record = self._minimal_run_record(run_dir)
+            save_local_run_record(record)
+
+            # Corrupt the schema version in the saved JSON.
+            record_path = run_dir / DEFAULT_LOCAL_RUN_RECORD_FILENAME
+            payload = json.loads(record_path.read_text())
+            payload["schema_version"] = "local-run-record-v99"
+            record_path.write_text(json.dumps(payload))
+
+            with self.assertRaises(ValueError) as ctx:
+                load_local_run_record(run_dir)
+
+            self.assertIn("local-run-record-v99", str(ctx.exception))
+
+    def test_local_run_record_is_written_by_executor_when_run_root_is_set(self) -> None:
+        """LocalWorkflowSpecExecutor writes a run record when constructed with run_root.
+
+        This test verifies Phase A integration: after successful execution, a
+        local_run_record.json must exist under run_root and its node completion
+        state must show every node as completed.
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            artifact, _ = _busco_artifact_with_runtime_bindings(tmp_path)
+
+            artifact_path = tmp_path / "workflow_spec_artifact.json"
+            save_workflow_spec_artifact(artifact, artifact_path)
+
+            busco_out = tmp_path / "busco_results"
+            busco_out.mkdir()
+            (busco_out / "run_manifest.json").write_text(
+                json.dumps({"workflow": "annotation_qc_busco", "outputs": {"results_dir": str(busco_out)}})
+            )
+
+            def busco_handler(request: LocalNodeExecutionRequest) -> dict[str, Path]:
+                """Return a synthetic result directory for the BUSCO stage."""
+                return {"results_dir": busco_out}
+
+            run_root = tmp_path / "local_runs"
+            executor = LocalWorkflowSpecExecutor(
+                {"annotation_qc_busco": busco_handler},
+                run_root=run_root,
+            )
+            result = executor.execute(artifact_path)
+
+            # Capture filesystem data inside the with-block before cleanup.
+            run_dirs = list(run_root.iterdir()) if run_root.exists() else []
+            record_exists = len(run_dirs) == 1 and (run_dirs[0] / DEFAULT_LOCAL_RUN_RECORD_FILENAME).exists()
+            record = load_local_run_record(run_dirs[0]) if record_exists else None
+            record_payload = json.loads((run_dirs[0] / DEFAULT_LOCAL_RUN_RECORD_FILENAME).read_text()) if record_exists else {}
+
+        self.assertTrue(result.supported)
+        self.assertEqual(len(run_dirs), 1, "Expected exactly one run directory under run_root")
+        self.assertTrue(record_exists)
+        self.assertIsNotNone(record)
+        self.assertEqual(record.schema_version, LOCAL_RUN_RECORD_SCHEMA_VERSION)
+        self.assertEqual(record.workflow_name, "select_annotation_qc_busco")
+        self.assertEqual(record.execution_profile, "local")
+        self.assertEqual(record.node_completion_state, {"annotation_qc_busco": True})
+        self.assertIsNotNone(record.completed_at)
+        self.assertEqual(record.artifact_path, artifact_path)
+        self.assertIsNotNone(record.final_outputs.get("results_dir"))
+        self.assertEqual(record_payload["schema_version"], LOCAL_RUN_RECORD_SCHEMA_VERSION)
+
+    def test_local_executor_does_not_write_record_without_run_root(self) -> None:
+        """LocalWorkflowSpecExecutor must not write any record when run_root is None.
+
+        This guards backward compatibility: existing callers that do not pass
+        run_root must see no filesystem side-effects from Phase A changes.
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            artifact, _ = _busco_artifact_with_runtime_bindings(tmp_path)
+
+            def busco_handler(request: LocalNodeExecutionRequest) -> dict[str, Path]:
+                """Return a synthetic result directory for the BUSCO stage."""
+                busco_out = tmp_path / "busco_results"
+                busco_out.mkdir(exist_ok=True)
+                return {"results_dir": busco_out}
+
+            # No run_root → falls back to default (None).
+            executor = LocalWorkflowSpecExecutor({"annotation_qc_busco": busco_handler})
+            result = executor.execute(artifact)
+
+        self.assertTrue(result.supported)
+        # No run record files should exist anywhere under tmp_path.
+        run_records = list(tmp_path.rglob(DEFAULT_LOCAL_RUN_RECORD_FILENAME))
+        self.assertEqual(run_records, [], "Expected no run record files when run_root is None")
+
+
+class LocalResumeTests(TestCase):
+    """Phase B checks for local resume-from-record semantics.
+
+    These tests verify that ``LocalWorkflowSpecExecutor.execute(resume_from=...)``
+    correctly skips completed nodes, rejects identity mismatches, records skip
+    reasons, and handles partial completion.
+    """
+
+    def _run_initial_execution(self, tmp_path: Path):
+        """Run one full execution and return the run record directory.
+
+        Returns:
+            (artifact_path, run_dir, result) tuple.
+        """
+        artifact, _ = _busco_artifact_with_runtime_bindings(tmp_path)
+        artifact_path = tmp_path / "workflow_spec_artifact.json"
+        save_workflow_spec_artifact(artifact, artifact_path)
+
+        busco_out = tmp_path / "busco_results"
+        busco_out.mkdir(exist_ok=True)
+
+        def busco_handler(request: LocalNodeExecutionRequest) -> dict[str, Path]:
+            return {"results_dir": busco_out}
+
+        run_root = tmp_path / "local_runs"
+        executor = LocalWorkflowSpecExecutor(
+            {"annotation_qc_busco": busco_handler},
+            run_root=run_root,
+        )
+        result = executor.execute(artifact_path)
+        run_dirs = list(run_root.iterdir())
+        return artifact_path, run_dirs[0], result
+
+    def test_resume_from_complete_record_skips_all_nodes(self) -> None:
+        """Resuming from a fully complete record should skip all nodes.
+
+        No handler should be called when every node is already marked complete
+        in the prior record.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            artifact_path, prior_run_dir, initial_result = self._run_initial_execution(tmp_path)
+
+            handler_called = False
+
+            def busco_handler(request: LocalNodeExecutionRequest) -> dict[str, Path]:
+                nonlocal handler_called
+                handler_called = True
+                return {"results_dir": tmp_path / "busco_results"}
+
+            run_root = tmp_path / "resume_runs"
+            executor = LocalWorkflowSpecExecutor(
+                {"annotation_qc_busco": busco_handler},
+                run_root=run_root,
+            )
+            result = executor.execute(artifact_path, resume_from=prior_run_dir)
+
+        self.assertTrue(result.supported)
+        self.assertFalse(handler_called, "Handler should not be called for completed nodes")
+        self.assertEqual(len(result.node_results), 1)
+        self.assertEqual(result.node_results[0].node_name, "annotation_qc_busco")
+
+    def test_resume_records_skip_reasons_in_durable_record(self) -> None:
+        """The durable run record written after a resume must include node_skip_reasons.
+
+        Each skipped node should have a human-readable reason referencing the
+        prior run ID.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            artifact_path, prior_run_dir, _ = self._run_initial_execution(tmp_path)
+
+            def busco_handler(request: LocalNodeExecutionRequest) -> dict[str, Path]:
+                return {"results_dir": tmp_path / "busco_results"}
+
+            run_root = tmp_path / "resume_runs"
+            executor = LocalWorkflowSpecExecutor(
+                {"annotation_qc_busco": busco_handler},
+                run_root=run_root,
+            )
+            executor.execute(artifact_path, resume_from=prior_run_dir)
+
+            resume_dirs = list(run_root.iterdir())
+            record = load_local_run_record(resume_dirs[0])
+
+        self.assertIn("annotation_qc_busco", record.node_skip_reasons)
+        self.assertIn("prior run", record.node_skip_reasons["annotation_qc_busco"].lower())
+
+    def test_resume_rejects_workflow_name_mismatch(self) -> None:
+        """Resume must fail when the prior record's workflow name differs.
+
+        This guards against silently reusing outputs from a different workflow.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            _, prior_run_dir, _ = self._run_initial_execution(tmp_path)
+
+            # Tamper the prior record to have a different workflow name.
+            record_path = prior_run_dir / DEFAULT_LOCAL_RUN_RECORD_FILENAME
+            payload = json.loads(record_path.read_text())
+            payload["workflow_name"] = "completely_different_workflow"
+            record_path.write_text(json.dumps(payload))
+
+            # Build a second artifact in a subdirectory to avoid collisions.
+            sub = tmp_path / "retry_inputs"
+            sub.mkdir()
+            artifact, _ = _busco_artifact_with_runtime_bindings(sub)
+            artifact_path = sub / "workflow_spec_artifact.json"
+            save_workflow_spec_artifact(artifact, artifact_path)
+
+            def busco_handler(request: LocalNodeExecutionRequest) -> dict[str, Path]:
+                return {"results_dir": tmp_path / "busco_results"}
+
+            executor = LocalWorkflowSpecExecutor(
+                {"annotation_qc_busco": busco_handler},
+            )
+            result = executor.execute(artifact_path, resume_from=prior_run_dir)
+
+        self.assertFalse(result.supported)
+        self.assertTrue(any("mismatch" in lim.lower() for lim in result.limitations))
+
+    def test_resume_rejects_artifact_path_mismatch(self) -> None:
+        """Resume must fail when the prior record's artifact path differs.
+
+        This prevents stale reuse when a different artifact is submitted.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            _, prior_run_dir, _ = self._run_initial_execution(tmp_path)
+
+            # Tamper the prior record to have a different artifact path.
+            record_path = prior_run_dir / DEFAULT_LOCAL_RUN_RECORD_FILENAME
+            payload = json.loads(record_path.read_text())
+            payload["artifact_path"] = "/some/other/artifact.json"
+            record_path.write_text(json.dumps(payload))
+
+            # Build a second artifact in a subdirectory to avoid collisions.
+            sub = tmp_path / "retry_inputs"
+            sub.mkdir()
+            artifact, _ = _busco_artifact_with_runtime_bindings(sub)
+            artifact_path = sub / "workflow_spec_artifact.json"
+            save_workflow_spec_artifact(artifact, artifact_path)
+
+            def busco_handler(request: LocalNodeExecutionRequest) -> dict[str, Path]:
+                return {"results_dir": tmp_path / "busco_results"}
+
+            executor = LocalWorkflowSpecExecutor(
+                {"annotation_qc_busco": busco_handler},
+            )
+            result = executor.execute(artifact_path, resume_from=prior_run_dir)
+
+        self.assertFalse(result.supported)
+        self.assertTrue(any("mismatch" in lim.lower() for lim in result.limitations))
+
+    def test_resume_partial_completion_reruns_incomplete_nodes(self) -> None:
+        """When a prior record has incomplete nodes, those should be re-executed.
+
+        This simulates a partial run where one node was completed but another
+        was not (by tampering with node_completion_state).
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            artifact_path, prior_run_dir, _ = self._run_initial_execution(tmp_path)
+
+            # Tamper the prior record to mark the node as incomplete.
+            record_path = prior_run_dir / DEFAULT_LOCAL_RUN_RECORD_FILENAME
+            payload = json.loads(record_path.read_text())
+            payload["node_completion_state"]["annotation_qc_busco"] = False
+            record_path.write_text(json.dumps(payload))
+
+            handler_called = False
+
+            def busco_handler(request: LocalNodeExecutionRequest) -> dict[str, Path]:
+                nonlocal handler_called
+                handler_called = True
+                busco_out = tmp_path / "busco_results_new"
+                busco_out.mkdir(exist_ok=True)
+                return {"results_dir": busco_out}
+
+            run_root = tmp_path / "resume_runs"
+            executor = LocalWorkflowSpecExecutor(
+                {"annotation_qc_busco": busco_handler},
+                run_root=run_root,
+            )
+            result = executor.execute(artifact_path, resume_from=prior_run_dir)
+
+        self.assertTrue(result.supported)
+        self.assertTrue(handler_called, "Handler should be called for incomplete nodes")
+
+    def test_node_skip_reasons_round_trips_through_run_record(self) -> None:
+        """node_skip_reasons must survive a save/load round-trip through the durable record."""
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run_rt"
+            run_dir.mkdir()
+            node_result = LocalNodeExecutionResult(
+                node_name="stage_a",
+                reference_name="annotation_qc_busco",
+                outputs={"out": "val"},
+            )
+            record = LocalRunRecord(
+                schema_version=LOCAL_RUN_RECORD_SCHEMA_VERSION,
+                run_id="test-skip-rt",
+                workflow_name="test_wf",
+                run_record_path=run_dir / DEFAULT_LOCAL_RUN_RECORD_FILENAME,
+                created_at="2026-04-12T12:00:00Z",
+                execution_profile="local",
+                resolved_planner_inputs={},
+                binding_plan_target="t",
+                node_completion_state={"stage_a": True},
+                node_results=(node_result,),
+                node_skip_reasons={"stage_a": "Reused from prior run abc: node was completed."},
+            )
+            save_local_run_record(record)
+            loaded = load_local_run_record(run_dir)
+        self.assertEqual(loaded.node_skip_reasons, {"stage_a": "Reused from prior run abc: node was completed."})
+
+
+class SlurmResumeFromLocalRecordTests(TestCase):
+    """Phase C checks for Slurm resume from a prior local run record.
+
+    These tests verify that ``SlurmWorkflowSpecExecutor.submit()`` accepts
+    a ``resume_from_local_record`` parameter, identity-validates the prior
+    local record, and records pre-completed node state in the Slurm run record.
+    """
+
+    def test_slurm_submit_with_local_resume_records_pre_completed_nodes(self) -> None:
+        """Slurm submission with a matching local run record should capture pre-completed state."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            artifact = _slurm_busco_artifact_with_runtime_bindings(tmp_path)
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+
+            # Create a fake prior local run record that matches the artifact.
+            from flytetest.spec_executor import LOCAL_RUN_RECORD_SCHEMA_VERSION, DEFAULT_LOCAL_RUN_RECORD_FILENAME
+            prior_run_dir = tmp_path / "prior_run"
+            prior_run_dir.mkdir()
+            prior_record = LocalRunRecord(
+                schema_version=LOCAL_RUN_RECORD_SCHEMA_VERSION,
+                run_id="prior-local-run-001",
+                workflow_name=artifact.workflow_spec.name,
+                run_record_path=prior_run_dir / DEFAULT_LOCAL_RUN_RECORD_FILENAME,
+                created_at="2026-04-12T10:00:00Z",
+                execution_profile="local",
+                resolved_planner_inputs={},
+                binding_plan_target=artifact.binding_plan.target_name,
+                node_completion_state={"annotation_qc_busco": True},
+                node_results=(
+                    LocalNodeExecutionResult(
+                        node_name="annotation_qc_busco",
+                        reference_name="annotation_qc_busco",
+                        outputs={"results_dir": str(tmp_path / "busco_out")},
+                    ),
+                ),
+                artifact_path=artifact_path,
+                completed_at="2026-04-12T10:00:01Z",
+            )
+            save_local_run_record(prior_record)
+
+            def fake_sbatch(args, **kwargs):
+                return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 55555\n", stderr="")
+
+            result = SlurmWorkflowSpecExecutor(
+                run_root=tmp_path / "runs",
+                repo_root=tmp_path,
+                sbatch_runner=fake_sbatch,
+                command_available=lambda cmd: True,
+            ).submit(artifact_path, resume_from_local_record=prior_run_dir)
+
+            record = result.run_record
+
+        self.assertTrue(result.supported)
+        self.assertEqual(record.local_resume_node_state, {"annotation_qc_busco": True})
+        self.assertEqual(record.local_resume_run_id, "prior-local-run-001")
+        self.assertTrue(any("prior-local-run-001" in a for a in record.assumptions))
+
+    def test_slurm_submit_rejects_local_resume_identity_mismatch(self) -> None:
+        """Slurm submission must reject a local resume record with a different workflow name."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            artifact = _slurm_busco_artifact_with_runtime_bindings(tmp_path)
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+
+            prior_run_dir = tmp_path / "prior_run"
+            prior_run_dir.mkdir()
+            prior_record = LocalRunRecord(
+                schema_version=LOCAL_RUN_RECORD_SCHEMA_VERSION,
+                run_id="prior-mismatched-run",
+                workflow_name="completely_different_workflow",
+                run_record_path=prior_run_dir / DEFAULT_LOCAL_RUN_RECORD_FILENAME,
+                created_at="2026-04-12T10:00:00Z",
+                execution_profile="local",
+                resolved_planner_inputs={},
+                binding_plan_target="other_target",
+                node_completion_state={"some_node": True},
+                node_results=(),
+                artifact_path=artifact_path,
+            )
+            save_local_run_record(prior_record)
+
+            def fake_sbatch(args, **kwargs):
+                return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 66666\n", stderr="")
+
+            result = SlurmWorkflowSpecExecutor(
+                run_root=tmp_path / "runs",
+                repo_root=tmp_path,
+                sbatch_runner=fake_sbatch,
+                command_available=lambda cmd: True,
+            ).submit(artifact_path, resume_from_local_record=prior_run_dir)
+
+        self.assertFalse(result.supported)
+        self.assertTrue(any("mismatch" in lim.lower() for lim in result.limitations))
+
+    def test_slurm_run_record_local_resume_fields_round_trip(self) -> None:
+        """local_resume_node_state and local_resume_run_id must survive save/load."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            run_dir = tmp_path / "run_001"
+            run_dir.mkdir()
+            record = SlurmRunRecord(
+                schema_version=SLURM_RUN_RECORD_SCHEMA_VERSION,
+                run_id="run-rt-001",
+                recipe_id="recipe",
+                workflow_name="test_wf",
+                artifact_path=Path("/tmp/artifact.json"),
+                script_path=Path("/tmp/submit.sh"),
+                stdout_path=Path("/tmp/out.log"),
+                stderr_path=Path("/tmp/err.log"),
+                run_record_path=run_dir / DEFAULT_SLURM_RUN_RECORD_FILENAME,
+                job_id="99999",
+                execution_profile="slurm",
+                local_resume_node_state={"node_a": True, "node_b": False},
+                local_resume_run_id="local-prior-xyz",
+            )
+            save_slurm_run_record(record)
+            loaded = load_slurm_run_record(run_dir)
+        self.assertEqual(loaded.local_resume_node_state, {"node_a": True, "node_b": False})
+        self.assertEqual(loaded.local_resume_run_id, "local-prior-xyz")
+
+
+class CacheIdentityKeyTests(TestCase):
+    """Phase D checks for deterministic cache-key normalization and versioned invalidation.
+
+    These tests verify that ``cache_identity_key()`` produces stable hex digests,
+    that cosmetic path differences are normalized away, that genuine semantic
+    differences produce different keys, and that the ``handler_schema_version``
+    field invalidates otherwise-matching records.
+    """
+
+    def test_same_inputs_produce_same_digest(self) -> None:
+        """Identical frozen inputs must always yield the same cache key."""
+        from flytetest.spec_executor import cache_identity_key
+        ws = {"name": "wf", "nodes": [{"name": "n1"}]}
+        bp = {"target_name": "t", "runtime_bindings": {"k": "v"}}
+        rp = {"genome": "/data/genome.fa"}
+        key1 = cache_identity_key(ws, bp, rp)
+        key2 = cache_identity_key(ws, bp, rp)
+        self.assertEqual(key1, key2)
+        self.assertEqual(len(key1), 16)
+
+    def test_changing_workflow_nodes_produces_different_digest(self) -> None:
+        """Altering the workflow spec nodes must change the cache key."""
+        from flytetest.spec_executor import cache_identity_key
+        ws_a = {"name": "wf", "nodes": [{"name": "n1"}]}
+        ws_b = {"name": "wf", "nodes": [{"name": "n1"}, {"name": "n2"}]}
+        bp = {"target_name": "t"}
+        rp = {}
+        self.assertNotEqual(
+            cache_identity_key(ws_a, bp, rp),
+            cache_identity_key(ws_b, bp, rp),
+        )
+
+    def test_changing_runtime_binding_produces_different_digest(self) -> None:
+        """A different runtime binding value must change the cache key."""
+        from flytetest.spec_executor import cache_identity_key
+        ws = {"name": "wf", "nodes": []}
+        bp_a = {"target_name": "t", "runtime_bindings": {"k": "v1"}}
+        bp_b = {"target_name": "t", "runtime_bindings": {"k": "v2"}}
+        rp = {}
+        self.assertNotEqual(
+            cache_identity_key(ws, bp_a, rp),
+            cache_identity_key(ws, bp_b, rp),
+        )
+
+    def test_changing_resource_spec_produces_different_digest(self) -> None:
+        """A different resource spec must change the cache key."""
+        from flytetest.spec_executor import cache_identity_key
+        ws = {"name": "wf", "nodes": []}
+        bp_a = {"target_name": "t", "resource_spec": {"cpu": 4}}
+        bp_b = {"target_name": "t", "resource_spec": {"cpu": 8}}
+        rp = {}
+        self.assertNotEqual(
+            cache_identity_key(ws, bp_a, rp),
+            cache_identity_key(ws, bp_b, rp),
+        )
+
+    def test_changing_runtime_image_produces_different_digest(self) -> None:
+        """A different runtime image must change the cache key."""
+        from flytetest.spec_executor import cache_identity_key
+        ws = {"name": "wf", "nodes": []}
+        bp_a = {"target_name": "t", "runtime_image": {"image": "busco:1.0"}}
+        bp_b = {"target_name": "t", "runtime_image": {"image": "busco:2.0"}}
+        rp = {}
+        self.assertNotEqual(
+            cache_identity_key(ws, bp_a, rp),
+            cache_identity_key(ws, bp_b, rp),
+        )
+
+    def test_cosmetic_repo_root_path_difference_produces_same_digest(self) -> None:
+        """Stripping the repo-root prefix must make two checkout paths equivalent."""
+        from flytetest.spec_executor import cache_identity_key
+        ws = {"name": "wf", "nodes": []}
+        bp = {"target_name": "t"}
+        rp_a = {"genome": "/home/alice/project/data/genome.fa"}
+        rp_b = {"genome": "/home/bob/project/data/genome.fa"}
+        key_a = cache_identity_key(ws, bp, rp_a, repo_root="/home/alice/project")
+        key_b = cache_identity_key(ws, bp, rp_b, repo_root="/home/bob/project")
+        self.assertEqual(key_a, key_b)
+
+    def test_handler_schema_version_change_invalidates_key(self) -> None:
+        """Bumping handler_schema_version must produce a different key."""
+        from flytetest.spec_executor import cache_identity_key
+        ws = {"name": "wf", "nodes": []}
+        bp = {"target_name": "t"}
+        rp = {}
+        key_v1 = cache_identity_key(ws, bp, rp, handler_schema_version="1")
+        key_v2 = cache_identity_key(ws, bp, rp, handler_schema_version="2")
+        self.assertNotEqual(key_v1, key_v2)
+
+    def test_resume_accepted_when_cache_keys_match(self) -> None:
+        """Resume must succeed when the prior record's cache key matches the current key."""
+        from flytetest.spec_executor import _validate_resume_identity
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run_001"
+            run_dir.mkdir()
+            record = LocalRunRecord(
+                schema_version=LOCAL_RUN_RECORD_SCHEMA_VERSION,
+                run_id="run-match",
+                workflow_name="wf",
+                run_record_path=run_dir / DEFAULT_LOCAL_RUN_RECORD_FILENAME,
+                created_at="2026-04-12T12:00:00Z",
+                execution_profile="local",
+                resolved_planner_inputs={},
+                binding_plan_target="t",
+                node_completion_state={},
+                node_results=(),
+                artifact_path=run_dir / "artifact.json",
+                cache_identity_key="abcd1234abcd1234",
+            )
+            result = _validate_resume_identity(
+                record, "wf", run_dir / "artifact.json",
+                current_cache_key="abcd1234abcd1234",
+            )
+        self.assertIsNone(result)
+
+    def test_resume_rejected_when_cache_keys_differ(self) -> None:
+        """Resume must fail with a clear message when cache keys do not match."""
+        from flytetest.spec_executor import _validate_resume_identity
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run_002"
+            run_dir.mkdir()
+            record = LocalRunRecord(
+                schema_version=LOCAL_RUN_RECORD_SCHEMA_VERSION,
+                run_id="run-mismatch",
+                workflow_name="wf",
+                run_record_path=run_dir / DEFAULT_LOCAL_RUN_RECORD_FILENAME,
+                created_at="2026-04-12T12:00:00Z",
+                execution_profile="local",
+                resolved_planner_inputs={},
+                binding_plan_target="t",
+                node_completion_state={},
+                node_results=(),
+                artifact_path=run_dir / "artifact.json",
+                cache_identity_key="oldkey0000000000",
+            )
+            result = _validate_resume_identity(
+                record, "wf", run_dir / "artifact.json",
+                current_cache_key="newkey0000000000",
+            )
+        self.assertIsNotNone(result)
+        self.assertIn("cache identity key mismatch", result)
+        self.assertIn("oldkey0000000000", result)
+        self.assertIn("newkey0000000000", result)
+
+    def test_cache_key_round_trips_in_local_run_record(self) -> None:
+        """cache_identity_key must survive save/load for LocalRunRecord."""
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run_003"
+            run_dir.mkdir()
+            record = LocalRunRecord(
+                schema_version=LOCAL_RUN_RECORD_SCHEMA_VERSION,
+                run_id="run-rt-cache",
+                workflow_name="wf",
+                run_record_path=run_dir / DEFAULT_LOCAL_RUN_RECORD_FILENAME,
+                created_at="2026-04-12T12:00:00Z",
+                execution_profile="local",
+                resolved_planner_inputs={},
+                binding_plan_target="t",
+                node_completion_state={},
+                node_results=(),
+                cache_identity_key="abc123def4567890",
+            )
+            save_local_run_record(record)
+            loaded = load_local_run_record(run_dir)
+        self.assertEqual(loaded.cache_identity_key, "abc123def4567890")
+
+    def test_cache_key_round_trips_in_slurm_run_record(self) -> None:
+        """cache_identity_key must survive save/load for SlurmRunRecord."""
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run_004"
+            run_dir.mkdir()
+            record = SlurmRunRecord(
+                schema_version=SLURM_RUN_RECORD_SCHEMA_VERSION,
+                run_id="run-rt-slurm-cache",
+                recipe_id="recipe",
+                workflow_name="wf",
+                artifact_path=Path("/tmp/artifact.json"),
+                script_path=Path("/tmp/submit.sh"),
+                stdout_path=Path("/tmp/out.log"),
+                stderr_path=Path("/tmp/err.log"),
+                run_record_path=run_dir / DEFAULT_SLURM_RUN_RECORD_FILENAME,
+                job_id="12345",
+                execution_profile="slurm",
+                cache_identity_key="slurm_cache_key00",
+            )
+            save_slurm_run_record(record)
+            loaded = load_slurm_run_record(run_dir)
+        self.assertEqual(loaded.cache_identity_key, "slurm_cache_key00")
+
+    def test_executor_persists_cache_key_in_local_run_record(self) -> None:
+        """The local executor must persist a non-None cache_identity_key in the run record."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            artifact, _ = _busco_artifact_with_runtime_bindings(tmp_path)
+            artifact_path = tmp_path / "workflow_spec_artifact.json"
+            save_workflow_spec_artifact(artifact, artifact_path)
+
+            busco_out = tmp_path / "busco_results"
+            busco_out.mkdir()
+
+            def busco_handler(request: LocalNodeExecutionRequest) -> dict[str, Path]:
+                return {"results_dir": busco_out}
+
+            run_root = tmp_path / "local_runs"
+            executor = LocalWorkflowSpecExecutor(
+                {"annotation_qc_busco": busco_handler},
+                run_root=run_root,
+            )
+            executor.execute(artifact_path)
+
+            run_dirs = list(run_root.iterdir())
+            record = load_local_run_record(run_dirs[0])
+
+        self.assertIsNotNone(record.cache_identity_key)
+        self.assertEqual(len(record.cache_identity_key), 16)

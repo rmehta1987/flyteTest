@@ -42,6 +42,7 @@ RUN_SLURM_RECIPE_TOOL_NAME = "run_slurm_recipe"
 MONITOR_SLURM_JOB_TOOL_NAME = "monitor_slurm_job"
 RETRY_SLURM_JOB_TOOL_NAME = "retry_slurm_job"
 CANCEL_SLURM_JOB_TOOL_NAME = "cancel_slurm_job"
+APPROVE_COMPOSED_RECIPE_TOOL_NAME = "approve_composed_recipe"
 MCP_TOOL_NAMES = (
     "list_entries",
     "plan_request",
@@ -51,6 +52,7 @@ MCP_TOOL_NAMES = (
     MONITOR_SLURM_JOB_TOOL_NAME,
     RETRY_SLURM_JOB_TOOL_NAME,
     CANCEL_SLURM_JOB_TOOL_NAME,
+    APPROVE_COMPOSED_RECIPE_TOOL_NAME,
     PRIMARY_TOOL_NAME,
 )
 MCP_RESOURCE_URIS = (
