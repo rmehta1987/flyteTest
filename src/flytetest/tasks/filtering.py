@@ -1,14 +1,14 @@
 """Repeat-filtering and cleanup tasks for the post-PASA FLyteTest milestone.
 
-    This module starts from the PASA-updated annotation boundary, converts an
-    external RepeatMasker `.out` file into interval data, runs the gffread and
-    funannotate cleanup steps, and collects stable final repeat-filtered outputs
-    before functional annotation.
+This module starts from the PASA-updated annotation boundary, converts an
+external RepeatMasker `.out` file into interval data, runs the gffread and
+funannotate cleanup steps, and collects stable final repeat-filtered outputs
+before functional annotation.
 
-    Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
-    input/output expectations follow the tool references under `docs/tool_refs/`
-    (notably `repeatmasker.md`, `gffread.md`, and `funannotate.md`).
-    Those refs match the repeat-filtering slices implemented here.
+Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
+input/output expectations follow the tool references under `docs/tool_refs/`
+(notably `repeatmasker.md`, `gffread.md`, and `funannotate.md`).
+Those refs match the repeat-filtering slices implemented here.
 """
 
 from __future__ import annotations
@@ -39,39 +39,17 @@ from flytetest.manifest_io import (
 
 
 def _manifest_path(directory: Path, label: str) -> Path:
-    """Resolve the manifest file expected within a stage output directory.
-
-    Args:
-        directory: A value used by the helper.
-        label: A value used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the manifest file expected within a stage output directory."""
     return require_path(directory / "run_manifest.json", f"{label} manifest")
 
 
 def _pasa_update_sorted_gff3(results_dir: Path) -> Path:
-    """Resolve the PASA-sorted GFF3 annotation file that feeds repeat filtering.
-
-    Args:
-        results_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the PASA-sorted GFF3 annotation file that feeds repeat filtering."""
     return require_path(results_dir / "post_pasa_updates.sort.gff3", "PASA-updated sorted GFF3")
 
 
 def _pasa_update_reference_genome(results_dir: Path) -> Path:
-    """Resolve the reference genome FASTA from the PASA result bundle.
-
-    Args:
-        results_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the reference genome FASTA from the PASA result bundle."""
     return require_path(
         results_dir / "staged_inputs" / "reference" / "genome.fa",
         "PASA-update reference genome FASTA",
@@ -79,38 +57,17 @@ def _pasa_update_reference_genome(results_dir: Path) -> Path:
 
 
 def _repeatmasker_gff3_path(results_dir: Path) -> Path:
-    """Resolve the RepeatMasker GFF3 file converted from the `.out` format.
-
-    Args:
-        results_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the RepeatMasker GFF3 file converted from the `.out` format."""
     return require_path(results_dir / "repeatmasker.gff3", "RepeatMasker-derived GFF3")
 
 
 def _repeatmasker_bed_path(results_dir: Path) -> Path:
-    """Resolve the RepeatMasker BED interval file (three-column format).
-
-    Args:
-        results_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the RepeatMasker BED interval file (three-column format)."""
     return require_path(results_dir / "repeatmasker.bed", "RepeatMasker BED")
 
 
 def _gffread_protein_fasta(results_dir: Path) -> Path:
-    """Resolve the primary protein FASTA emitted by gffread during extraction.
-
-    Args:
-        results_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the primary protein FASTA emitted by gffread during extraction."""
     candidates = sorted(results_dir.glob("*.proteins.fa"))
     if len(candidates) == 1:
         return candidates[0]
@@ -118,14 +75,7 @@ def _gffread_protein_fasta(results_dir: Path) -> Path:
 
 
 def _sanitized_protein_fasta(results_dir: Path) -> Path:
-    """Resolve the period-stripped protein FASTA used for repeat diamond blasting.
-
-    Args:
-        results_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the period-stripped protein FASTA used for repeat diamond blasting."""
     candidates = sorted(results_dir.glob("*.proteins.no_periods.fa"))
     if len(candidates) == 1:
         return candidates[0]
@@ -135,14 +85,7 @@ def _sanitized_protein_fasta(results_dir: Path) -> Path:
 
 
 def _clean_gff3_path(results_dir: Path) -> Path:
-    """Resolve the clean GFF3 annotation emitted by the funannotate overlap filter.
-
-    Args:
-        results_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the clean GFF3 annotation emitted by the funannotate overlap filter."""
     candidates = sorted(results_dir.glob("*.clean.gff3"))
     if len(candidates) == 1:
         return candidates[0]
@@ -150,14 +93,7 @@ def _clean_gff3_path(results_dir: Path) -> Path:
 
 
 def _models_to_remove_path(results_dir: Path) -> Path:
-    """Resolve the overlap-removal list emitted by funannotate RemoveBadModels.
-
-    Args:
-        results_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the overlap-removal list emitted by funannotate RemoveBadModels."""
     exact_candidates = [
         results_dir / "genome.repeats.to.remove.gff3",
         results_dir / "genome.repeats.to.remove.gff",
@@ -175,14 +111,7 @@ def _models_to_remove_path(results_dir: Path) -> Path:
 
 
 def _filtered_gff3_path(results_dir: Path) -> Path:
-    """Resolve the single filtered GFF3 produced by a deterministic removal step.
-
-    Args:
-        results_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the single filtered GFF3 produced by a deterministic removal step."""
     candidates = sorted(path for path in results_dir.glob("*.gff3") if path.name != "run_manifest.json")
     if len(candidates) == 1:
         return candidates[0]
@@ -190,27 +119,12 @@ def _filtered_gff3_path(results_dir: Path) -> Path:
 
 
 def _repeat_blast_hits_path(results_dir: Path) -> Path:
-    """Resolve the repeat blast hits file emitted by funannotate RepeatBlast.
-
-    Args:
-        results_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the repeat blast hits file emitted by funannotate RepeatBlast."""
     return require_path(results_dir / "repeat.dmnd.blast.txt", "repeat.dmnd blast hits")
 
 
 def _write_repeatmasker_bed(gff3_path: Path, bed_path: Path) -> Path:
-    """Extract and write a three-column BED file from RepeatMasker GFF3.
-
-    Args:
-        gff3_path: A filesystem path used by the helper.
-        bed_path: A filesystem path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Extract and write a three-column BED file from RepeatMasker GFF3."""
     bed_lines: list[str] = []
     for raw_line in gff3_path.read_text().splitlines():
         if not raw_line or raw_line.startswith("#"):
@@ -227,15 +141,7 @@ def _write_repeatmasker_bed(gff3_path: Path, bed_path: Path) -> Path:
 
 
 def _strip_periods_from_fasta(input_fasta: Path, output_fasta: Path) -> Path:
-    """Remove periods from protein FASTA sequences while preserving headers.
-
-    Args:
-        input_fasta: A value used by the helper.
-        output_fasta: A value used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Remove periods from protein FASTA sequences while preserving headers."""
     cleaned_lines: list[str] = []
     for raw_line in input_fasta.read_text().splitlines():
         if raw_line.startswith(">"):
@@ -247,16 +153,7 @@ def _strip_periods_from_fasta(input_fasta: Path, output_fasta: Path) -> Path:
 
 
 def _remove_exact_feature_lines(annotation_gff3: Path, removal_list: Path, output_gff3: Path) -> Path:
-    """Remove exact feature lines matching entries in a removal list from GFF3.
-
-    Args:
-        annotation_gff3: A value used by the helper.
-        removal_list: A value used by the helper.
-        output_gff3: A value used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Remove exact feature lines matching entries in a removal list from GFF3."""
     removal_lines = {
         line.rstrip("\n")
         for line in removal_list.read_text().splitlines()
@@ -272,16 +169,7 @@ def _remove_exact_feature_lines(annotation_gff3: Path, removal_list: Path, outpu
 
 
 def _remove_repeat_blast_ids(annotation_gff3: Path, repeat_blast_hits: Path, output_gff3: Path) -> Path:
-    """Remove blast-hit gene models from GFF3 using ID and Parent attribute filtering.
-
-    Args:
-        annotation_gff3: A value used by the helper.
-        repeat_blast_hits: A value used by the helper.
-        output_gff3: A value used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Remove blast-hit gene models from GFF3 using ID and Parent attribute filtering."""
     blast_ids = {
         line.split()[0]
         for line in repeat_blast_hits.read_text().splitlines()
@@ -319,16 +207,7 @@ def repeatmasker_out_to_bed(
     rmout_to_gff3_script: str = "rmOutToGFF3.pl",
     repeat_filter_sif: str = "",
 ) -> Dir:
-    """Convert a RepeatMasker `.out` file into a downstream GFF3 and BED pair.
-
-    Args:
-        repeatmasker_out: A value used by the helper.
-        rmout_to_gff3_script: A value used by the helper.
-        repeat_filter_sif: A value used by the helper.
-
-    Returns:
-        The returned `Dir` value used by the caller.
-"""
+    """Convert a RepeatMasker `.out` file into a downstream GFF3 and BED pair."""
     repeatmasker_out_path = require_path(Path(repeatmasker_out.download_sync()), "RepeatMasker .out file")
     out_dir = project_mkdtemp("repeatmasker_convert_") / "repeatmasker"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -375,18 +254,7 @@ def gffread_proteins(
     gffread_binary: str = "gffread",
     repeat_filter_sif: str = "",
 ) -> Dir:
-    """Extract protein sequences from GFF3 annotation and sanitize for repeat blasting.
-
-    Args:
-        annotation_gff3: A value used by the helper.
-        genome_fasta: A value used by the helper.
-        protein_output_stem: A value used by the helper.
-        gffread_binary: A value used by the helper.
-        repeat_filter_sif: A value used by the helper.
-
-    Returns:
-        The returned `Dir` value used by the caller.
-"""
+    """Extract protein sequences from GFF3 annotation and sanitize for repeat blasting."""
     annotation_path = require_path(Path(annotation_gff3.download_sync()), "Annotation GFF3")
     genome_path = require_path(Path(genome_fasta.download_sync()), "Reference genome FASTA")
     out_dir = project_mkdtemp("gffread_proteins_") / "proteins"
@@ -435,20 +303,7 @@ def funannotate_remove_bad_models(
     repeat_filter_sif: str = "",
     min_protlen: int = 50,
 ) -> Dir:
-    """Run the funannotate overlap filter to identify repeat-overlapping gene models.
-
-    Args:
-        annotation_gff3: A value used by the helper.
-        proteins_fasta: A value used by the helper.
-        repeatmasker_bed: A value used by the helper.
-        clean_output_name: A value used by the helper.
-        funannotate_python: A value used by the helper.
-        repeat_filter_sif: A value used by the helper.
-        min_protlen: A value used by the helper.
-
-    Returns:
-        The returned `Dir` value used by the caller.
-"""
+    """Run the funannotate overlap filter to identify repeat-overlapping gene models."""
     annotation_path = require_path(Path(annotation_gff3.download_sync()), "Annotation GFF3")
     proteins_path = require_path(Path(proteins_fasta.download_sync()), "Protein FASTA for overlap filtering")
     repeatmasker_bed_path = require_path(Path(repeatmasker_bed.download_sync()), "RepeatMasker BED")
@@ -515,16 +370,7 @@ def remove_overlap_repeat_models(
     models_to_remove: File,
     output_name: str = "bed_repeats_removed.gff3",
 ) -> Dir:
-    """Remove exact overlap-listed feature lines from the annotation GFF3.
-
-    Args:
-        annotation_gff3: A value used by the helper.
-        models_to_remove: A value used by the helper.
-        output_name: A value used by the helper.
-
-    Returns:
-        The returned `Dir` value used by the caller.
-"""
+    """Remove exact overlap-listed feature lines from the annotation GFF3."""
     annotation_path = require_path(Path(annotation_gff3.download_sync()), "Annotation GFF3")
     removal_path = require_path(Path(models_to_remove.download_sync()), "Overlap removal list")
     out_dir = project_mkdtemp("overlap_removed_") / "overlap_removed"
@@ -558,19 +404,7 @@ def funannotate_repeat_blast(
     repeat_blast_cpu: int = 1,
     repeat_blast_evalue: float = 1e-10,
 ) -> Dir:
-    """Run the funannotate repeat-blasting stage against the repeats DIAMOND database.
-
-    Args:
-        proteins_fasta: A value used by the helper.
-        funannotate_db_path: A filesystem path used by the helper.
-        funannotate_python: A value used by the helper.
-        repeat_filter_sif: A value used by the helper.
-        repeat_blast_cpu: A value used by the helper.
-        repeat_blast_evalue: A value used by the helper.
-
-    Returns:
-        The returned `Dir` value used by the caller.
-"""
+    """Run the funannotate repeat-blasting stage against the repeats DIAMOND database."""
     proteins_path = require_path(Path(proteins_fasta.download_sync()), "Protein FASTA for repeat blasting")
     fundb_path = require_path(Path(funannotate_db_path), "funannotate database root")
     out_dir = project_mkdtemp("repeat_blast_") / "repeat_blast"
@@ -628,16 +462,7 @@ def remove_repeat_blast_hits(
     repeat_blast_results: Dir,
     output_name: str = "all_repeats_removed.gff3",
 ) -> Dir:
-    """Remove repeat-blast-hit gene models from GFF3 using attribute filtering rules.
-
-    Args:
-        annotation_gff3: A value used by the helper.
-        repeat_blast_results: A directory path used by the helper.
-        output_name: A value used by the helper.
-
-    Returns:
-        The returned `Dir` value used by the caller.
-"""
+    """Remove repeat-blast-hit gene models from GFF3 using attribute filtering rules."""
     annotation_path = require_path(Path(annotation_gff3.download_sync()), "Annotation GFF3")
     repeat_blast_dir = require_path(Path(repeat_blast_results.download_sync()), "Repeat blast results directory")
     blast_hits_path = _repeat_blast_hits_path(repeat_blast_dir)
@@ -676,22 +501,7 @@ def collect_repeat_filter_results(
     blast_removed: Dir,
     final_proteins: Dir,
 ) -> Dir:
-    """Collect repeat-filtering stages into a unified manifest-bearing results bundle.
-
-    Args:
-        pasa_update_results: A directory path used by the helper.
-        repeatmasker_conversion: A value used by the helper.
-        initial_proteins: A value used by the helper.
-        overlap_filter: A value used by the helper.
-        overlap_removed: A value used by the helper.
-        bed_filtered_proteins: A value used by the helper.
-        repeat_blast: A value used by the helper.
-        blast_removed: A value used by the helper.
-        final_proteins: A value used by the helper.
-
-    Returns:
-        The returned `Dir` value used by the caller.
-"""
+    """Collect repeat-filtering stages into a unified manifest-bearing results bundle."""
     pasa_update_dir = require_path(Path(pasa_update_results.download_sync()), "PASA update results directory")
     repeatmasker_dir = require_path(Path(repeatmasker_conversion.download_sync()), "RepeatMasker conversion directory")
     initial_proteins_dir = require_path(Path(initial_proteins.download_sync()), "Initial gffread directory")

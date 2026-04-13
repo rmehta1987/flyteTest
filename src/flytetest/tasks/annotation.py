@@ -1,11 +1,11 @@
 """BRAKER3 task implementations for the current FLyteTest annotation milestone.
 
-    This module stages local ab initio inputs, runs the tutorial-backed BRAKER3
-    boundary, preserves the normalized `braker.gff3` handoff for EVM, and
-    collects a stable downstream bundle with explicit repo-policy metadata.
+This module stages local ab initio inputs, runs the tutorial-backed BRAKER3
+boundary, preserves the normalized `braker.gff3` handoff for EVM, and collects
+a stable downstream bundle with explicit repo-policy metadata.
 
-    Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
-    input/output expectations follow `docs/tool_refs/braker3.md`.
+Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
+input/output expectations follow `docs/tool_refs/braker3.md`.
 """
 
 from __future__ import annotations
@@ -41,14 +41,7 @@ from flytetest.types import (
 
 
 def _as_json_compatible(value: Any) -> Any:
-    """Recursively convert manifest values into JSON-serializable primitives for persistent provenance.
-
-    Args:
-        value: The value or values processed by the helper.
-
-    Returns:
-        The returned `Any` value used by the caller.
-"""
+    """Convert manifest values into JSON-serializable primitives for provenance."""
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, dict):
@@ -61,38 +54,17 @@ def _as_json_compatible(value: Any) -> Any:
 
 
 def _read_json(path: Path) -> dict[str, Any]:
-    """Load a JSON run manifest file into a Python dictionary.
-
-    Args:
-        path: A filesystem path used by the helper.
-
-    Returns:
-        The returned `dict[str, Any]` value used by the caller.
-"""
+    """Load a run manifest or summary file into memory."""
     return json.loads(path.read_text())
 
 
 def _stage_manifest_path(staged_dir: Path) -> Path:
-    """Locate the run manifest written by the BRAKER3 input staging task.
-
-    Args:
-        staged_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the staged-input manifest that records the BRAKER3 inputs."""
     return require_path(staged_dir / "run_manifest.json", "BRAKER3 staged-input manifest")
 
 
 def _staged_genome_fasta(staged_dir: Path) -> Path:
-    """Locate the reference genome FASTA from the BRAKER3 staged input directory.
-
-    Args:
-        staged_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the single staged genome FASTA that BRAKER3 consumes."""
     genome_dir = require_path(staged_dir / "genome", "Staged BRAKER3 genome directory")
     candidates = sorted(path for path in genome_dir.iterdir() if path.is_file())
     if len(candidates) == 1:
@@ -101,16 +73,7 @@ def _staged_genome_fasta(staged_dir: Path) -> Path:
 
 
 def _single_staged_file(staged_dir: Path, subdir_name: str, description: str) -> Path | None:
-    """Optionally resolve a single evidence file from a named staging subdirectory.
-
-    Args:
-        staged_dir: A directory path used by the helper.
-        subdir_name: A value used by the helper.
-        description: A value used by the helper.
-
-    Returns:
-        The returned `Path | None` value used by the caller.
-"""
+    """Resolve one optional evidence file from a named staged-input subdirectory."""
     candidate_dir = staged_dir / subdir_name
     if not candidate_dir.exists():
         return None
@@ -122,14 +85,7 @@ def _single_staged_file(staged_dir: Path, subdir_name: str, description: str) ->
 
 
 def _braker_gff3(run_dir: Path) -> Path:
-    """Locate the BRAKER3 output file `braker.gff3` anywhere under the run directory.
-
-    Args:
-        run_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the single `braker.gff3` file produced by a BRAKER3 run."""
     candidates = sorted(run_dir.rglob("braker.gff3"))
     if len(candidates) == 1:
         return candidates[0]
@@ -137,26 +93,12 @@ def _braker_gff3(run_dir: Path) -> Path:
 
 
 def _raw_run_manifest_path(run_dir: Path) -> Path:
-    """Locate the run manifest written by the BRAKER3 prediction task.
-
-    Args:
-        run_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the manifest written by the BRAKER3 prediction stage."""
     return require_path(run_dir / "run_manifest.json", "BRAKER3 raw-run manifest")
 
 
 def _normalized_braker3_gff3(normalized_dir: Path) -> Path:
-    """Locate the normalized BRAKER3 GFF3 produced for EVM input preparation.
-
-    Args:
-        normalized_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the normalized BRAKER3 GFF3 that is handed to EVM preparation."""
     candidates = sorted(normalized_dir.glob("*.gff3"))
     if len(candidates) == 1:
         return candidates[0]
@@ -164,26 +106,12 @@ def _normalized_braker3_gff3(normalized_dir: Path) -> Path:
 
 
 def _normalized_manifest_path(normalized_dir: Path) -> Path:
-    """Locate the run manifest written by the BRAKER3 normalization task.
-
-    Args:
-        normalized_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the manifest written by the BRAKER3 normalization stage."""
     return require_path(normalized_dir / "run_manifest.json", "Normalized BRAKER3 manifest")
 
 
 def _gff3_source_names(gff3_path: Path) -> tuple[str, ...]:
-    """Extract unique GFF3 source-column values in first-appearance order.
-
-    Args:
-        gff3_path: A filesystem path used by the helper.
-
-    Returns:
-        The returned `tuple[str, ...]` value used by the caller.
-"""
+    """Extract GFF3 source-column values in first-appearance order."""
     source_names: list[str] = []
     seen: set[str] = set()
     for raw_line in gff3_path.read_text().splitlines():
@@ -205,16 +133,7 @@ def stage_braker3_inputs(
     rnaseq_bam_path: str = "",
     protein_fasta_path: str = "",
 ) -> Dir:
-    """Stage local genome and evidence inputs for the BRAKER3 ab initio annotation boundary.
-
-    Args:
-        genome: A value used by the helper.
-        rnaseq_bam_path: A filesystem path used by the helper.
-        protein_fasta_path: A filesystem path used by the helper.
-
-    Returns:
-        The returned `Dir` value used by the caller.
-"""
+    """Stage the local genome and evidence inputs needed for BRAKER3."""
     genome_path = require_path(Path(genome.download_sync()), "Reference genome FASTA")
     rnaseq_bam = require_path(Path(rnaseq_bam_path), "RNA-seq BAM evidence") if rnaseq_bam_path else None
     protein_fasta = (
@@ -288,16 +207,7 @@ def braker3_predict(
     braker_species: str = "flytetest_braker3",
     braker3_sif: str = "",
 ) -> Dir:
-    """Execute BRAKER3 pipeline to produce ab initio gene predictions.
-
-    Args:
-        staged_inputs: A value used by the helper.
-        braker_species: A value used by the helper.
-        braker3_sif: A value used by the helper.
-
-    Returns:
-        The returned `Dir` value used by the caller.
-"""
+    """Run BRAKER3 on the staged inputs and preserve the raw prediction bundle."""
     staged_dir = require_path(Path(staged_inputs.download_sync()), "Staged BRAKER3 input directory")
     genome_path = _staged_genome_fasta(staged_dir)
     rnaseq_bam = _single_staged_file(staged_dir, "rnaseq_bam", "Staged RNA-seq BAM directory")
@@ -362,14 +272,7 @@ def braker3_predict(
 def normalize_braker3_for_evm(
     braker_run: Dir,
 ) -> Dir:
-    """Normalize BRAKER3 output into a stable GFF3 format for EVM integration.
-
-    Args:
-        braker_run: A value used by the helper.
-
-    Returns:
-        The returned `Dir` value used by the caller.
-"""
+    """Normalize the BRAKER3 output into the stable GFF3 handoff for EVM."""
     run_dir = require_path(Path(braker_run.download_sync()), "BRAKER3 run directory")
     source_gff3 = _braker_gff3(run_dir)
 
@@ -437,18 +340,7 @@ def collect_braker3_results(
     normalized_braker: Dir,
     braker_species: str = "flytetest_braker3",
 ) -> Dir:
-    """Assemble the stage-complete BRAKER3 annotation results bundle.
-
-    Args:
-        genome: A value used by the helper.
-        staged_inputs: A value used by the helper.
-        braker_run: A value used by the helper.
-        normalized_braker: A value used by the helper.
-        braker_species: A value used by the helper.
-
-    Returns:
-        The returned `Dir` value used by the caller.
-"""
+    """Collect the BRAKER3 raw and normalized outputs into the result bundle."""
     genome_input = Path(str(genome.path))
     staged_dir = require_path(Path(staged_inputs.download_sync()), "Staged BRAKER3 input directory")
     braker_run_dir = require_path(Path(braker_run.download_sync()), "BRAKER3 run directory")

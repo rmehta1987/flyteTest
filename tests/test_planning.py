@@ -37,12 +37,12 @@ def _repeat_filter_manifest_dir(base_dir: Path, name: str) -> Path:
     """Create one synthetic repeat-filter manifest directory for BUSCO planning tests.
 
     Args:
-        base_dir: A directory path used by the helper.
-        name: A value used by the helper.
+        base_dir: Temporary root used to stage the manifest directory.
+        name: Directory name that identifies this synthetic bundle.
 
     Returns:
-        The returned `Path` value used by the caller.
-"""
+        The staged repeat-filter result directory.
+    """
     result_dir = base_dir / name
     result_dir.mkdir()
     (result_dir / "run_manifest.json").write_text(
@@ -66,12 +66,12 @@ def _eggnog_manifest_dir(base_dir: Path, name: str) -> Path:
     """Create one synthetic EggNOG manifest directory for AGAT planning tests.
 
     Args:
-        base_dir: A directory path used by the helper.
-        name: A value used by the helper.
+        base_dir: Temporary root used to stage the manifest directory.
+        name: Directory name that identifies this synthetic bundle.
 
     Returns:
-        The returned `Path` value used by the caller.
-"""
+        The staged EggNOG result directory.
+    """
     result_dir = base_dir / name
     result_dir.mkdir()
     (result_dir / "run_manifest.json").write_text(
@@ -94,12 +94,12 @@ def _agat_conversion_manifest_dir(base_dir: Path, name: str) -> Path:
     """Create one synthetic AGAT conversion manifest directory for cleanup planning tests.
 
     Args:
-        base_dir: A directory path used by the helper.
-        name: A value used by the helper.
+        base_dir: Temporary root used to stage the manifest directory.
+        name: Directory name that identifies this synthetic bundle.
 
     Returns:
-        The returned `Path` value used by the caller.
-"""
+        The staged AGAT conversion result directory.
+    """
     result_dir = base_dir / name
     result_dir.mkdir()
     (result_dir / "run_manifest.json").write_text(

@@ -32,11 +32,11 @@ def _artifact_dir(path: Path) -> Dir:
     """Create a local Flyte directory wrapper from a filesystem path.
 
     Args:
-        path: A filesystem path used by the helper.
+        path: Directory path staged for the Flyte stub wrapper.
 
     Returns:
-        The returned `Dir` value used by the caller.
-"""
+        Flyte directory stub pointing at the supplied path.
+    """
     return Dir(path=str(path))
 
 
@@ -44,11 +44,11 @@ def _artifact_file(path: Path) -> File:
     """Create a local Flyte file wrapper from a filesystem path.
 
     Args:
-        path: A filesystem path used by the helper.
+        path: File path staged for the Flyte stub wrapper.
 
     Returns:
-        The returned `File` value used by the caller.
-"""
+        Flyte file stub pointing at the supplied path.
+    """
     return File(path=str(path))
 
 
@@ -56,11 +56,11 @@ def _read_json(path: Path) -> dict[str, object]:
     """Read a JSON payload for assertions.
 
     Args:
-        path: A filesystem path used by the helper.
+        path: Manifest or fixture file to parse.
 
     Returns:
-        The returned `dict[str, object]` value used by the caller.
-"""
+        Parsed JSON payload used by the tests.
+    """
     return json.loads(path.read_text())
 
 
@@ -70,42 +70,23 @@ def _fixed_datetime() -> type:
     This helper keeps the test fixture deterministic and explicit.
 
     Returns:
-        The returned type value used by the test fixture.
-"""
+        The shim class used to monkeypatch `datetime`.
+    """
 
     # Keep the synthetic result-directory name stable for manifest assertions.
     class _Stamp:
-        """Fake datetime stamp that always returns the same test timestamp.
-
-    This test class keeps the current contract explicit and documents the current boundary behavior.
-"""
+        """Fake datetime stamp that always returns the same test timestamp."""
 
         def strftime(self, fmt: str) -> str:
-            """Return the fixed timestamp string expected by the assertions.
-
-    Args:
-        fmt: A value used by the helper.
-
-    Returns:
-        The returned `str` value used by the caller.
-"""
+            """Return the fixed timestamp string expected by the assertions."""
             return "20260402_090000"
 
     class _FixedDatetime:
-        """Shim object that mimics the subset of `datetime` used by the code.
-
-    This test class keeps the current contract explicit and documents the current boundary behavior.
-"""
+        """Shim object that mimics the subset of `datetime` used by the code."""
 
         @classmethod
         def now(cls) -> _Stamp:
-            """Return the fixed timestamp stub used by the synthetic tests.
-
-    This helper keeps the test fixture deterministic and explicit.
-
-    Returns:
-        The returned _Stamp value used by the test fixture.
-"""
+            """Return the fixed timestamp stub used by the synthetic tests."""
             return _Stamp()
 
     return _FixedDatetime
@@ -160,16 +141,7 @@ class AnnotationTaskTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
-                """            Stage a synthetic BRAKER3 GFF3 output for the predict task.
-
-
-            Args:
-                cmd: The command arguments or command name passed to the helper.
-                sif: The container image reference used for execution.
-                bind_paths: The filesystem paths bound into the execution environment.
-                cwd: The working directory for the helper execution.
-                stdout_path: A filesystem path used by the helper.
-            """
+                """Stage a synthetic BRAKER3 GFF3 output for the predict-task test."""
                 captured["cmd"] = cmd
                 working_dir = Path(str(cmd[cmd.index("--workingdir") + 1]))
                 (working_dir / "braker.gff3").write_text(

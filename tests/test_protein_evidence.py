@@ -42,13 +42,13 @@ def _copy_fasta_subset(source: Path, destination: Path, record_limit: int) -> Pa
     """Copy the first `record_limit` FASTA records from a real downloaded file.
 
     Args:
-        source: A filesystem path used by the helper.
-        destination: A filesystem path used by the helper.
-        record_limit: A value used by the helper.
+        source: Real FASTA input used as the source of the subset.
+        destination: Destination for the truncated FASTA fixture.
+        record_limit: Number of FASTA records to copy into the subset.
 
     Returns:
-        The returned `Path` value used by the caller.
-"""
+        The subset FASTA path, which the tests feed into Exonerate.
+    """
     if record_limit < 1:
         raise ValueError("record_limit must be at least 1")
 
@@ -70,11 +70,11 @@ def _read_json(path: Path) -> dict[str, object]:
     """Read a manifest file into a dictionary for assertions.
 
     Args:
-        path: A filesystem path used by the helper.
+        path: Manifest file to parse for the Exonerate tests.
 
     Returns:
-        The returned `dict[str, object]` value used by the caller.
-"""
+        Parsed JSON payload used by the protein-evidence tests.
+    """
     return json.loads(path.read_text())
 
 
@@ -82,11 +82,11 @@ def _artifact_dir(path: Path) -> Dir:
     """Create a local Flyte directory wrapper from a filesystem path.
 
     Args:
-        path: A filesystem path used by the helper.
+        path: Directory path staged for the Flyte stub wrapper.
 
     Returns:
-        The returned `Dir` value used by the caller.
-"""
+        Flyte directory stub pointing at the supplied path.
+    """
     return Dir(path=str(path))
 
 
@@ -94,11 +94,11 @@ def _artifact_file(path: Path) -> File:
     """Create a local Flyte file wrapper from a filesystem path.
 
     Args:
-        path: A filesystem path used by the helper.
+        path: File path staged for the Flyte stub wrapper.
 
     Returns:
-        The returned `File` value used by the caller.
-"""
+        Flyte file stub pointing at the supplied path.
+    """
     return File(path=str(path))
 
 
@@ -108,42 +108,23 @@ def _fixed_datetime() -> type:
     This helper keeps the test fixture deterministic and explicit.
 
     Returns:
-        The returned type value used by the test fixture.
-"""
+        The shim class used to monkeypatch `datetime`.
+    """
 
     # Keep the synthetic result-directory name stable for manifest assertions.
     class _Stamp:
-        """Fake datetime stamp that always returns the same test timestamp.
-
-    This test class keeps the current contract explicit and documents the current boundary behavior.
-"""
+        """Fake datetime stamp that always returns the same test timestamp."""
 
         def strftime(self, fmt: str) -> str:
-            """Return the fixed timestamp string expected by the assertions.
-
-    Args:
-        fmt: A value used by the helper.
-
-    Returns:
-        The returned `str` value used by the caller.
-"""
+            """Return the fixed timestamp string expected by the assertions."""
             return "20260401_120000"
 
     class _FixedDatetime:
-        """Shim object that mimics the subset of `datetime` used by the code.
-
-    This test class keeps the current contract explicit and documents the current boundary behavior.
-"""
+        """Shim object that mimics the subset of `datetime` used by the code."""
 
         @classmethod
         def now(cls) -> _Stamp:
-            """Return the fixed timestamp stub used by the synthetic tests.
-
-    This helper keeps the test fixture deterministic and explicit.
-
-    Returns:
-        The returned _Stamp value used by the test fixture.
-"""
+            """Return the fixed timestamp stub used by the synthetic tests."""
             return _Stamp()
 
     return _FixedDatetime
@@ -153,12 +134,12 @@ def _real_alignment_dir(tmp_path: Path, record_limit: int = 5) -> Path:
     """Run Exonerate on a small real subset derived from the downloaded tutorial data.
 
     Args:
-        tmp_path: A filesystem path used by the helper.
-        record_limit: A value used by the helper.
+        tmp_path: Temporary root used to stage the real-data smoke test.
+        record_limit: Number of FASTA records copied into the subset.
 
     Returns:
-        The returned `Path` value used by the caller.
-"""
+        Path to the Exonerate alignment result directory.
+    """
     subset = _copy_fasta_subset(PROTEIN_FASTA, tmp_path / f"protein_subset_{record_limit}.fa", record_limit)
     alignment = protein_evidence.exonerate_align_chunk(
         genome=_artifact_file(GENOME_FASTA),
@@ -233,16 +214,7 @@ class ProteinEvidenceTaskTests(TestCase):
             seen: dict[str, object] = {}
 
             def fake_run_tool(cmd: list[str], sif: str, bind_paths: list[Path], cwd=None, stdout_path=None) -> None:
-                """            Capture the Exonerate command and stage synthetic alignment output.
-
-
-            Args:
-                cmd: The command arguments or command name passed to the helper.
-                sif: The container image reference used for execution.
-                bind_paths: The filesystem paths bound into the execution environment.
-                cwd: The working directory for the helper execution.
-                stdout_path: A filesystem path used by the helper.
-            """
+                """Capture the Exonerate command and stage synthetic alignment output."""
                 seen["cmd"] = cmd
                 seen["sif"] = sif
                 seen["bind_paths"] = [Path(path) for path in bind_paths]
@@ -444,48 +416,20 @@ class ProteinEvidenceWorkflowTests(TestCase):
             original_chunk = protein_evidence_workflow.chunk_protein_fastas
 
             def wrapped_stage(*, protein_fastas: list[File]) -> Dir:
-                """            Wrap the stage step so the workflow call order can be asserted.
-
-
-            Args:
-                protein_fastas: A value used by the helper.
-
-            Returns:
-                The returned `Dir` value used by the caller.
-            """
+                """Wrap the stage step so the workflow call order can be asserted."""
                 calls.append("stage")
                 self.assertEqual([artifact.path for artifact in protein_fastas], [str(PROTEIN_FASTA)])
                 return staged
 
             def wrapped_chunk(*, staged_proteins: Dir, proteins_per_chunk: int) -> Dir:
-                """            Wrap the chunk step so the workflow call order can be asserted.
-
-
-            Args:
-                staged_proteins: A value used by the helper.
-                proteins_per_chunk: A value used by the helper.
-
-            Returns:
-                The returned `Dir` value used by the caller.
-            """
+                """Wrap the chunk step so the workflow call order can be asserted."""
                 calls.append("chunk")
                 self.assertEqual(staged_proteins.download_sync(), staged.download_sync())
                 self.assertEqual(proteins_per_chunk, 20)
                 return chunked
 
             def wrapped_align(*, genome: File, protein_chunk: File, exonerate_sif: str = "", exonerate_model: str = "protein2genome") -> Dir:
-                """            Wrap the alignment step and stage chunk-specific synthetic outputs.
-
-
-            Args:
-                genome: A value used by the helper.
-                protein_chunk: A value used by the helper.
-                exonerate_sif: A value used by the helper.
-                exonerate_model: A value used by the helper.
-
-            Returns:
-                The returned `Dir` value used by the caller.
-            """
+                """Wrap the alignment step and stage chunk-specific synthetic outputs."""
                 chunk_name = Path(protein_chunk.download_sync()).stem
                 calls.append(f"align:{chunk_name}")
                 raw_dir = tmp_path / f"raw_{chunk_name}"
@@ -497,15 +441,7 @@ class ProteinEvidenceWorkflowTests(TestCase):
                 return _artifact_dir(raw_dir)
 
             def wrapped_convert(*, exonerate_alignment: Dir) -> Dir:
-                """            Wrap the conversion step and stage chunk-specific synthetic outputs.
-
-
-            Args:
-                exonerate_alignment: A value used by the helper.
-
-            Returns:
-                The returned `Dir` value used by the caller.
-            """
+                """Wrap the conversion step and stage chunk-specific synthetic outputs."""
                 raw_dir = Path(exonerate_alignment.download_sync())
                 chunk_name = next(raw_dir.glob("*.exonerate.out")).stem.removesuffix(".exonerate")
                 calls.append(f"convert:{chunk_name}")
@@ -526,19 +462,7 @@ class ProteinEvidenceWorkflowTests(TestCase):
                 raw_chunk_results: list[Dir],
                 evm_chunk_results: list[Dir],
             ) -> Dir:
-                """            Wrap the final collection step and stage a synthetic bundle directory.
-
-
-            Args:
-                genome: A value used by the helper.
-                staged_proteins: A value used by the helper.
-                protein_chunks: A value used by the helper.
-                raw_chunk_results: A directory path used by the helper.
-                evm_chunk_results: A directory path used by the helper.
-
-            Returns:
-                The returned `Dir` value used by the caller.
-            """
+                """Wrap the final collection step and stage a synthetic bundle directory."""
                 calls.append("collect")
                 output_dir = tmp_path / "workflow_result"
                 output_dir.mkdir(exist_ok=True)

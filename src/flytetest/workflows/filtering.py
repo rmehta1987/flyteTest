@@ -1,12 +1,12 @@
 """Repeat-filtering workflow entrypoint for the post-PASA FLyteTest milestone.
 
-    This module starts from the PASA-updated annotation bundle, applies the
-    repeat-filtering toolchain, and stops at repeat-free GFF3 plus protein FASTA
-    outputs before functional annotation.
+This module starts from the PASA-updated annotation bundle, applies the
+repeat-filtering toolchain, and stops at repeat-free GFF3 plus protein FASTA
+outputs before functional annotation.
 
-    Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
-    input/output expectations follow the tool references under `docs/tool_refs/`
-    (notably `repeatmasker.md`, `gffread.md`, and `funannotate.md`).
+Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
+input/output expectations follow the tool references under `docs/tool_refs/`
+(notably `repeatmasker.md`, `gffread.md`, and `funannotate.md`).
 """
 
 from __future__ import annotations
@@ -48,23 +48,7 @@ def annotation_repeat_filtering(
     repeat_blast_cpu: int = 1,
     repeat_blast_evalue: float = 1e-10,
 ) -> Dir:
-    """Compose and execute the repeat-filtering workflow for post-PASA annotation refinement.
-
-    Args:
-        pasa_update_results: A directory path used by the helper.
-        repeatmasker_out: A value used by the helper.
-        funannotate_db_path: A filesystem path used by the helper.
-        rmout_to_gff3_script: A value used by the helper.
-        gffread_binary: A value used by the helper.
-        funannotate_python: A value used by the helper.
-        repeat_filter_sif: A value used by the helper.
-        min_protlen: A value used by the helper.
-        repeat_blast_cpu: A value used by the helper.
-        repeat_blast_evalue: A value used by the helper.
-
-    Returns:
-        The returned `Dir` value used by the caller.
-"""
+    """Compose and execute the repeat-filtering workflow for post-PASA annotation refinement."""
     pasa_update_dir = require_path(
         Path(pasa_update_results.download_sync()),
         "PASA post-EVM refinement results directory",

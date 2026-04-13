@@ -1,11 +1,11 @@
 """Consensus-stage workflow entrypoints for FLyteTest.
 
-    Stage ordering and the pre-EVM file contract follow `docs/braker3_evm_notes.md`.
-    Tool-level command and input/output expectations follow the tool references
-    under `docs/tool_refs/` (notably `evidencemodeler.md`).
+Stage ordering and the pre-EVM file contract follow `docs/braker3_evm_notes.md`.
+Tool-level command and input/output expectations follow the tool references
+under `docs/tool_refs/` (notably `evidencemodeler.md`).
 
-    This module preserves the pre-EVM bundle workflow and adds the downstream
-    deterministic EVidenceModeler execution workflow that consumes it.
+This module preserves the pre-EVM bundle workflow and adds the downstream
+deterministic EVidenceModeler execution workflow that consumes it.
 """
 
 from __future__ import annotations
@@ -36,17 +36,7 @@ def consensus_annotation_evm_prep(
     protein_evidence_results: Dir,
     braker3_results: Dir,
 ) -> Dir:
-    """Assemble the corrected pre-EVidenceModeler file contract from evidence bundles.
-
-    Args:
-        pasa_results: A directory path used by the helper.
-        transdecoder_results: A directory path used by the helper.
-        protein_evidence_results: A directory path used by the helper.
-        braker3_results: A directory path used by the helper.
-
-    Returns:
-        The returned `Dir` value used by the caller.
-"""
+    """Assemble the corrected pre-EVidenceModeler file contract from evidence bundles."""
     transcript_inputs = prepare_evm_transcript_inputs(
         pasa_results=pasa_results,
     )
@@ -82,24 +72,7 @@ def consensus_annotation_evm(
     evm_overlap_size: int = 300000,
     evm_sif: str = "",
 ) -> Dir:
-    """Execute EVidenceModeler deterministic consensus gene-model integration.
-
-    Args:
-        evm_prep_results: A directory path used by the helper.
-        evm_weights_text: A value used by the helper.
-        evm_partition_script: A value used by the helper.
-        evm_write_commands_script: A value used by the helper.
-        evm_recombine_script: A value used by the helper.
-        evm_convert_script: A value used by the helper.
-        gff3sort_script: A value used by the helper.
-        evm_output_file_name: A value used by the helper.
-        evm_segment_size: A value used by the helper.
-        evm_overlap_size: A value used by the helper.
-        evm_sif: A value used by the helper.
-
-    Returns:
-        The returned `Dir` value used by the caller.
-"""
+    """Execute EVidenceModeler deterministic consensus gene-model integration."""
     execution_inputs = prepare_evm_execution_inputs(
         evm_prep_results=evm_prep_results,
         evm_weights_text=evm_weights_text,

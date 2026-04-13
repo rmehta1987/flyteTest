@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Shared RCC smoke helpers for runtime detection, repo-local bind mounts, and
+# legacy-BLAST compatibility staging.
 # Resolve the container runtime used for smoke execution.
 detect_runtime() {
   for candidate in apptainer singularity; do

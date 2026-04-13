@@ -1,10 +1,10 @@
 """EggNOG functional-annotation workflow entrypoint for FLyteTest.
 
-    This module keeps the post-BUSCO functional-annotation boundary explicit while
-    preserving the deterministic local collector pattern used by the other stages.
+This module keeps the post-BUSCO functional-annotation boundary explicit while
+preserving the deterministic local collector pattern used by the other stages.
 
-    Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
-    input/output expectations follow `docs/tool_refs/eggnog-mapper.md`.
+Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
+input/output expectations follow `docs/tool_refs/eggnog-mapper.md`.
 """
 
 from __future__ import annotations
@@ -25,18 +25,7 @@ def annotation_functional_eggnog(
     eggnog_cpu: int = 24,
     eggnog_database: str = "Diptera",
 ) -> Dir:
-    """Perform downstream functional orthology assignment and functional annotation of predicted proteins.
-
-    Args:
-        repeat_filter_results: A directory path used by the helper.
-        eggnog_data_dir: A directory path used by the helper.
-        eggnog_sif: A value used by the helper.
-        eggnog_cpu: A value used by the helper.
-        eggnog_database: A value used by the helper.
-
-    Returns:
-        The returned `Dir` value used by the caller.
-"""
+    """Run the EggNOG functional-annotation boundary and collect its bundle."""
     eggnog_run = eggnog_map(
         repeat_filter_results=repeat_filter_results,
         eggnog_data_dir=eggnog_data_dir,

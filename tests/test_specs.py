@@ -42,16 +42,16 @@ def _field(
     """Build one compact typed-field fixture for normalized spec tests.
 
     Args:
-        name: A value used by the helper.
-        type_name: A value used by the helper.
-        description: A value used by the helper.
-        required: A value used by the helper.
-        repeated: A value used by the helper.
-        planner_type_names: A value used by the helper.
+        name: Field name mirrored from a planner or workflow contract.
+        type_name: Canonical planner type label stored in the spec fixture.
+        description: Human-readable field description copied into the spec.
+        required: Whether the field is required in the synthetic contract.
+        repeated: Whether the field accepts repeated values.
+        planner_type_names: Alternate planner type names used for lookup.
 
     Returns:
-        The returned `TypedFieldSpec` value used by the caller.
-"""
+        Typed field metadata that the tests can round-trip through `TypedFieldSpec`.
+    """
     return TypedFieldSpec(
         name=name,
         type_name=type_name,

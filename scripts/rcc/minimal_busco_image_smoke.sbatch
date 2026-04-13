@@ -10,6 +10,8 @@
 #SBATCH --output=/scratch/midway3/mehta5/flyteTest/FlyteTest/%x.%j.out
 #SBATCH --error=/scratch/midway3/mehta5/flyteTest/FlyteTest/%x.%j.err
 
+# Slurm entrypoint for the BUSCO image smoke when you want to exercise the
+# container-backed path on RCC.
 set -euo pipefail
 
 module load gcc/13.2.0

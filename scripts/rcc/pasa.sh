@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Run PASA seqclean, accession extraction, or align/assemble against the
+# staged project tree and shared RCC image paths.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/rcc/common.sh
 source "$SCRIPT_DIR/common.sh"

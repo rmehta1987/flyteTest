@@ -7,6 +7,29 @@ alone.
 Use this file as the shared completion gate before opening any work beyond the
 current refactor boundary.
 
+## When To Use This Checklist
+
+Use this checklist when the work is about the implemented biology pipeline,
+notes-faithful stage contracts, workflow claims, result manifests, or the
+stop/go gate for downstream annotation stages.
+
+Typical examples:
+
+- aligning task or workflow behavior to `docs/braker3_evm_notes.md`
+- correcting README or registry claims about implemented biological stages
+- validating stage-output contracts such as pre-EVM, EVM, PASA, BUSCO,
+  EggNOG, or AGAT boundaries
+- deciding whether later downstream work such as `table2asn` may begin
+
+Do not use this checklist as the tracker for `realtime` architecture work.
+For typed recipe planning, saved-spec execution, MCP architecture, Slurm
+execution boundaries, or other platform refactor milestones, use
+`docs/realtime_refactor_checklist.md` instead.
+
+Short guide:
+
+- checklist guide: `docs/checklist_guide.md`
+
 ## Completion Rule
 
 A milestone is only complete when:

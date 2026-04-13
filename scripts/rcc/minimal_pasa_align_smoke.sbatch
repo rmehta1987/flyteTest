@@ -7,6 +7,8 @@
 #SBATCH --output=%x.%j.out
 #SBATCH --error=%x.%j.err
 
+# Slurm entrypoint for the wiki-shaped PASA align/assemble smoke when you want
+# to exercise the cluster toolchain path.
 set -euo pipefail
 
 # Load the cluster toolchain needed by the smoke wrappers and Apptainer runtime.

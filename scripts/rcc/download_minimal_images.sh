@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Restore the minimal container images under data/images/ for the local smoke
+# wrappers.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 IMAGE_DIR="${IMAGE_DIR:-$REPO_ROOT/data/images}"

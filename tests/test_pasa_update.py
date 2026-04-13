@@ -31,115 +31,53 @@ from flytetest.workflows.pasa import annotation_refinement_pasa
 
 
 def _artifact_dir(path: Path) -> Dir:
-    """Create a local Flyte directory wrapper from a filesystem path.
-
-    Args:
-        path: A filesystem path used by the helper.
-
-    Returns:
-        The returned `Dir` value used by the caller.
-"""
+    """Wrap a filesystem path in Flyte's `Dir` type for synthetic fixtures."""
     return Dir(path=str(path))
 
 
 def _read_json(path: Path) -> dict[str, object]:
-    """Read a manifest file into a dictionary for assertions.
-
-    Args:
-        path: A filesystem path used by the helper.
-
-    Returns:
-        The returned `dict[str, object]` value used by the caller.
-"""
+    """Load a JSON manifest into a dictionary for assertions."""
     return json.loads(path.read_text())
 
 
 def _write_json(path: Path, payload: dict[str, object]) -> Path:
-    """Write a JSON payload with indentation for readable failures.
-
-    Args:
-        path: A filesystem path used by the helper.
-        payload: The structured payload to serialize or inspect.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Write a JSON payload with indentation for readable failures."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2))
     return path
 
 
 def _write_gff3(path: Path, records: list[str]) -> Path:
-    """Write a minimal GFF3 file with a canonical header.
-
-    Args:
-        path: A filesystem path used by the helper.
-        records: The records written into the synthetic file.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Write a minimal GFF3 file with a canonical header."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("##gff-version 3\n" + "\n".join(records) + "\n")
     return path
 
 
 def _fixed_datetime() -> type:
-    """Return a deterministic timestamp provider for result-directory naming.
-
-    This helper keeps the test fixture deterministic and explicit.
-
-    Returns:
-        The returned type value used by the test fixture.
-"""
+    """Return a deterministic timestamp provider for result-directory naming."""
 
     # Keep the synthetic result-directory name stable for manifest assertions.
     class _Stamp:
-        """Fake datetime stamp that always returns the same test timestamp.
-
-    This test class keeps the current contract explicit and documents the current boundary behavior.
-"""
+        """Datetime stub that always returns the same synthetic timestamp."""
 
         def strftime(self, fmt: str) -> str:
-            """Return the fixed timestamp string expected by the assertions.
-
-    Args:
-        fmt: A value used by the helper.
-
-    Returns:
-        The returned `str` value used by the caller.
-"""
+            """Return the fixed timestamp string expected by the assertions."""
             return "20260402_120000"
 
     class _FixedDatetime:
-        """Shim object that mimics the subset of `datetime` used by the code.
-
-    This test class keeps the current contract explicit and documents the current boundary behavior.
-"""
+        """Shim that exposes the `datetime.now()` call used by the code."""
 
         @classmethod
         def now(cls) -> _Stamp:
-            """Return the fixed timestamp stub used by the synthetic tests.
-
-    This helper keeps the test fixture deterministic and explicit.
-
-    Returns:
-        The returned _Stamp value used by the test fixture.
-"""
+            """Return the fixed timestamp stub used by the synthetic tests."""
             return _Stamp()
 
     return _FixedDatetime
 
 
 def _create_pasa_results(tmp_path: Path) -> Path:
-    """Create a minimal PASA bundle with the fields the update path consumes.
-
-    Args:
-        tmp_path: A filesystem path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Create a minimal PASA bundle with the fields the update path consumes."""
     results_dir = tmp_path / "pasa_results"
     seqclean_dir = results_dir / "seqclean"
     config_dir = results_dir / "config"
@@ -173,14 +111,7 @@ def _create_pasa_results(tmp_path: Path) -> Path:
 
 
 def _create_evm_results(tmp_path: Path) -> Path:
-    """Create a minimal EVM bundle with the fields the update path consumes.
-
-    Args:
-        tmp_path: A filesystem path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Create a minimal EVM bundle with the fields the update path consumes."""
     results_dir = tmp_path / "evm_results"
     execution_dir = results_dir / "evm_execution_inputs"
     execution_dir.mkdir(parents=True, exist_ok=True)
@@ -279,16 +210,7 @@ class PasaUpdateTaskTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
-                """            Stage the synthetic PASA update output for the promotion test.
-
-
-            Args:
-                cmd: The command arguments or command name passed to the helper.
-                sif: The container image reference used for execution.
-                bind_paths: The filesystem paths bound into the execution environment.
-                cwd: The working directory for the helper execution.
-                stdout_path: A filesystem path used by the helper.
-            """
+                """Stage the synthetic PASA update output for the promotion test."""
                 self.assertIsNotNone(cwd)
                 _write_gff3(
                     cwd / "test.sqlite.gene_structures_post_PASA_updates.1001.gff3",
@@ -330,16 +252,7 @@ class PasaUpdateTaskTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
-                """            Stage the synthetic PASA update output for the workflow collection test.
-
-
-            Args:
-                cmd: The command arguments or command name passed to the helper.
-                sif: The container image reference used for execution.
-                bind_paths: The filesystem paths bound into the execution environment.
-                cwd: The working directory for the helper execution.
-                stdout_path: A filesystem path used by the helper.
-            """
+                """Stage the synthetic PASA update output for the workflow collection test."""
                 self.assertIsNotNone(cwd)
                 script_name = cmd[1]
                 if script_name == "Launch_PASA_pipeline.pl":
@@ -434,75 +347,35 @@ class PasaUpdateWorkflowTests(TestCase):
             calls: list[tuple[str, tuple[str, ...]]] = []
 
             def fake_prepare(**kwargs: object) -> Dir:
-                """            Record the PASA prepare inputs and return a synthetic staging directory.
-
-
-            Args:
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `Dir` value used by the caller.
-            """
+                """Record the PASA prepare inputs and return a synthetic staging directory."""
                 calls.append(("prepare", tuple(sorted(kwargs.keys()))))
                 prepared_dir = tmp_path / "prepared"
                 prepared_dir.mkdir(parents=True, exist_ok=True)
                 return _artifact_dir(prepared_dir)
 
             def fake_load(**kwargs: object) -> Dir:
-                """            Record the PASA load inputs and return a synthetic load-round directory.
-
-
-            Args:
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `Dir` value used by the caller.
-            """
+                """Record the PASA load inputs and return a synthetic load-round directory."""
                 calls.append(("load", tuple(sorted(kwargs.keys()))))
                 load_dir = tmp_path / f"load_{len([item for item in calls if item[0] == 'load'])}"
                 load_dir.mkdir(parents=True, exist_ok=True)
                 return _artifact_dir(load_dir)
 
             def fake_update(**kwargs: object) -> Dir:
-                """            Record the PASA update inputs and return a synthetic update-round directory.
-
-
-            Args:
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `Dir` value used by the caller.
-            """
+                """Record the PASA update inputs and return a synthetic update-round directory."""
                 calls.append(("update", tuple(sorted(kwargs.keys()))))
                 update_dir = tmp_path / f"update_{len([item for item in calls if item[0] == 'update'])}"
                 update_dir.mkdir(parents=True, exist_ok=True)
                 return _artifact_dir(update_dir)
 
             def fake_finalize(**kwargs: object) -> Dir:
-                """            Record the PASA finalize inputs and return a synthetic finalized directory.
-
-
-            Args:
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `Dir` value used by the caller.
-            """
+                """Record the PASA finalize inputs and return a synthetic finalized directory."""
                 calls.append(("finalize", tuple(sorted(kwargs.keys()))))
                 finalized_dir = tmp_path / "finalized"
                 finalized_dir.mkdir(parents=True, exist_ok=True)
                 return _artifact_dir(finalized_dir)
 
             def fake_collect(**kwargs: object) -> Dir:
-                """            Record the PASA collect inputs and return a synthetic results directory.
-
-
-            Args:
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `Dir` value used by the caller.
-            """
+                """Record the PASA collect inputs and return a synthetic results directory."""
                 calls.append(("collect", tuple(sorted(kwargs.keys()))))
                 results_dir = tmp_path / "results"
                 results_dir.mkdir(parents=True, exist_ok=True)

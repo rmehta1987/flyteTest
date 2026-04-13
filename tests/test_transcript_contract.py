@@ -31,71 +31,32 @@ import flytetest.workflows.pasa as pasa_workflows
 
 
 def _artifact_dir(path: Path) -> Dir:
-    """Create a local Flyte directory wrapper from a filesystem path.
-
-    Args:
-        path: A filesystem path used by the helper.
-
-    Returns:
-        The returned `Dir` value used by the caller.
-"""
+    """Wrap a filesystem path in Flyte's `Dir` type for synthetic fixtures."""
     return Dir(path=str(path))
 
 
 def _read_json(path: Path) -> dict[str, object]:
-    """Read one JSON file for assertions.
-
-    Args:
-        path: A filesystem path used by the helper.
-
-    Returns:
-        The returned `dict[str, object]` value used by the caller.
-"""
+    """Load a JSON payload for assertions."""
     return json.loads(path.read_text())
 
 
 def _fixed_datetime() -> type:
-    """Return a deterministic timestamp provider for result-directory naming.
-
-    This helper keeps the test fixture deterministic and explicit.
-
-    Returns:
-        The returned type value used by the test fixture.
-"""
+    """Return a deterministic timestamp provider for result-directory naming."""
 
     # Keep the synthetic result-directory name stable for manifest assertions.
     class _Stamp:
-        """Fake datetime stamp that always returns the same test timestamp.
-
-    This test class keeps the current contract explicit and documents the current boundary behavior.
-"""
+        """Datetime stub that always returns the same synthetic timestamp."""
 
         def strftime(self, fmt: str) -> str:
-            """Return the fixed timestamp string expected by the assertions.
-
-    Args:
-        fmt: A value used by the helper.
-
-    Returns:
-        The returned `str` value used by the caller.
-"""
+            """Return the fixed timestamp string expected by the assertions."""
             return "20260402_130000"
 
     class _FixedDatetime:
-        """Shim object that mimics the subset of `datetime` used by the code.
-
-    This test class keeps the current contract explicit and documents the current boundary behavior.
-"""
+        """Shim that exposes the `datetime.now()` call used by the code."""
 
         @classmethod
         def now(cls) -> _Stamp:
-            """Return the fixed timestamp stub used by the synthetic tests.
-
-    This helper keeps the test fixture deterministic and explicit.
-
-    Returns:
-        The returned _Stamp value used by the test fixture.
-"""
+            """Return the fixed timestamp stub used by the synthetic tests."""
             return _Stamp()
 
     return _FixedDatetime
@@ -127,16 +88,7 @@ class TranscriptContractTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
-                """            Capture the Trinity command without running the real binary.
-
-
-            Args:
-                cmd: The command arguments or command name passed to the helper.
-                sif: The container image reference used for execution.
-                bind_paths: The filesystem paths bound into the execution environment.
-                cwd: The working directory for the helper execution.
-                stdout_path: A filesystem path used by the helper.
-            """
+                """Capture the Trinity command without running the real binary."""
                 captured["cmd"] = cmd
 
             with patch.object(transcript_tasks, "run_tool", side_effect=fake_run_tool):
@@ -175,16 +127,7 @@ class TranscriptContractTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
-                """            Capture the StringTie command without running the real binary.
-
-
-            Args:
-                cmd: The command arguments or command name passed to the helper.
-                sif: The container image reference used for execution.
-                bind_paths: The filesystem paths bound into the execution environment.
-                cwd: The working directory for the helper execution.
-                stdout_path: A filesystem path used by the helper.
-            """
+                """Capture the StringTie command without running the real binary."""
                 captured["cmd"] = cmd
 
             with patch.object(transcript_tasks, "run_tool", side_effect=fake_run_tool):
@@ -315,80 +258,32 @@ class TranscriptContractTests(TestCase):
             captured: dict[str, dict[str, object]] = {}
 
             def fake_combine_trinity_fastas(**kwargs: object) -> File:
-                """            Capture the PASA workflow input wiring for the combined Trinity FASTA.
-
-
-            Args:
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `File` value used by the caller.
-            """
+                """Capture the PASA workflow input wiring for the combined Trinity FASTA."""
                 captured["combine"] = kwargs
                 return File(path=str(combined))
 
             def fake_pasa_accession_extract(**kwargs: object) -> File:
-                """            Capture the PASA accession-extract wiring for the denovo transcript FASTA.
-
-
-            Args:
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `File` value used by the caller.
-            """
+                """Capture the PASA accession-extract wiring for the denovo transcript FASTA."""
                 captured["accession"] = kwargs
                 return File(path=str(tdn_accs))
 
             def fake_pasa_seqclean(**kwargs: object) -> Dir:
-                """            Capture the PASA SeqClean wiring and return a synthetic directory.
-
-
-            Args:
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `Dir` value used by the caller.
-            """
+                """Capture the PASA SeqClean wiring and return a synthetic directory."""
                 captured["seqclean"] = kwargs
                 return Dir(path=str(seqclean_dir))
 
             def fake_pasa_create_sqlite_db(**kwargs: object) -> Dir:
-                """            Capture the PASA SQLite setup wiring and return a synthetic directory.
-
-
-            Args:
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `Dir` value used by the caller.
-            """
+                """Capture the PASA SQLite setup wiring and return a synthetic directory."""
                 captured["config"] = kwargs
                 return Dir(path=str(config_dir))
 
             def fake_pasa_align_assemble(**kwargs: object) -> Dir:
-                """            Capture the PASA align-and-assemble wiring and return a synthetic directory.
-
-
-            Args:
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `Dir` value used by the caller.
-            """
+                """Capture the PASA align-and-assemble wiring and return a synthetic directory."""
                 captured["align"] = kwargs
                 return Dir(path=str(pasa_dir))
 
             def fake_collect_pasa_results(**kwargs: object) -> Dir:
-                """            Capture the PASA result-collection wiring and return a synthetic directory.
-
-
-            Args:
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `Dir` value used by the caller.
-            """
+                """Capture the PASA result-collection wiring and return a synthetic directory."""
                 captured["collect"] = kwargs
                 return Dir(path=str(result_dir))
 

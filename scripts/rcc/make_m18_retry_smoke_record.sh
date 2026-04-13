@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Create the synthetic Milestone 18 retryable run record used by the retry
+# policy smoke.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 PYTHON_SCRIPT="$SCRIPT_DIR/m18_make_retry_smoke_record.py"

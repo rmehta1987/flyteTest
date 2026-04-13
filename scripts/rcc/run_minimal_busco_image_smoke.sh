@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Launch the BUSCO image smoke locally or through Slurm, staging the upstream
+# fixture first when the scheduler path is available.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 SBATCH_SCRIPT="$SCRIPT_DIR/minimal_busco_image_smoke.sbatch"

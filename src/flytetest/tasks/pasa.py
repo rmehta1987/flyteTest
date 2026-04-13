@@ -1,10 +1,10 @@
 """PASA task implementations for FLyteTest transcript and post-EVM refinement.
 
-    The stage order follows `docs/braker3_evm_notes.md`, while the PASA command
-    shapes and input/output expectations follow `docs/tool_refs/pasa.md`.
-    This module covers PASA transcript preparation and align/assemble using the
-    internally collected Trinity transcript branch, plus downstream post-EVM PASA
-    update rounds.
+The stage order follows `docs/braker3_evm_notes.md`, while the PASA command
+shapes and input/output expectations follow `docs/tool_refs/pasa.md`. This
+module covers PASA transcript preparation and align/assemble using the
+internally collected Trinity transcript branch, plus downstream post-EVM PASA
+update rounds.
 """
 
 from __future__ import annotations
@@ -54,14 +54,7 @@ from flytetest.types import (
 )
 
 def _trinity_gg_fasta(trinity_dir: Path) -> Path:
-    """Resolve the primary genome-guided Trinity FASTA from a task output directory.
-
-    Args:
-        trinity_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the genome-guided Trinity FASTA from a Trinity output directory."""
     for candidate in (
         trinity_dir / "Trinity-GG.fasta",
         trinity_dir / "Trinity.fasta",
@@ -78,14 +71,7 @@ def _trinity_gg_fasta(trinity_dir: Path) -> Path:
 
 
 def _trinity_denovo_fasta(trinity_dir: Path) -> Path:
-    """Resolve the primary de novo Trinity FASTA from a task output directory.
-
-    Args:
-        trinity_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the de novo Trinity FASTA from a Trinity output directory."""
     for candidate in (
         trinity_dir / "Trinity.fasta",
         trinity_dir / "trinity_denovo.Trinity.fasta",
@@ -106,26 +92,12 @@ def _trinity_denovo_fasta(trinity_dir: Path) -> Path:
 
 
 def _stringtie_gtf(stringtie_dir: Path) -> Path:
-    """Resolve the main StringTie transcript GTF used as PASA input.
-
-    Args:
-        stringtie_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the StringTie GTF that feeds PASA align/assemble."""
     return require_path(stringtie_dir / "transcripts.gtf", "StringTie transcripts GTF")
 
 
 def _stringtie_abundance(stringtie_dir: Path) -> Path | None:
-    """Return StringTie's gene abundance table when it is present.
-
-    Args:
-        stringtie_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path | None` value used by the caller.
-"""
+    """Return the optional StringTie gene-abundance table."""
     candidate = stringtie_dir / "gene_abund.tab"
     if candidate.exists():
         return candidate
@@ -133,14 +105,7 @@ def _stringtie_abundance(stringtie_dir: Path) -> Path | None:
 
 
 def _seqclean_clean_fasta(seqclean_dir: Path) -> Path:
-    """Resolve the single cleaned transcript FASTA produced by `seqclean`.
-
-    Args:
-        seqclean_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the cleaned transcript FASTA produced by `seqclean`."""
     clean_candidates = sorted(seqclean_dir.glob("*.clean"))
     if len(clean_candidates) == 1:
         return clean_candidates[0]
@@ -148,26 +113,12 @@ def _seqclean_clean_fasta(seqclean_dir: Path) -> Path:
 
 
 def _pasa_config_path(config_dir: Path) -> Path:
-    """Resolve the rewritten PASA align-and-assemble config file.
-
-    Args:
-        config_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the rewritten PASA align-and-assemble config file."""
     return require_path(config_dir / "pasa.alignAssembly.config", "PASA align/assemble config")
 
 
 def _sqlite_db_path(config_dir: Path) -> Path:
-    """Resolve the single SQLite database file created for a PASA run.
-
-    Args:
-        config_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the SQLite database file created for a PASA run."""
     candidates = sorted(
         path
         for path in config_dir.iterdir()
@@ -179,16 +130,7 @@ def _sqlite_db_path(config_dir: Path) -> Path:
 
 
 def _first_existing(directory: Path, suffixes: tuple[str, ...], prefixes: tuple[str, ...]) -> Path | None:
-    """Return the first PASA output that matches the allowed prefixes and suffixes.
-
-    Args:
-        directory: A value used by the helper.
-        suffixes: A value used by the helper.
-        prefixes: A value used by the helper.
-
-    Returns:
-        The returned `Path | None` value used by the caller.
-"""
+    """Return the first PASA output that matches the allowed prefixes and suffixes."""
     for prefix in prefixes:
         for suffix in suffixes:
             candidate = directory / f"{prefix}{suffix}"
@@ -198,14 +140,7 @@ def _first_existing(directory: Path, suffixes: tuple[str, ...], prefixes: tuple[
 
 
 def _pasa_output_prefixes(database_name: str) -> tuple[str, ...]:
-    """Return PASA filename prefixes compatible with a database name and its stem.
-
-    Args:
-        database_name: A value used by the helper.
-
-    Returns:
-        The returned `tuple[str, ...]` value used by the caller.
-"""
+    """Return PASA filename prefixes for a database name and its stem."""
     stem = Path(database_name).stem
     if stem == database_name:
         return (database_name,)
@@ -213,28 +148,12 @@ def _pasa_output_prefixes(database_name: str) -> tuple[str, ...]:
 
 
 def _pasa_assemblies_fasta(pasa_dir: Path, database_name: str) -> Path | None:
-    """Resolve the PASA assemblies FASTA if the run produced one.
-
-    Args:
-        pasa_dir: A directory path used by the helper.
-        database_name: A value used by the helper.
-
-    Returns:
-        The returned `Path | None` value used by the caller.
-"""
+    """Resolve the PASA assemblies FASTA when the run produced one."""
     return _first_existing(pasa_dir, (".assemblies.fasta",), _pasa_output_prefixes(database_name))
 
 
 def _pasa_assemblies_gff3(pasa_dir: Path, database_name: str) -> Path | None:
-    """Resolve the PASA assemblies GFF3 if the run produced one.
-
-    Args:
-        pasa_dir: A directory path used by the helper.
-        database_name: A value used by the helper.
-
-    Returns:
-        The returned `Path | None` value used by the caller.
-"""
+    """Resolve the PASA assemblies GFF3 when the run produced one."""
     return _first_existing(
         pasa_dir,
         (".pasa_assemblies.gff3", ".assemblies.gff3"),
@@ -243,15 +162,7 @@ def _pasa_assemblies_gff3(pasa_dir: Path, database_name: str) -> Path | None:
 
 
 def _pasa_assemblies_gtf(pasa_dir: Path, database_name: str) -> Path | None:
-    """Resolve the PASA assemblies GTF if the run produced one.
-
-    Args:
-        pasa_dir: A directory path used by the helper.
-        database_name: A value used by the helper.
-
-    Returns:
-        The returned `Path | None` value used by the caller.
-"""
+    """Resolve the PASA assemblies GTF when the run produced one."""
     return _first_existing(
         pasa_dir,
         (".pasa_assemblies.gtf", ".assemblies.gtf"),
@@ -260,15 +171,7 @@ def _pasa_assemblies_gtf(pasa_dir: Path, database_name: str) -> Path | None:
 
 
 def _pasa_alt_splicing_support(pasa_dir: Path, database_name: str) -> Path | None:
-    """Resolve PASA alt-splicing support output when it is present.
-
-    Args:
-        pasa_dir: A directory path used by the helper.
-        database_name: A value used by the helper.
-
-    Returns:
-        The returned `Path | None` value used by the caller.
-"""
+    """Resolve PASA alt-splicing support output when it is present."""
     return _first_existing(
         pasa_dir,
         (".alt_splicing_supporting_evidence.txt",),
@@ -277,15 +180,7 @@ def _pasa_alt_splicing_support(pasa_dir: Path, database_name: str) -> Path | Non
 
 
 def _pasa_polyasites_fasta(pasa_dir: Path, database_name: str) -> Path | None:
-    """Resolve PASA polyA-site FASTA output when it is present.
-
-    Args:
-        pasa_dir: A directory path used by the helper.
-        database_name: A value used by the helper.
-
-    Returns:
-        The returned `Path | None` value used by the caller.
-"""
+    """Resolve PASA polyA-site FASTA output when it is present."""
     return _first_existing(
         pasa_dir,
         (".polyAsites.fasta",),
@@ -294,14 +189,7 @@ def _pasa_polyasites_fasta(pasa_dir: Path, database_name: str) -> Path | None:
 
 
 def _sample_id_from_transcript_evidence(results_dir: Path) -> str:
-    """Extract the sample identifier from a transcript-evidence manifest when available.
-
-    Args:
-        results_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `str` value used by the caller.
-"""
+    """Extract the sample identifier from a transcript-evidence manifest."""
     manifest_path = results_dir / "run_manifest.json"
     if not manifest_path.exists():
         return "sample"
@@ -314,15 +202,7 @@ def pasa_accession_extract(
     denovo_trinity_fasta: File,
     pasa_sif: str = "",
 ) -> File:
-    """Extract PASA TDN accessions from the de novo Trinity FASTA.
-
-    Args:
-        denovo_trinity_fasta: A value used by the helper.
-        pasa_sif: A value used by the helper.
-
-    Returns:
-        The returned `File` value used by the caller.
-"""
+    """Extract TDN accessions from the de novo Trinity FASTA."""
     denovo_path = require_path(Path(denovo_trinity_fasta.download_sync()), "De novo Trinity FASTA")
     out_dir = project_mkdtemp("pasa_accs_")
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -341,15 +221,7 @@ def combine_trinity_fastas(
     genome_guided_trinity_fasta: File,
     denovo_trinity_fasta: File,
 ) -> File:
-    """Concatenate de novo and genome-guided Trinity FASTAs for PASA input.
-
-    Args:
-        genome_guided_trinity_fasta: A value used by the helper.
-        denovo_trinity_fasta: A value used by the helper.
-
-    Returns:
-        The returned `File` value used by the caller.
-"""
+    """Concatenate the Trinity de novo and genome-guided FASTAs for PASA."""
     gg_path = require_path(Path(genome_guided_trinity_fasta.download_sync()), "Genome-guided Trinity FASTA")
     denovo_path = require_path(Path(denovo_trinity_fasta.download_sync()), "De novo Trinity FASTA")
 
@@ -373,17 +245,7 @@ def pasa_seqclean(
     pasa_sif: str = "",
     seqclean_threads: int = 4,
 ) -> Dir:
-    """Run `seqclean` on the combined Trinity transcript FASTA.
-
-    Args:
-        transcripts: A value used by the helper.
-        univec_fasta: A value used by the helper.
-        pasa_sif: A value used by the helper.
-        seqclean_threads: A value used by the helper.
-
-    Returns:
-        The returned `Dir` value used by the caller.
-"""
+    """Run `seqclean` on the combined Trinity transcript FASTA."""
     transcripts_path = require_path(Path(transcripts.download_sync()), "Combined Trinity transcript FASTA")
     univec_path = require_path(Path(univec_fasta.download_sync()), "UniVec FASTA")
 
@@ -413,15 +275,7 @@ def pasa_create_sqlite_db(
     pasa_config_template: File,
     pasa_db_name: str = "pasa.sqlite",
 ) -> Dir:
-    """Create a SQLite-backed PASA config directory from a user template.
-
-    Args:
-        pasa_config_template: A value used by the helper.
-        pasa_db_name: A value used by the helper.
-
-    Returns:
-        The returned `Dir` value used by the caller.
-"""
+    """Create a PASA config directory with a SQLite-backed database."""
     template_path = require_path(Path(pasa_config_template.download_sync()), "PASA align/assemble template config")
     out_dir = project_mkdtemp("pasa_config_") / "config"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -466,23 +320,7 @@ def pasa_align_assemble(
     pasa_cpu: int = 4,
     pasa_max_intron_length: int = 100000,
 ) -> Dir:
-    """Run the PASA align/assemble command pattern described in `docs/tool_refs/pasa.md`.
-
-    Args:
-        genome: A value used by the helper.
-        cleaned_transcripts: A value used by the helper.
-        unclean_transcripts: A value used by the helper.
-        stringtie_gtf: A value used by the helper.
-        pasa_config: A value used by the helper.
-        tdn_accs: A value used by the helper.
-        pasa_sif: A value used by the helper.
-        pasa_aligners: A value used by the helper.
-        pasa_cpu: A value used by the helper.
-        pasa_max_intron_length: A value used by the helper.
-
-    Returns:
-        The returned `Dir` value used by the caller.
-"""
+    """Run PASA align/assemble on the staged genome and transcript inputs."""
     genome_path = require_path(Path(genome.download_sync()), "Reference genome FASTA")
     cleaned_dir = require_path(Path(cleaned_transcripts.download_sync()), "seqclean output directory")
     clean_fasta_path = _seqclean_clean_fasta(cleaned_dir)
@@ -552,24 +390,7 @@ def collect_pasa_results(
     tdn_accs: File,
     sample_id: str = "sample",
 ) -> Dir:
-    """Collect PASA preparation outputs into a stable manifest-bearing results bundle.
-
-    Args:
-        genome: A value used by the helper.
-        transcript_evidence_results: A directory path used by the helper.
-        univec_fasta: A value used by the helper.
-        combined_trinity: A value used by the helper.
-        seqclean: A value used by the helper.
-        pasa_config: A value used by the helper.
-        pasa_run: A value used by the helper.
-        stringtie_gtf: A value used by the helper.
-        trinity_denovo_fasta: A value used by the helper.
-        tdn_accs: A value used by the helper.
-        sample_id: A value used by the helper.
-
-    Returns:
-        The returned `Dir` value used by the caller.
-"""
+    """Collect PASA preparation outputs into a manifest-bearing results bundle."""
     genome_input = Path(str(genome.path))
     transcript_evidence_path = require_path(
         Path(transcript_evidence_results.download_sync()),
@@ -751,44 +572,19 @@ def collect_pasa_results(
     return Dir(path=str(out_dir))
 
 def _manifest_path(results_dir: Path, label: str) -> Path:
-    """Resolve the run manifest path for one staged or collected directory.
-
-    Args:
-        results_dir: A directory path used by the helper.
-        label: A value used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the run manifest path for a staged or collected results directory."""
     return require_path(results_dir / "run_manifest.json", f"{label} manifest")
 
 
 def _manifest_output_path(manifest: dict[str, Any], key: str, description: str) -> Path | None:
-    """Resolve one manifest-recorded output path when present.
-
-    Args:
-        manifest: A value used by the helper.
-        key: A value used by the helper.
-        description: A value used by the helper.
-
-    Returns:
-        The returned `Path | None` value used by the caller.
-"""
+    """Resolve a manifest-recorded output path when the manifest includes one."""
     output_path = manifest.get("outputs", {}).get(key)
     if not output_path:
         return None
     return require_path(Path(str(output_path)), description)
 
 def _pasa_clean_fasta_from_results(results_dir: Path, manifest: dict[str, Any]) -> Path:
-    """Resolve the cleaned Trinity transcript FASTA from a PASA results bundle.
-
-    Args:
-        results_dir: A directory path used by the helper.
-        manifest: A value used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the cleaned Trinity transcript FASTA from a PASA results bundle."""
     manifest_path = _manifest_output_path(
         manifest,
         "seqclean_clean_fasta",
@@ -801,15 +597,7 @@ def _pasa_clean_fasta_from_results(results_dir: Path, manifest: dict[str, Any]) 
 
 
 def _pasa_align_config_from_results(results_dir: Path, manifest: dict[str, Any]) -> Path:
-    """Resolve the PASA alignAssembly config from a PASA results bundle.
-
-    Args:
-        results_dir: A directory path used by the helper.
-        manifest: A value used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the PASA alignAssembly config from a PASA results bundle."""
     manifest_path = _manifest_output_path(
         manifest,
         "pasa_config",
@@ -821,15 +609,7 @@ def _pasa_align_config_from_results(results_dir: Path, manifest: dict[str, Any])
 
 
 def _pasa_database_from_results(results_dir: Path, manifest: dict[str, Any]) -> Path:
-    """Resolve the PASA SQLite database from a PASA results bundle.
-
-    Args:
-        results_dir: A directory path used by the helper.
-        manifest: A value used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the PASA SQLite database from a PASA results bundle."""
     manifest_path = _manifest_output_path(
         manifest,
         "sqlite_database",
@@ -841,15 +621,7 @@ def _pasa_database_from_results(results_dir: Path, manifest: dict[str, Any]) -> 
 
 
 def _evm_sorted_gff3_from_results(results_dir: Path, manifest: dict[str, Any]) -> Path:
-    """Resolve the final sorted EVM GFF3 from an EVM results bundle.
-
-    Args:
-        results_dir: A directory path used by the helper.
-        manifest: A value used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the final sorted EVM GFF3 from an EVM results bundle."""
     manifest_path = _manifest_output_path(
         manifest,
         "sorted_gff3",
@@ -861,14 +633,7 @@ def _evm_sorted_gff3_from_results(results_dir: Path, manifest: dict[str, Any]) -
 
 
 def _evm_reference_genome_from_results(results_dir: Path) -> Path:
-    """Resolve the authoritative reference genome copied through the EVM bundle.
-
-    Args:
-        results_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the reference genome copied through the EVM results bundle."""
     for candidate in (
         results_dir / "evm_execution_inputs" / "genome.fa",
         results_dir / "pre_evm_bundle" / "reference" / "genome.fa",
@@ -881,14 +646,7 @@ def _evm_reference_genome_from_results(results_dir: Path) -> Path:
 
 
 def _pasa_update_workspace_annotations(workspace_dir: Path) -> Path:
-    """Resolve the canonical current-annotations GFF3 within an update workspace.
-
-    Args:
-        workspace_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the canonical current-annotations GFF3 in an update workspace."""
     return require_path(
         workspace_dir / "annotations" / "current_annotations.gff3",
         "PASA update current annotations GFF3",
@@ -896,14 +654,7 @@ def _pasa_update_workspace_annotations(workspace_dir: Path) -> Path:
 
 
 def _pasa_update_align_config(workspace_dir: Path) -> Path:
-    """Resolve the copied PASA alignAssembly config within an update workspace.
-
-    Args:
-        workspace_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the copied PASA alignAssembly config in an update workspace."""
     return require_path(
         workspace_dir / "config" / "pasa.alignAssembly.config",
         "PASA update alignAssembly config",
@@ -911,14 +662,7 @@ def _pasa_update_align_config(workspace_dir: Path) -> Path:
 
 
 def _pasa_update_annot_compare_config(workspace_dir: Path) -> Path:
-    """Resolve the copied PASA annotCompare config within an update workspace.
-
-    Args:
-        workspace_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the copied PASA annotCompare config in an update workspace."""
     return require_path(
         workspace_dir / "config" / "pasa.annotCompare.config",
         "PASA update annotCompare config",
@@ -926,26 +670,12 @@ def _pasa_update_annot_compare_config(workspace_dir: Path) -> Path:
 
 
 def _pasa_update_database(workspace_dir: Path) -> Path:
-    """Resolve the copied PASA SQLite database within an update workspace.
-
-    Args:
-        workspace_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the copied PASA SQLite database in an update workspace."""
     return _sqlite_db_path(require_path(workspace_dir / "config", "PASA update config directory"))
 
 
 def _pasa_update_cleaned_transcripts(workspace_dir: Path) -> Path:
-    """Resolve the copied cleaned transcript FASTA within an update workspace.
-
-    Args:
-        workspace_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the copied cleaned transcript FASTA in an update workspace."""
     transcripts_dir = require_path(workspace_dir / "transcripts", "PASA update transcripts directory")
     clean_candidates = sorted(transcripts_dir.glob("*.clean"))
     if len(clean_candidates) == 1:
@@ -956,14 +686,7 @@ def _pasa_update_cleaned_transcripts(workspace_dir: Path) -> Path:
 
 
 def _pasa_update_reference_genome(workspace_dir: Path) -> Path:
-    """Resolve the copied reference genome FASTA within an update workspace.
-
-    Args:
-        workspace_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Resolve the copied reference genome FASTA in an update workspace."""
     return require_path(
         workspace_dir / "reference" / "genome.fa",
         "PASA update reference genome FASTA",
@@ -971,16 +694,7 @@ def _pasa_update_reference_genome(workspace_dir: Path) -> Path:
 
 
 def _render_database_config(template_path: Path, destination: Path, database_path: Path) -> Path:
-    """Rewrite only the DATABASE line in a PASA config template.
-
-    Args:
-        template_path: A filesystem path used by the helper.
-        destination: A filesystem path used by the helper.
-        database_path: A filesystem path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Rewrite only the DATABASE line in a PASA config template."""
     rendered_lines: list[str] = []
     replaced_database = False
     for line in template_path.read_text().splitlines():
@@ -999,15 +713,7 @@ def _render_database_config(template_path: Path, destination: Path, database_pat
 
 
 def _prepare_pasa_update_bin(bin_dir: Path, fasta36_binary_path: str) -> Path | None:
-    """Create the note-described `bin/fasta` symlink when a fasta36 binary is supplied.
-
-    Args:
-        bin_dir: A directory path used by the helper.
-        fasta36_binary_path: A filesystem path used by the helper.
-
-    Returns:
-        The returned `Path | None` value used by the caller.
-"""
+    """Create the note-described `bin/fasta` symlink when fasta36 is supplied."""
     bin_dir.mkdir(parents=True, exist_ok=True)
     if not fasta36_binary_path:
         return None
@@ -1020,14 +726,7 @@ def _prepare_pasa_update_bin(bin_dir: Path, fasta36_binary_path: str) -> Path | 
 
 
 def _optional_fasta_symlink_target(workspace_dir: Path) -> Path | None:
-    """Resolve the external fasta36 target when the workspace preserves a bin/fasta symlink.
-
-    Args:
-        workspace_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path | None` value used by the caller.
-"""
+    """Resolve the external fasta36 target from a workspace symlink."""
     link_path = workspace_dir / "bin" / "fasta"
     if not link_path.is_symlink():
         return None
@@ -1035,14 +734,7 @@ def _optional_fasta_symlink_target(workspace_dir: Path) -> Path | None:
 
 
 def _pasa_update_gff3_candidates(workspace_dir: Path) -> list[Path]:
-    """Resolve raw PASA post-update GFF3 candidates in deterministic relative-path order.
-
-    Args:
-        workspace_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `list[Path]` value used by the caller.
-"""
+    """Return raw PASA post-update GFF3 candidates in deterministic order."""
     candidates = sorted(
         (
             path
@@ -1055,14 +747,7 @@ def _pasa_update_gff3_candidates(workspace_dir: Path) -> list[Path]:
 
 
 def _pasa_update_bed_candidates(workspace_dir: Path) -> list[Path]:
-    """Resolve PASA post-update BED candidates in deterministic relative-path order.
-
-    Args:
-        workspace_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `list[Path]` value used by the caller.
-"""
+    """Return PASA post-update BED candidates in deterministic order."""
     return sorted(
         workspace_dir.rglob("*gene_structures_post_PASA_updates*.bed"),
         key=lambda path: str(path.relative_to(workspace_dir)),
@@ -1075,17 +760,7 @@ def _new_round_output(
     workspace_dir: Path,
     description: str,
 ) -> Path:
-    """Resolve the single new round output by comparing before and after path sets.
-
-    Args:
-        before_paths: A value used by the helper.
-        after_paths: A value used by the helper.
-        workspace_dir: A directory path used by the helper.
-        description: A value used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Pick the single new round output by comparing before and after paths."""
     new_paths = [
         path
         for path in after_paths
@@ -1101,15 +776,7 @@ def _new_round_output(
 
 
 def _write_blank_line_filtered_gff3(source: Path, destination: Path) -> Path:
-    """Remove blank lines from a GFF3 file while preserving record order.
-
-    Args:
-        source: A filesystem path used by the helper.
-        destination: A filesystem path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Remove blank lines from a GFF3 file while preserving record order."""
     destination.parent.mkdir(parents=True, exist_ok=True)
     filtered_lines = [line for line in source.read_text().splitlines() if line.strip()]
     destination.write_text("\n".join(filtered_lines) + "\n")
@@ -1123,17 +790,7 @@ def prepare_pasa_update_inputs(
     pasa_annot_compare_template: File,
     fasta36_binary_path: str = "",
 ) -> Dir:
-    """Stage the PASA database state and sorted EVM GFF3 for post-EVM refinement.
-
-    Args:
-        pasa_results: A directory path used by the helper.
-        evm_results: A directory path used by the helper.
-        pasa_annot_compare_template: A value used by the helper.
-        fasta36_binary_path: A filesystem path used by the helper.
-
-    Returns:
-        The returned `Dir` value used by the caller.
-"""
+    """Stage the PASA database state and sorted EVM GFF3 for post-EVM refinement."""
     pasa_results_dir = require_path(Path(pasa_results.download_sync()), "PASA results directory")
     evm_results_dir = require_path(Path(evm_results.download_sync()), "EVM results directory")
     annot_compare_template_path = require_path(
@@ -1250,17 +907,7 @@ def pasa_load_current_annotations(
     load_current_annotations_script: str = "Load_Current_Gene_Annotations.dbi",
     pasa_sif: str = "",
 ) -> Dir:
-    """Load the current annotation GFF3 into the staged PASA database for one round.
-
-    Args:
-        pasa_update_inputs: A value used by the helper.
-        round_index: A value used by the helper.
-        load_current_annotations_script: A value used by the helper.
-        pasa_sif: A value used by the helper.
-
-    Returns:
-        The returned `Dir` value used by the caller.
-"""
+    """Load the current annotations into PASA for one update round."""
     input_dir = require_path(Path(pasa_update_inputs.download_sync()), "PASA update input directory")
     input_manifest = _read_json(_manifest_path(input_dir, "PASA update inputs"))
 
@@ -1314,18 +961,7 @@ def pasa_update_gene_models(
     pasa_sif: str = "",
     pasa_update_cpu: int = 8,
 ) -> Dir:
-    """Run one PASA annotation-update round and promote its new GFF3 as current annotations.
-
-    Args:
-        loaded_pasa_update: A value used by the helper.
-        round_index: A value used by the helper.
-        pasa_update_script: A value used by the helper.
-        pasa_sif: A value used by the helper.
-        pasa_update_cpu: A value used by the helper.
-
-    Returns:
-        The returned `Dir` value used by the caller.
-"""
+    """Run one PASA update round and promote the new annotations forward."""
     loaded_dir = require_path(Path(loaded_pasa_update.download_sync()), "Loaded PASA update directory")
     loaded_manifest = _read_json(_manifest_path(loaded_dir, "Loaded PASA update directory"))
 
@@ -1443,16 +1079,7 @@ def finalize_pasa_update_outputs(
     gff3sort_script: str = "gff3sort.pl",
     pasa_sif: str = "",
 ) -> Dir:
-    """Create stable blank-line-filtered and sorted final GFF3 files from the last update round.
-
-    Args:
-        pasa_update_round: A value used by the helper.
-        gff3sort_script: A value used by the helper.
-        pasa_sif: A value used by the helper.
-
-    Returns:
-        The returned `Dir` value used by the caller.
-"""
+    """Create the final blank-line-filtered and sorted PASA update GFF3 files."""
     round_dir = require_path(Path(pasa_update_round.download_sync()), "PASA update round directory")
     round_manifest = _read_json(_manifest_path(round_dir, "PASA update round directory"))
 
@@ -1516,19 +1143,7 @@ def collect_pasa_update_results(
     update_rounds: list[Dir],
     finalized_outputs: Dir,
 ) -> Dir:
-    """Collect staged PASA-update inputs, round outputs, and final files into one bundle.
-
-    Args:
-        pasa_results: A directory path used by the helper.
-        evm_results: A directory path used by the helper.
-        pasa_update_inputs: A value used by the helper.
-        load_rounds: A value used by the helper.
-        update_rounds: A value used by the helper.
-        finalized_outputs: A value used by the helper.
-
-    Returns:
-        The returned `Dir` value used by the caller.
-"""
+    """Collect the staged PASA-update inputs, rounds, and final files into one bundle."""
     if not load_rounds:
         raise ValueError("collect_pasa_update_results requires at least one PASA load round.")
     if len(load_rounds) != len(update_rounds):

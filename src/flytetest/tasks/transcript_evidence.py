@@ -1,13 +1,9 @@
 """Transcript-evidence task implementations for FLyteTest.
 
-    Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
-    input/output expectations follow the tool references under `docs/tool_refs/`
-    (notably `trinity.md`, `star.md`, `samtools.md`, and `stringtie.md`).
-    See those refs for the task-level command context that matches this module.
-
-    This module stages the current transcript-evidence branch upstream of PASA:
-    single-sample de novo Trinity, STAR alignment, one-BAM merge, genome-guided
-    Trinity, StringTie, and manifest-bearing collection.
+Stage ordering follows `docs/braker3_evm_notes.md`, and the task boundaries
+track the current transcript-evidence branch upstream of PASA: de novo Trinity,
+STAR genome indexing and alignment, merged BAM collection, genome-guided
+Trinity, StringTie, and the final manifest-bearing bundle.
 """
 
 from __future__ import annotations
@@ -50,14 +46,7 @@ STRINGTIE_MIN_JUNCTION_COVERAGE = "3"
 
 
 def _as_json_compatible(value: Any) -> Any:
-    """Recursively convert complex manifest structure into JSON-serializable primitives.
-
-    Args:
-        value: The value or values processed by the helper.
-
-    Returns:
-        The returned `Any` value used by the caller.
-"""
+    """Convert nested manifest values into JSON-friendly primitives."""
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, dict):
@@ -70,41 +59,19 @@ def _as_json_compatible(value: Any) -> Any:
 
 
 def _read_files_command(left_path: Path, right_path: Path) -> list[str]:
-    """Generate STAR decompression command flags when read mates are gzipped.
-
-    Args:
-        left_path: A filesystem path used by the helper.
-        right_path: A filesystem path used by the helper.
-
-    Returns:
-        The returned `list[str]` value used by the caller.
-"""
+    """Return STAR decompression flags when both read mates are gzipped."""
     if left_path.suffix == ".gz" and right_path.suffix == ".gz":
         return ["--readFilesCommand", "zcat"]
     return []
 
 
 def _star_sorted_bam(alignment_dir: Path) -> Path:
-    """Locate the coordinate-sorted BAM file produced by STAR genomic alignment.
-
-    Args:
-        alignment_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Return STAR's coordinate-sorted BAM from an alignment directory."""
     return require_path(alignment_dir / "Aligned.sortedByCoord.out.bam", "STAR sorted BAM")
 
 
 def _star_log_final(alignment_dir: Path) -> Path | None:
-    """Retrieve STAR's final alignment summary log if present in the output directory.
-
-    Args:
-        alignment_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path | None` value used by the caller.
-"""
+    """Return STAR's final alignment summary log when the stage wrote one."""
     candidate = alignment_dir / "Log.final.out"
     if candidate.exists():
         return candidate
@@ -112,14 +79,7 @@ def _star_log_final(alignment_dir: Path) -> Path | None:
 
 
 def _star_sj_out(alignment_dir: Path) -> Path | None:
-    """Extract STAR's splice-junction detection table if present in the output directory.
-
-    Args:
-        alignment_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path | None` value used by the caller.
-"""
+    """Return STAR's splice-junction table when the alignment stage wrote one."""
     candidate = alignment_dir / "SJ.out.tab"
     if candidate.exists():
         return candidate
@@ -127,14 +87,7 @@ def _star_sj_out(alignment_dir: Path) -> Path | None:
 
 
 def _trinity_denovo_fasta(trinity_dir: Path) -> Path:
-    """Locate the primary de novo Trinity transcript assembly FASTA from Trinity output.
-
-    Args:
-        trinity_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Return the de novo Trinity assembly FASTA from the Trinity output directory."""
     for candidate in (
         trinity_dir / "Trinity.fasta",
         trinity_dir / "trinity_denovo.Trinity.fasta",
@@ -155,14 +108,7 @@ def _trinity_denovo_fasta(trinity_dir: Path) -> Path:
 
 
 def _trinity_gg_fasta(trinity_dir: Path) -> Path:
-    """Locate the primary genome-guided Trinity transcript assembly FASTA from Trinity output.
-
-    Args:
-        trinity_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Return the genome-guided Trinity assembly FASTA from the Trinity output directory."""
     for candidate in (
         trinity_dir / "Trinity-GG.fasta",
         trinity_dir / "Trinity.fasta",
@@ -179,26 +125,12 @@ def _trinity_gg_fasta(trinity_dir: Path) -> Path:
 
 
 def _stringtie_gtf(stringtie_dir: Path) -> Path:
-    """Retrieve the primary StringTie transcript assembly GTF file from output directory.
-
-    Args:
-        stringtie_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Return the StringTie transcript GTF that feeds the PASA branch."""
     return require_path(stringtie_dir / "transcripts.gtf", "StringTie transcripts GTF")
 
 
 def _stringtie_abundance(stringtie_dir: Path) -> Path | None:
-    """Optionally retrieve StringTie's gene-level abundance table if present.
-
-    Args:
-        stringtie_dir: A directory path used by the helper.
-
-    Returns:
-        The returned `Path | None` value used by the caller.
-"""
+    """Return the optional StringTie abundance table when the stage wrote it."""
     candidate = stringtie_dir / "gene_abund.tab"
     if candidate.exists():
         return candidate
@@ -214,19 +146,20 @@ def trinity_denovo_assemble(
     trinity_cpu: int = 4,
     trinity_max_memory_gb: int = 8,
 ) -> Dir:
-    """Run de novo Trinity transcript assembly on paired-end RNA-seq reads.
+    """Run de novo Trinity on paired-end RNA-seq reads and stage the assembly directory.
 
     Args:
-        left: A value used by the helper.
-        right: A value used by the helper.
-        sample_id: A value used by the helper.
-        trinity_sif: A value used by the helper.
-        trinity_cpu: A value used by the helper.
-        trinity_max_memory_gb: A value used by the helper.
+        left: First mate from the RNA-seq pair that Trinity assembles de novo.
+        right: Second mate from the RNA-seq pair that Trinity assembles de novo.
+        sample_id: Sample label used to make the output directory easy to trace.
+        trinity_sif: Optional container image for the Trinity runtime.
+        trinity_cpu: Thread count passed to Trinity's `--CPU` flag.
+        trinity_max_memory_gb: Memory bound passed to Trinity's `--max_memory`
+            flag in gigabytes.
 
     Returns:
-        The returned `Dir` value used by the caller.
-"""
+        Directory containing the staged Trinity assembly output for the sample.
+    """
     left_path = require_path(Path(left.download_sync()), "Read 1 FASTQ")
     right_path = require_path(Path(right.download_sync()), "Read 2 FASTQ")
     out_dir = project_mkdtemp(f"trinity_denovo_{sample_id}_") / "trinity_denovo"
@@ -260,16 +193,16 @@ def star_genome_index(
     star_sif: str = "",
     star_threads: int = 4,
 ) -> Dir:
-    """Build a STAR splice-aware genome index for rapid RNA-seq mapping.
+    """Build a reusable STAR genome index for the transcript-evidence branch.
 
     Args:
-        genome: A value used by the helper.
-        star_sif: A value used by the helper.
-        star_threads: A value used by the helper.
+        genome: Reference genome FASTA used to seed the STAR index.
+        star_sif: Optional container image for the STAR runtime.
+        star_threads: Thread count passed to STAR during index generation.
 
     Returns:
-        The returned `Dir` value used by the caller.
-"""
+        Directory containing the staged STAR genome index.
+    """
     genome_path = require_path(Path(genome.download_sync()), "Reference genome FASTA")
     out_dir = project_mkdtemp("star_index_") / "index"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -301,19 +234,19 @@ def star_align_sample(
     star_sif: str = "",
     star_threads: int = 4,
 ) -> Dir:
-    """Map paired-end RNA-seq reads to the reference genome using STAR splice-aware alignment.
+    """Align one paired-end RNA-seq sample to the STAR index and keep the sorted BAM.
 
     Args:
-        index: A value used by the helper.
-        left: A value used by the helper.
-        right: A value used by the helper.
-        sample_id: A value used by the helper.
-        star_sif: A value used by the helper.
-        star_threads: A value used by the helper.
+        index: STAR genome index directory built by `star_genome_index`.
+        left: First RNA-seq mate passed to STAR alignment.
+        right: Second RNA-seq mate passed to STAR alignment.
+        sample_id: Sample label used to namespace the alignment output.
+        star_sif: Optional container image for the STAR runtime.
+        star_threads: Thread count passed to STAR during alignment.
 
     Returns:
-        The returned `Dir` value used by the caller.
-"""
+        Directory containing STAR's alignment output for the sample.
+    """
     index_path = require_path(Path(index.download_sync()), "STAR index directory")
     left_path = require_path(Path(left.download_sync()), "Read 1 FASTQ")
     right_path = require_path(Path(right.download_sync()), "Read 2 FASTQ")
@@ -350,15 +283,7 @@ def samtools_merge_bams(
     alignment_dirs: list[Dir],
     samtools_sif: str = "",
 ) -> File:
-    """Merge coordinate-sorted BAM files from one or more STAR alignments.
-
-    Args:
-        alignment_dirs: A value used by the helper.
-        samtools_sif: A value used by the helper.
-
-    Returns:
-        The returned `File` value used by the caller.
-"""
+    """Merge STAR coordinate-sorted BAMs into the single BAM used downstream."""
     if not alignment_dirs:
         raise ValueError("samtools_merge_bams requires at least one STAR alignment directory.")
 
@@ -388,18 +313,20 @@ def trinity_genome_guided_assemble(
     trinity_max_memory_gb: int = 8,
     genome_guided_max_intron: int = 10000,
 ) -> Dir:
-    """Assemble transcripts from RNA-seq reads using genome-guided Trinity.
+    """Run genome-guided Trinity against the merged transcript-evidence BAM.
 
     Args:
-        merged_bam: A value used by the helper.
-        trinity_sif: A value used by the helper.
-        trinity_cpu: A value used by the helper.
-        trinity_max_memory_gb: A value used by the helper.
-        genome_guided_max_intron: A value used by the helper.
+        merged_bam: Merged STAR BAM that Trinity uses for genome-guided assembly.
+        trinity_sif: Optional container image for the Trinity runtime.
+        trinity_cpu: Thread count passed to Trinity's `--CPU` flag.
+        trinity_max_memory_gb: Memory bound passed to Trinity's `--max_memory`
+            flag in gigabytes.
+        genome_guided_max_intron: Maximum intron length passed to Trinity for
+            genome-guided assembly.
 
     Returns:
-        The returned `Dir` value used by the caller.
-"""
+        Directory containing the genome-guided Trinity output for the sample.
+    """
     merged_bam_path = require_path(Path(merged_bam.download_sync()), "Merged BAM")
     out_dir = project_mkdtemp("trinity_gg_") / "trinity_gg"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -430,16 +357,16 @@ def stringtie_assemble(
     stringtie_sif: str = "",
     stringtie_threads: int = 4,
 ) -> Dir:
-    """Assemble transcripts and compute abundance estimates from RNA-seq BAM alignments.
+    """Run StringTie on the merged BAM and stage the transcript and abundance outputs.
 
     Args:
-        merged_bam: A value used by the helper.
-        stringtie_sif: A value used by the helper.
-        stringtie_threads: A value used by the helper.
+        merged_bam: Merged STAR BAM used as StringTie's alignment input.
+        stringtie_sif: Optional container image for the StringTie runtime.
+        stringtie_threads: Thread count passed to StringTie during assembly.
 
     Returns:
-        The returned `Dir` value used by the caller.
-"""
+        Directory containing the StringTie GTF and abundance table.
+    """
     merged_bam_path = require_path(Path(merged_bam.download_sync()), "Merged BAM")
     out_dir = project_mkdtemp("stringtie_") / "stringtie"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -482,23 +409,23 @@ def collect_transcript_evidence_results(
     stringtie: Dir,
     sample_id: str = "sample",
 ) -> Dir:
-    """Consolidate all transcript-evidence outputs into a structured, manifest-bearing result bundle.
+    """Collect de novo Trinity, STAR, genome-guided Trinity, and StringTie outputs.
 
     Args:
-        genome: A value used by the helper.
-        left: A value used by the helper.
-        right: A value used by the helper.
-        trinity_denovo: A value used by the helper.
-        star_index: A value used by the helper.
-        alignment: A value used by the helper.
-        merged_bam: A value used by the helper.
-        trinity_gg: A value used by the helper.
-        stringtie: A value used by the helper.
-        sample_id: A value used by the helper.
+        genome: Reference genome FASTA that anchors the transcript-evidence branch.
+        left: First RNA-seq mate kept in the final bundle for provenance.
+        right: Second RNA-seq mate kept in the final bundle for provenance.
+        trinity_denovo: De novo Trinity result directory to archive.
+        star_index: STAR genome index directory to archive with the run.
+        alignment: STAR alignment directory containing the sorted BAM and logs.
+        merged_bam: Merged BAM that feeds the genome-guided and StringTie stages.
+        trinity_gg: Genome-guided Trinity result directory to archive.
+        stringtie: StringTie result directory to archive.
+        sample_id: Sample label stored in the manifest and asset provenance.
 
     Returns:
-        The returned `Dir` value used by the caller.
-"""
+        Manifest-bearing results bundle for the transcript-evidence branch.
+    """
     genome_input = Path(str(genome.path))
     left_input = Path(str(left.path))
     right_input = Path(str(right.path))

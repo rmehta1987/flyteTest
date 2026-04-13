@@ -1,9 +1,9 @@
 """Saved workflow-spec artifacts for replayable typed planning.
 
-    This module saves metadata-only `WorkflowSpec` and `BindingPlan` pairs
-    produced by typed planning so a later step can reload the selected workflow
-    shape without re-parsing the original prompt.  It also owns the durable
-    `RecipeApprovalRecord` that gates composed-recipe execution.
+This module saves metadata-only `WorkflowSpec` and `BindingPlan` pairs so a
+later step can reload the selected workflow shape without re-parsing the
+original prompt. It also owns the durable `RecipeApprovalRecord` that gates
+composed-recipe execution.
 """
 
 from __future__ import annotations
@@ -26,12 +26,12 @@ DEFAULT_RECIPE_APPROVAL_FILENAME = "recipe_approval.json"
 
 @dataclass(frozen=True, slots=True)
 class SavedWorkflowSpecArtifact(SpecSerializable):
-    """A saved, metadata-only workflow plan that can be reloaded later.
+    """Saved, metadata-only planning data that can be reloaded later.
 
     The artifact records the selected workflow shape, the matching binding plan,
-    and the prompt/provenance details needed for review. It is intentionally not
-    an execution record and does not contain generated Python code.
-"""
+    and the prompt and provenance details needed for review. It is intentionally
+    not an execution record and does not contain generated Python code.
+    """
 
     schema_version: str
     workflow_spec: WorkflowSpec
@@ -52,11 +52,11 @@ def _artifact_path(path: Path) -> Path:
     """Resolve a directory or JSON path to the saved artifact file path.
 
     Args:
-        path: A filesystem path used by the helper.
+        path: Artifact directory or artifact JSON file path.
 
     Returns:
-        The returned `Path` value used by the caller.
-"""
+        The artifact JSON file path.
+    """
     return path / DEFAULT_SPEC_ARTIFACT_FILENAME if path.is_dir() else path
 
 
@@ -69,13 +69,13 @@ def artifact_from_typed_plan(
     """Build a saved artifact from a successful typed-planning payload.
 
     Args:
-        typed_plan: A value used by the helper.
-        created_at: A value used by the helper.
-        replay_metadata: A value used by the helper.
+        typed_plan: Serialized typed-plan payload produced by the planner layer.
+        created_at: Timestamp recorded on the saved artifact.
+        replay_metadata: Extra metadata to embed alongside the frozen plan.
 
     Returns:
-        The returned `SavedWorkflowSpecArtifact` value used by the caller.
-"""
+        Replayable workflow-spec artifact ready for disk persistence.
+    """
     if not typed_plan.get("supported"):
         raise ValueError("Only supported typed plans can be saved as replayable workflow spec artifacts.")
     if typed_plan.get("workflow_spec") is None or typed_plan.get("binding_plan") is None:
@@ -107,12 +107,12 @@ def save_workflow_spec_artifact(artifact: SavedWorkflowSpecArtifact, destination
     """Write one saved workflow-spec artifact as stable, inspectable JSON.
 
     Args:
-        artifact: A value used by the helper.
-        destination: A filesystem path used by the helper.
+        artifact: Frozen workflow-spec artifact to serialize.
+        destination: Directory or file path where the artifact should be written.
 
     Returns:
-        The returned `Path` value used by the caller.
-"""
+        Path to the written artifact JSON file.
+    """
     output_path = destination / DEFAULT_SPEC_ARTIFACT_FILENAME if destination.suffix == "" else destination
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(artifact.to_dict(), indent=2, sort_keys=True) + "\n")
@@ -123,11 +123,11 @@ def load_workflow_spec_artifact(path: Path) -> SavedWorkflowSpecArtifact:
     """Load a saved workflow-spec artifact from a JSON file or artifact directory.
 
     Args:
-        path: A filesystem path used by the helper.
+        path: Artifact JSON file path or artifact directory path.
 
     Returns:
-        The returned `SavedWorkflowSpecArtifact` value used by the caller.
-"""
+        Deserialized workflow-spec artifact.
+    """
     payload = json.loads(_artifact_path(path).read_text())
     schema_version = payload.get("schema_version")
     if schema_version != SPEC_ARTIFACT_SCHEMA_VERSION:
@@ -139,11 +139,11 @@ def replayable_spec_pair(artifact: SavedWorkflowSpecArtifact) -> tuple[WorkflowS
     """Return the saved spec and binding plan without re-reading the original prompt.
 
     Args:
-        artifact: A value used by the helper.
+        artifact: Frozen workflow-spec artifact already loaded from disk.
 
     Returns:
-        The returned `tuple[WorkflowSpec, BindingPlan]` value used by the caller.
-"""
+        The stored workflow spec and binding plan, ready for replay.
+    """
     return artifact.workflow_spec, artifact.binding_plan
 
 
@@ -180,12 +180,11 @@ def save_recipe_approval(record: RecipeApprovalRecord, artifact_path: Path) -> P
     Uses atomic temp-file writes so the approval file is never partially written.
 
     Args:
-        record: The approval record to persist.
-        artifact_path: Path to the frozen artifact; the approval file is written
-            as a sibling.
+        record: Approval state to persist as the recipe sidecar.
+        artifact_path: Frozen artifact path whose companion approval record should be written.
 
     Returns:
-        The path where the approval record was written.
+        Path to the written approval sidecar.
     """
     output_path = _approval_path_for_artifact(artifact_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -207,10 +206,10 @@ def load_recipe_approval(artifact_path: Path) -> RecipeApprovalRecord:
     """Load the companion approval record for a given artifact path.
 
     Args:
-        artifact_path: Path to the frozen artifact or its parent directory.
+        artifact_path: Frozen artifact path or its parent directory.
 
     Returns:
-        The deserialized :class:`RecipeApprovalRecord`.
+        Deserialized recipe approval record.
 
     Raises:
         FileNotFoundError: When no companion approval record exists.
@@ -228,13 +227,12 @@ def check_recipe_approval(artifact_path: Path, now: str | None = None) -> tuple[
     """Check whether a composed recipe has a valid, non-expired approval.
 
     Args:
-        artifact_path: Path to the frozen artifact.
+        artifact_path: Frozen artifact path whose approval sidecar should be checked.
         now: ISO-8601 timestamp to use as the current time for expiry checks.
             Defaults to the current UTC time.
 
     Returns:
-        ``(True, "")`` when approved and not expired, or ``(False, reason)``
-        when approval is missing, rejected, or expired.
+        ``(True, "")`` when approved and not expired, otherwise ``(False, reason)``.
     """
     try:
         record = load_recipe_approval(artifact_path)

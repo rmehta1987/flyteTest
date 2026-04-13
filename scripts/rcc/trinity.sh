@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Run Trinity in de novo or genome-guided mode against the repo-local fixtures
+# or the shared RCC image path.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/rcc/common.sh
 source "$SCRIPT_DIR/common.sh"

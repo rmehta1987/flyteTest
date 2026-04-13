@@ -38,11 +38,11 @@ def _read_json(path: Path) -> dict[str, object]:
     """Read one JSON manifest into a dictionary for assertions.
 
     Args:
-        path: A filesystem path used by the helper.
+        path: Manifest file to parse for the AGAT tests.
 
     Returns:
-        The returned `dict[str, object]` value used by the caller.
-"""
+        Parsed JSON payload used by the post-processing tests.
+    """
     return json.loads(path.read_text())
 
 
@@ -50,12 +50,12 @@ def _write_json(path: Path, payload: dict[str, object]) -> Path:
     """Write one JSON payload with indentation for readable failures.
 
     Args:
-        path: A filesystem path used by the helper.
-        payload: The structured payload to serialize or inspect.
+        path: Destination for the synthetic manifest file.
+        payload: Structured payload written into the manifest.
 
     Returns:
-        The returned `Path` value used by the caller.
-"""
+        The JSON file path, which is convenient for fixture chaining.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2))
     return path
@@ -65,12 +65,12 @@ def _write_text(path: Path, contents: str) -> Path:
     """Write one small text file used as a synthetic annotation fixture.
 
     Args:
-        path: A filesystem path used by the helper.
-        contents: The text content written into the synthetic file.
+        path: Destination for the synthetic text file.
+        contents: Text content written into the fixture.
 
     Returns:
-        The returned `Path` value used by the caller.
-"""
+        The text file path, which the tests can hand back into the workflow.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(contents)
     return path
@@ -80,11 +80,11 @@ def _write_gff3(path: Path) -> Path:
     """Write a minimal EggNOG-annotated GFF3 boundary.
 
     Args:
-        path: A filesystem path used by the helper.
+        path: Destination for the synthetic GFF3 file.
 
     Returns:
-        The returned `Path` value used by the caller.
-"""
+        The GFF3 file path, which the tests pass into AGAT.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         "\n".join(
@@ -106,11 +106,11 @@ def _create_eggnog_results(tmp_path: Path) -> Path:
     """Create a minimal EggNOG results bundle with a decorated GFF3 boundary.
 
     Args:
-        tmp_path: A filesystem path used by the helper.
+        tmp_path: Temporary root used to stage the bundle.
 
     Returns:
-        The returned `Path` value used by the caller.
-"""
+        The staged EggNOG result directory.
+    """
     results_dir = tmp_path / "eggnog_results"
     gff3_path = _write_gff3(results_dir / "all_repeats_removed.eggnog.gff3")
     _write_json(
@@ -129,11 +129,11 @@ def _create_agat_conversion_results(tmp_path: Path) -> Path:
     """Create a minimal AGAT conversion results bundle with a converted GFF3.
 
     Args:
-        tmp_path: A filesystem path used by the helper.
+        tmp_path: Temporary root used to stage the bundle.
 
     Returns:
-        The returned `Path` value used by the caller.
-"""
+        The staged AGAT conversion result directory.
+    """
     results_dir = tmp_path / "agat_conversion_results"
     gff3_path = _write_gff3(results_dir / "all_repeats_removed.agat.gff3")
     _write_json(
@@ -152,45 +152,26 @@ def _fixed_datetime(stamp: str = "20260404_160000") -> type:
     """Return a deterministic timestamp provider for result-directory naming.
 
     Args:
-        stamp: The timestamp value used by the synthetic datetime shim.
+        stamp: Timestamp string captured in the synthetic manifest names.
 
     Returns:
-        The returned `type` value used by the caller.
-"""
+        The shim class used to monkeypatch `datetime`.
+    """
 
     # Keep the synthetic result-directory name stable for manifest assertions.
     class _Stamp:
-        """Fake datetime stamp that always returns the same test timestamp.
-
-    This test class keeps the current contract explicit and documents the current boundary behavior.
-"""
+        """Fake datetime stamp that always returns the same test timestamp."""
 
         def strftime(self, fmt: str) -> str:
-            """Return the fixed timestamp string expected by the assertions.
-
-    Args:
-        fmt: A value used by the helper.
-
-    Returns:
-        The returned `str` value used by the caller.
-"""
+            """Return the fixed timestamp string expected by the assertions."""
             return stamp
 
     class _FixedDatetime:
-        """Shim object that mimics the subset of `datetime` used by the code.
-
-    This test class keeps the current contract explicit and documents the current boundary behavior.
-"""
+        """Shim object that mimics the subset of `datetime` used by the code."""
 
         @classmethod
         def now(cls) -> _Stamp:
-            """Return the fixed timestamp stub used by the synthetic tests.
-
-    This helper keeps the test fixture deterministic and explicit.
-
-    Returns:
-        The returned _Stamp value used by the test fixture.
-"""
+            """Return the fixed timestamp stub used by the synthetic tests."""
             return _Stamp()
 
     return _FixedDatetime
@@ -220,16 +201,7 @@ class AgatTaskTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
-                """            Capture the AGAT statistics command and stage a synthetic output file.
-
-
-            Args:
-                cmd: The command arguments or command name passed to the helper.
-                sif: The container image reference used for execution.
-                bind_paths: The filesystem paths bound into the execution environment.
-                cwd: The working directory for the helper execution.
-                stdout_path: A filesystem path used by the helper.
-            """
+                """Capture the AGAT statistics command and stage a synthetic output file."""
                 captured["cmd"] = cmd
                 captured["bind_paths"] = bind_paths
                 self.assertIsNotNone(cwd)
@@ -293,16 +265,7 @@ class AgatTaskTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
-                """            Capture the AGAT conversion command and stage a synthetic output file.
-
-
-            Args:
-                cmd: The command arguments or command name passed to the helper.
-                sif: The container image reference used for execution.
-                bind_paths: The filesystem paths bound into the execution environment.
-                cwd: The working directory for the helper execution.
-                stdout_path: A filesystem path used by the helper.
-            """
+                """Capture the AGAT conversion command and stage a synthetic output file."""
                 captured["cmd"] = cmd
                 captured["bind_paths"] = bind_paths
                 self.assertIsNotNone(cwd)
@@ -402,16 +365,7 @@ class AgatWorkflowTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
-                """            Stage the synthetic AGAT statistics output without optional FASTA input.
-
-
-            Args:
-                cmd: The command arguments or command name passed to the helper.
-                sif: The container image reference used for execution.
-                bind_paths: The filesystem paths bound into the execution environment.
-                cwd: The working directory for the helper execution.
-                stdout_path: A filesystem path used by the helper.
-            """
+                """Stage the synthetic AGAT statistics output without optional FASTA input."""
                 self.assertIsNotNone(cwd)
                 work_dir = Path(cwd)
                 (work_dir / "agat_output").mkdir(parents=True, exist_ok=True)
@@ -454,16 +408,7 @@ class AgatWorkflowTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
-                """            Stage the synthetic AGAT conversion output for the workflow wrapper.
-
-
-            Args:
-                cmd: The command arguments or command name passed to the helper.
-                sif: The container image reference used for execution.
-                bind_paths: The filesystem paths bound into the execution environment.
-                cwd: The working directory for the helper execution.
-                stdout_path: A filesystem path used by the helper.
-            """
+                """Stage the synthetic AGAT conversion output for the workflow wrapper."""
                 self.assertIsNotNone(cwd)
                 work_dir = Path(cwd)
                 (work_dir / "agat_output").mkdir(parents=True, exist_ok=True)

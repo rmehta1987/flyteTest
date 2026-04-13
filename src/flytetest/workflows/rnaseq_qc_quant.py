@@ -1,10 +1,10 @@
 """Composed RNA-seq QC and quantification entrypoint for FLyteTest.
 
-    This module preserves the original FastQC plus Salmon stage while broader
-    annotation workflows are added alongside it. Stage and tool expectations follow
-    `docs/tool_refs/fastqc.md` and `docs/tool_refs/salmon.md`, and the supported
-    `rnaseq_qc_quant` boundary is described in `README.md` and
-    `docs/tutorial_context.md`.
+This module preserves the original FastQC plus Salmon stage while broader
+annotation workflows are added alongside it. Stage and tool expectations follow
+`docs/tool_refs/fastqc.md` and `docs/tool_refs/salmon.md`, and the supported
+`rnaseq_qc_quant` boundary is described in `README.md` and
+`docs/tutorial_context.md`.
 """
 
 from __future__ import annotations
@@ -26,18 +26,7 @@ def rnaseq_qc_quant(
     salmon_sif: str = "",
     fastqc_sif: str = "",
 ) -> Dir:
-    """Orchestrate reference-based RNA-seq quality assessment and transcript abundance quantification.
-
-    Args:
-        ref: A value used by the helper.
-        left: A value used by the helper.
-        right: A value used by the helper.
-        salmon_sif: A value used by the helper.
-        fastqc_sif: A value used by the helper.
-
-    Returns:
-        The returned `Dir` value used by the caller.
-"""
+    """Run the compatibility RNA-seq QC and Salmon quantification boundary."""
     index = salmon_index(ref=ref, salmon_sif=salmon_sif)
     qc = fastqc(left=left, right=right, fastqc_sif=fastqc_sif)
     quant = salmon_quant(index=index, left=left, right=right, salmon_sif=salmon_sif)

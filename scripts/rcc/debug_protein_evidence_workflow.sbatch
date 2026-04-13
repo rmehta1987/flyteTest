@@ -10,6 +10,8 @@
 #SBATCH --output=/scratch/midway3/mehta5/flyteTest/FlyteTest/%x.%j.out
 #SBATCH --error=/scratch/midway3/mehta5/flyteTest/FlyteTest/%x.%j.err
 
+# Debug Slurm entrypoint for the full protein-evidence workflow probe when you
+# need the cluster-side JSON traceback.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

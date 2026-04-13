@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Launch the Apptainer-backed PASA image smoke locally or through Slurm,
+# creating the smoke workspace when the scheduler path is available.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 SBATCH_SCRIPT="$SCRIPT_DIR/minimal_pasa_image_smoke.sbatch"

@@ -1,7 +1,7 @@
 """Synthetic tests for the FLyteTest MCP recipe-backed server.
 
-    These checks keep the server transport MCP-shaped while preserving the explicit
-    recipe-backed execution target set.
+These checks keep the server transport MCP-shaped while preserving the explicit
+recipe-backed execution target set.
 """
 
 from __future__ import annotations
@@ -75,21 +75,22 @@ from flytetest.server import (
     run_workflow,
 )
 from flytetest.spec_artifacts import load_workflow_spec_artifact
-from flytetest.spec_executor import load_slurm_run_record, save_slurm_run_record
+from flytetest.spec_executor import (
+    DEFAULT_LOCAL_RUN_RECORD_FILENAME,
+    LOCAL_RUN_RECORD_SCHEMA_VERSION,
+    LocalNodeExecutionResult,
+    LocalRunRecord,
+    load_slurm_run_record,
+    save_local_run_record,
+    save_slurm_run_record,
+)
 
 EXPECTED_TARGET_NAMES = list(SUPPORTED_TARGET_NAMES)
 EXPECTED_RUNNABLE_TARGETS = supported_runnable_targets_payload()
 
 
 def _repeat_filter_manifest_dir(tmp_path: Path) -> Path:
-    """Create one synthetic repeat-filter result directory with a run manifest.
-
-    Args:
-        tmp_path: A filesystem path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Create one synthetic repeat-filter result directory with a run manifest."""
     result_dir = tmp_path / "repeat_filter_results"
     result_dir.mkdir()
     (result_dir / "run_manifest.json").write_text(
@@ -110,15 +111,7 @@ def _repeat_filter_manifest_dir(tmp_path: Path) -> Path:
 
 
 def _eggnog_manifest_dir(tmp_path: Path, name: str = "eggnog_results") -> Path:
-    """Create one synthetic EggNOG result directory with a run manifest.
-
-    Args:
-        tmp_path: A filesystem path used by the helper.
-        name: A value used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Create one synthetic EggNOG result directory with a run manifest."""
     result_dir = tmp_path / name
     result_dir.mkdir()
     (result_dir / "run_manifest.json").write_text(
@@ -138,14 +131,7 @@ def _eggnog_manifest_dir(tmp_path: Path, name: str = "eggnog_results") -> Path:
 
 
 def _agat_conversion_manifest_dir(tmp_path: Path) -> Path:
-    """Create one synthetic AGAT conversion result directory with a run manifest.
-
-    Args:
-        tmp_path: A filesystem path used by the helper.
-
-    Returns:
-        The returned `Path` value used by the caller.
-"""
+    """Create one synthetic AGAT conversion result directory with a run manifest."""
     result_dir = tmp_path / "agat_conversion_results"
     result_dir.mkdir()
     (result_dir / "run_manifest.json").write_text(
@@ -164,65 +150,37 @@ def _agat_conversion_manifest_dir(tmp_path: Path) -> Path:
 
 
 class FakeFastMCP:
-    """Small FastMCP stand-in used to capture tool registration.
-
-    This test class keeps the current contract explicit and documents the current boundary behavior.
-"""
+    """Small FastMCP stand-in used to capture tool registration."""
 
     def __init__(self, name: str) -> None:
-        """Record the server name and the decorators registered during setup.
-
-    Args:
-        name: A value used by the helper.
-"""
+        """Record the server name and fixture state."""
         self.name = name
         self.tools: dict[str, object] = {}
         self.resources: dict[str, object] = {}
         self.ran = False
 
     def tool(self):  # type: ignore[no-untyped-def]
-        """Return a decorator that records the registered tool callable.
-
-    This helper keeps the test fixture deterministic and explicit.
-"""
+        """Return a decorator that records the registered tool callable."""
 
         def decorator(fn):  # type: ignore[no-untyped-def]
-            """Record the decorated tool callable and return it unchanged.
-
-    Args:
-        fn: A value used by the helper.
-"""
+            """Record the decorated tool callable and return it unchanged."""
             self.tools[fn.__name__] = fn
             return fn
 
         return decorator
 
     def resource(self, uri: str):  # type: ignore[no-untyped-def]
-        """Return a decorator that records the registered resource callable.
-
-    Args:
-        uri: A value used by the helper.
-"""
+        """Return a decorator that records the registered resource callable."""
 
         def decorator(fn):  # type: ignore[no-untyped-def]
-            """Record the decorated resource callable and return it unchanged.
-
-    Args:
-        fn: A value used by the helper.
-"""
+            """Record the decorated resource callable and return it unchanged."""
             self.resources[uri] = fn
             return fn
 
         return decorator
 
     def run(self) -> None:
-        """Record that server execution was requested.
-
-    This helper keeps the test fixture deterministic and explicit.
-
-    Returns:
-        The returned None value used by the test fixture.
-"""
+        """Record that server execution was requested."""
         self.ran = True
 
 
@@ -414,11 +372,7 @@ class ServerTests(TestCase):
         calls: list[dict[str, object]] = []
 
         def handler(request):  # type: ignore[no-untyped-def]
-            """Capture the forwarded workflow inputs and return a stub result path.
-
-    Args:
-        request: The local execution request forwarded by the caller.
-"""
+            """Capture the forwarded workflow inputs and return a stub result path."""
             calls.append(dict(request.inputs))
             return {"results_dir": "/tmp/protein_evidence_results"}
 
@@ -435,6 +389,77 @@ class ServerTests(TestCase):
         self.assertTrue(executed["supported"])
         self.assertEqual(calls[0], {"genome": "data/braker3/reference/genome.fa", "protein_fastas": ["data/braker3/protein_data/fastas/proteins.fa"]})
         self.assertEqual(executed["execution_result"]["output_paths"], ["/tmp/protein_evidence_results"])
+
+    def test_run_local_recipe_impl_can_resume_from_prior_local_record(self) -> None:
+        """Run-local execution should forward a prior local run record into the executor."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result_dir = _repeat_filter_manifest_dir(tmp_path)
+            prepared = _prepare_run_recipe_impl(
+                "Run BUSCO quality assessment on the annotation.",
+                manifest_sources=(result_dir,),
+                runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                recipe_dir=tmp_path,
+            )
+            artifact_path = Path(str(prepared["artifact_path"]))
+            artifact = load_workflow_spec_artifact(artifact_path)
+            node = artifact.workflow_spec.nodes[0]
+
+            prior_run_dir = tmp_path / "prior_local_run"
+            prior_run_dir.mkdir()
+            prior_results_dir = tmp_path / "prior_busco_results"
+            prior_results_dir.mkdir()
+            (prior_results_dir / "run_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "workflow": "annotation_qc_busco",
+                        "outputs": {
+                            "results_dir": str(prior_results_dir),
+                        },
+                    },
+                    indent=2,
+                )
+            )
+            prior_record = LocalRunRecord(
+                schema_version=LOCAL_RUN_RECORD_SCHEMA_VERSION,
+                run_id="prior-local-run-001",
+                workflow_name=artifact.workflow_spec.name,
+                run_record_path=prior_run_dir / DEFAULT_LOCAL_RUN_RECORD_FILENAME,
+                created_at="2026-04-13T12:00:00Z",
+                execution_profile="local",
+                resolved_planner_inputs={},
+                binding_plan_target=artifact.binding_plan.target_name,
+                node_completion_state={node.name: True},
+                node_results=(
+                    LocalNodeExecutionResult(
+                        node_name=node.name,
+                        reference_name=node.reference_name,
+                        outputs={node.output_names[0]: str(prior_results_dir)},
+                    ),
+                ),
+                artifact_path=artifact_path,
+                final_outputs={binding.output_name: str(prior_results_dir) for binding in artifact.workflow_spec.final_output_bindings},
+                completed_at="2026-04-13T12:00:01Z",
+            )
+            save_local_run_record(prior_record)
+
+            handler_called = False
+
+            def handler(request):  # type: ignore[no-untyped-def]
+                """Fail if the resumed node is executed again."""
+                nonlocal handler_called
+                handler_called = True
+                return {"results_dir": "/tmp/unexpected"}
+
+            executed = _run_local_recipe_impl(
+                str(artifact_path),
+                handlers={SUPPORTED_BUSCO_WORKFLOW_NAME: handler},
+                resume_from_local_record=prior_run_dir,
+            )
+
+        self.assertTrue(executed["supported"])
+        self.assertFalse(handler_called)
+        self.assertEqual(executed["execution_result"]["final_outputs"]["results_dir"], str(prior_results_dir))
 
     def test_run_slurm_recipe_submits_saved_slurm_artifact(self) -> None:
         """Submit a frozen Slurm-profile recipe and persist a run record.
@@ -455,16 +480,7 @@ class ServerTests(TestCase):
             captured: dict[str, object] = {}
 
             def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-                """            Simulate sbatch submission and return a canned batch-job response.
-
-
-            Args:
-                args: The argument vector forwarded to the helper.
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `subprocess.CompletedProcess[str]` value used by the caller.
-            """
+                """Simulate sbatch submission with a canned batch-job response."""
                 captured["args"] = args
                 captured.update(kwargs)
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 24680\n", stderr="")
@@ -524,16 +540,7 @@ class ServerTests(TestCase):
             )
 
             def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-                """            Simulate sbatch submission and return a canned batch-job response.
-
-
-            Args:
-                args: The argument vector forwarded to the helper.
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `subprocess.CompletedProcess[str]` value used by the caller.
-            """
+                """Simulate sbatch submission with a canned batch-job response."""
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 44444\n", stderr="")
 
             submitted = _run_slurm_recipe_impl(
@@ -544,16 +551,7 @@ class ServerTests(TestCase):
             )
 
             def fake_scheduler(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-                """            Simulate scheduler inspection commands and return a canned state snapshot.
-
-
-            Args:
-                args: The argument vector forwarded to the helper.
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `subprocess.CompletedProcess[str]` value used by the caller.
-            """
+                """Simulate scheduler inspection commands with a canned state snapshot."""
                 if args[0] == "squeue":
                     return subprocess.CompletedProcess(args=args, returncode=0, stdout="PENDING\n", stderr="")
                 if args[0] == "scontrol":
@@ -596,16 +594,7 @@ class ServerTests(TestCase):
             )
 
             def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-                """            Simulate sbatch submission and return a canned batch-job response.
-
-
-            Args:
-                args: The argument vector forwarded to the helper.
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `subprocess.CompletedProcess[str]` value used by the caller.
-            """
+                """Simulate sbatch submission with a canned batch-job response."""
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 55555\n", stderr="")
 
             submitted = _run_slurm_recipe_impl(
@@ -617,16 +606,7 @@ class ServerTests(TestCase):
             calls: list[list[str]] = []
 
             def fake_scheduler(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-                """            Simulate scheduler inspection commands and return a canned state snapshot.
-
-
-            Args:
-                args: The argument vector forwarded to the helper.
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `subprocess.CompletedProcess[str]` value used by the caller.
-            """
+                """Simulate scheduler inspection commands with a canned state snapshot."""
                 calls.append(args)
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
 
@@ -659,16 +639,7 @@ class ServerTests(TestCase):
             job_ids = iter(("55601", "55602"))
 
             def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-                """            Simulate sbatch submission and return a canned batch-job response.
-
-
-            Args:
-                args: The argument vector forwarded to the helper.
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `subprocess.CompletedProcess[str]` value used by the caller.
-            """
+                """Simulate sbatch submission with a canned batch-job response."""
                 return subprocess.CompletedProcess(
                     args=args,
                     returncode=0,
@@ -725,16 +696,7 @@ class ServerTests(TestCase):
             )
 
             def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-                """            Simulate sbatch submission and return a canned batch-job response.
-
-
-            Args:
-                args: The argument vector forwarded to the helper.
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `subprocess.CompletedProcess[str]` value used by the caller.
-            """
+                """Simulate sbatch submission with a canned batch-job response."""
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 55701\n", stderr="")
 
             submitted = _run_slurm_recipe_impl(
@@ -820,16 +782,7 @@ class ServerTests(TestCase):
             )
 
             def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-                """            Simulate sbatch submission and return a canned batch-job response.
-
-
-            Args:
-                args: The argument vector forwarded to the helper.
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `subprocess.CompletedProcess[str]` value used by the caller.
-            """
+                """Simulate sbatch submission with a canned batch-job response."""
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 88888\n", stderr="")
 
             submitted = _run_slurm_recipe_impl(
@@ -951,15 +904,7 @@ class ServerTests(TestCase):
         captured: dict[str, object] = {}
 
         def fake_workflow_runner(workflow_name: str, inputs: dict[str, object]) -> dict[str, object]:
-            """Capture the workflow name and inputs forwarded by the compatibility path.
-
-    Args:
-        workflow_name: The registered workflow or task name forwarded by the caller.
-        inputs: The inputs forwarded to the workflow or task helper.
-
-    Returns:
-        The returned `dict[str, object]` value used by the caller.
-"""
+            """Capture workflow invocations from the compatibility path."""
             captured["workflow_name"] = workflow_name
             captured["inputs"] = inputs
             return {
@@ -1131,15 +1076,7 @@ class ServerTests(TestCase):
         captured: dict[str, object] = {}
 
         def fake_workflow_runner(workflow_name: str, inputs: dict[str, object]) -> dict[str, object]:
-            """Capture the workflow name and inputs forwarded by the compatibility path.
-
-    Args:
-        workflow_name: The registered workflow or task name forwarded by the caller.
-        inputs: The inputs forwarded to the workflow or task helper.
-
-    Returns:
-        The returned `dict[str, object]` value used by the caller.
-"""
+            """Capture workflow invocations from the compatibility path."""
             captured["workflow_name"] = workflow_name
             captured["inputs"] = inputs
             return {
@@ -1193,15 +1130,7 @@ class ServerTests(TestCase):
         captured: dict[str, object] = {}
 
         def fake_workflow_runner(workflow_name: str, inputs: dict[str, object]) -> dict[str, object]:
-            """Capture the workflow name and inputs forwarded by the compatibility path.
-
-    Args:
-        workflow_name: The registered workflow or task name forwarded by the caller.
-        inputs: The inputs forwarded to the workflow or task helper.
-
-    Returns:
-        The returned `dict[str, object]` value used by the caller.
-"""
+            """Capture workflow invocations from the compatibility path."""
             captured["workflow_name"] = workflow_name
             captured["inputs"] = inputs
             return {
@@ -1247,15 +1176,7 @@ class ServerTests(TestCase):
         captured: dict[str, object] = {}
 
         def fake_workflow_runner(workflow_name: str, inputs: dict[str, object]) -> dict[str, object]:
-            """Capture the workflow name and inputs forwarded by the compatibility path.
-
-    Args:
-        workflow_name: The registered workflow or task name forwarded by the caller.
-        inputs: The inputs forwarded to the workflow or task helper.
-
-    Returns:
-        The returned `dict[str, object]` value used by the caller.
-"""
+            """Capture workflow invocations from the compatibility path."""
             captured["workflow_name"] = workflow_name
             captured["inputs"] = inputs
             return {
@@ -1335,15 +1256,7 @@ class ServerTests(TestCase):
         captured: dict[str, object] = {}
 
         def fake_workflow_runner(workflow_name: str, inputs: dict[str, object]) -> dict[str, object]:
-            """Capture the workflow name and inputs forwarded by the compatibility path.
-
-    Args:
-        workflow_name: The registered workflow or task name forwarded by the caller.
-        inputs: The inputs forwarded to the workflow or task helper.
-
-    Returns:
-        The returned `dict[str, object]` value used by the caller.
-"""
+            """Capture workflow invocations from the compatibility path."""
             captured["workflow_name"] = workflow_name
             captured["inputs"] = inputs
             return {
@@ -1402,15 +1315,7 @@ class ServerTests(TestCase):
         captured: dict[str, object] = {}
 
         def fake_task_runner(task_name: str, inputs: dict[str, object]) -> dict[str, object]:
-            """Capture the task name and inputs forwarded by the compatibility path.
-
-    Args:
-        task_name: The registered workflow or task name forwarded by the caller.
-        inputs: The inputs forwarded to the workflow or task helper.
-
-    Returns:
-        The returned `dict[str, object]` value used by the caller.
-"""
+            """Capture task invocations from the compatibility path."""
             captured["task_name"] = task_name
             captured["inputs"] = inputs
             return {
@@ -1471,26 +1376,13 @@ class ServerTests(TestCase):
 """
 
             def download_sync(self) -> str:
-                """Return the synthetic BUSCO output path.
-
-    This helper keeps the test fixture deterministic and explicit.
-
-    Returns:
-        The returned str value used by the test fixture.
-"""
+                """Return the synthetic BUSCO output path."""
                 return "/tmp/busco_fixture_results"
 
         captured: dict[str, object] = {}
 
         def fake_busco_assess_proteins(**kwargs: object) -> _Result:
-            """Capture the BUSCO task inputs and return a synthetic result object.
-
-    Args:
-        kwargs: Keyword arguments forwarded to the helper.
-
-    Returns:
-        The returned `_Result` value used by the caller.
-"""
+            """Capture the BUSCO task inputs and return a synthetic result object."""
             captured.update(kwargs)
             return _Result()
 
@@ -1523,15 +1415,7 @@ class ServerTests(TestCase):
         )
 
         def fake_workflow_runner(workflow_name: str, inputs: dict[str, object]) -> dict[str, object]:
-            """Capture the workflow name and inputs forwarded by the compatibility path.
-
-    Args:
-        workflow_name: The registered workflow or task name forwarded by the caller.
-        inputs: The inputs forwarded to the workflow or task helper.
-
-    Returns:
-        The returned `dict[str, object]` value used by the caller.
-"""
+            """Capture workflow invocations from the compatibility path."""
             self.assertEqual(workflow_name, SUPPORTED_PROTEIN_WORKFLOW_NAME)
             return {
                 "supported": True,
@@ -1600,15 +1484,7 @@ class ServerTests(TestCase):
         )
 
         def fake_workflow_runner(workflow_name: str, inputs: dict[str, object]) -> dict[str, object]:
-            """Capture the workflow name and inputs forwarded by the compatibility path.
-
-    Args:
-        workflow_name: The registered workflow or task name forwarded by the caller.
-        inputs: The inputs forwarded to the workflow or task helper.
-
-    Returns:
-        The returned `dict[str, object]` value used by the caller.
-"""
+            """Capture workflow invocations from the compatibility path."""
             self.assertEqual(workflow_name, SUPPORTED_WORKFLOW_NAME)
             self.assertEqual(
                 inputs,
@@ -1661,15 +1537,7 @@ class ServerTests(TestCase):
         captured: dict[str, object] = {}
 
         def fake_run(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-            """Simulate an external command invocation and record the provided args.
-
-    Args:
-        args: The argument vector forwarded to the helper.
-        kwargs: Keyword arguments forwarded to the helper.
-
-    Returns:
-        The returned `subprocess.CompletedProcess[str]` value used by the caller.
-"""
+            """Simulate an external command invocation and record the provided args."""
             captured["args"] = args
             captured.update(kwargs)
             return subprocess.CompletedProcess(
@@ -1738,15 +1606,7 @@ class ServerTests(TestCase):
         captured: dict[str, object] = {}
 
         def fake_direct(workflow_name: str, inputs: dict[str, object]) -> dict[str, object]:
-            """Capture direct workflow invocation inputs for the compatibility path.
-
-    Args:
-        workflow_name: The registered workflow or task name forwarded by the caller.
-        inputs: The inputs forwarded to the workflow or task helper.
-
-    Returns:
-        The returned `dict[str, object]` value used by the caller.
-"""
+            """Capture direct workflow invocation inputs for the compatibility path."""
             captured["workflow_name"] = workflow_name
             captured["inputs"] = inputs
             return {

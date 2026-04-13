@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Launch the Trinity, STAR, and StringTie smoke locally or through Slurm,
+# creating the output tree when the scheduler path is available.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 SBATCH_SCRIPT="$SCRIPT_DIR/minimal_transcriptomics_smoke.sbatch"

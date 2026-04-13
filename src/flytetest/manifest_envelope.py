@@ -1,9 +1,9 @@
 """Shared helper for the common manifest envelope used by task modules.
 
-    This module standardizes the small envelope that most stage manifests share:
-    `stage`, `assumptions`, `inputs`, and `outputs`. Task modules can still add
-    their own fields after the envelope is built when they need more provenance or
-    task-specific metadata.
+This module standardizes the small envelope that most stage manifests share:
+`stage`, `assumptions`, `inputs`, and `outputs`. Task modules can still add
+their own fields after the envelope is built when they need more provenance or
+task-specific metadata.
 """
 
 from __future__ import annotations
@@ -23,16 +23,17 @@ def build_manifest_envelope(
     """Build the common manifest envelope used by task-level result bundles.
 
     Args:
-        stage: A value used by the helper.
-        assumptions: A value used by the helper.
-        inputs: The inputs forwarded to the workflow or task helper.
-        outputs: A value used by the helper.
-        code_reference: A value used by the helper.
-        tool_ref: A value used by the helper.
+        stage: Pipeline stage name recorded in the manifest.
+        assumptions: Ordered notes about assumptions that shaped the stage.
+        inputs: Inputs forwarded into the stage contract.
+        outputs: Outputs produced by the stage contract.
+        code_reference: Optional pointer to the source file or workflow note.
+        tool_ref: Optional name of the external tool that implemented the step.
 
     Returns:
-        The returned `dict[str, Any]` value used by the caller.
-"""
+        A canonical manifest dictionary with the shared stage envelope and any
+        optional provenance fields that were supplied.
+    """
     manifest: dict[str, Any] = {
         "stage": stage,
         "assumptions": list(assumptions),

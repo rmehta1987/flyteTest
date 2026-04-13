@@ -75,6 +75,37 @@ The local smoke scripts can still use `data/images/*.sif`.
   record, or a retryable run record path that you pass explicitly
 - `m18_retry_slurm_job.py`: retries the synthetic Milestone 18 run record and
   updates `.runtime/runs/latest_m18_retry_child_run_record.txt`
+- `run_m19_approval_gate_smoke.sh`: prepares a generated repeat-filter plus
+  BUSCO recipe, proves that unapproved Slurm submission is blocked, writes the
+  approval sidecar, and then submits the approved artifact with RCC defaults
+- `run_m19_approval_gate_smoke.py`: Python helper called by the approval smoke
+  wrapper; it freezes the generated artifact, checks the before-approval
+  rejection path, approves it, submits it, updates pointer files, and prints a
+  compact JSON summary
+- `run_m19_resume_slurm_smoke.sh`: prepares a single-node BUSCO Slurm recipe,
+  writes a matching prior local run record, and submits the recipe with
+  `resume_from_local_record` so the compute-node run can reuse the local result
+- `run_m19_resume_slurm_smoke.py`: Python helper called by the resume smoke
+  wrapper; it stages a small repeat-filter fixture, freezes the BUSCO recipe,
+  writes the prior local record, submits the Slurm run, updates pointer files,
+  and prints a compact JSON summary
+- `monitor_slurm_run_record.py`: generic Python helper that reconciles one
+  durable Slurm run record path and prints the lifecycle JSON result
+- `cancel_slurm_run_record.py`: generic Python helper that requests
+  cancellation for one durable Slurm run record path and prints the lifecycle
+  JSON result
+- `monitor_m19_approval_slurm_job.sh`: reconciles the latest Milestone 19
+  approval-gate Slurm run record, or a run record path that you pass
+  explicitly
+- `cancel_m19_approval_slurm_job.sh`: cancels the latest Milestone 19
+  approval-gate Slurm run record, or a run record path that you pass
+  explicitly
+- `monitor_m19_resume_slurm_job.sh`: reconciles the latest Milestone 19
+  local-to-Slurm resume run record, or a run record path that you pass
+  explicitly
+- `cancel_m19_resume_slurm_job.sh`: cancels the latest Milestone 19
+  local-to-Slurm resume run record, or a run record path that you pass
+  explicitly
 - `debug_protein_evidence_workflow.sbatch`: runs the protein-evidence workflow
   probe directly under Slurm and prints a full JSON traceback if the workflow
   fails
@@ -323,6 +354,64 @@ The top-level smoke does two related checks:
   record, marking the copy with synthetic `NODE_FAIL` scheduler state, and
   submitting a retry child. This avoids waiting for a real node failure and
   does not mutate the original submission record.
+
+Run the Milestone 19 approval-gate smoke:
+
+```bash
+bash scripts/rcc/run_m19_approval_gate_smoke.sh
+bash scripts/rcc/monitor_m19_approval_slurm_job.sh
+```
+
+The approval smoke uses the confirmed RCC defaults
+`FLYTETEST_SLURM_ACCOUNT=rcc-staff`, `FLYTETEST_SLURM_QUEUE=caslake`,
+`FLYTETEST_SLURM_CPU=2`, `FLYTETEST_SLURM_MEMORY=8Gi`, and
+`FLYTETEST_SLURM_WALLTIME=00:15:00` unless you override them before launching
+the wrapper.
+
+The helper does three explicit checks in order:
+
+- It freezes a generated repeat-filter plus BUSCO `WorkflowSpec` artifact and
+  verifies that `run_slurm_recipe` rejects the artifact before approval.
+- It writes the durable `recipe_approval.json` sidecar with
+  `approve_composed_recipe` and resubmits the same artifact.
+- It writes the accepted run-record path to
+  `.runtime/runs/latest_m19_approval_run_record.txt`, the saved artifact path
+  to `.runtime/runs/latest_m19_approval_artifact.txt`, and the approval-record
+  path to `.runtime/runs/latest_m19_approval_record.txt`.
+
+This smoke is intentionally a gate-and-submit validation, not a claim that the
+generated repeat-filter plus BUSCO workflow already runs end to end on the
+current local handler surface. When you do not supply
+`FLYTETEST_APPROVAL_REPEATMASKER_OUT`, the helper keeps the generated artifact
+reviewable and still validates the approval boundary, but the submitted job may
+later fail for the composed-stage runtime reasons called out in the JSON
+summary.
+
+Run the Milestone 19 local-to-Slurm resume smoke:
+
+```bash
+bash scripts/rcc/run_m19_resume_slurm_smoke.sh
+bash scripts/rcc/monitor_m19_resume_slurm_job.sh
+```
+
+The resume smoke also uses the confirmed RCC defaults
+`FLYTETEST_SLURM_ACCOUNT=rcc-staff`, `FLYTETEST_SLURM_QUEUE=caslake`,
+`FLYTETEST_SLURM_CPU=2`, `FLYTETEST_SLURM_MEMORY=8Gi`, and
+`FLYTETEST_SLURM_WALLTIME=00:10:00` unless you override them.
+
+This helper stages a tiny repeat-filter manifest bundle under
+`results/m19_resume_smoke/repeat_filter_results/`, freezes a single-node BUSCO
+Slurm recipe, writes a matching prior `LocalRunRecord`, and submits the recipe
+with `resume_from_local_record` so the generated Slurm script reuses the prior
+local BUSCO result on the compute node. The helper updates:
+
+- `.runtime/runs/latest_m19_resume_artifact.txt`
+- `.runtime/runs/latest_m19_resume_local_run_record.txt`
+- `.runtime/runs/latest_m19_resume_slurm_run_record.txt`
+
+Unlike the approval smoke, the resume smoke is expected to complete as a real
+compute-node execution path because the job reuses the prior local BUSCO node
+result instead of rerunning BUSCO.
 
 Run the protein-evidence workflow probe directly on Slurm:
 

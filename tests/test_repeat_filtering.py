@@ -36,11 +36,11 @@ def _artifact_dir(path: Path) -> Dir:
     """Create a local Flyte directory wrapper from a filesystem path.
 
     Args:
-        path: A filesystem path used by the helper.
+        path: Directory path staged for the Flyte stub wrapper.
 
     Returns:
-        The returned `Dir` value used by the caller.
-"""
+        Flyte directory stub pointing at the supplied path.
+    """
     return Dir(path=str(path))
 
 
@@ -48,11 +48,11 @@ def _read_json(path: Path) -> dict[str, object]:
     """Read a manifest file into a dictionary for assertions.
 
     Args:
-        path: A filesystem path used by the helper.
+        path: Manifest file to parse for the repeat-filtering tests.
 
     Returns:
-        The returned `dict[str, object]` value used by the caller.
-"""
+        Parsed JSON payload used by the repeat-filtering tests.
+    """
     return json.loads(path.read_text())
 
 
@@ -60,12 +60,12 @@ def _write_json(path: Path, payload: dict[str, object]) -> Path:
     """Write one JSON payload with indentation for readable failures.
 
     Args:
-        path: A filesystem path used by the helper.
-        payload: The structured payload to serialize or inspect.
+        path: Destination for the synthetic manifest file.
+        payload: Structured payload written into the manifest.
 
     Returns:
-        The returned `Path` value used by the caller.
-"""
+        The JSON file path, which is convenient for fixture chaining.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2))
     return path
@@ -75,12 +75,12 @@ def _write_gff3(path: Path, records: list[str]) -> Path:
     """Write a minimal GFF3 file with a canonical header.
 
     Args:
-        path: A filesystem path used by the helper.
-        records: The records written into the synthetic file.
+        path: Destination for the synthetic GFF3 file.
+        records: Annotation records written into the fixture.
 
     Returns:
-        The returned `Path` value used by the caller.
-"""
+        The GFF3 file path, which the tests hand back into the workflow.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("##gff-version 3\n" + "\n".join(records) + "\n")
     return path
@@ -90,12 +90,12 @@ def _write_fasta(path: Path, records: list[tuple[str, str]]) -> Path:
     """Write a minimal FASTA file from `(header, sequence)` pairs.
 
     Args:
-        path: A filesystem path used by the helper.
-        records: The records written into the synthetic file.
+        path: Destination for the synthetic FASTA file.
+        records: Header and sequence pairs staged for the tests.
 
     Returns:
-        The returned `Path` value used by the caller.
-"""
+        The FASTA file path, which the tests hand back into the workflow.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     lines: list[str] = []
     for header, sequence in records:
@@ -111,42 +111,23 @@ def _fixed_datetime() -> type:
     This helper keeps the test fixture deterministic and explicit.
 
     Returns:
-        The returned type value used by the test fixture.
-"""
+        The shim class used to monkeypatch `datetime`.
+    """
 
     # Keep the synthetic result-directory name stable for manifest assertions.
     class _Stamp:
-        """Fake datetime stamp that always returns the same test timestamp.
-
-    This test class keeps the current contract explicit and documents the current boundary behavior.
-"""
+        """Fake datetime stamp that always returns the same test timestamp."""
 
         def strftime(self, fmt: str) -> str:
-            """Return the fixed timestamp string expected by the assertions.
-
-    Args:
-        fmt: A value used by the helper.
-
-    Returns:
-        The returned `str` value used by the caller.
-"""
+            """Return the fixed timestamp string expected by the assertions."""
             return "20260403_120000"
 
     class _FixedDatetime:
-        """Shim object that mimics the subset of `datetime` used by the code.
-
-    This test class keeps the current contract explicit and documents the current boundary behavior.
-"""
+        """Shim object that mimics the subset of `datetime` used by the code."""
 
         @classmethod
         def now(cls) -> _Stamp:
-            """Return the fixed timestamp stub used by the synthetic tests.
-
-    This helper keeps the test fixture deterministic and explicit.
-
-    Returns:
-        The returned _Stamp value used by the test fixture.
-"""
+            """Return the fixed timestamp stub used by the synthetic tests."""
             return _Stamp()
 
     return _FixedDatetime
@@ -158,8 +139,8 @@ def _annotation_records() -> list[str]:
     This helper keeps the test fixture deterministic and explicit.
 
     Returns:
-        The returned list[str] value used by the test fixture.
-"""
+        The synthetic annotation records used across the repeat-filter tests.
+    """
     return [
         "chr1\tPASA\tgene\t1\t100\t.\t+\t.\tID=evm.model.1",
         "chr1\tPASA\tmRNA\t1\t100\t.\t+\t.\tID=evm.TU.1;Parent=evm.model.1",
@@ -173,11 +154,11 @@ def _create_pasa_update_results(tmp_path: Path) -> Path:
     """Create a minimal PASA-update bundle with the fields repeat filtering consumes.
 
     Args:
-        tmp_path: A filesystem path used by the helper.
+        tmp_path: Temporary root used to stage the bundle.
 
     Returns:
-        The returned `Path` value used by the caller.
-"""
+        The staged PASA-update result directory.
+    """
     results_dir = tmp_path / "pasa_update_results"
     staged_reference = results_dir / "staged_inputs" / "reference"
     staged_reference.mkdir(parents=True, exist_ok=True)
@@ -218,16 +199,7 @@ class RepeatFilteringTaskTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
-                """            Test double for `run_tool` that writes a minimal RepeatMasker GFF3 conversion output.
-
-
-            Args:
-                cmd: The command arguments or command name passed to the helper.
-                sif: The container image reference used for execution.
-                bind_paths: The filesystem paths bound into the execution environment.
-                cwd: The working directory for the helper execution.
-                stdout_path: A filesystem path used by the helper.
-            """
+                """Write the minimal RepeatMasker GFF3 conversion output."""
                 self.assertIsNotNone(stdout_path)
                 stdout_path.write_text(
                     "##gff-version 3\n"
@@ -265,16 +237,7 @@ class RepeatFilteringTaskTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
-                """            Test double for `run_tool` that writes the minimal funannotate-cleaned outputs.
-
-
-            Args:
-                cmd: The command arguments or command name passed to the helper.
-                sif: The container image reference used for execution.
-                bind_paths: The filesystem paths bound into the execution environment.
-                cwd: The working directory for the helper execution.
-                stdout_path: A filesystem path used by the helper.
-            """
+                """Write the minimal funannotate-cleaned outputs."""
                 self.assertIsNotNone(cwd)
                 _write_gff3(cwd / "annotation.clean.gff3", _annotation_records()[1:])
                 (cwd / "genome.repeats.to.remove.gff").write_text(
@@ -346,16 +309,7 @@ class RepeatFilteringWorkflowTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
-                """            Test double for `run_tool` that dispatches the repeat-filter subcommands by signature.
-
-
-            Args:
-                cmd: The command arguments or command name passed to the helper.
-                sif: The container image reference used for execution.
-                bind_paths: The filesystem paths bound into the execution environment.
-                cwd: The working directory for the helper execution.
-                stdout_path: A filesystem path used by the helper.
-            """
+                """Dispatch the repeat-filter subcommands by signature."""
                 if stdout_path is not None and "rmOutToGFF3.pl" in cmd[1]:
                     stdout_path.write_text(
                         "##gff-version 3\n"

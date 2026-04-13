@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Verify the repo-local smoke images and shared RCC defaults expected by the
+# wrapper scripts.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 PROJECT_IMAGE_ROOT="/project/rcc/hyadav/genomes/software"

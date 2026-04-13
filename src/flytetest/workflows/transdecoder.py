@@ -1,10 +1,10 @@
 """TransDecoder workflow entrypoint for PASA-derived coding prediction.
 
-    The workflow composition follows `docs/braker3_evm_notes.md`, while the
-    TransDecoder task boundary and command expectations follow
-    `docs/tool_refs/transdecoder.md`. This module resolves PASA assemblies from
-    the current results bundle, runs the TransDecoder boundary, and collects
-    stable downstream-ready outputs.
+The workflow composition follows `docs/braker3_evm_notes.md`, while the
+TransDecoder task boundary and command expectations follow
+`docs/tool_refs/transdecoder.md`. This module resolves PASA assemblies from the
+current results bundle, runs the TransDecoder boundary, and collects stable
+downstream-ready outputs.
 """
 
 from __future__ import annotations
@@ -31,17 +31,20 @@ def transdecoder_from_pasa(
     transdecoder_min_protein_length: int = 100,
     transdecoder_genome_orf_script: str = "cdna_alignment_orf_to_genome_orf.pl",
 ) -> Dir:
-    """Predict coding sequences and open reading frames from PASA transcript assemblies.
+    """Resolve PASA assemblies, run TransDecoder, and collect the resulting bundle.
 
     Args:
-        pasa_results: A directory path used by the helper.
-        transdecoder_sif: A value used by the helper.
-        transdecoder_min_protein_length: A value used by the helper.
-        transdecoder_genome_orf_script: A value used by the helper.
+        pasa_results: PASA results directory produced by the transcript-evidence
+            to PASA branch.
+        transdecoder_sif: Optional container image for the TransDecoder runtime.
+        transdecoder_min_protein_length: Minimum ORF length passed to the
+            TransDecoder training step.
+        transdecoder_genome_orf_script: Genome-coordinate lift-over script used
+            after TransDecoder prediction.
 
     Returns:
-        The returned `Dir` value used by the caller.
-"""
+        Manifest-bearing bundle for the PASA-derived TransDecoder predictions.
+    """
     pasa_results_path = require_path(Path(pasa_results.download_sync()), "PASA results directory")
     pasa_dir = require_path(
         pasa_results_path / "pasa",

@@ -38,6 +38,81 @@ Entry template:
 
 ## Unreleased
 
+### Milestone 19 HPC Cluster Validation Helpers
+
+- [x] 2026-04-13 threaded `resume_from_local_record` into compute-node Slurm
+  execution: `_run_local_recipe_impl()` now accepts an optional prior local
+  run-record path, and generated Slurm scripts call that helper with the
+  frozen local-resume record when one was provided at submission time, so the
+  local-to-Slurm resume path now affects actual job execution instead of only
+  durable submission metadata
+- [x] 2026-04-13 added RCC-first Milestone 19 cluster-validation helpers under
+  `scripts/rcc/` for two scenarios: approval-gated composed recipe submission
+  (`run_m19_approval_gate_smoke.sh`) and local-to-Slurm resume reuse
+  (`run_m19_resume_slurm_smoke.sh`); added generic monitor/cancel Python
+  helpers plus scenario-specific monitor/cancel wrappers and documented the new
+  pointer files in `scripts/rcc/README.md`
+- [x] 2026-04-13 kept the approval-gate smoke honest in the docs and helper
+  output: it proves rejection before approval and accepted Slurm submission
+  after approval, but does not claim end-to-end success for the current
+  generated repeat-filter plus BUSCO workflow on the local handler surface
+
+### Documentation Sweep Planning
+
+- [x] 2026-04-12 moved the documentation sweep notes into
+  `docs/realtime_refactor_plans/2026-04-12-documentation-sweep-plan.md`;
+  renamed the misspelled scratch file into a durable plan and split the sweep
+  into review-sized batches with per-batch validation rules
+- [x] 2026-04-13 refreshed Batch 0 inventory in the documentation sweep plan:
+  re-ran the helper-boilerplate searches, rechecked `spec_executor.py` for
+  LocalNodeExecutionRequest-style copy-paste docstrings, verified no remaining
+  module-docstring indentation issues in `src/` or `tests/`, and kept the pass
+  documentation-only
+- [x] 2026-04-13 completed documentation sweep Batches 1 and 2 in
+  `src/flytetest/spec_executor.py`: replaced the copied
+  LocalNodeExecutionRequest-style class/dataclass docstrings, removed generic
+  helper Args/Returns boilerplate, and validated with `python3 -m compileall`,
+  `.venv/bin/python -m pytest tests/test_spec_executor.py`, targeted `rg`
+  checks, and `git diff --check -- src/flytetest/spec_executor.py`; the bare
+  `python` command is not available in this shell
+- [x] 2026-04-13 completed documentation sweep Batch 3 across shared
+  infrastructure modules: cleaned planner, manifest, MCP contract, config,
+  GFF3, asset, spec, artifact, and server helper docstrings without changing
+  production behavior; worker validations covered `python3 -m compileall`,
+  targeted `tests/test_specs.py`, `tests/test_planning.py`,
+  `tests/test_server.py`, small manifest/config/GFF3/server test selections,
+  targeted boilerplate `rg` checks, and path-scoped `git diff --check`
+- [x] 2026-04-13 completed documentation sweep Batches 4, 5, and 6 across the
+  biological task/workflow families: PASA, consensus, repeat filtering,
+  protein evidence, transcript evidence, TransDecoder, AGAT, EggNOG,
+  annotation, functional annotation, and RNA-seq QC/quant docstrings now
+  describe the existing stage boundaries instead of helper boilerplate; worker
+  validations passed per-family `python3 -m compileall`, targeted PASA,
+  consensus/filtering, protein-evidence, transcript/TransDecoder, and
+  downstream annotation tests, targeted `rg` checks, and path-scoped
+  `git diff --check`
+- [x] 2026-04-13 completed documentation sweep Batch 7 test cleanup: removed
+  boilerplate test helper docstrings and trimmed nested test-double docstrings
+  across server, spec executor, biological stage, planning/spec, and Flyte stub
+  tests while leaving assertions and fixture behavior unchanged; worker
+  validations passed compileall, the touched test-file pytest targets,
+  targeted `rg` checks, and path-scoped `git diff --check`
+- [x] 2026-04-13 completed documentation sweep Batch 8 shell comment audit in
+  `scripts/rcc/`: added missing file-level purpose comments to RCC smoke,
+  fixture, image, Slurm, and wrapper scripts without changing commands, flags,
+  variables, or control flow; validation passed `bash -n` for changed shell
+  entrypoints, `git diff --check -- scripts/rcc`, and a comment-only diff
+  inspection
+- [x] 2026-04-13 completed documentation sweep Batch 9 final validation:
+  repo-wide boilerplate `rg` checks are clean, `spec_executor.py` has only the
+  allowed `LocalNodeExecutionRequest` occurrence of the copied phrase, the
+  module-docstring indentation scan found no first-docstring indentation
+  issues, `python3 -m compileall src tests` passed, `git diff --check` passed,
+  and the consolidated touched-file pytest target passed with 179 tests; the
+  full suite still has one persistent failure in untouched
+  `tests/test_slurm_async_monitor.py::TestSlurmPollLoop::test_loop_survives_reconcile_error`
+  where the async retry loop only records one call inside the test timeout
+
 ### Milestone 19 Phase D: Deterministic Cache-Key Normalization
 
 - [x] 2026-04-12 added `HANDLER_SCHEMA_VERSION = "1"` constant in

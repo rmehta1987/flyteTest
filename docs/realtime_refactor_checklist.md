@@ -19,6 +19,31 @@ guardrails, and completion state.
 Detailed per-slice implementation plans should live separately under
 `docs/realtime_refactor_plans/`.
 
+## When To Use This Checklist
+
+Use this checklist when the work is about platform architecture, typed recipe
+planning, saved-spec execution, resolver behavior, MCP execution boundaries,
+compatibility guardrails, Slurm execution semantics, or the phased
+`realtime` migration described in `DESIGN.md`.
+
+Typical examples:
+
+- adding or revising `WorkflowSpec`, `BindingPlan`, or saved recipe behavior
+- changing MCP planning or execution surfaces
+- changing durable run records, Slurm lifecycle handling, resumability, or
+  approval gating
+- tracking architecture milestones and plan-history documents under
+  `docs/realtime_refactor_plans/`
+
+Do not use this checklist as the primary gate for notes-faithful biology or
+annotation-pipeline completion. For work governed by
+`docs/braker3_evm_notes.md`, use `docs/refactor_completion_checklist.md`
+instead.
+
+Short guide:
+
+- checklist guide: `docs/checklist_guide.md`
+
 ## Completion Rule
 
 The `realtime` architecture refactor is only complete when:

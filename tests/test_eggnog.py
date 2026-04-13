@@ -35,11 +35,11 @@ def _read_json(path: Path) -> dict[str, object]:
     """Read one JSON manifest into a dictionary for assertions.
 
     Args:
-        path: A filesystem path used by the helper.
+        path: Manifest file to parse for the EggNOG tests.
 
     Returns:
-        The returned `dict[str, object]` value used by the caller.
-"""
+        Parsed JSON payload used by the functional-annotation tests.
+    """
     return json.loads(path.read_text())
 
 
@@ -47,12 +47,12 @@ def _write_json(path: Path, payload: dict[str, object]) -> Path:
     """Write one JSON payload with indentation for readable failures.
 
     Args:
-        path: A filesystem path used by the helper.
-        payload: The structured payload to serialize or inspect.
+        path: Destination for the synthetic manifest file.
+        payload: Structured payload written into the manifest.
 
     Returns:
-        The returned `Path` value used by the caller.
-"""
+        The JSON file path, which is convenient for fixture chaining.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2))
     return path
@@ -62,12 +62,12 @@ def _write_fasta(path: Path, records: list[tuple[str, str]]) -> Path:
     """Write a minimal FASTA file from `(header, sequence)` pairs.
 
     Args:
-        path: A filesystem path used by the helper.
-        records: The records written into the synthetic file.
+        path: Destination for the synthetic FASTA file.
+        records: Header and sequence pairs staged for EggNOG.
 
     Returns:
-        The returned `Path` value used by the caller.
-"""
+        The FASTA file path, which the tests pass back into the task.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     lines: list[str] = []
     for header, sequence in records:
@@ -81,11 +81,11 @@ def _write_gff3(path: Path) -> Path:
     """Write a small repeat-filtered GFF3 with transcript-to-gene boundaries.
 
     Args:
-        path: A filesystem path used by the helper.
+        path: Destination for the synthetic GFF3 file.
 
     Returns:
-        The returned `Path` value used by the caller.
-"""
+        The GFF3 file path, which the tests pass back into the workflow.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         "\n".join(
@@ -108,11 +108,11 @@ def _create_repeat_filter_results(tmp_path: Path) -> Path:
     """Create a minimal repeat-filter bundle with the final protein and GFF3 boundaries.
 
     Args:
-        tmp_path: A filesystem path used by the helper.
+        tmp_path: Temporary root used to stage the bundle.
 
     Returns:
-        The returned `Path` value used by the caller.
-"""
+        The staged repeat-filter result directory.
+    """
     results_dir = tmp_path / "repeat_filter_results"
     proteins_fasta = _write_fasta(
         results_dir / "all_repeats_removed.proteins.fa",
@@ -138,42 +138,23 @@ def _fixed_datetime() -> type:
     This helper keeps the test fixture deterministic and explicit.
 
     Returns:
-        The returned type value used by the test fixture.
-"""
+        The shim class used to monkeypatch `datetime`.
+    """
 
     # Keep the synthetic result-directory name stable for manifest assertions.
     class _Stamp:
-        """Fake datetime stamp that always returns the same test timestamp.
-
-    This test class keeps the current contract explicit and documents the current boundary behavior.
-"""
+        """Fake datetime stamp that always returns the same test timestamp."""
 
         def strftime(self, fmt: str) -> str:
-            """Return the fixed timestamp string expected by the assertions.
-
-    Args:
-        fmt: A value used by the helper.
-
-    Returns:
-        The returned `str` value used by the caller.
-"""
+            """Return the fixed timestamp string expected by the assertions."""
             return "20260404_150000"
 
     class _FixedDatetime:
-        """Shim object that mimics the subset of `datetime` used by the code.
-
-    This test class keeps the current contract explicit and documents the current boundary behavior.
-"""
+        """Shim object that mimics the subset of `datetime` used by the code."""
 
         @classmethod
         def now(cls) -> _Stamp:
-            """Return the fixed timestamp stub used by the synthetic tests.
-
-    This helper keeps the test fixture deterministic and explicit.
-
-    Returns:
-        The returned _Stamp value used by the test fixture.
-"""
+            """Return the fixed timestamp stub used by the synthetic tests."""
             return _Stamp()
 
     return _FixedDatetime
@@ -204,16 +185,7 @@ class EggnogTaskTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
-                """            Test double for `run_tool` that emits the minimal EggNOG outputs the task collects.
-
-
-            Args:
-                cmd: The command arguments or command name passed to the helper.
-                sif: The container image reference used for execution.
-                bind_paths: The filesystem paths bound into the execution environment.
-                cwd: The working directory for the helper execution.
-                stdout_path: A filesystem path used by the helper.
-            """
+                """Emit the minimal EggNOG outputs the task collects."""
                 captured["cmd"] = cmd
                 self.assertIsNotNone(cwd)
                 work_dir = Path(cwd)
@@ -307,16 +279,7 @@ class EggnogWorkflowTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
-                """            Test double for `run_tool` that emits the minimal EggNOG outputs the workflow collects.
-
-
-            Args:
-                cmd: The command arguments or command name passed to the helper.
-                sif: The container image reference used for execution.
-                bind_paths: The filesystem paths bound into the execution environment.
-                cwd: The working directory for the helper execution.
-                stdout_path: A filesystem path used by the helper.
-            """
+                """Emit the minimal EggNOG outputs the workflow collects."""
                 self.assertIsNotNone(cwd)
                 work_dir = Path(cwd)
                 (work_dir / "eggnog_output.emapper.annotations").write_text(

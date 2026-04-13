@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Run StringTie against the merged RNA-seq fixture, preferring the cluster
+# binary and falling back to the repo-local image.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/rcc/common.sh
 source "$SCRIPT_DIR/common.sh"

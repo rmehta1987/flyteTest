@@ -45,11 +45,7 @@ from flytetest.spec_executor import (
 
 
 def _artifact_with_runtime_bindings(tmp_path: Path):
-    """Build one generated-spec artifact with enough runtime values to run locally.
-
-    Args:
-        tmp_path: A filesystem path used by the helper.
-"""
+    """Build one generated-spec artifact with enough runtime values to run locally."""
     reference_genome = ReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa"))
     consensus_annotation = ConsensusAnnotation(
         reference_genome=reference_genome,
@@ -71,11 +67,7 @@ def _artifact_with_runtime_bindings(tmp_path: Path):
 
 
 def _busco_artifact_with_runtime_bindings(tmp_path: Path):
-    """Build one BUSCO artifact with a manifest-backed quality target and runtime settings.
-
-    Args:
-        tmp_path: A filesystem path used by the helper.
-"""
+    """Build one BUSCO artifact with a manifest-backed quality target and runtime settings."""
     result_dir = tmp_path / "repeat_filter_results"
     result_dir.mkdir()
     (result_dir / "run_manifest.json").write_text(
@@ -114,11 +106,7 @@ def _busco_artifact_with_runtime_bindings(tmp_path: Path):
 
 
 def _slurm_busco_artifact_with_runtime_bindings(tmp_path: Path):
-    """Build one Slurm-profile BUSCO artifact for submission tests.
-
-    Args:
-        tmp_path: A filesystem path used by the helper.
-"""
+    """Build one Slurm-profile BUSCO artifact for submission tests."""
     result_dir = tmp_path / "repeat_filter_results"
     result_dir.mkdir()
     (result_dir / "run_manifest.json").write_text(
@@ -151,13 +139,7 @@ def _quality_target_artifact(
     *,
     runtime_bindings: dict[str, object] | None = None,
 ):
-    """Build a direct registered-workflow artifact from one quality target.
-
-    Args:
-        prompt: A value used by the helper.
-        target: A filesystem path used by the helper.
-        runtime_bindings: A value used by the helper.
-"""
+    """Build a direct registered-workflow artifact from one quality target."""
     typed_plan = plan_typed_request(
         prompt,
         explicit_bindings={"QualityAssessmentTarget": target.to_dict()},
@@ -183,15 +165,7 @@ class SpecExecutorTests(TestCase):
             calls: list[tuple[str, dict[str, object]]] = []
 
             def busco_handler(request: LocalNodeExecutionRequest) -> dict[str, Path]:
-                """            Capture the BUSCO node inputs and stage a synthetic results directory.
-
-
-            Args:
-                request: The local execution request forwarded by the caller.
-
-            Returns:
-                The returned `dict[str, Path]` value used by the caller.
-            """
+                """Capture the BUSCO node inputs and stage a synthetic results directory."""
                 calls.append((request.node.reference_name, dict(request.inputs)))
                 self.assertEqual(request.inputs["repeat_filter_results"], tmp_path / "repeat_filter_results")
                 self.assertEqual(request.inputs["busco_lineages_text"], "embryophyta_odb10")
@@ -259,15 +233,7 @@ class SpecExecutorTests(TestCase):
             calls: list[dict[str, object]] = []
 
             def eggnog_handler(request: LocalNodeExecutionRequest) -> dict[str, Path]:
-                """            Capture the EggNOG node inputs and stage a synthetic results directory.
-
-
-            Args:
-                request: The local execution request forwarded by the caller.
-
-            Returns:
-                The returned `dict[str, Path]` value used by the caller.
-            """
+                """Capture the EggNOG node inputs and stage a synthetic results directory."""
                 calls.append(dict(request.inputs))
                 result_dir = tmp_path / "eggnog_results"
                 result_dir.mkdir()
@@ -327,15 +293,7 @@ class SpecExecutorTests(TestCase):
             calls: list[tuple[str, dict[str, object]]] = []
 
             def handler(request: LocalNodeExecutionRequest) -> dict[str, Path]:
-                """            Capture the AGAT node inputs and stage a synthetic results directory.
-
-
-            Args:
-                request: The local execution request forwarded by the caller.
-
-            Returns:
-                The returned `dict[str, Path]` value used by the caller.
-            """
+                """Capture the AGAT node inputs and stage a synthetic results directory."""
                 calls.append((request.node.reference_name, dict(request.inputs)))
                 result_dir = tmp_path / f"{request.node.reference_name}_results"
                 result_dir.mkdir()
@@ -382,15 +340,7 @@ class SpecExecutorTests(TestCase):
             calls: list[tuple[str, dict[str, object]]] = []
 
             def repeat_filtering_handler(request: LocalNodeExecutionRequest) -> dict[str, Path]:
-                """            Capture the repeat-filtering node inputs and stage a synthetic results directory.
-
-
-            Args:
-                request: The local execution request forwarded by the caller.
-
-            Returns:
-                The returned `dict[str, Path]` value used by the caller.
-            """
+                """Capture the repeat-filtering node inputs and stage a synthetic results directory."""
                 calls.append((request.node.reference_name, dict(request.inputs)))
                 self.assertEqual(request.inputs["pasa_update_results"]["annotation_gff3_path"], "results/evm/evm.out.gff3")
                 self.assertEqual(request.inputs["repeatmasker_out"], str(tmp_path / "repeatmasker.out"))
@@ -409,15 +359,7 @@ class SpecExecutorTests(TestCase):
                 return {"results_dir": result_dir}
 
             def busco_handler(request: LocalNodeExecutionRequest) -> dict[str, Path]:
-                """            Capture the BUSCO node inputs and stage a synthetic results directory.
-
-
-            Args:
-                request: The local execution request forwarded by the caller.
-
-            Returns:
-                The returned `dict[str, Path]` value used by the caller.
-            """
+                """Capture the BUSCO node inputs and stage a synthetic results directory."""
                 calls.append((request.node.reference_name, dict(request.inputs)))
                 self.assertEqual(request.inputs["repeat_filter_results"], tmp_path / "repeat_filter_results")
                 self.assertEqual(request.inputs["busco_lineages_text"], "embryophyta_odb10")
@@ -587,16 +529,7 @@ class SpecExecutorTests(TestCase):
             captured: dict[str, object] = {}
 
             def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-                """            Simulate sbatch submission and return a canned batch-job response.
-
-
-            Args:
-                args: The argument vector forwarded to the helper.
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `subprocess.CompletedProcess[str]` value used by the caller.
-            """
+                """Simulate sbatch submission with a canned batch-job response."""
                 captured["args"] = args
                 captured.update(kwargs)
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 98765\n", stderr="")
@@ -639,31 +572,13 @@ class SpecExecutorTests(TestCase):
             artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
 
             def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-                """            Simulate sbatch submission and return a canned batch-job response.
-
-
-            Args:
-                args: The argument vector forwarded to the helper.
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `subprocess.CompletedProcess[str]` value used by the caller.
-            """
+                """Simulate sbatch submission with a canned batch-job response."""
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 11111\n", stderr="")
 
             scheduler_calls: list[list[str]] = []
 
             def fake_scheduler(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-                """            Simulate scheduler inspection commands and return a canned state snapshot.
-
-
-            Args:
-                args: The argument vector forwarded to the helper.
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `subprocess.CompletedProcess[str]` value used by the caller.
-            """
+                """Simulate scheduler inspection commands with a canned state snapshot."""
                 scheduler_calls.append(args)
                 if args[0] == "squeue":
                     return subprocess.CompletedProcess(args=args, returncode=0, stdout="RUNNING\n", stderr="")
@@ -709,29 +624,11 @@ class SpecExecutorTests(TestCase):
             artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
 
             def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-                """            Simulate sbatch submission and return a canned batch-job response.
-
-
-            Args:
-                args: The argument vector forwarded to the helper.
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `subprocess.CompletedProcess[str]` value used by the caller.
-            """
+                """Simulate sbatch submission with a canned batch-job response."""
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 22222\n", stderr="")
 
             def fake_scheduler(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-                """            Simulate scheduler inspection commands and return a canned state snapshot.
-
-
-            Args:
-                args: The argument vector forwarded to the helper.
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `subprocess.CompletedProcess[str]` value used by the caller.
-            """
+                """Simulate scheduler inspection commands with a canned state snapshot."""
                 if args[0] == "squeue":
                     return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
                 if args[0] == "scontrol":
@@ -767,31 +664,13 @@ class SpecExecutorTests(TestCase):
             artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
 
             def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-                """            Simulate sbatch submission and return a canned batch-job response.
-
-
-            Args:
-                args: The argument vector forwarded to the helper.
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `subprocess.CompletedProcess[str]` value used by the caller.
-            """
+                """Simulate sbatch submission with a canned batch-job response."""
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 33333\n", stderr="")
 
             scheduler_calls: list[list[str]] = []
 
             def fake_scheduler(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-                """            Simulate scheduler inspection commands and return a canned state snapshot.
-
-
-            Args:
-                args: The argument vector forwarded to the helper.
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `subprocess.CompletedProcess[str]` value used by the caller.
-            """
+                """Simulate scheduler inspection commands with a canned state snapshot."""
                 scheduler_calls.append(args)
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
 
@@ -824,16 +703,7 @@ class SpecExecutorTests(TestCase):
             job_ids = iter(("90001", "90002"))
 
             def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-                """            Simulate sbatch submission and return a canned batch-job response.
-
-
-            Args:
-                args: The argument vector forwarded to the helper.
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `subprocess.CompletedProcess[str]` value used by the caller.
-            """
+                """Simulate sbatch submission with a canned batch-job response."""
                 return subprocess.CompletedProcess(
                     args=args,
                     returncode=0,
@@ -886,16 +756,7 @@ class SpecExecutorTests(TestCase):
             artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
 
             def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-                """            Simulate sbatch submission and return a canned batch-job response.
-
-
-            Args:
-                args: The argument vector forwarded to the helper.
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `subprocess.CompletedProcess[str]` value used by the caller.
-            """
+                """Simulate sbatch submission with a canned batch-job response."""
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 90100\n", stderr="")
 
             executor = SlurmWorkflowSpecExecutor(
@@ -933,16 +794,7 @@ class SpecExecutorTests(TestCase):
             job_ids = iter(("90201", "90202"))
 
             def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-                """            Simulate sbatch submission and return a canned batch-job response.
-
-
-            Args:
-                args: The argument vector forwarded to the helper.
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `subprocess.CompletedProcess[str]` value used by the caller.
-            """
+                """Simulate sbatch submission with a canned batch-job response."""
                 return subprocess.CompletedProcess(
                     args=args,
                     returncode=0,
@@ -1018,16 +870,7 @@ class SpecExecutorTests(TestCase):
             artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
 
             def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-                """            Simulate sbatch submission and return a canned batch-job response.
-
-
-            Args:
-                args: The argument vector forwarded to the helper.
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `subprocess.CompletedProcess[str]` value used by the caller.
-            """
+                """Simulate sbatch submission with a canned batch-job response."""
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 66666\n", stderr="")
 
             executor = SlurmWorkflowSpecExecutor(
@@ -1055,16 +898,7 @@ class SpecExecutorTests(TestCase):
             artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
 
             def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
-                """            Simulate sbatch submission and return a canned batch-job response.
-
-
-            Args:
-                args: The argument vector forwarded to the helper.
-                kwargs: Keyword arguments forwarded to the helper.
-
-            Returns:
-                The returned `subprocess.CompletedProcess[str]` value used by the caller.
-            """
+                """Simulate sbatch submission with a canned batch-job response."""
                 return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 77777\n", stderr="")
 
             executor = SlurmWorkflowSpecExecutor(
@@ -1537,6 +1371,8 @@ class SlurmResumeFromLocalRecordTests(TestCase):
         self.assertEqual(record.local_resume_node_state, {"annotation_qc_busco": True})
         self.assertEqual(record.local_resume_run_id, "prior-local-run-001")
         self.assertTrue(any("prior-local-run-001" in a for a in record.assumptions))
+        self.assertIn(str(prior_run_dir), result.script_text)
+        self.assertIn("resume_from_local_record", result.script_text)
 
     def test_slurm_submit_rejects_local_resume_identity_mismatch(self) -> None:
         """Slurm submission must reject a local resume record with a different workflow name."""

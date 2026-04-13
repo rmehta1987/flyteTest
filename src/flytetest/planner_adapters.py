@@ -1,8 +1,7 @@
 """Adapters from current assets and manifests into planner-facing biology types.
 
-    This module maps today's lower-level asset layer and manifest-bearing result
-    bundles into the planner contract without changing any runnable Flyte task
-    signatures yet.
+This module maps the current asset layer and manifest-bearing result bundles
+into planner-facing types without changing runnable Flyte task signatures.
 """
 
 from __future__ import annotations
@@ -32,29 +31,29 @@ from flytetest.types.assets import ReferenceGenome as AssetReferenceGenome
 
 
 def _manifest_data(source: Path | Mapping[str, Any]) -> tuple[dict[str, Any], Path | None]:
-    """Load one manifest mapping and remember its on-disk location when available.
+    """Load one manifest payload and preserve its on-disk location when available.
 
     Args:
-        source: A filesystem path used by the helper.
+        source: A manifest file path or an already-loaded mapping.
 
     Returns:
-        The returned `tuple[dict[str, Any], Path | None]` value used by the caller.
-"""
+        Parsed manifest data and the source path when the manifest came from disk.
+    """
     if isinstance(source, Path):
         return json.loads(source.read_text()), source
     return dict(source), None
 
 
 def _result_dir_from_manifest(manifest: Mapping[str, Any], manifest_path: Path | None) -> Path | None:
-    """Infer the result directory that owns one manifest when available.
+    """Infer the result directory that owns a manifest when one can be traced.
 
     Args:
-        manifest: A value used by the helper.
-        manifest_path: A filesystem path used by the helper.
+        manifest: Loaded manifest content, which may carry a nested source bundle reference.
+        manifest_path: The manifest file path when the payload came from disk.
 
     Returns:
-        The returned `Path | None` value used by the caller.
-"""
+        Directory containing the manifest, or a nested result path when only that is recorded.
+    """
     if manifest_path is not None:
         return manifest_path.parent
     source_bundle = manifest.get("source_bundle")
@@ -66,42 +65,21 @@ def _result_dir_from_manifest(manifest: Mapping[str, Any], manifest_path: Path |
 
 
 def _path_or_none(value: Any) -> Path | None:
-    """Convert one optional string-like manifest member into a `Path`.
-
-    Args:
-        value: The value or values processed by the helper.
-
-    Returns:
-        The returned `Path | None` value used by the caller.
-"""
+    """Convert an optional manifest value into a `Path` when one is present."""
     if value in (None, ""):
         return None
     return Path(str(value))
 
 
 def _paths(value: Any) -> tuple[Path, ...]:
-    """Convert a manifest list into a stable tuple of `Path` values.
-
-    Args:
-        value: The value or values processed by the helper.
-
-    Returns:
-        The returned `tuple[Path, ...]` value used by the caller.
-"""
+    """Convert a manifest list into a stable tuple of `Path` values."""
     if not isinstance(value, list):
         return ()
     return tuple(Path(str(item)) for item in value)
 
 
 def _string_tuple(value: Any) -> tuple[str, ...]:
-    """Convert one manifest notes-like list into a stable tuple of strings.
-
-    Args:
-        value: The value or values processed by the helper.
-
-    Returns:
-        The returned `tuple[str, ...]` value used by the caller.
-"""
+    """Convert a manifest list into a trimmed tuple of strings."""
     if not isinstance(value, list):
         return ()
     return tuple(str(item) for item in value if str(item).strip())
@@ -115,13 +93,13 @@ def _asset_entry(
     """Return one manifest asset payload, preferring the generic key first.
 
     Args:
-        assets: A value used by the helper.
-        primary_key: A value used by the helper.
-        legacy_keys: A value used by the helper.
+        assets: Manifest asset mapping that may contain several naming variants.
+        primary_key: The preferred asset key for current manifests.
+        legacy_keys: Older asset keys to check if the preferred key is absent.
 
     Returns:
-        The returned `Mapping[str, Any] | None` value used by the caller.
-"""
+        The first mapping payload found for the requested asset, or ``None``.
+    """
     for key in (primary_key, *legacy_keys):
         value = assets.get(key)
         if isinstance(value, Mapping):
@@ -136,17 +114,17 @@ def reference_genome_from_asset(
     source_manifest_path: Path | None = None,
     notes: tuple[str, ...] = (),
 ) -> ReferenceGenome:
-    """Lift the current lower-level genome asset into the planner-facing type.
+    """Lift a lower-level genome asset into the planner-facing type.
 
     Args:
-        asset: A value used by the helper.
-        source_result_dir: A directory path used by the helper.
-        source_manifest_path: A filesystem path used by the helper.
-        notes: A value used by the helper.
+        asset: Genome asset carrying the FASTA path and any biological metadata already known.
+        source_result_dir: Origin bundle directory to preserve in the planner-facing object.
+        source_manifest_path: Manifest path to preserve for replay and provenance checks.
+        notes: Additional planner notes to append to any notes already present on the asset.
 
     Returns:
-        The returned `ReferenceGenome` value used by the caller.
-"""
+        Planner-facing reference genome that still points back to its source bundle.
+    """
     asset_notes = getattr(asset, "notes", ())
     return ReferenceGenome(
         fasta_path=asset.fasta_path,
@@ -168,17 +146,17 @@ def read_set_from_asset(
     source_manifest_path: Path | None = None,
     notes: tuple[str, ...] = (),
 ) -> ReadSet:
-    """Lift the current paired-read asset into the planner-facing type.
+    """Lift a paired-read asset into the planner-facing read-set type.
 
     Args:
-        asset: A value used by the helper.
-        source_result_dir: A directory path used by the helper.
-        source_manifest_path: A filesystem path used by the helper.
-        notes: A value used by the helper.
+        asset: Paired-end read asset with sample metadata and the read file paths.
+        source_result_dir: Origin bundle directory to preserve for replayable planning.
+        source_manifest_path: Manifest path to preserve for provenance and input recovery.
+        notes: Additional planner notes to attach to the read set.
 
     Returns:
-        The returned `ReadSet` value used by the caller.
-"""
+        Planner-facing read set that keeps the source bundle reference intact.
+    """
     return ReadSet(
         sample_id=asset.sample_id,
         left_reads_path=asset.left_reads_path,
@@ -200,17 +178,17 @@ def _reference_from_manifest(
     manifest_path: Path | None,
     annotation_gff3_path: Path | None = None,
 ) -> ReferenceGenome:
-    """Resolve a planner-facing reference genome from current manifest structures.
+    """Resolve a planner-facing reference genome from the current manifest layouts.
 
     Args:
-        manifest: A value used by the helper.
-        result_dir: A directory path used by the helper.
-        manifest_path: A filesystem path used by the helper.
-        annotation_gff3_path: A filesystem path used by the helper.
+        manifest: Loaded manifest data that may contain several reference genome layouts.
+        result_dir: Result directory to preserve on the returned planner object.
+        manifest_path: Manifest path to preserve on the returned planner object.
+        annotation_gff3_path: Optional annotation path to bind when the manifest is missing one.
 
     Returns:
-        The returned `ReferenceGenome` value used by the caller.
-"""
+        Planner-facing reference genome assembled from the manifest's current conventions.
+    """
     assets = manifest.get("assets", {})
     if isinstance(assets, Mapping):
         reference_asset = assets.get("reference_genome")
@@ -280,28 +258,28 @@ def _reference_from_manifest(
 
 
 def reference_genome_from_manifest(source: Path | Mapping[str, Any]) -> ReferenceGenome:
-    """Adapt one current manifest into a planner-facing reference genome.
+    """Adapt a manifest into a planner-facing reference genome.
 
     Args:
-        source: A filesystem path used by the helper.
+        source: Manifest file path or loaded manifest mapping.
 
     Returns:
-        The returned `ReferenceGenome` value used by the caller.
-"""
+        Reference genome resolved from the manifest's current storage layout.
+    """
     manifest, manifest_path = _manifest_data(source)
     result_dir = _result_dir_from_manifest(manifest, manifest_path)
     return _reference_from_manifest(manifest, result_dir=result_dir, manifest_path=manifest_path)
 
 
 def transcript_evidence_from_manifest(source: Path | Mapping[str, Any]) -> TranscriptEvidenceSet:
-    """Adapt the current transcript-evidence result manifest into a planner type.
+    """Adapt a transcript-evidence manifest into the planner contract.
 
     Args:
-        source: A filesystem path used by the helper.
+        source: Transcript-evidence manifest file path or loaded mapping.
 
     Returns:
-        The returned `TranscriptEvidenceSet` value used by the caller.
-"""
+        Transcript evidence carrying source references and stage outputs from the manifest.
+    """
     manifest, manifest_path = _manifest_data(source)
     result_dir = _result_dir_from_manifest(manifest, manifest_path)
     outputs = manifest.get("outputs", {})
@@ -342,14 +320,14 @@ def transcript_evidence_from_manifest(source: Path | Mapping[str, Any]) -> Trans
 
 
 def protein_evidence_from_bundle(bundle: ProteinEvidenceResultBundle) -> ProteinEvidenceSet:
-    """Adapt the current protein-evidence result bundle into a planner type.
+    """Adapt a protein-evidence bundle into the planner contract.
 
     Args:
-        bundle: A directory path used by the helper.
+        bundle: Protein-evidence result bundle with staged protein and EVM-ready outputs.
 
     Returns:
-        The returned `ProteinEvidenceSet` value used by the caller.
-"""
+        Planner-facing protein evidence that still refers back to the result bundle.
+    """
     reference_genome = (
         reference_genome_from_asset(bundle.reference_genome, source_result_dir=bundle.result_dir)
         if bundle.reference_genome is not None
@@ -367,14 +345,14 @@ def protein_evidence_from_bundle(bundle: ProteinEvidenceResultBundle) -> Protein
 
 
 def protein_evidence_from_manifest(source: Path | Mapping[str, Any]) -> ProteinEvidenceSet:
-    """Adapt the current protein-evidence result manifest into a planner type.
+    """Adapt a protein-evidence manifest into the planner contract.
 
     Args:
-        source: A filesystem path used by the helper.
+        source: Protein-evidence manifest file path or loaded mapping.
 
     Returns:
-        The returned `ProteinEvidenceSet` value used by the caller.
-"""
+        Planner-facing protein evidence assembled from the manifest layout.
+    """
     manifest, manifest_path = _manifest_data(source)
     result_dir = _result_dir_from_manifest(manifest, manifest_path)
     outputs = manifest.get("outputs", {})
@@ -404,14 +382,14 @@ def protein_evidence_from_manifest(source: Path | Mapping[str, Any]) -> ProteinE
 
 
 def annotation_evidence_from_ab_initio_bundle(bundle: AbInitioResultBundle | Braker3ResultBundle) -> AnnotationEvidenceSet:
-    """Adapt the generic ab initio bundle into planner-facing annotation evidence.
+    """Adapt an ab initio bundle into planner-facing annotation evidence.
 
     Args:
-        bundle: A directory path used by the helper.
+        bundle: BRAKER3-style result bundle carrying reference genome and normalized predictions.
 
     Returns:
-        The returned `AnnotationEvidenceSet` value used by the caller.
-"""
+        Annotation evidence that keeps the source bundle and provenance notes intact.
+    """
     if bundle.reference_genome is None:
         raise ValueError("AbInitioResultBundle must include a reference genome for planner adaptation.")
     provenance_notes: tuple[str, ...] = ()
@@ -428,26 +406,26 @@ def annotation_evidence_from_ab_initio_bundle(bundle: AbInitioResultBundle | Bra
 
 
 def annotation_evidence_from_braker_bundle(bundle: Braker3ResultBundle) -> AnnotationEvidenceSet:
-    """Adapt the legacy BRAKER3-only bundle into planner-facing annotation evidence.
+    """Adapt the legacy BRAKER3 bundle into planner-facing annotation evidence.
 
     Args:
-        bundle: A directory path used by the helper.
+        bundle: BRAKER3 result bundle with the same contract used by current ab initio planning.
 
     Returns:
-        The returned `AnnotationEvidenceSet` value used by the caller.
-"""
+        Annotation evidence adapted from the BRAKER3-specific wrapper.
+    """
     return annotation_evidence_from_ab_initio_bundle(bundle)
 
 
 def annotation_evidence_from_evm_prep_bundle(bundle: EvmInputPreparationBundle) -> AnnotationEvidenceSet:
-    """Adapt the current pre-EVM bundle into planner-facing annotation evidence.
+    """Adapt a pre-EVM bundle into planner-facing annotation evidence.
 
     Args:
-        bundle: A directory path used by the helper.
+        bundle: Pre-EVM bundle containing transcript, protein, and prediction evidence.
 
     Returns:
-        The returned `AnnotationEvidenceSet` value used by the caller.
-"""
+        Annotation evidence assembled from the explicit pre-EVM contract bundle.
+    """
     reference_genome = ReferenceGenome(
         fasta_path=bundle.reference_genome_fasta_path,
         source_result_dir=bundle.result_dir,
@@ -485,11 +463,11 @@ def annotation_evidence_from_manifest(source: Path | Mapping[str, Any]) -> Annot
     """Adapt BRAKER3 or pre-EVM manifests into planner-facing annotation evidence.
 
     Args:
-        source: A filesystem path used by the helper.
+        source: Manifest file path or loaded mapping for the relevant annotation stage.
 
     Returns:
-        The returned `AnnotationEvidenceSet` value used by the caller.
-"""
+        Annotation evidence resolved from the manifest's current workflow boundary.
+    """
     manifest, manifest_path = _manifest_data(source)
     result_dir = _result_dir_from_manifest(manifest, manifest_path)
     workflow = str(manifest.get("workflow", ""))
@@ -556,14 +534,14 @@ def annotation_evidence_from_manifest(source: Path | Mapping[str, Any]) -> Annot
 
 
 def consensus_annotation_from_bundle(bundle: EvmConsensusResultBundle) -> ConsensusAnnotation:
-    """Adapt the current EVM consensus result bundle into a planner-facing annotation.
+    """Adapt an EVM consensus bundle into a planner-facing annotation.
 
     Args:
-        bundle: A directory path used by the helper.
+        bundle: EVM consensus result bundle with its execution-input and output paths.
 
     Returns:
-        The returned `ConsensusAnnotation` value used by the caller.
-"""
+        Consensus annotation that preserves the recorded EVM provenance.
+    """
     reference_genome = ReferenceGenome(
         fasta_path=bundle.execution_input_bundle.reference_genome_fasta_path,
         source_result_dir=bundle.result_dir,
@@ -592,11 +570,11 @@ def consensus_annotation_from_manifest(source: Path | Mapping[str, Any]) -> Cons
     """Adapt EVM or repeat-filter manifests into a planner-facing consensus annotation.
 
     Args:
-        source: A filesystem path used by the helper.
+        source: Manifest file path or loaded mapping for EVM or repeat-filter outputs.
 
     Returns:
-        The returned `ConsensusAnnotation` value used by the caller.
-"""
+        Consensus annotation resolved from the manifest's reported workflow.
+    """
     manifest, manifest_path = _manifest_data(source)
     result_dir = _result_dir_from_manifest(manifest, manifest_path)
     workflow = str(manifest.get("workflow", ""))
@@ -657,14 +635,14 @@ def consensus_annotation_from_manifest(source: Path | Mapping[str, Any]) -> Cons
 
 
 def quality_assessment_target_from_manifest(source: Path | Mapping[str, Any]) -> QualityAssessmentTarget:
-    """Adapt current downstream manifests into a planner-facing QC target.
+    """Adapt downstream manifests into a planner-facing QC target.
 
     Args:
-        source: A filesystem path used by the helper.
+        source: Manifest file path or loaded mapping for the downstream QC boundary.
 
     Returns:
-        The returned `QualityAssessmentTarget` value used by the caller.
-"""
+        QC target that points to the current reviewable output boundary.
+    """
     manifest, manifest_path = _manifest_data(source)
     result_dir = _result_dir_from_manifest(manifest, manifest_path)
     workflow = str(manifest.get("workflow", ""))

@@ -1,21 +1,21 @@
 """Local-first typed bioinformatics assets for FLyteTest.
 
-    This is a staged adoption layer inspired by richer asset systems, but it is not
-    a full Stargazer-style implementation. These dataclasses intentionally model
-    local filesystem paths plus lightweight biological metadata only.
+This is a staged adoption layer inspired by richer asset systems, but it is
+not a full Stargazer-style implementation. These dataclasses intentionally
+model local filesystem paths plus lightweight biological metadata only.
 
-    Current scope:
-    - no remote fetch/query/update behavior
-    - no content addressing or CID management
-    - no MCP integration
-    - no task-runtime mutation of the asset graph
+Current scope:
+- no remote fetch/query/update behavior
+- no content addressing or CID management
+- no MCP integration
+- no task-runtime mutation of the asset graph
 
-    Planned Flyte mapping:
-    - single-file `Path` fields map naturally to `flyte.io.File`
-    - directory `Path` fields map naturally to `flyte.io.Dir`
-    - scalar metadata fields stay as normal typed task inputs
-    - composite dataclasses can first be used in planning/binding layers, then
-      gradually replace ad hoc file bundles at workflow boundaries
+Planned Flyte mapping:
+- single-file `Path` fields map naturally to `flyte.io.File`
+- directory `Path` fields map naturally to `flyte.io.Dir`
+- scalar metadata fields stay as normal typed task inputs
+- composite dataclasses can first be used in planning/binding layers, then
+  gradually replace ad hoc file bundles at workflow boundaries
 """
 
 from __future__ import annotations
@@ -33,11 +33,11 @@ def _serialize_manifest_value(value: Any) -> Any:
     """Convert asset values into JSON-compatible manifest payloads.
 
     Args:
-        value: The value or values processed by the helper.
+        value: Asset value to serialize.
 
     Returns:
-        The returned `Any` value used by the caller.
-"""
+        JSON-compatible representation of the asset value.
+    """
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, tuple):
@@ -55,11 +55,11 @@ def _is_optional_manifest_type(annotation: Any) -> bool:
     """Return whether one type hint is an optional union.
 
     Args:
-        annotation: A value used by the helper.
+        annotation: Type hint being inspected during deserialization.
 
     Returns:
-        The returned `bool` value used by the caller.
-"""
+        ``True`` when the annotation is an optional union.
+    """
     origin = get_origin(annotation)
     return origin in (Union, types.UnionType) and type(None) in get_args(annotation)
 
@@ -68,12 +68,12 @@ def _deserialize_manifest_value(annotation: Any, value: Any) -> Any:
     """Rehydrate one serialized asset value using a dataclass type hint.
 
     Args:
-        annotation: A value used by the helper.
-        value: The value or values processed by the helper.
+        annotation: Declared field type for the asset member being restored.
+        value: Serialized asset value to convert back into a typed object.
 
     Returns:
-        The returned `Any` value used by the caller.
-"""
+        Typed asset value reconstructed from the manifest payload.
+    """
     if value is None:
         return None
     if annotation is Any:
@@ -116,31 +116,26 @@ def _deserialize_manifest_value(annotation: Any, value: Any) -> Any:
 
 
 class ManifestSerializable:
-    """Mixin for asset dataclasses that need stable manifest round-trips.
-
-    This class keeps the current contract explicit and reviewable.
-"""
+    """Mixin for asset dataclasses that need stable manifest round-trips."""
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize one asset dataclass into JSON-compatible data.
 
-    This helper keeps the current behavior explicit and reviewable.
-
-    Returns:
-        The returned `dict[str, Any]` value used by the caller.
-"""
+        Returns:
+            Field-ordered JSON-compatible payload for the dataclass.
+        """
         return {field_info.name: _serialize_manifest_value(getattr(self, field_info.name)) for field_info in fields(self)}
 
     @classmethod
     def from_dict(cls: type[_ManifestSerializableT], payload: Mapping[str, Any]) -> _ManifestSerializableT:
         """Deserialize one asset dataclass from JSON-compatible data.
 
-    Args:
-        payload: The structured payload to serialize or inspect.
+        Args:
+            payload: Structured payload to restore into the dataclass.
 
-    Returns:
-        The returned `_ManifestSerializableT` value used by the caller.
-"""
+        Returns:
+            Dataclass instance reconstructed from the supplied payload.
+        """
         hints = get_type_hints(cls)
         kwargs = {}
         for field_info in fields(cls):
@@ -152,10 +147,7 @@ class ManifestSerializable:
 
 @dataclass(frozen=True, slots=True)
 class AssetToolProvenance(ManifestSerializable):
-    """Typed provenance for generic asset names that preserve tool lineage.
-
-    This class keeps the current contract explicit and reviewable.
-"""
+    """Typed provenance for generic asset names that preserve tool lineage."""
 
     tool_name: str
     tool_stage: str
@@ -310,10 +302,7 @@ class StarAlignmentResult(ManifestSerializable):
 
 @dataclass(frozen=True, slots=True)
 class RnaSeqAlignmentResult(StarAlignmentResult):
-    """Generic RNA-seq alignment result name compatible with STAR outputs.
-
-    This class keeps the current contract explicit and reviewable.
-"""
+    """STAR-shaped RNA-seq alignment result alias used by downstream workflows."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -410,10 +399,7 @@ class PasaCleanedTranscriptAsset(ManifestSerializable):
 
 @dataclass(frozen=True, slots=True)
 class CleanedTranscriptDataset(PasaCleanedTranscriptAsset):
-    """Generic cleaned transcript dataset name compatible with PASA seqclean outputs.
-
-    This class keeps the current contract explicit and reviewable.
-"""
+    """PASA seqclean output alias used by transcript-evidence and PASA stages."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -704,10 +690,7 @@ class Braker3ResultBundle(ManifestSerializable):
 
 @dataclass(frozen=True, slots=True)
 class AbInitioResultBundle(Braker3ResultBundle):
-    """Generic ab initio annotation bundle name compatible with BRAKER3 outputs.
-
-    This class keeps the current contract explicit and reviewable.
-"""
+    """BRAKER3-derived ab initio annotation bundle alias for planner-facing use."""
 
 
 @dataclass(frozen=True, slots=True)

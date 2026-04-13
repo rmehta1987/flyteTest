@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Verify the tutorial-backed smoke fixtures are present before running the
+# local Trinity, STAR, PASA, BUSCO, repeat-masking, or protein-evidence flows.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 

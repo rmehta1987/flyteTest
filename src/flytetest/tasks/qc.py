@@ -1,10 +1,8 @@
 """QC task implementations for the RNA-seq entry workflow.
 
-    This module currently wraps the FastQC stage used at the start of the existing
-    RNA-seq QC and quantification pipeline.
-
-    Tool-level command and input/output expectations follow `docs/tool_refs/fastqc.md`.
-    That reference matches the FastQC boundary implemented here.
+This module currently wraps the FastQC boundary at the start of the existing
+RNA-seq QC and quantification pipeline. Tool-level command and input/output
+expectations follow `docs/tool_refs/fastqc.md`.
 """
 
 from __future__ import annotations
@@ -18,16 +16,7 @@ from flytetest.config import project_mkdtemp, require_path, rnaseq_qc_quant_env,
 
 @rnaseq_qc_quant_env.task
 def fastqc(left: File, right: File, fastqc_sif: str = "") -> Dir:
-    """Run FastQC quality control analysis on paired-end RNA-seq reads.
-
-    Args:
-        left: A value used by the helper.
-        right: A value used by the helper.
-        fastqc_sif: A value used by the helper.
-
-    Returns:
-        The returned `Dir` value used by the caller.
-"""
+    """Run FastQC on the paired-end reads that anchor the RNA-seq QC stage."""
     left_path = require_path(Path(left.download_sync()), "Read 1 FASTQ")
     right_path = require_path(Path(right.download_sync()), "Read 2 FASTQ")
     out_dir = project_mkdtemp("fastqc_") / "qc"

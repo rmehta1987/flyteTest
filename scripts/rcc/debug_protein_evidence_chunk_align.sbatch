@@ -10,6 +10,8 @@
 #SBATCH --output=/scratch/midway3/mehta5/flyteTest/FlyteTest/%x.%j.out
 #SBATCH --error=/scratch/midway3/mehta5/flyteTest/FlyteTest/%x.%j.err
 
+# Debug Slurm entrypoint for the chunked protein-evidence Exonerate boundary
+# when you need the cluster-side exception path.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

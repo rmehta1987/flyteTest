@@ -10,6 +10,8 @@
 #SBATCH --output=/scratch/midway3/mehta5/flyteTest/FlyteTest/%x.%j.out
 #SBATCH --error=/scratch/midway3/mehta5/flyteTest/FlyteTest/%x.%j.err
 
+# Minimal Slurm job used by the RCC smoke wrappers to confirm batch submission
+# and stdout capture.
 set -euo pipefail
 
 echo "hello from slurm"

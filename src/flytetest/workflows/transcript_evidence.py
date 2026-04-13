@@ -1,12 +1,9 @@
 """Transcript-evidence workflow entrypoint for FLyteTest.
 
-    Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
-    input/output expectations follow the tool references under `docs/tool_refs/`
-    (notably `trinity.md`, `star.md`, `samtools.md`, and `stringtie.md`).
-
-    This module composes the current transcript branch upstream of PASA: de novo
-    Trinity, STAR indexing and alignment, one-BAM merge, genome-guided Trinity,
-    StringTie, and stable result collection.
+Stage ordering follows `docs/braker3_evm_notes.md`, and this workflow composes
+the current transcript-evidence branch upstream of PASA: de novo Trinity, STAR
+indexing and alignment, merged BAM collection, genome-guided Trinity, StringTie,
+and stable result collection.
 """
 
 from __future__ import annotations
@@ -43,26 +40,28 @@ def transcript_evidence_generation(
     genome_guided_max_intron: int = 10000,
     stringtie_threads: int = 4,
 ) -> Dir:
-    """Orchestrate comprehensive transcript evidence generation from paired-end RNA-seq reads.
+    """Compose the transcript-evidence branch that feeds the PASA stage boundary.
 
     Args:
-        genome: A value used by the helper.
-        left: A value used by the helper.
-        right: A value used by the helper.
-        sample_id: A value used by the helper.
-        star_sif: A value used by the helper.
-        samtools_sif: A value used by the helper.
-        trinity_sif: A value used by the helper.
-        stringtie_sif: A value used by the helper.
-        star_threads: A value used by the helper.
-        trinity_cpu: A value used by the helper.
-        trinity_max_memory_gb: A value used by the helper.
-        genome_guided_max_intron: A value used by the helper.
-        stringtie_threads: A value used by the helper.
+        genome: Reference genome FASTA used to seed STAR indexing.
+        left: First RNA-seq mate passed through Trinity and STAR.
+        right: Second RNA-seq mate passed through Trinity and STAR.
+        sample_id: Sample label threaded through the transcript-evidence bundle.
+        star_sif: Optional container image for STAR stages.
+        samtools_sif: Optional container image for the BAM merge stage.
+        trinity_sif: Optional container image for the Trinity stages.
+        stringtie_sif: Optional container image for StringTie.
+        star_threads: Thread count shared by STAR index and alignment stages.
+        trinity_cpu: Thread count shared by Trinity assembly stages.
+        trinity_max_memory_gb: Memory bound shared by Trinity stages in
+            gigabytes.
+        genome_guided_max_intron: Maximum intron length passed to the
+            genome-guided Trinity step.
+        stringtie_threads: Thread count passed to StringTie.
 
     Returns:
-        The returned `Dir` value used by the caller.
-"""
+        Manifest-bearing transcript-evidence bundle ready for the PASA branch.
+    """
     trinity_denovo = trinity_denovo_assemble(
         left=left,
         right=right,

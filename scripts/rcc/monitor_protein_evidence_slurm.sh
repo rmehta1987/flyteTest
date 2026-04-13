@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Reconcile the latest protein-evidence Slurm run record, or a run record path
+# passed explicitly.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 PYTHON_SCRIPT="$SCRIPT_DIR/monitor_protein_evidence_slurm.py"

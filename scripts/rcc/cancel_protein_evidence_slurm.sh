@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Cancel the latest protein-evidence Slurm run record, or a run record path
+# passed explicitly, through the repo-local RCC wrapper.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 PYTHON_SCRIPT="$SCRIPT_DIR/cancel_protein_evidence_slurm.py"

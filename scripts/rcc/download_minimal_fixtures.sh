@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Restore the tutorial-backed smoke fixtures under data/ for the local Trinity,
+# STAR, PASA, BUSCO, RepeatMasker, and protein-evidence paths.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 DATA_DIR="${DATA_DIR:-$REPO_ROOT/data}"

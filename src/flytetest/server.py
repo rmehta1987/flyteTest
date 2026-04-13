@@ -1,8 +1,8 @@
 """Stdio MCP server for recipe-backed FLyteTest planning and execution.
 
-    This module exposes a recipe-first MCP surface: prompts are planned into typed
-    workflow specs, saved as inspectable artifacts, and then executed locally
-    through explicit node handlers.
+This module exposes a recipe-first MCP surface: prompts are planned into typed
+workflow specs, saved as inspectable artifacts, and then executed locally
+through explicit node handlers.
 """
 
 from __future__ import annotations
@@ -103,13 +103,7 @@ BUSCO_FIXTURE_TASK_NAME = "busco_assess_proteins"
 
 
 def _resolve_flyte_cli() -> str:
-    """Resolve the Flyte CLI, preferring the repo-local virtualenv binary.
-
-    This helper keeps the supported planner or executor path explicit and easy to review.
-
-    Returns:
-        A `str` result computed by this helper.
-"""
+    """Resolve the Flyte CLI, preferring the repo-local virtualenv binary."""
     repo_flyte = REPO_ROOT / ".venv" / "bin" / "flyte"
     if repo_flyte.exists():
         return str(repo_flyte)
@@ -119,13 +113,7 @@ def _resolve_flyte_cli() -> str:
 
 
 def _supported_runnable_targets() -> list[dict[str, str]]:
-    """Return the exact runnable target list exposed through the showcase.
-
-    This helper keeps the supported planner or executor path explicit and easy to review.
-
-    Returns:
-        A `list[dict[str, str]]` result computed by this helper.
-"""
+    """Return the showcase target list exposed through MCP resources."""
     return supported_runnable_targets_payload()
 
 
@@ -151,24 +139,18 @@ def _entry_payload(name: str) -> dict[str, object]:
 
 
 def _supported_entry_payloads() -> list[dict[str, object]]:
-    """Return the stable serialized target list shared by tools and resources.
-
-    This helper keeps the supported planner or executor path explicit and easy to review.
-
-    Returns:
-        The serialized payloads for every supported showcase target.
-"""
+    """Return the serialized showcase targets shared by tools and resources."""
     return [_entry_payload(name) for name in SUPPORTED_TARGET_NAMES]
 
 
 def _normalize_manifest_sources(manifest_sources: Sequence[str | Path] | None) -> tuple[tuple[Path, ...], tuple[str, ...]]:
-    """Validate manifest-source paths before typed planning runs.
+    """Validate manifest sources before typed planning runs.
 
     Args:
-        manifest_sources: Manifest paths or inline manifest mappings that may contain planner values.
+        manifest_sources: Paths to prior run manifests or result directories used to seed planning.
 
     Returns:
-        A `tuple[tuple[Path, ...], tuple[str, ...]]` result computed by this helper.
+        Resolved manifest-bearing paths and any validation problems encountered while loading them.
 """
     resolved_sources: list[Path] = []
     limitations: list[str] = []
@@ -211,15 +193,15 @@ def _recipe_input_context_payload(
     """Serialize the explicit recipe input context for MCP responses.
 
     Args:
-        manifest_sources: Manifest paths or inline manifest mappings that may contain planner values.
-        explicit_bindings: Caller-supplied planner values that should win over discovered inputs.
-        runtime_bindings: Frozen runtime inputs supplied alongside planner-discovered values.
-        resource_request: Caller-supplied compute resource policy or override.
-        execution_profile: Named execution profile requested or selected for the recipe.
-        runtime_image: Caller-supplied runtime image policy or override.
+        manifest_sources: Upstream run records or manifest paths that may supply planner inputs.
+        explicit_bindings: User-provided planner inputs that override values inferred from manifests.
+        runtime_bindings: Frozen execution-time bindings carried alongside the typed plan.
+        resource_request: Explicit CPU, memory, and scheduler requirements from the request.
+        execution_profile: Named execution target requested by the caller.
+        runtime_image: Container image policy used to bind the recipe's runtime environment.
 
     Returns:
-        A JSON-compatible payload built for the caller.
+        A JSON-compatible snapshot of the planning context passed to the MCP client.
 """
     return {
         "manifest_sources": [str(path) for path in (manifest_sources or ())],
@@ -241,11 +223,11 @@ def _unsupported_recipe_prep_plan(
 
     Args:
         prompt: Natural-language prompt being planned or frozen into a recipe.
-        limitations: Recorded limitations that explain why a request was declined or constrained.
-        recipe_input_context: The `recipe_input_context` input processed by this helper.
+        limitations: Validation failures that explain why recipe preparation cannot continue.
+        recipe_input_context: The normalized manifest, binding, and runtime context sent to planning.
 
     Returns:
-        A JSON-compatible payload built for the caller.
+        A decline record that preserves the supplied context for client-side review.
 """
     limitation_list = [str(limitation) for limitation in limitations]
     return {
@@ -272,14 +254,7 @@ def _unsupported_recipe_prep_plan(
 
 
 def _workflow_command_flag(name: str) -> str:
-    """Return the exact `flyte run` CLI flag spelling for one workflow input.
-
-    Args:
-        name: Supported entry, planner type, or target name being looked up.
-
-    Returns:
-        A `str` result computed by this helper.
-"""
+    """Return the `flyte run` flag name for one workflow input."""
     return f"--{name}"
 
 
@@ -287,10 +262,10 @@ def _extract_output_paths(*streams: str) -> list[str]:
     """Collect existing absolute filesystem paths mentioned in command output.
 
     Args:
-        streams: The `streams` input processed by this helper.
+        streams: Command stdout and stderr strings to scan for existing absolute paths.
 
     Returns:
-        A `list[str]` result computed by this helper.
+        Deduplicated absolute paths that still exist on disk.
 """
     seen: list[str] = []
     for stream in streams:
@@ -305,40 +280,26 @@ def _extract_output_paths(*streams: str) -> list[str]:
 
 
 def _workflow_requires_direct_python(inputs: Mapping[str, object]) -> bool:
-    """Return whether one workflow input payload should bypass `flyte run`.
+    """Return whether a workflow input payload should bypass `flyte run`.
 
     Args:
-        inputs: The inputs forwarded to the workflow or task helper.
+        inputs: Workflow inputs that may include nested collections unsupported by the CLI serializer.
 
     Returns:
-        A `bool` result computed by this helper.
+        ``True`` when collection-shaped values require a direct Python call.
 """
     return any(isinstance(value, (list, tuple, dict)) for value in inputs.values())
 
 
 def _is_flyte_file_annotation(annotation: Any) -> bool:
-    """Return whether one annotation represents `flyte.io.File`.
-
-    Args:
-        annotation: Type annotation being inspected by the serializer.
-
-    Returns:
-        A `bool` result computed by this helper.
-"""
+    """Return whether an annotation represents `flyte.io.File`."""
     from flyte.io import File
 
     return annotation is File or get_origin(annotation) is File
 
 
 def _is_flyte_dir_annotation(annotation: Any) -> bool:
-    """Return whether one annotation represents `flyte.io.Dir`.
-
-    Args:
-        annotation: Type annotation being inspected by the serializer.
-
-    Returns:
-        A `bool` result computed by this helper.
-"""
+    """Return whether an annotation represents `flyte.io.Dir`."""
     from flyte.io import Dir
 
     return annotation is Dir or get_origin(annotation) is Dir
@@ -348,11 +309,11 @@ def _coerce_direct_workflow_input(annotation: Any, value: Any) -> Any:
     """Convert local path inputs into the objects expected by direct workflow calls.
 
     Args:
-        annotation: Type annotation being inspected by the serializer.
-        value: The value or values processed by the helper.
+        annotation: Type annotation for the workflow parameter being adapted.
+        value: Local path or collection value that should be wrapped for direct Flyte execution.
 
     Returns:
-        A `Any` result computed by this helper.
+        The input converted to Flyte `File` / `Dir` wrappers where needed.
 """
     from flyte.io import Dir, File
 
@@ -391,14 +352,7 @@ def _coerce_direct_workflow_input(annotation: Any, value: Any) -> Any:
 
 
 def _load_showcase_workflow_callable(workflow_name: str) -> Any:
-    """Import one runnable showcase workflow by name.
-
-    Args:
-        workflow_name: The supported workflow or task name forwarded by the caller.
-
-    Returns:
-        A `Any` result computed by this helper.
-"""
+    """Import one runnable showcase workflow by its registered name."""
     from flytetest.mcp_contract import SHOWCASE_TARGETS_BY_NAME
 
     target = SHOWCASE_TARGETS_BY_NAME.get(workflow_name)
@@ -416,11 +370,11 @@ def _prepare_direct_workflow_inputs(workflow: Any, inputs: Mapping[str, object])
     """Build one direct-call argument payload from plain local path values.
 
     Args:
-        workflow: Workflow object or workflow metadata being adapted.
-        inputs: The inputs forwarded to the workflow or task helper.
+        workflow: Workflow object or Flyte workflow metadata being adapted for direct invocation.
+        inputs: Plain local paths and scalars collected from the MCP request.
 
     Returns:
-        A JSON-compatible payload built for the caller.
+        Direct-call keyword arguments with path values wrapped for the workflow signature.
 """
     target = getattr(workflow, "func", workflow)
     parameters = inspect.signature(target).parameters
@@ -439,10 +393,10 @@ def _collect_workflow_output_paths(value: Any) -> list[str]:
     """Extract stable output paths from one direct workflow return value.
 
     Args:
-        value: The value or values processed by the helper.
+        value: Returned Flyte objects, paths, or nested containers from a direct workflow call.
 
     Returns:
-        A `list[str]` result computed by this helper.
+        Stable path strings discovered in the workflow result.
 """
     if value in (None, ""):
         return []
@@ -478,11 +432,11 @@ def _run_workflow_direct(workflow_name: str, inputs: Mapping[str, object]) -> di
     """Execute one supported workflow through a direct Python call.
 
     Args:
-        workflow_name: The supported workflow or task name forwarded by the caller.
-        inputs: The inputs forwarded to the workflow or task helper.
+        workflow_name: Registered workflow name chosen from the showcase surface.
+        inputs: Workflow inputs that the Flyte CLI cannot reliably serialize as nested collections.
 
     Returns:
-        A JSON-compatible payload built for the caller.
+        A structured execution record describing the direct-call attempt and any emitted paths.
 """
     try:
         workflow = _load_showcase_workflow_callable(workflow_name)
@@ -529,13 +483,7 @@ def _run_workflow_direct(workflow_name: str, inputs: Mapping[str, object]) -> di
 
 
 def list_entries() -> dict[str, object]:
-    """List the day-one MCP recipe execution targets.
-
-    This helper keeps the supported planner or executor path explicit and easy to review.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
-"""
+    """List the day-one MCP recipe execution targets."""
     return {
         "entries": _supported_entry_payloads(),
         "server_tools": list(SERVER_TOOL_NAMES),
@@ -544,13 +492,7 @@ def list_entries() -> dict[str, object]:
 
 
 def resource_scope() -> dict[str, object]:
-    """Describe the MCP recipe contract for read-only client discovery.
-
-    This helper keeps the supported planner or executor path explicit and easy to review.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
-"""
+    """Describe the recipe-backed MCP contract for client discovery."""
     return {
         "server_name": SHOWCASE_SERVER_NAME,
         "transport": "stdio",
@@ -569,13 +511,7 @@ def resource_scope() -> dict[str, object]:
 
 
 def resource_supported_targets() -> dict[str, object]:
-    """Expose the exact day-one recipe target metadata.
-
-    This helper keeps the supported planner or executor path explicit and easy to review.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
-"""
+    """Expose the registered targets that the server can plan or execute."""
     return {
         "primary_tool": PRIMARY_TOOL_NAME,
         "entries": _supported_entry_payloads(),
@@ -584,13 +520,7 @@ def resource_supported_targets() -> dict[str, object]:
 
 
 def resource_example_prompts() -> dict[str, object]:
-    """Provide small prompt examples that match the day-one recipe surface.
-
-    This helper keeps the supported planner or executor path explicit and easy to review.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
-"""
+    """Provide prompt examples that match the current recipe surface."""
     return {
         "primary_tool": PRIMARY_TOOL_NAME,
         "workflow_prompt": WORKFLOW_EXAMPLE_PROMPT,
@@ -601,13 +531,7 @@ def resource_example_prompts() -> dict[str, object]:
 
 
 def resource_prompt_and_run_contract() -> dict[str, object]:
-    """Document the recipe-backed `prompt_and_run` summary contract.
-
-    This helper keeps the supported planner or executor path explicit and easy to review.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
-"""
+    """Document the `prompt_and_run` response fields and result codes."""
     return {
         "primary_tool": PRIMARY_TOOL_NAME,
         "supported_tools": list(SERVER_TOOL_NAMES),
@@ -639,13 +563,10 @@ def resource_prompt_and_run_contract() -> dict[str, object]:
 
 
 def _typed_planning_preview(prompt: str) -> dict[str, object]:
-    """Return additive typed-planning metadata for MCP responses.
+    """Return typed-planning metadata for the prompt before recipe freezing.
 
     Args:
-        prompt: Natural-language prompt being planned or frozen into a recipe.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
+        prompt: Natural-language request being converted into a typed plan.
 """
     return plan_typed_request(prompt)
 
@@ -654,10 +575,7 @@ def plan_request(prompt: str) -> dict[str, object]:
     """Plan one request through the typed recipe planner.
 
     Args:
-        prompt: Natural-language prompt being planned or frozen into a recipe.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
+        prompt: Natural-language request being converted into a typed plan.
 """
     return _typed_planning_preview(prompt)
 
@@ -670,12 +588,9 @@ def run_workflow(
     """Execute one supported workflow through `flyte run` or direct Python.
 
     Args:
-        workflow_name: The supported workflow or task name forwarded by the caller.
-        inputs: The inputs forwarded to the workflow or task helper.
-        runner: Injected command runner used to execute the helper workflow.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
+        workflow_name: Registered workflow name selected by the caller.
+        inputs: Workflow inputs forwarded from the MCP request.
+        runner: Command runner injected by tests or the local server adapter.
 """
     if workflow_name not in SUPPORTED_WORKFLOW_NAMES:
         return {
@@ -795,11 +710,8 @@ def run_task(task_name: str, inputs: dict[str, object]) -> dict[str, object]:
     """Execute one supported direct task through a Python call.
 
     Args:
-        task_name: The supported workflow or task name forwarded by the caller.
-        inputs: The inputs forwarded to the workflow or task helper.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
+        task_name: Registered task name selected by the caller.
+        inputs: Task inputs forwarded from the MCP request.
 """
     if task_name not in {SUPPORTED_TASK_NAME, BUSCO_FIXTURE_TASK_NAME}:
         return {
@@ -940,10 +852,7 @@ def _jsonable(value: Any) -> Any:
     """Convert paths and nested containers into JSON-compatible values.
 
     Args:
-        value: The value or values processed by the helper.
-
-    Returns:
-        A `Any` result computed by this helper.
+        value: Arbitrary path, mapping, or sequence values from execution records.
 """
     if isinstance(value, Path):
         return str(value)
@@ -960,10 +869,7 @@ def _first_output_path(execution_result: dict[str, object]) -> str:
     """Return the first output path from an execution payload when present.
 
     Args:
-        execution_result: A directory path used by the helper.
-
-    Returns:
-        A `str` result computed by this helper.
+        execution_result: Serialized execution record containing `output_paths`.
 """
     output_paths = execution_result.get("output_paths", [])
     if isinstance(output_paths, list) and output_paths:
@@ -976,25 +882,19 @@ def _local_node_handlers(
     workflow_runner: Any = run_workflow,
     task_runner: Any = run_task,
 ) -> dict[str, Any]:
-    """Build explicit node handlers for the day-one MCP execution targets.
+    """Build explicit node handlers for the supported local execution targets.
 
     Args:
         workflow_runner: Injected workflow execution function used by the adapter.
         task_runner: Injected task execution function used by the adapter.
-
-    Returns:
-        A `dict[str, Any]` result computed by this helper.
 """
 
     def workflow_handler(request: LocalNodeExecutionRequest) -> dict[str, object]:
         """Run one workflow target through the local execution adapter.
 
-    Args:
-        request: The local execution request forwarded by the caller.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
-"""
+        Args:
+            request: Local execution request for a registered workflow node.
+        """
         execution_result = workflow_runner(
             workflow_name=request.node.reference_name,
             inputs=dict(request.inputs),
@@ -1010,12 +910,9 @@ def _local_node_handlers(
     def task_handler(request: LocalNodeExecutionRequest) -> dict[str, object]:
         """Run one task target through the local execution adapter.
 
-    Args:
-        request: The local execution request forwarded by the caller.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
-"""
+        Args:
+            request: Local execution request for a registered task node.
+        """
         execution_result = task_runner(
             task_name=request.node.reference_name,
             inputs=dict(request.inputs),
@@ -1042,25 +939,16 @@ def _local_node_handlers(
 
 
 def _created_at() -> str:
-    """Return a stable UTC timestamp for saved recipe metadata.
-
-    This helper keeps the supported planner or executor path explicit and easy to review.
-
-    Returns:
-        A `str` result computed by this helper.
-"""
+    """Return a stable UTC timestamp for saved recipe metadata."""
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _recipe_artifact_destination(prompt: str, *, recipe_dir: Path | None = None) -> Path:
-    """Build a readable unique path for one frozen recipe artifact.
+    """Build a unique path for one frozen recipe artifact.
 
     Args:
         prompt: Natural-language prompt being planned or frozen into a recipe.
-        recipe_dir: A directory path used by the helper.
-
-    Returns:
-        A `Path` result computed by this helper.
+        recipe_dir: Directory that will hold the frozen recipe artifact.
 """
     created = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     digest = hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:12]
@@ -1072,9 +960,6 @@ def _limitations_from_typed_plan(plan: dict[str, object]) -> list[str]:
 
     Args:
         plan: Typed planning result being summarized.
-
-    Returns:
-        A `list[str]` result computed by this helper.
 """
     missing = plan.get("missing_requirements", [])
     if isinstance(missing, list) and missing:
@@ -1089,10 +974,7 @@ def _result_from_local_spec_execution(result: LocalSpecExecutionResult) -> dict[
     """Serialize local spec execution into the MCP execution-result shape.
 
     Args:
-        result: A directory path used by the helper.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
+        result: Completed local spec execution returned by the recipe executor.
 """
     node_results = [
         {
@@ -1138,10 +1020,7 @@ def _result_from_slurm_spec_execution(result: SlurmSpecExecutionResult) -> dict[
     """Serialize Slurm submission into the MCP execution-result shape.
 
     Args:
-        result: A directory path used by the helper.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
+        result: Completed Slurm submission returned by the recipe executor.
 """
     run_record = result.run_record
     output_paths = []
@@ -1171,10 +1050,7 @@ def _result_from_slurm_lifecycle(result: SlurmLifecycleResult) -> dict[str, obje
     """Serialize Slurm lifecycle operations for MCP clients.
 
     Args:
-        result: A directory path used by the helper.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
+        result: Completed Slurm lifecycle action returned by the executor.
 """
     run_record = result.run_record
     snapshot = result.scheduler_snapshot
@@ -1199,10 +1075,7 @@ def _result_from_slurm_retry(result: SlurmRetryResult) -> dict[str, object]:
     """Serialize Slurm retry operations for MCP clients.
 
     Args:
-        result: A directory path used by the helper.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
+        result: Retry outcome returned by the Slurm executor.
 """
     source_run_record = result.source_run_record
     retry_execution = result.retry_execution
@@ -1238,16 +1111,13 @@ def _prepare_run_recipe_impl(
 
     Args:
         prompt: Natural-language prompt being planned or frozen into a recipe.
-        manifest_sources: Manifest paths or inline manifest mappings that may contain planner values.
-        explicit_bindings: Caller-supplied planner values that should win over discovered inputs.
-        runtime_bindings: Frozen runtime inputs supplied alongside planner-discovered values.
-        resource_request: Caller-supplied compute resource policy or override.
-        execution_profile: Named execution profile requested or selected for the recipe.
-        runtime_image: Caller-supplied runtime image policy or override.
-        recipe_dir: A directory path used by the helper.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
+        manifest_sources: Prior manifests or run records used to seed typed planning.
+        explicit_bindings: User-supplied planner inputs that override discovered values.
+        runtime_bindings: Frozen runtime bindings captured in the saved recipe.
+        resource_request: Explicit CPU, memory, and scheduler choices from the request.
+        execution_profile: Named execution target requested for the recipe.
+        runtime_image: Runtime image selection for the frozen recipe.
+        recipe_dir: Output directory for the frozen recipe artifact.
 """
     recipe_input_context = _recipe_input_context_payload(
         manifest_sources=manifest_sources,
@@ -1347,15 +1217,12 @@ def prepare_run_recipe(
 
     Args:
         prompt: Natural-language prompt being planned or frozen into a recipe.
-        manifest_sources: Manifest paths or inline manifest mappings that may contain planner values.
-        explicit_bindings: Caller-supplied planner values that should win over discovered inputs.
-        runtime_bindings: Frozen runtime inputs supplied alongside planner-discovered values.
-        resource_request: Caller-supplied compute resource policy or override.
-        execution_profile: Named execution profile requested or selected for the recipe.
-        runtime_image: Caller-supplied runtime image policy or override.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
+        manifest_sources: Prior manifests or run records used to seed typed planning.
+        explicit_bindings: User-supplied planner inputs that override discovered values.
+        runtime_bindings: Frozen runtime bindings captured in the saved recipe.
+        resource_request: Explicit CPU, memory, and scheduler choices from the request.
+        execution_profile: Named execution target requested for the recipe.
+        runtime_image: Runtime image selection for the frozen recipe.
 """
     return _prepare_run_recipe_impl(
         prompt,
@@ -1372,15 +1239,13 @@ def _run_local_recipe_impl(
     artifact_path: str | Path,
     *,
     handlers: dict[str, Any] | None = None,
+    resume_from_local_record: str | Path | None = None,
 ) -> dict[str, object]:
     """Execute one frozen workflow-spec recipe through local node handlers.
 
     Args:
-        artifact_path: A filesystem path used by the helper.
-        handlers: The `handlers` input processed by this helper.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
+        artifact_path: Frozen recipe artifact to load and execute locally.
+        handlers: Optional node-handler overrides used for test doubles.
 """
     # Check approval for composed recipes before execution.
     try:
@@ -1406,7 +1271,10 @@ def _run_local_recipe_impl(
         pass  # Let the executor handle load errors normally.
 
     try:
-        result = LocalWorkflowSpecExecutor(handlers or _local_node_handlers()).execute(Path(artifact_path))
+        result = LocalWorkflowSpecExecutor(handlers or _local_node_handlers()).execute(
+            Path(artifact_path),
+            resume_from=Path(resume_from_local_record) if resume_from_local_record is not None else None,
+        )
     except Exception as exc:
         execution_supported = isinstance(exc, RuntimeError)
         return {
@@ -1435,14 +1303,7 @@ def _run_local_recipe_impl(
 
 
 def run_local_recipe(artifact_path: str) -> dict[str, object]:
-    """Run a previously frozen workflow-spec recipe artifact.
-
-    Args:
-        artifact_path: A filesystem path used by the helper.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
-"""
+    """Run a previously frozen workflow-spec recipe artifact."""
     return _run_local_recipe_impl(artifact_path)
 
 
@@ -1456,13 +1317,10 @@ def _run_slurm_recipe_impl(
     """Submit one frozen workflow-spec recipe through `sbatch`.
 
     Args:
-        artifact_path: A filesystem path used by the helper.
-        run_dir: A directory path used by the helper.
+        artifact_path: Frozen recipe artifact to submit to Slurm.
+        run_dir: Directory that stores the generated run record and logs.
         sbatch_runner: Injected submission command runner used for Slurm submission.
-        command_available: The `command_available` input processed by this helper.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
+        command_available: Command probe used to confirm Slurm tooling is available.
 """
     # Check approval for composed recipes before submission.
     try:
@@ -1501,14 +1359,7 @@ def _run_slurm_recipe_impl(
 
 
 def run_slurm_recipe(artifact_path: str) -> dict[str, object]:
-    """Submit a previously frozen workflow-spec recipe artifact to Slurm.
-
-    Args:
-        artifact_path: A filesystem path used by the helper.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
-"""
+    """Submit a previously frozen workflow-spec recipe artifact to Slurm."""
     return _run_slurm_recipe_impl(artifact_path)
 
 
@@ -1522,13 +1373,10 @@ def _monitor_slurm_job_impl(
     """Reconcile one Slurm job from its durable run record.
 
     Args:
-        run_record_path: A filesystem path used by the helper.
-        run_dir: A directory path used by the helper.
+        run_record_path: Path to the durable Slurm run record created at submission.
+        run_dir: Directory that stores run records and scheduler logs.
         scheduler_runner: Injected scheduler command runner used for status and cancellation.
-        command_available: The `command_available` input processed by this helper.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
+        command_available: Command probe used to confirm scheduler tooling is available.
 """
     result = SlurmWorkflowSpecExecutor(
         run_root=run_dir or DEFAULT_RUN_DIR,
@@ -1545,14 +1393,7 @@ def _monitor_slurm_job_impl(
 
 
 def monitor_slurm_job(run_record_path: str) -> dict[str, object]:
-    """Inspect and reconcile a submitted Slurm job from its run record.
-
-    Args:
-        run_record_path: A filesystem path used by the helper.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
-"""
+    """Inspect and reconcile a submitted Slurm job from its run record."""
     return _monitor_slurm_job_impl(run_record_path)
 
 
@@ -1566,13 +1407,10 @@ def _cancel_slurm_job_impl(
     """Cancel one Slurm job from its durable run record.
 
     Args:
-        run_record_path: A filesystem path used by the helper.
-        run_dir: A directory path used by the helper.
+        run_record_path: Path to the durable Slurm run record created at submission.
+        run_dir: Directory that stores run records and scheduler logs.
         scheduler_runner: Injected scheduler command runner used for status and cancellation.
-        command_available: The `command_available` input processed by this helper.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
+        command_available: Command probe used to confirm scheduler tooling is available.
 """
     result = SlurmWorkflowSpecExecutor(
         run_root=run_dir or DEFAULT_RUN_DIR,
@@ -1589,14 +1427,7 @@ def _cancel_slurm_job_impl(
 
 
 def cancel_slurm_job(run_record_path: str) -> dict[str, object]:
-    """Request cancellation for a submitted Slurm job from its run record.
-
-    Args:
-        run_record_path: A filesystem path used by the helper.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
-"""
+    """Request cancellation for a submitted Slurm job from its run record."""
     return _cancel_slurm_job_impl(run_record_path)
 
 
@@ -1611,14 +1442,11 @@ def _retry_slurm_job_impl(
     """Retry one failed Slurm job from its durable run record.
 
     Args:
-        run_record_path: A filesystem path used by the helper.
-        run_dir: A directory path used by the helper.
+        run_record_path: Path to the durable Slurm run record that captures the failure.
+        run_dir: Directory that stores run records and scheduler logs.
         sbatch_runner: Injected submission command runner used for Slurm submission.
         scheduler_runner: Injected scheduler command runner used for status and cancellation.
-        command_available: The `command_available` input processed by this helper.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
+        command_available: Command probe used to confirm scheduler tooling is available.
 """
     result = SlurmWorkflowSpecExecutor(
         run_root=run_dir or DEFAULT_RUN_DIR,
@@ -1639,14 +1467,7 @@ def _retry_slurm_job_impl(
 
 
 def retry_slurm_job(run_record_path: str) -> dict[str, object]:
-    """Retry a failed Slurm job from its durable run record.
-
-    Args:
-        run_record_path: A filesystem path used by the helper.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
-"""
+    """Retry a failed Slurm job from its durable run record."""
     return _retry_slurm_job_impl(run_record_path)
 
 
@@ -1717,13 +1538,7 @@ def approve_composed_recipe(
 
 
 def _supported_target_names() -> list[str]:
-    """Return the exact day-one recipe target names exposed through MCP.
-
-    This helper keeps the supported planner or executor path explicit and easy to review.
-
-    Returns:
-        A `list[str]` result computed by this helper.
-"""
+    """Return the registered target names exposed through MCP."""
     return list(SUPPORTED_TARGET_NAMES)
 
 
@@ -1732,9 +1547,6 @@ def _summary_used_inputs(plan: dict[str, object]) -> dict[str, object]:
 
     Args:
         plan: Typed planning result being summarized.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
 """
     extracted_inputs = plan.get("extracted_inputs", {})
     if not isinstance(extracted_inputs, dict):
@@ -1784,10 +1596,7 @@ def _summary_failure_reason(execution_result: dict[str, object] | None) -> str |
     """Extract one short failure reason from an execution payload when present.
 
     Args:
-        execution_result: A directory path used by the helper.
-
-    Returns:
-        A `str | None` result computed by this helper.
+        execution_result: Serialized execution result containing stderr, stdout, or limitations.
 """
     if not execution_result:
         return None
@@ -1819,16 +1628,13 @@ def _summary_message(
     """Build one short client-facing sentence for the prompt-and-run result.
 
     Args:
-        status: The `status` input processed by this helper.
-        target_name: The `target_name` input processed by this helper.
-        target_category: The `target_category` input processed by this helper.
-        used_inputs: The `used_inputs` input processed by this helper.
-        execution_result: A directory path used by the helper.
-        decline_reason: The `decline_reason` input processed by this helper.
-        declined_stages: Downstream stages intentionally not exposed for this prompt.
-
-    Returns:
-        A `str` result computed by this helper.
+        status: Final prompt-and-run outcome to describe.
+        target_name: Registered target name selected by the planner, when any.
+        target_category: Target category used in the client-facing sentence.
+        used_inputs: Prompt-derived inputs that materially affected execution.
+        execution_result: Serialized execution result used to extract the failure reason.
+        decline_reason: Human-readable reason for a declined request.
+        declined_stages: Downstream stages intentionally omitted from the response.
 """
     if status == "declined":
         if decline_reason and "missing explicit required inputs" in decline_reason.lower():
@@ -1876,10 +1682,7 @@ def _summary_codes(
 
     Args:
         plan: Typed planning result being summarized.
-        execution_result: A directory path used by the helper.
-
-    Returns:
-        A `tuple[str, str]` result computed by this helper.
+        execution_result: Serialized execution result used to distinguish success from failure.
 """
     missing_inputs = plan.get("missing_required_inputs", [])
     if isinstance(missing_inputs, list) and missing_inputs:
@@ -1910,11 +1713,8 @@ def _build_result_summary(
 
     Args:
         plan: Typed planning result being summarized.
-        execution_attempted: The `execution_attempted` input processed by this helper.
-        execution_result: A directory path used by the helper.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
+        execution_attempted: Whether the server tried to run the selected target.
+        execution_result: Serialized execution result used to build the outcome summary.
 """
     target_name = plan.get("matched_entry_name")
     target_category = plan.get("matched_entry_category")
@@ -1993,18 +1793,15 @@ def _prompt_and_run_impl(
 
     Args:
         prompt: Natural-language prompt being planned or frozen into a recipe.
-        workflow_runner: Injected workflow execution function used by the adapter.
-        task_runner: Injected task execution function used by the adapter.
-        manifest_sources: Manifest paths or inline manifest mappings that may contain planner values.
-        explicit_bindings: Caller-supplied planner values that should win over discovered inputs.
-        runtime_bindings: Frozen runtime inputs supplied alongside planner-discovered values.
-        resource_request: Caller-supplied compute resource policy or override.
-        execution_profile: Named execution profile requested or selected for the recipe.
-        runtime_image: Caller-supplied runtime image policy or override.
-        recipe_dir: A directory path used by the helper.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
+        workflow_runner: Workflow execution function injected for tests or local execution.
+        task_runner: Task execution function injected for tests or local execution.
+        manifest_sources: Prior manifests or run records used to seed typed planning.
+        explicit_bindings: User-supplied planner inputs that override discovered values.
+        runtime_bindings: Frozen runtime bindings captured in the saved recipe.
+        resource_request: Explicit CPU, memory, and scheduler choices from the request.
+        execution_profile: Named execution target requested for the recipe.
+        runtime_image: Runtime image selection for the frozen recipe.
+        recipe_dir: Output directory for the frozen recipe artifact.
 """
     recipe = _prepare_run_recipe_impl(
         prompt,
@@ -2080,15 +1877,12 @@ def prompt_and_run(
 
     Args:
         prompt: Natural-language prompt being planned or frozen into a recipe.
-        manifest_sources: Manifest paths or inline manifest mappings that may contain planner values.
-        explicit_bindings: Caller-supplied planner values that should win over discovered inputs.
-        runtime_bindings: Frozen runtime inputs supplied alongside planner-discovered values.
-        resource_request: Caller-supplied compute resource policy or override.
-        execution_profile: Named execution profile requested or selected for the recipe.
-        runtime_image: Caller-supplied runtime image policy or override.
-
-    Returns:
-        A JSON-compatible payload built for the caller.
+        manifest_sources: Prior manifests or run records used to seed typed planning.
+        explicit_bindings: User-supplied planner inputs that override discovered values.
+        runtime_bindings: Frozen runtime bindings captured in the saved recipe.
+        resource_request: Explicit CPU, memory, and scheduler choices from the request.
+        execution_profile: Named execution target requested for the recipe.
+        runtime_image: Runtime image selection for the frozen recipe.
 """
     return _prompt_and_run_impl(
         prompt,
@@ -2102,13 +1896,7 @@ def prompt_and_run(
 
 
 def _load_fastmcp() -> Any:
-    """Import `FastMCP` lazily so helper tests can run without the SDK installed.
-
-    This helper keeps the supported planner or executor path explicit and easy to review.
-
-    Returns:
-        A `Any` result computed by this helper.
-"""
+    """Import `FastMCP` lazily so unit tests can run without the SDK installed."""
     try:
         from mcp.server.fastmcp import FastMCP
     except ModuleNotFoundError as exc:
@@ -2123,20 +1911,14 @@ def _should_skip_stdio_line(line: str) -> bool:
     """Return whether one stdio input line should be ignored before JSON parsing.
 
     Args:
-        line: One stdio line being filtered before JSON parsing.
-
-    Returns:
-        A `bool` result computed by this helper.
+        line: One stdin line filtered before JSON-RPC parsing.
 """
     return not line.strip()
 
 
 @asynccontextmanager
 async def _filtered_stdio_server():
-    """Wrap stdio transport while ignoring blank client lines that break JSON-RPC parsing.
-
-    This helper keeps the supported planner or executor path explicit and easy to review.
-"""
+    """Wrap stdio transport while ignoring blank client lines that break JSON-RPC parsing."""
     import anyio
     from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStream
     import mcp.types as types
@@ -2154,10 +1936,7 @@ async def _filtered_stdio_server():
     write_stream, write_stream_reader = anyio.create_memory_object_stream(0)
 
     async def stdin_reader() -> None:
-        """Read stdio messages, drop blank lines, and forward JSON-RPC payloads.
-
-    This helper keeps the supported planner or executor path explicit and easy to review.
-"""
+        """Read stdio messages, drop blank lines, and forward JSON-RPC payloads."""
         try:
             async with read_stream_writer:
                 async for line in stdin:
@@ -2173,10 +1952,7 @@ async def _filtered_stdio_server():
             await anyio.lowlevel.checkpoint()
 
     async def stdout_writer() -> None:
-        """Serialize MCP session messages back to stdout for the transport.
-
-    This helper keeps the supported planner or executor path explicit and easy to review.
-"""
+        """Serialize MCP session messages back to stdout for the transport."""
         try:
             async with write_stream_reader:
                 async for session_message in write_stream_reader:
@@ -2197,9 +1973,6 @@ def create_mcp_server(fastmcp_cls: Any | None = None) -> Any:
 
     Args:
         fastmcp_cls: FastMCP class or test double used to construct the server.
-
-    Returns:
-        A `Any` result computed by this helper.
 """
     fastmcp = _load_fastmcp() if fastmcp_cls is None else fastmcp_cls
     mcp = fastmcp(SHOWCASE_SERVER_NAME)
@@ -2249,10 +2022,7 @@ async def _run_stdio_server_async() -> None:
 
 
 def main() -> None:
-    """Run the FastMCP server over stdio.
-
-    This helper keeps the supported planner or executor path explicit and easy to review.
-"""
+    """Run the FastMCP server over stdio."""
     try:
         import anyio
 

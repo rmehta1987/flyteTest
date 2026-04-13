@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Run the Apptainer-backed PASA image smoke against the repo-local Trinity and
+# genome fixtures.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/rcc/common.sh
 source "$SCRIPT_DIR/common.sh"

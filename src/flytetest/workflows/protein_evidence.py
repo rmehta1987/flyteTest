@@ -1,10 +1,11 @@
 """Protein-evidence workflow entrypoint for FLyteTest.
 
-    This module stages local protein FASTAs, chunks them deterministically, runs
-    Exonerate per chunk, and collects the later-EVM protein evidence bundle.
+This module stages local protein FASTAs, chunks them deterministically, runs
+Exonerate per chunk, and collects the protein-evidence bundle that will feed
+later EVM-oriented annotation stages.
 
-    Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
-    input/output expectations follow `docs/tool_refs/exonerate.md`.
+Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
+input/output expectations follow `docs/tool_refs/exonerate.md`.
 """
 
 from __future__ import annotations
@@ -37,15 +38,23 @@ def protein_evidence_alignment(
     """Orchestrate deterministic protein-to-genome alignment and EVM-compatible evidence generation.
 
     Args:
-        genome: A value used by the helper.
-        protein_fastas: A value used by the helper.
-        proteins_per_chunk: A value used by the helper.
-        exonerate_sif: A value used by the helper.
-        exonerate_model: A value used by the helper.
+        genome: Reference genome FASTA used as the Exonerate target for every
+            protein chunk.
+        protein_fastas: Local protein FASTA inputs that are staged before
+            chunking so the workflow stays reproducible and offline-friendly.
+        proteins_per_chunk: Maximum number of proteins per chunk FASTA; this
+            controls how much evidence each Exonerate job receives.
+        exonerate_sif: Optional container image for the Exonerate task
+            environment when the workflow is run with staged runtime assets.
+        exonerate_model: Exonerate alignment model, defaulting to
+            `protein2genome` because the notes describe protein evidence
+            aligned to the genome.
 
     Returns:
-        The returned `Dir` value used by the caller.
-"""
+        Final protein-evidence bundle that preserves the staged inputs,
+        per-chunk alignments, converted EVM-ready GFF3, and the collector
+        manifest for downstream annotation stages.
+    """
     staged_proteins = stage_protein_fastas(protein_fastas=protein_fastas)
     protein_chunks = chunk_protein_fastas(
         staged_proteins=staged_proteins,

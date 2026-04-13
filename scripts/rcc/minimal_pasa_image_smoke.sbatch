@@ -10,6 +10,8 @@
 #SBATCH --output=/scratch/midway3/mehta5/flyteTest/FlyteTest/%x.%j.out
 #SBATCH --error=/scratch/midway3/mehta5/flyteTest/FlyteTest/%x.%j.err
 
+# Slurm entrypoint for the Apptainer-backed PASA image smoke when you want to
+# exercise the image path on RCC.
 set -euo pipefail
 
 # Load the cluster toolchain needed by the smoke wrappers and Apptainer runtime.

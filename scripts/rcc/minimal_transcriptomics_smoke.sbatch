@@ -10,6 +10,8 @@
 #SBATCH --output=/scratch/midway3/mehta5/flyteTest/FlyteTest/%x.%j.out
 #SBATCH --error=/scratch/midway3/mehta5/flyteTest/FlyteTest/%x.%j.err
 
+# Slurm entrypoint for the Trinity, STAR, and StringTie transcriptomics smoke
+# on RCC.
 set -euo pipefail
 
 # Load the cluster toolchain needed by the smoke wrappers and Apptainer runtime.
