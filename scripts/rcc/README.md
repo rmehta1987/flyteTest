@@ -331,12 +331,12 @@ directly instead of reconciling it:
 
 ```bash
 bash scripts/rcc/watch_slurm_run_record.sh \
-  .runtime/runs/latest_protein_evidence_slurm_run_record.txt 15
+  .runtime/runs/latest_slurm_run_record.txt 15
 ```
 
 The watcher accepts either the real `slurm_run_record.json` path, the run
 directory that contains it, or a pointer file such as
-`.runtime/runs/latest_protein_evidence_slurm_run_record.txt`. Each output line
+`.runtime/runs/latest_slurm_run_record.txt`. Each output line
 contains the passive poll-loop evidence fields only:
 
 - `scheduler_state`
@@ -348,7 +348,9 @@ contains the passive poll-loop evidence fields only:
 
 The helper stops automatically once `final_scheduler_state` is non-null. Pass a
 third argument such as `8` when you want to cap the watch at a fixed number of
-cycles instead.
+cycles instead. Scenario wrappers such as the protein-evidence submit helper
+still maintain their own workflow-specific pointers, but the generic latest
+Slurm pointer is the safer default for back-to-back direct MCP submissions.
 
 This submit-plus-monitor pair is also the final real-workflow Milestone 19
 validation gate on RCC. The current validated outcome is a monitored terminal
@@ -510,7 +512,11 @@ The submit helper writes the latest durable run-record path to
 `.runtime/runs/latest_protein_evidence_slurm_run_record.txt` and the matching
 saved recipe artifact path to
 `.runtime/runs/latest_protein_evidence_slurm_artifact.txt` so the monitor and
-cancel helpers can follow the run without manual copy/paste.
+cancel helpers can follow the run without manual copy/paste. The shared MCP
+submission path also refreshes `.runtime/runs/latest_slurm_run_record.txt` and
+`.runtime/runs/latest_slurm_artifact.txt`, which are the safer defaults for
+generic shell-side watchers after back-to-back direct `run_slurm_recipe`
+submissions.
 Observed RCC result (2026-04-13): this wrapper pair reached `COMPLETED` with
 scheduler exit code `0:0`, so it now serves as the first validated real
 workflow Slurm proof after the Milestone 19 approval and resume smokes.

@@ -573,6 +573,12 @@ subsequent monitoring, retry, and cancel call needs it. The generated `sbatch`
 script is also saved under `.runtime/runs/<run_id>/` and can be inspected to
 verify the directives that were submitted.
 
+For direct MCP submissions, the server also refreshes the generic latest-run
+pointer files `.runtime/runs/latest_slurm_run_record.txt` and
+`.runtime/runs/latest_slurm_artifact.txt`. Use those pointers when you need a
+shell-side watcher to follow the newest accepted Slurm submission without
+copy/pasting the returned path each time.
+
 ### Phase 3: Monitor the job
 
 Call `monitor_slurm_job` with the `run_record_path` from Phase 2 and repeat

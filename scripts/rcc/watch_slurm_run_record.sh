@@ -12,7 +12,7 @@ MAX_CYCLES="${3:-}"
 
 if [[ -z "$RUN_RECORD_PATH" ]]; then
   echo "usage: $0 RUN_RECORD_PATH_OR_POINTER [interval_seconds] [max_cycles]" >&2
-  echo "example: $0 .runtime/runs/latest_protein_evidence_slurm_run_record.txt 15" >&2
+  echo "example: $0 .runtime/runs/latest_slurm_run_record.txt 15" >&2
   exit 1
 fi
 

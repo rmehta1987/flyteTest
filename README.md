@@ -352,8 +352,11 @@ Current MCP behavior:
   handlers
 - `run_slurm_recipe` submits a previously saved Slurm-profile recipe with
   `sbatch`, writes the generated script and a durable run record under
-  `.runtime/runs/`, and records the accepted Slurm job ID when the server is
-  running inside an already-authenticated scheduler-capable environment
+  `.runtime/runs/`, refreshes the generic latest-submission pointers
+  `.runtime/runs/latest_slurm_run_record.txt` and
+  `.runtime/runs/latest_slurm_artifact.txt`, and records the accepted Slurm
+  job ID when the server is running inside an already-authenticated
+  scheduler-capable environment
 - `monitor_slurm_job` reconciles the durable Slurm run record with `squeue`,
   `scontrol show job`, and `sacct`, then persists observed scheduler state,
   stdout/stderr paths, exit code, final state, and conservative retry

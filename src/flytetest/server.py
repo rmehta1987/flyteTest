@@ -97,6 +97,8 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 ENTRYPOINT = REPO_ROOT / "flyte_rnaseq_workflow.py"
 DEFAULT_RECIPE_DIR = REPO_ROOT / ".runtime" / "specs"
 DEFAULT_RUN_DIR = REPO_ROOT / ".runtime" / "runs"
+DEFAULT_LATEST_SLURM_RUN_RECORD_POINTER = "latest_slurm_run_record.txt"
+DEFAULT_LATEST_SLURM_ARTIFACT_POINTER = "latest_slurm_artifact.txt"
 SERVER_TOOL_NAMES = MCP_TOOL_NAMES
 SERVER_RESOURCE_URIS = MCP_RESOURCE_URIS
 BUSCO_FIXTURE_TASK_NAME = "busco_assess_proteins"
@@ -115,6 +117,36 @@ def _resolve_flyte_cli() -> str:
 def _supported_runnable_targets() -> list[dict[str, str]]:
     """Return the showcase target list exposed through MCP resources."""
     return supported_runnable_targets_payload()
+
+
+def _write_latest_slurm_submission_pointers(
+    run_root: Path,
+    *,
+    artifact_path: Path,
+    run_record_path: Path,
+) -> None:
+    """Persist generic pointer files for the newest successful Slurm submission.
+
+    These pointers are maintained at the shared MCP/server boundary rather than
+    only inside RCC scenario wrappers. That keeps direct `run_slurm_recipe`
+    submissions observable by helper scripts such as
+    `scripts/rcc/watch_slurm_run_record.sh`, even when the job was launched
+    from a generic client prompt instead of a wrapper-specific submit script.
+
+    Args:
+        run_root: Durable Slurm run-record directory where pointer files should
+            live alongside the per-run subdirectories.
+        artifact_path: Frozen recipe artifact that was just accepted by Slurm.
+        run_record_path: Durable run record created for the accepted
+            submission.
+    """
+    run_root.mkdir(parents=True, exist_ok=True)
+    (run_root / DEFAULT_LATEST_SLURM_RUN_RECORD_POINTER).write_text(
+        f"{run_record_path}\n"
+    )
+    (run_root / DEFAULT_LATEST_SLURM_ARTIFACT_POINTER).write_text(
+        f"{artifact_path}\n"
+    )
 
 
 def _entry_payload(name: str) -> dict[str, object]:
@@ -1349,6 +1381,13 @@ def _run_slurm_recipe_impl(
         sbatch_runner=sbatch_runner,
         command_available=command_available or _command_is_available,
     ).submit(Path(artifact_path))
+    active_run_dir = run_dir or DEFAULT_RUN_DIR
+    if result.supported and result.run_record is not None:
+        _write_latest_slurm_submission_pointers(
+            active_run_dir,
+            artifact_path=Path(artifact_path),
+            run_record_path=result.run_record.run_record_path,
+        )
     execution_result = _result_from_slurm_spec_execution(result)
     return {
         "supported": bool(result.supported),

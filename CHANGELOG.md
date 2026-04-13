@@ -103,6 +103,11 @@ Entry template:
   background-reconciliation evidence fields, so RCC sessions can prove that
   the MCP server's `slurm_poll_loop()` updated the record without using
   `monitor_slurm_job`
+- [x] 2026-04-13 moved the generic latest-run pointer behavior into the shared
+  `run_slurm_recipe` server path: every successful Slurm submission now
+  refreshes `.runtime/runs/latest_slurm_run_record.txt` and
+  `.runtime/runs/latest_slurm_artifact.txt`, so back-to-back direct MCP
+  submissions no longer depend on workflow-specific RCC wrapper pointers
 
 ### Documentation Sweep Planning
 

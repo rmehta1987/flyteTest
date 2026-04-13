@@ -511,6 +511,53 @@ class ServerTests(TestCase):
         self.assertEqual(submitted["execution_result"]["run_record"]["resource_spec"]["queue"], "batch")
         self.assertEqual(submitted["execution_result"]["run_record"]["resource_spec"]["account"], "rcc-staff")
 
+    def test_run_slurm_recipe_updates_generic_latest_pointer_on_back_to_back_submissions(self) -> None:
+        """Direct MCP Slurm submissions should refresh the shared latest-run pointer."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result_dir = _repeat_filter_manifest_dir(tmp_path)
+            prepared = _prepare_run_recipe_impl(
+                "Run BUSCO quality assessment on the annotation.",
+                manifest_sources=(result_dir,),
+                runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                execution_profile="slurm",
+                recipe_dir=tmp_path,
+            )
+            job_ids = iter(("24680", "24681"))
+
+            def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                """Return distinct job IDs for consecutive submissions."""
+                return subprocess.CompletedProcess(
+                    args=args,
+                    returncode=0,
+                    stdout=f"Submitted batch job {next(job_ids)}\n",
+                    stderr="",
+                )
+
+            first = _run_slurm_recipe_impl(
+                str(prepared["artifact_path"]),
+                run_dir=tmp_path / "runs",
+                sbatch_runner=fake_sbatch,
+                command_available=lambda command: True,
+            )
+            second = _run_slurm_recipe_impl(
+                str(prepared["artifact_path"]),
+                run_dir=tmp_path / "runs",
+                sbatch_runner=fake_sbatch,
+                command_available=lambda command: True,
+            )
+
+            latest_run_pointer = tmp_path / "runs" / "latest_slurm_run_record.txt"
+            latest_artifact_pointer = tmp_path / "runs" / "latest_slurm_artifact.txt"
+            latest_run_pointer_value = latest_run_pointer.read_text().strip()
+            latest_artifact_pointer_value = latest_artifact_pointer.read_text().strip()
+
+        self.assertTrue(first["supported"])
+        self.assertTrue(second["supported"])
+        self.assertNotEqual(first["run_record_path"], second["run_record_path"])
+        self.assertEqual(latest_run_pointer_value, str(second["run_record_path"]))
+        self.assertEqual(latest_artifact_pointer_value, str(prepared["artifact_path"]))
+
     def test_run_slurm_recipe_rejects_local_profile_artifact(self) -> None:
         """Require Slurm recipes to be explicitly frozen with the Slurm profile.
 
