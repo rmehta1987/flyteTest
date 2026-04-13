@@ -81,14 +81,18 @@ from flytetest.spec_artifacts import (
     save_workflow_spec_artifact,
 )
 from flytetest.spec_executor import (
+    DEFAULT_SLURM_RUN_RECORD_FILENAME,
     LocalNodeExecutionRequest,
     LocalSpecExecutionResult,
+    SlurmRunRecord,
     SlurmRetryResult,
     LocalWorkflowSpecExecutor,
     SlurmLifecycleResult,
     SlurmSpecExecutionResult,
     SlurmWorkflowSpecExecutor,
+    _TERMINAL_SLURM_STATES,
     _command_is_available,
+    load_slurm_run_record,
 )
 from flytetest.specs import ResourceSpec, RuntimeImageSpec
 
@@ -146,6 +150,173 @@ def _write_latest_slurm_submission_pointers(
     )
     (run_root / DEFAULT_LATEST_SLURM_ARTIFACT_POINTER).write_text(
         f"{artifact_path}\n"
+    )
+
+
+def _read_pointer_value(pointer_path: Path) -> str | None:
+    """Return one pointer-file target path when the pointer exists."""
+    if not pointer_path.is_file():
+        return None
+    value = pointer_path.read_text().strip()
+    return value or None
+
+
+def _effective_slurm_history_state(record: SlurmRunRecord) -> str:
+    """Return the best available scheduler state for history filtering."""
+    return (record.final_scheduler_state or record.scheduler_state or "").upper()
+
+
+def _serialize_slurm_history_entry(record: SlurmRunRecord) -> dict[str, object]:
+    """Serialize one durable Slurm run record for the MCP history tool."""
+    effective_state = _effective_slurm_history_state(record)
+    return {
+        "run_id": record.run_id,
+        "workflow_name": record.workflow_name,
+        "job_id": record.job_id,
+        "run_record_path": str(record.run_record_path),
+        "artifact_path": str(record.artifact_path),
+        "script_path": str(record.script_path),
+        "execution_profile": record.execution_profile,
+        "submitted_at": record.submitted_at,
+        "scheduler_state": record.scheduler_state,
+        "final_scheduler_state": record.final_scheduler_state,
+        "effective_scheduler_state": effective_state,
+        "is_terminal": effective_state in _TERMINAL_SLURM_STATES,
+        "scheduler_state_source": record.scheduler_state_source,
+        "scheduler_exit_code": record.scheduler_exit_code,
+        "last_reconciled_at": record.last_reconciled_at,
+        "cancellation_requested_at": record.cancellation_requested_at,
+        "attempt_number": record.attempt_number,
+        "lineage_root_run_id": record.lineage_root_run_id,
+        "lineage_root_run_record_path": str(record.lineage_root_run_record_path)
+        if record.lineage_root_run_record_path is not None
+        else None,
+        "retry_parent_run_id": record.retry_parent_run_id,
+        "retry_parent_run_record_path": str(record.retry_parent_run_record_path)
+        if record.retry_parent_run_record_path is not None
+        else None,
+        "retry_child_run_ids": list(record.retry_child_run_ids),
+        "retry_child_run_record_paths": [str(path) for path in record.retry_child_run_record_paths],
+    }
+
+
+def _list_slurm_run_history_impl(
+    *,
+    run_dir: Path | None = None,
+    limit: int = 20,
+    workflow_name: str | None = None,
+    active_only: bool = False,
+    terminal_only: bool = False,
+) -> dict[str, object]:
+    """List recent durable Slurm run records without querying the scheduler.
+
+    Args:
+        run_dir: Root directory that stores per-run Slurm record directories.
+        limit: Maximum number of history entries to return, ordered newest
+            first by durable submission timestamp.
+        workflow_name: Optional exact workflow-name filter applied to the
+            durable records after they are loaded from disk.
+        active_only: When ``True``, keep only records whose effective state is
+            not terminal.
+        terminal_only: When ``True``, keep only records whose effective state
+            is terminal.
+    """
+    history_root = run_dir or DEFAULT_RUN_DIR
+    filters = {
+        "workflow_name": workflow_name,
+        "active_only": active_only,
+        "terminal_only": terminal_only,
+        "limit": limit,
+    }
+    if limit <= 0 or (active_only and terminal_only):
+        validation_errors: list[str] = []
+        if limit <= 0:
+            validation_errors.append("limit must be >= 1")
+        if active_only and terminal_only:
+            validation_errors.append("active_only and terminal_only cannot both be true")
+        return {
+            "supported": False,
+            "run_root": str(history_root),
+            "filters": filters,
+            "latest_run_record_path": _read_pointer_value(
+                history_root / DEFAULT_LATEST_SLURM_RUN_RECORD_POINTER
+            ),
+            "latest_artifact_path": _read_pointer_value(
+                history_root / DEFAULT_LATEST_SLURM_ARTIFACT_POINTER
+            ),
+            "returned_count": 0,
+            "matched_count": 0,
+            "total_count": 0,
+            "entries": [],
+            "limitations": validation_errors,
+            "assumptions": [],
+        }
+
+    records: list[SlurmRunRecord] = []
+    limitations: list[str] = []
+    if history_root.is_dir():
+        for entry in sorted(history_root.iterdir()):
+            if not entry.is_dir():
+                continue
+            record_path = entry / DEFAULT_SLURM_RUN_RECORD_FILENAME
+            if not record_path.is_file():
+                continue
+            try:
+                records.append(load_slurm_run_record(entry))
+            except Exception as exc:
+                limitations.append(f"Skipped unreadable Slurm run record {record_path}: {exc}")
+
+    records.sort(
+        key=lambda record: (
+            "" if record.submitted_at == "not_recorded" else record.submitted_at,
+            record.last_reconciled_at or "",
+            record.run_id,
+        ),
+        reverse=True,
+    )
+    filtered_records = [
+        record
+        for record in records
+        if (workflow_name is None or record.workflow_name == workflow_name)
+        and (not active_only or _effective_slurm_history_state(record) not in _TERMINAL_SLURM_STATES)
+        and (not terminal_only or _effective_slurm_history_state(record) in _TERMINAL_SLURM_STATES)
+    ]
+    entries = [_serialize_slurm_history_entry(record) for record in filtered_records[:limit]]
+    return {
+        "supported": True,
+        "run_root": str(history_root),
+        "filters": filters,
+        "latest_run_record_path": _read_pointer_value(
+            history_root / DEFAULT_LATEST_SLURM_RUN_RECORD_POINTER
+        ),
+        "latest_artifact_path": _read_pointer_value(
+            history_root / DEFAULT_LATEST_SLURM_ARTIFACT_POINTER
+        ),
+        "returned_count": len(entries),
+        "matched_count": len(filtered_records),
+        "total_count": len(records),
+        "entries": entries,
+        "limitations": limitations,
+        "assumptions": [
+            "History is read from durable .runtime/runs records only; this tool does not query Slurm.",
+            "Only accepted Slurm submissions whose run-record directories still exist can appear in this listing.",
+            "workflow_name filtering matches the durable run-record workflow_name field rather than higher-level MCP target aliases.",
+        ],
+    }
+
+
+def list_slurm_run_history(
+    limit: int = 20,
+    workflow_name: str | None = None,
+    active_only: bool = False,
+    terminal_only: bool = False,
+) -> dict[str, object]:
+    """List recent durable Slurm submissions from `.runtime/runs/`."""
+    return _list_slurm_run_history_impl(
+        limit=limit,
+        workflow_name=workflow_name,
+        active_only=active_only,
+        terminal_only=terminal_only,
     )
 
 
@@ -2023,6 +2194,7 @@ def create_mcp_server(fastmcp_cls: Any | None = None) -> Any:
     mcp.tool()(prepare_run_recipe)
     mcp.tool()(run_local_recipe)
     mcp.tool()(run_slurm_recipe)
+    mcp.tool()(list_slurm_run_history)
     mcp.tool()(monitor_slurm_job)
     mcp.tool()(retry_slurm_job)
     mcp.tool()(cancel_slurm_job)

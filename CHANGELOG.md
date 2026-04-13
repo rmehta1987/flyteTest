@@ -38,6 +38,160 @@ Entry template:
 
 ## Unreleased
 
+### Slurm Test Coverage Follow-Up
+
+Gaps identified 2026-04-13 from review of `tests/test_server.py`,
+`tests/test_slurm_async_monitor.py`, and `tests/test_spec_executor.py`.
+All are offline-friendly additions that do not require a live cluster.
+
+- [ ] `monitor_slurm_job` on a `COMPLETED` terminal record — verify
+  `final_scheduler_state` is non-null so MCP clients have a reliable polling
+  gate (only `PENDING` is currently tested at the server layer)
+- [ ] `monitor_slurm_job` on a `FAILED` terminal record — verify `stdout_path`
+  and `stderr_path` are present in the response so clients know where to look
+  for diagnostic output
+- [ ] `monitor_slurm_job` on a `TIMEOUT` terminal record — verify
+  `final_scheduler_state` is set and `supported` is `True` (this is a terminal
+  state, not an error; client needs to re-prepare with updated resources)
+- [ ] `monitor_slurm_job` sacct fallback path — simulate empty squeue output
+  followed by populated sacct output to prove the `COMPLETED` transition used
+  in practice (job aged off squeue) is handled correctly
+- [ ] `retry_slurm_job` on a `TIMEOUT` record — should decline as terminal with
+  a resource-escalation message; only `OUT_OF_MEMORY` is currently tested for
+  the non-retryable branch
+- [ ] `retry_slurm_job` on a `CANCELLED` record — should decline; no test
+  covers this terminal state
+- [ ] `retry_slurm_job` child record carries `parent_run_record_path` — verify
+  the new run record links back to the original; currently only the new job ID
+  is asserted
+- [ ] `cancel_slurm_job` idempotency — second cancel on a record that already
+  has `cancellation_requested_at` set should not invoke `scancel` again
+- [ ] `cancel_slurm_job` when `scancel` returns non-zero — run record should
+  still persist `cancellation_requested_at`; the request was made even if the
+  scheduler rejected it
+- [ ] Full cancel → monitor → `CANCELLED` cycle — cancel a job then reconcile,
+  verify `scheduler_state` transitions to `CANCELLED` in the MCP response
+- [ ] sbatch script directive content — after `run_slurm_recipe`, read the
+  saved script and assert `#SBATCH` directives match the frozen
+  `resource_request` (`cpu` → `--ntasks`, `memory` → `--mem`,
+  `walltime` → `--time`, `queue` → `--partition`)
+- [ ] `script_path` in run record points to an existing file after submission
+- [ ] `slurm_resource_hints` in `list_entries` — no test checks that the new
+  registry hints appear in the `compatibility.execution_defaults` section of
+  MCP entry payloads
+- [ ] `run_slurm_recipe` with a prior `LocalRunRecord` at the MCP server layer —
+  M19 Phase C wired the executor path; the server-layer test only covers the
+  local-execution resume case
+- [ ] Schema version mismatch on run record load — an unrecognized
+  `schema_version` should fail with a clear message rather than a cryptic
+  `KeyError`
+- [ ] Submit the same artifact twice — should produce two independent run
+  records with different `run_id` values, not silently reuse one
+- [x] 2026-04-13 fixed pre-existing timing flake in `test_loop_survives_reconcile_error`
+  (`tests/test_slurm_async_monitor.py`) — replaced real thread dispatch with
+  `patch.object(anyio.to_thread, "run_sync", new=fake_run_sync)` so the test
+  only waits on `anyio.sleep` between cycles; widened the window from 0.5s to
+  1.0s as a safety margin; 319 tests pass, 1 live-Slurm smoke skipped
+
+### Registry Slurm Resource Hints
+
+- [x] 2026-04-13 added `_WORKFLOW_SLURM_RESOURCE_HINTS` dict to
+  `src/flytetest/registry.py` with advisory `cpu`, `memory`, and `walltime`
+  starting-point values for all 16 Slurm-capable workflows; `queue` and
+  `account` are deliberately absent — they are site-specific and must always
+  come from the user
+- [x] 2026-04-13 updated `_with_resource_defaults()` to attach hints under
+  `execution_defaults["slurm_resource_hints"]` alongside the existing
+  `execution_defaults["resources"]` (local) table; updated the function
+  docstring to describe both tables and their precedence rules
+- [x] 2026-04-13 added rule to `AGENTS.md` Section 7: when the user does not
+  specify Slurm resources, read `slurm_resource_hints` from the target
+  workflow's registry entry and surface them to the user before freezing;
+  queue and account must always come from the user
+- [x] 2026-04-13 updated `docs/capability_maturity.md` Resource-aware
+  execution planning row to name both `execution_defaults["resources"]`
+  (local cpu/memory/execution_class) and `execution_defaults["slurm_resource_hints"]`
+  (Slurm cpu/memory/walltime) and their advisory role
+- [x] 2026-04-13 updated `docs/mcp_showcase.md` `resource_request` description
+  to direct clients toward `list_entries` →
+  `compatibility.execution_defaults.slurm_resource_hints` as the starting-point
+  source before freezing a recipe
+
+### MCP Showcase Slurm Lifecycle Documentation
+
+- [x] 2026-04-13 restructured "Validated Slurm Walkthrough" in
+  `docs/mcp_showcase.md` into six named phases: Prepare, Submit, Monitor, On
+  Completion, On Failure, Cancel; each phase is self-contained so users can
+  navigate to the step they need
+- [x] 2026-04-13 added scheduler state reference table covering `PENDING`,
+  `RUNNING`, `COMPLETED`, `FAILED`, `TIMEOUT`, `OUT_OF_MEMORY`, `CANCELLED`
+  with meaning and next-action guidance; `TIMEOUT` and `OUT_OF_MEMORY` are
+  documented as terminal states that require a new `prepare_run_recipe` call
+  with updated `resource_request` rather than `retry_slurm_job`
+- [x] 2026-04-13 added "Slurm Prerequisites" section before the walkthrough
+  explaining the 2FA constraint, authenticated HPC login session requirement,
+  and required commands on `PATH`; cross-referenced from Common Failure Modes
+  (moved from buried in failure modes to a dedicated callout)
+- [x] 2026-04-13 added `resource_request` JSON schema example in the Recipe
+  Flow section with all five fields (`cpu`, `memory`, `queue`, `account`,
+  `walltime`); noted that these fields can also be embedded in the prompt text
+  for MCP clients that drop optional tool arguments
+- [x] 2026-04-13 added Phase 4 (On Completion) happy-path example showing a
+  `COMPLETED` terminal state; `final_scheduler_state` being non-null is
+  documented as the polling gate for MCP clients
+- [x] 2026-04-13 added Phase 5 (On Failure) decision tree: `retry_slurm_job`
+  for retryable failures (`NODE_FAIL`, transient errors) versus new
+  `prepare_run_recipe` with updated `resource_request` for resource-exhaustion
+  terminal states
+- [x] 2026-04-13 added `.runtime/runs/<run_id>/` sbatch script callout in the
+  `run_slurm_recipe` description so users know the script can be inspected
+  before or after submission to verify directives
+- [x] 2026-04-13 updated `retry_slurm_job` tools one-liner to state it
+  resubmits the original frozen recipe unchanged; resource changes require a
+  new `prepare_run_recipe` call
+- [x] 2026-04-13 updated `AGENTS.md` Sections 3 and 7 to replace stale Flyte
+  Slurm plugin language with the authenticated-session `sbatch` model; added
+  explicit note that 2FA prevents SSH key pairing
+- [x] 2026-04-13 updated `DESIGN.md` Section 4.5 to replace non-existent
+  `SlurmExecutionProfile` / `sbatch_conf_for_recipe` API pseudo-code with the
+  actual four-phase recipe workflow (`prepare_run_recipe` → `run_slurm_recipe`
+  → `monitor_slurm_job` → `retry_slurm_job`)
+- [x] 2026-04-13 added "## Slurm Execution" section to
+  `docs/tutorial_context.md` covering the 2FA constraint, frozen resource
+  settings, `TIMEOUT`/`OUT_OF_MEMORY` terminal classification, and BUSCO
+  fixture as the canonical smoke-test reference
+
+### Documentation Style Guide and Context Cleanup
+
+- [x] 2026-04-13 rewrote `## Inline Comments` section of `.codex/comments.md`
+  with four concrete code examples (annotation comment blocks, biological
+  context, guard/constraint explanations); replaced abstract guidance with
+  patterns that can be applied directly to source files
+- [x] 2026-04-13 updated `.codex/comments.md` Function Docstrings section to
+  name `slurm_poll_loop` in `src/flytetest/slurm_monitor.py` as the canonical
+  depth standard for all project docstrings
+- [x] 2026-04-13 updated `.codex/documentation.md` to add the `slurm_poll_loop`
+  depth-target paragraph at the top of Code Documentation Expectations, and
+  added a `named sub-sections` bullet (Error handling:, Output contract:,
+  Retry logic:) to the Args/Returns guidance
+- [x] 2026-04-13 added rule to both `.codex/comments.md` and
+  `.codex/documentation.md`: Args and Returns explanations must go beyond the
+  type hint to give the biological or engineering reason for each parameter,
+  not just restate the type
+- [x] 2026-04-13 created `.claudeignore` to exclude
+  `Genomic Studies Platform Summary.md` from Claude Code context without
+  removing it from the repository
+- [x] 2026-04-13 archived 24 milestone submission prompt and plan files from
+  `docs/realtime_refactor_plans/` into `docs/realtime_refactor_plans/archive/`;
+  covered M12–M18 submission prompts, MCP spec cutover, recipe binding plans,
+  and bulk milestone prompts; active M19 phase prompts remain in place
+- [x] 2026-04-13 moved misplaced `src/flytetest/improve_dataclass_serializatoin.md`
+  (typo in name, wrong directory) into a clean gated plan at
+  `docs/realtime_refactor_plans/2026-04-13-dataclass-serialization-consolidation.md`;
+  added matching checklist section to `docs/realtime_refactor_checklist.md`;
+  gate: after M19 Phases C and D complete; key constraint: no `slots=True`
+  (breaks Flyte's `dataclasses.asdict()`)
+
 ### Milestone 18 RCC Slurm Smoke
 
 - [x] 2026-04-13 fixed M18 BUSCO image path freezing for cluster runs:
@@ -108,6 +262,20 @@ Entry template:
   refreshes `.runtime/runs/latest_slurm_run_record.txt` and
   `.runtime/runs/latest_slurm_artifact.txt`, so back-to-back direct MCP
   submissions no longer depend on workflow-specific RCC wrapper pointers
+
+### MCP Slurm Run History
+
+- [x] 2026-04-13 added `list_slurm_run_history` to the MCP surface; it reads
+  durable `.runtime/runs/` records only, returns recent accepted Slurm
+  submissions newest first, includes the generic latest pointer targets, and
+  does not require live scheduler access
+- [x] 2026-04-13 added focused server tests for the new history tool: one
+  covers recent-run ordering plus latest-pointer reporting, and one covers the
+  empty-run-root case
+- [x] 2026-04-13 extended `list_slurm_run_history` with exact
+  `workflow_name`, `active_only`, and `terminal_only` filters plus
+  `matched_count` reporting; conflicting active-versus-terminal requests now
+  fail fast with an explicit limitation message
 
 ### Documentation Sweep Planning
 

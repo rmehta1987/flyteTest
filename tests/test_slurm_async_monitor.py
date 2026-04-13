@@ -592,7 +592,18 @@ class TestSlurmPollLoop(IsolatedAsyncioTestCase):
         self.assertGreaterEqual(len(calls), 1, "Expected at least one reconcile call.")
 
     async def test_loop_survives_reconcile_error(self) -> None:
-        """A reconcile error triggers backoff but does not crash the loop."""
+        """A reconcile error triggers backoff but does not crash the loop.
+
+        The backoff sleep after the first error is real time, so thread-dispatch
+        overhead from ``anyio.to_thread.run_sync`` can push the second reconcile
+        call past a short wall-clock window — causing intermittent CI failures.
+        This test avoids that by replacing ``anyio.to_thread.run_sync`` with a
+        direct synchronous call, making the test deterministic regardless of
+        thread-pool latency.
+        """
+        import anyio
+        import anyio.to_thread
+
         call_count = 0
 
         def failing_reconcile(run_root, **_kwargs):  # noqa: ANN001
@@ -602,16 +613,27 @@ class TestSlurmPollLoop(IsolatedAsyncioTestCase):
                 raise RuntimeError("Simulated sacct timeout")
             return []
 
-        with patch("flytetest.slurm_monitor.reconcile_active_slurm_jobs", side_effect=failing_reconcile):
+        async def fake_run_sync(fn: object, *, abandon_on_cancel: bool = False) -> object:
+            """Invoke the reconcile lambda directly, skipping real thread dispatch.
+
+            This eliminates thread-creation latency from the timing path so the
+            test only waits on ``anyio.sleep`` between poll cycles, not on OS
+            thread scheduling.
+            """
+            return fn()  # type: ignore[operator]
+
+        with (
+            patch("flytetest.slurm_monitor.reconcile_active_slurm_jobs", side_effect=failing_reconcile),
+            patch.object(anyio.to_thread, "run_sync", new=fake_run_sync),
+        ):
             config = SlurmPollingConfig(
                 poll_interval_seconds=0.05,
                 max_backoff_seconds=0.1,
                 backoff_factor=2.0,
             )
 
-            async def _run():
-                import anyio
-                with anyio.move_on_after(0.5):
+            async def _run() -> None:
+                with anyio.move_on_after(1.0):
                     await slurm_poll_loop(Path("/nonexistent"), config)
 
             await _run()

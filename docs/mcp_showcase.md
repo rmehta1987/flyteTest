@@ -579,6 +579,37 @@ pointer files `.runtime/runs/latest_slurm_run_record.txt` and
 shell-side watcher to follow the newest accepted Slurm submission without
 copy/pasting the returned path each time.
 
+If you want a filesystem-only history view before you reconcile or cancel a
+run, list the recent durable records directly:
+
+```text
+Use the flytetest MCP server.
+
+Call list_slurm_run_history with exactly these arguments:
+- limit: 5
+- workflow_name: "<workflow_name from a previous history entry>"
+- active_only: true
+
+Then print exactly:
+- supported
+- filters
+- latest_run_record_path
+- latest_artifact_path
+- returned_count
+- matched_count
+- total_count
+- limitations
+- entries
+```
+
+This tool reads `.runtime/runs/` only. It does not call `squeue`, `sacct`, or
+`scontrol`, so it still works when you only need the durable submission
+history and not live scheduler reconciliation. `active_only` and
+`terminal_only` are mutually exclusive; omit both when you want the unfiltered
+history view. The `workflow_name` filter matches the durable run-record field,
+which may be a frozen workflow-spec name such as `select_annotation_qc_busco`
+rather than the higher-level showcase target alias.
+
 ### Phase 3: Monitor the job
 
 Call `monitor_slurm_job` with the `run_record_path` from Phase 2 and repeat

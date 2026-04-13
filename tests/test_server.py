@@ -10,6 +10,7 @@ import json
 import subprocess
 import sys
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 from unittest import TestCase
 from unittest.mock import patch
@@ -55,6 +56,7 @@ from flytetest.server import (
     _prepare_run_recipe_impl,
     _cancel_slurm_job_impl,
     _monitor_slurm_job_impl,
+    _list_slurm_run_history_impl,
     _retry_slurm_job_impl,
     _run_local_recipe_impl,
     _run_slurm_recipe_impl,
@@ -577,6 +579,186 @@ class ServerTests(TestCase):
 
         self.assertFalse(submitted["supported"])
         self.assertIn("execution_profile `slurm`", submitted["limitations"][0])
+
+    def test_list_slurm_run_history_returns_recent_records_and_latest_pointer(self) -> None:
+        """Filesystem history should list durable Slurm runs newest first."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result_dir = _repeat_filter_manifest_dir(tmp_path)
+            prepared = _prepare_run_recipe_impl(
+                "Run BUSCO quality assessment on the annotation.",
+                manifest_sources=(result_dir,),
+                runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                execution_profile="slurm",
+                recipe_dir=tmp_path,
+            )
+            job_ids = iter(("60101", "60102"))
+
+            def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                """Return distinct Slurm job IDs for consecutive submissions."""
+                return subprocess.CompletedProcess(
+                    args=args,
+                    returncode=0,
+                    stdout=f"Submitted batch job {next(job_ids)}\n",
+                    stderr="",
+                )
+
+            first = _run_slurm_recipe_impl(
+                str(prepared["artifact_path"]),
+                run_dir=tmp_path / "runs",
+                sbatch_runner=fake_sbatch,
+                command_available=lambda command: True,
+            )
+            second = _run_slurm_recipe_impl(
+                str(prepared["artifact_path"]),
+                run_dir=tmp_path / "runs",
+                sbatch_runner=fake_sbatch,
+                command_available=lambda command: True,
+            )
+
+            save_slurm_run_record(
+                replace(
+                    load_slurm_run_record(Path(str(first["run_record_path"]))),
+                    submitted_at="2026-04-13T12:00:00Z",
+                )
+            )
+            save_slurm_run_record(
+                replace(
+                    load_slurm_run_record(Path(str(second["run_record_path"]))),
+                    submitted_at="2026-04-13T12:00:01Z",
+                )
+            )
+            history = _list_slurm_run_history_impl(run_dir=tmp_path / "runs", limit=5)
+
+        self.assertTrue(history["supported"])
+        self.assertEqual(history["filters"], {
+            "workflow_name": None,
+            "active_only": False,
+            "terminal_only": False,
+            "limit": 5,
+        })
+        self.assertEqual(history["returned_count"], 2)
+        self.assertEqual(history["matched_count"], 2)
+        self.assertEqual(history["total_count"], 2)
+        self.assertEqual(history["latest_run_record_path"], str(second["run_record_path"]))
+        self.assertEqual(history["entries"][0]["run_record_path"], str(second["run_record_path"]))
+        self.assertEqual(history["entries"][0]["job_id"], "60102")
+        self.assertEqual(history["entries"][1]["job_id"], "60101")
+
+    def test_list_slurm_run_history_returns_empty_payload_when_no_runs_exist(self) -> None:
+        """Missing run roots should return an empty, supported history payload."""
+        with tempfile.TemporaryDirectory() as tmp:
+            history = _list_slurm_run_history_impl(run_dir=Path(tmp) / "missing", limit=5)
+
+        self.assertTrue(history["supported"])
+        self.assertEqual(history["entries"], [])
+        self.assertEqual(history["returned_count"], 0)
+        self.assertEqual(history["matched_count"], 0)
+        self.assertEqual(history["total_count"], 0)
+        self.assertIsNone(history["latest_run_record_path"])
+
+    def test_list_slurm_run_history_filters_by_workflow_and_terminal_state(self) -> None:
+        """History filters should support workflow selection and active or terminal views."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            busco_result_dir = _repeat_filter_manifest_dir(tmp_path)
+            busco_recipe = _prepare_run_recipe_impl(
+                "Run BUSCO quality assessment on the annotation.",
+                manifest_sources=(busco_result_dir,),
+                runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                execution_profile="slurm",
+                recipe_dir=tmp_path,
+            )
+            protein_recipe = _prepare_run_recipe_impl(
+                "Run protein evidence alignment with genome data/braker3/reference/genome.fa and protein evidence data/braker3/protein_data/fastas/proteins.fa using execution profile slurm.",
+                execution_profile="slurm",
+                recipe_dir=tmp_path,
+            )
+            job_ids = iter(("60201", "60202"))
+
+            def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                """Return distinct Slurm job IDs for the BUSCO and protein recipes."""
+                return subprocess.CompletedProcess(
+                    args=args,
+                    returncode=0,
+                    stdout=f"Submitted batch job {next(job_ids)}\n",
+                    stderr="",
+                )
+
+            busco_run = _run_slurm_recipe_impl(
+                str(busco_recipe["artifact_path"]),
+                run_dir=tmp_path / "runs",
+                sbatch_runner=fake_sbatch,
+                command_available=lambda command: True,
+            )
+            protein_run = _run_slurm_recipe_impl(
+                str(protein_recipe["artifact_path"]),
+                run_dir=tmp_path / "runs",
+                sbatch_runner=fake_sbatch,
+                command_available=lambda command: True,
+            )
+
+            save_slurm_run_record(
+                replace(
+                    load_slurm_run_record(Path(str(busco_run["run_record_path"]))),
+                    submitted_at="2026-04-13T12:00:00Z",
+                    scheduler_state="RUNNING",
+                    final_scheduler_state=None,
+                )
+            )
+            save_slurm_run_record(
+                replace(
+                    load_slurm_run_record(Path(str(protein_run["run_record_path"]))),
+                    submitted_at="2026-04-13T12:00:01Z",
+                    scheduler_state="COMPLETED",
+                    final_scheduler_state="COMPLETED",
+                    scheduler_exit_code="0:0",
+                )
+            )
+            protein_workflow_name = load_slurm_run_record(
+                Path(str(protein_run["run_record_path"]))
+            ).workflow_name
+
+            workflow_filtered = _list_slurm_run_history_impl(
+                run_dir=tmp_path / "runs",
+                limit=5,
+                workflow_name=protein_workflow_name,
+            )
+            active_only = _list_slurm_run_history_impl(
+                run_dir=tmp_path / "runs",
+                limit=5,
+                active_only=True,
+            )
+            terminal_only = _list_slurm_run_history_impl(
+                run_dir=tmp_path / "runs",
+                limit=5,
+                terminal_only=True,
+            )
+
+        self.assertTrue(workflow_filtered["supported"])
+        self.assertEqual(workflow_filtered["matched_count"], 1)
+        self.assertEqual(workflow_filtered["entries"][0]["workflow_name"], protein_workflow_name)
+        self.assertTrue(active_only["supported"])
+        self.assertEqual(active_only["matched_count"], 1)
+        self.assertEqual(active_only["entries"][0]["job_id"], "60201")
+        self.assertFalse(active_only["entries"][0]["is_terminal"])
+        self.assertTrue(terminal_only["supported"])
+        self.assertEqual(terminal_only["matched_count"], 1)
+        self.assertEqual(terminal_only["entries"][0]["job_id"], "60202")
+        self.assertTrue(terminal_only["entries"][0]["is_terminal"])
+
+    def test_list_slurm_run_history_rejects_conflicting_state_filters(self) -> None:
+        """Active-only and terminal-only are mutually exclusive history views."""
+        with tempfile.TemporaryDirectory() as tmp:
+            history = _list_slurm_run_history_impl(
+                run_dir=Path(tmp),
+                limit=5,
+                active_only=True,
+                terminal_only=True,
+            )
+
+        self.assertFalse(history["supported"])
+        self.assertIn("active_only and terminal_only cannot both be true", history["limitations"][0])
 
     def test_monitor_slurm_job_reconciles_saved_record(self) -> None:
         """Expose Slurm status reconciliation through the server helper.

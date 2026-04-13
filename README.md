@@ -357,6 +357,10 @@ Current MCP behavior:
   `.runtime/runs/latest_slurm_artifact.txt`, and records the accepted Slurm
   job ID when the server is running inside an already-authenticated
   scheduler-capable environment
+- `list_slurm_run_history` reads durable `.runtime/runs/` records and returns
+  recent accepted Slurm submissions plus the generic latest-pointer targets
+  without querying the live scheduler; it accepts optional `workflow_name`,
+  `active_only`, and `terminal_only` filters
 - `monitor_slurm_job` reconciles the durable Slurm run record with `squeue`,
   `scontrol show job`, and `sacct`, then persists observed scheduler state,
   stdout/stderr paths, exit code, final state, and conservative retry
