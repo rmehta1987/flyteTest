@@ -33,6 +33,14 @@ from flytetest.specs import (
 BUSCO_FIXTURE_TASK_NAME = "busco_assess_proteins"
 
 
+def _repo_relative_path(raw_path: str, repo_root: Path) -> str:
+    """Return an absolute path for a repo-relative M18 runtime input."""
+    if not raw_path:
+        return ""
+    path = Path(raw_path)
+    return str(path if path.is_absolute() else repo_root / path)
+
+
 def _created_at() -> str:
     """Return a UTC timestamp suitable for a saved smoke recipe.
 
@@ -75,7 +83,7 @@ def main() -> int:
     account = os.environ["FLYTETEST_SLURM_ACCOUNT"]
     cpu = os.environ.get("FLYTETEST_SLURM_CPU", "2")
     busco_cpu = int(os.environ.get("FLYTETEST_BUSCO_CPU", cpu))
-    busco_sif = os.environ.get("BUSCO_SIF", "")
+    busco_sif = _repo_relative_path(os.environ.get("BUSCO_SIF", ""), repo_root)
     lineage_dataset = os.environ.get("FLYTETEST_BUSCO_LINEAGE_DATASET", "auto-lineage")
     busco_mode = os.environ.get("FLYTETEST_BUSCO_MODE", "geno")
 

@@ -436,8 +436,9 @@ def _serialized_resolved_value(result: ResolutionResult) -> Any:
         A JSON-friendly representation of the selected planner value.
     """
     value = result.resolved_value
-    if hasattr(value, "to_dict"):
-        return value.to_dict()
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        return to_dict()
     return value
 
 
@@ -1338,6 +1339,8 @@ class LocalWorkflowSpecExecutor:
 
         # Load and validate the prior run record when resuming (fast pre-filters).
         prior_record: LocalRunRecord | None = None
+        prior_node_outputs: dict[str, Mapping[str, Any]] = {}
+        prior_node_results_by_name: dict[str, LocalNodeExecutionResult] = {}
         if resume_from is not None:
             prior_record = load_local_run_record(resume_from)
             artifact_path_for_check = _artifact_path_from_source(artifact_source)
@@ -1937,6 +1940,7 @@ class SlurmWorkflowSpecExecutor:
         """Render, submit, and persist a durable record for one Slurm recipe."""
         artifact_path = _artifact_path_from_source(artifact_source)
         if artifact_path is None:
+            assert isinstance(artifact_source, SavedWorkflowSpecArtifact)
             return SlurmSpecExecutionResult(
                 supported=False,
                 workflow_name=artifact_source.workflow_spec.name,

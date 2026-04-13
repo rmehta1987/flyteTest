@@ -38,6 +38,13 @@ Entry template:
 
 ## Unreleased
 
+### Milestone 18 RCC Slurm Smoke
+
+- [x] 2026-04-13 fixed M18 BUSCO image path freezing for cluster runs:
+  `m18_prepare_slurm_recipe.py` now resolves a repo-relative `BUSCO_SIF` to an
+  absolute path before saving the Slurm recipe, preventing Apptainer from
+  resolving `data/images/...` relative to the BUSCO task scratch directory
+
 ### Milestone 19 HPC Cluster Validation Helpers
 
 - [x] 2026-04-13 threaded `resume_from_local_record` into compute-node Slurm
