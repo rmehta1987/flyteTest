@@ -1183,6 +1183,11 @@ Status: Complete
   and any focused retry / resubmission coverage
 - `README.md`, `docs/capability_maturity.md`, and compatibility docs stay
   aligned with the landed behavior
+- 2026-04-13 authenticated RCC validation confirmed the M18 BUSCO fixture Slurm
+  submission, monitor reconciliation, synthetic retry-seed creation,
+  retry-child submission, and retry-child monitor path; the retry child reached
+  the expected `COMPLETED` / `0:0` scheduler-success shape with attempt number
+  2
 
 ### Compatibility risks
 

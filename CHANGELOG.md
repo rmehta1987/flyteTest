@@ -44,6 +44,14 @@ Entry template:
   `m18_prepare_slurm_recipe.py` now resolves a repo-relative `BUSCO_SIF` to an
   absolute path before saving the Slurm recipe, preventing Apptainer from
   resolving `data/images/...` relative to the BUSCO task scratch directory
+- [x] 2026-04-13 validated the M18 RCC Slurm smoke from an authenticated
+  cluster session: recipe submission, monitoring, synthetic retry-seed
+  creation, retry-child submission, and retry-child monitoring all worked; the
+  retry child is considered complete when its run record reconciles to
+  `COMPLETED` with scheduler exit code `0:0` and `attempt_number` 2
+- [x] 2026-04-13 updated `scripts/rcc/README.md` and `README.md` to document
+  the M18 BUSCO image path behavior, retry-child success criteria, and current
+  Slurm retry support status
 
 ### Milestone 19 HPC Cluster Validation Helpers
 
@@ -63,6 +71,12 @@ Entry template:
   output: it proves rejection before approval and accepted Slurm submission
   after approval, but does not claim end-to-end success for the current
   generated repeat-filter plus BUSCO workflow on the local handler surface
+- [x] 2026-04-13 validated the Milestone 19 approval-gate smoke on RCC:
+  unapproved composed-recipe submission was blocked with "No approval record
+  found for this composed recipe.", the approved resubmission was accepted by
+  Slurm, and downstream composed execution later reconciled to `FAILED` with
+  exit code `1:0` as expected under the smoke's documented runtime
+  limitations
 
 ### Documentation Sweep Planning
 

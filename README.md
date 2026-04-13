@@ -528,7 +528,11 @@ HPC and Slurm execution:
     `sacct`
 - `cancel_slurm_job`
   - records explicit `scancel` requests
-- retry and resumability remain later milestones
+- `retry_slurm_job`
+  - resubmits a terminal, retryable Slurm failure from its frozen run record
+    while preserving parent/child retry lineage
+- local-to-Slurm resumability is available for the focused Milestone 19 smoke
+  path, while broader workflow-family resumability remains milestone-scoped
 - on RCC, the frozen Slurm recipe carries the account setting through to the
   generated script so submission does not depend on a manual
   `sbatch --account=...` override
@@ -540,6 +544,10 @@ HPC and Slurm execution:
   `apptainer/1.4.1` before invoking the frozen local-recipe runner on RCC
 - `scripts/rcc/` includes protein-evidence Slurm lifecycle wrappers for
   submit, monitor, and cancel with the same default account and queue policy
+- `scripts/rcc/` also includes Milestone 18 BUSCO fixture wrappers that submit,
+  monitor, synthesize a retryable `NODE_FAIL` seed record, and submit a retry
+  child; the retry child is validated by monitoring its durable run record to
+  `COMPLETED` with scheduler exit code `0:0`
 
 ## Assumptions
 

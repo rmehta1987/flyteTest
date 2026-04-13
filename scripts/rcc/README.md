@@ -343,6 +343,11 @@ flag to stay close to the upstream test-data command.
 Override any of those environment variables before running the wrapper when
 the cluster allocation, BUSCO image, or fixture path differs.
 
+The recipe helper resolves repo-relative `BUSCO_SIF` values such as
+`data/images/busco_v6.0.0_cv1.sif` to absolute paths before freezing the
+recipe, so the compute-node BUSCO task does not resolve the image relative to
+its scratch working directory.
+
 The top-level smoke does two related checks:
 
 - It stages the upstream BUSCO eukaryota test genome under
@@ -354,6 +359,15 @@ The top-level smoke does two related checks:
   record, marking the copy with synthetic `NODE_FAIL` scheduler state, and
   submitting a retry child. This avoids waiting for a real node failure and
   does not mutate the original submission record.
+
+The retry smoke is considered successful in two stages. Retry submission
+succeeds when `retry_m18_slurm_job.sh` prints JSON with `supported: true`, a
+Slurm `job_id`, and
+`.runtime/runs/latest_m18_retry_child_run_record.txt` points to the child
+`slurm_run_record.json`. Retry execution succeeds only after monitoring that
+child record shows the retry child reached `COMPLETED` with scheduler exit
+code `0:0`; inside the child record, `attempt_number` should be `2` and
+`retry_parent_run_record_path` should point back to the synthetic retry seed.
 
 Run the Milestone 19 approval-gate smoke:
 
