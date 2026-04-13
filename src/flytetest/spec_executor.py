@@ -748,7 +748,26 @@ def load_slurm_run_record(source: Path) -> SlurmRunRecord:
 
 
 def save_slurm_run_record(record: SlurmRunRecord) -> Path:
-    """Persist one Slurm run record atomically."""
+    """Write a Slurm run record atomically to the path it carries internally.
+
+    Uses a temporary file and ``os.replace`` so the record file is never left
+    partially written, even when the process is interrupted mid-write.
+
+    Both the async polling loop in ``slurm_monitor.py`` and synchronous MCP
+    handlers call this function.  Callers on the async path should use
+    ``save_slurm_run_record_locked`` from ``slurm_monitor.py`` instead, because
+    that wrapper takes an exclusive file lock around the read-modify-write
+    sequence to prevent concurrent overwrites.
+
+    Args:
+        record: Slurm run record to persist.  The record carries its own
+            destination path in ``run_record_path``; the caller does not need
+            to supply a separate path.
+
+    Returns:
+        The path where the record was written, so callers can log or return
+        the location without reading it back from the record.
+    """
     _write_json_atomically(record.run_record_path, record.to_dict())
     return record.run_record_path
 
@@ -759,23 +778,30 @@ def _local_run_record_path(source: Path) -> Path:
 
 
 def load_local_run_record(source: Path) -> "LocalRunRecord":
-    """Load one durable local run record from a directory or JSON path.
+    """Read a prior local execution record so a new run can resume from it.
 
-    The schema version is validated before deserializing so stale or
-    mismatched records are rejected explicitly rather than silently
-    producing wrong data.
+    Checks the file's ``schema_version`` field before loading.  Records
+    written by an older version of FLyteTest are rejected here rather than
+    silently loaded and then misread — the field set evolves as the resume
+    contract grows, and a version mismatch means the stored data should not
+    be trusted without a manual review.
 
     Args:
-        source: A directory containing ``local_run_record.json`` or a direct
-            path to a ``local_run_record.json`` file.
+        source: Run directory that contains ``local_run_record.json``, or a
+            direct path to the JSON file.  The run-directory form is the
+            normal case; the direct-path form is useful in tests.
 
     Returns:
-        The deserialized :class:`LocalRunRecord`.
+        The :class:`LocalRunRecord` ready to hand to
+        :meth:`LocalWorkflowSpecExecutor.execute` as *resume_from*, or to
+        inspect the prior run's ``node_completion_state``.
 
     Raises:
         ValueError: When the file's ``schema_version`` does not match
-            :data:`LOCAL_RUN_RECORD_SCHEMA_VERSION`.
-"""
+            :data:`LOCAL_RUN_RECORD_SCHEMA_VERSION`.  This happens when the
+            record was written by an older code path; callers must not reuse
+            such a record without verifying the field layout manually.
+    """
     record_path = _local_run_record_path(source)
     payload = json.loads(record_path.read_text())
     schema_version = payload.get("schema_version")
@@ -785,17 +811,21 @@ def load_local_run_record(source: Path) -> "LocalRunRecord":
 
 
 def save_local_run_record(record: "LocalRunRecord") -> Path:
-    """Persist one local run record atomically.
+    """Write a completed local run record as the permanent evidence that all nodes finished.
 
-    Uses a temporary file and :func:`os.replace` so the target file is never
-    left in a partially-written state.
+    Writes through a temporary file and swaps it into place atomically with
+    ``os.replace``, so the record file is never left partially written.
+    The executor only calls this after every node succeeds, so there is no
+    partial record on a failed run that could be mistaken for a completed one.
 
     Args:
-        record: The :class:`LocalRunRecord` to persist.
+        record: The :class:`LocalRunRecord` to persist.  The record carries
+            its own destination path in ``run_record_path``.
 
     Returns:
-        The path where the record was written.
-"""
+        The path where the record was written, so callers can log or return
+        the location.
+    """
     _write_json_atomically(record.run_record_path, record.to_dict())
     return record.run_record_path
 
@@ -807,14 +837,31 @@ def _validate_resume_identity(
     *,
     current_cache_key: str | None = None,
 ) -> str | None:
-    """Check that a prior run record matches the current execution identity.
+    """Reject a prior run record whose workflow or content identity has changed.
 
-    The workflow name and artifact path are checked first as fast pre-filters.
-    When *current_cache_key* is provided the prior record's
-    ``cache_identity_key`` is compared as the authoritative content-level gate.
+    Called twice during a resume: first with only the workflow name and
+    artifact path as cheap pre-filters, then again after planner inputs are
+    resolved so the deterministic cache-key comparison can act as the
+    authoritative content-level gate.  Running the cheap checks first avoids
+    the planner-resolution cost when the workflow name alone does not match.
 
-    Returns ``None`` when identity matches, or a human-readable mismatch
-    description when the prior record should not be reused.
+    Args:
+        prior: Prior local run record being evaluated for reuse.
+        workflow_name: Name of the workflow the caller is about to run.  A
+            mismatch means the caller is pointing at the wrong run directory.
+        artifact_path: Path to the frozen recipe file being submitted.  Only
+            compared when the prior record also carries a path; ``None`` skips
+            the path check without failing, which handles the in-memory
+            artifact case.
+        current_cache_key: Deterministic SHA-256 digest of the current frozen
+            workflow, binding plan, and resolved inputs.  When provided this
+            is the definitive test — a mismatch means the biology or inputs
+            changed and the prior completion state cannot be safely reused.
+
+    Returns:
+        ``None`` when the prior record is safe to reuse.  A human-readable
+        mismatch description when it is not, ready to embed in
+        ``LocalSpecExecutionResult.limitations``.
     """
     mismatches: list[str] = []
     if prior.workflow_name != workflow_name:
@@ -1171,7 +1218,36 @@ def _slurm_directives(
     stderr_path: Path,
     resource_spec: ResourceSpec | None,
 ) -> list[str]:
-    """Build deterministic `#SBATCH` directives from the frozen resource spec."""
+    """Translate a frozen resource spec into ``#SBATCH`` directive lines.
+
+    The job name, stdout log, and stderr log are always included.  CPU,
+    memory, walltime, partition, account, and GPU directives are added only
+    when the corresponding field is set in *resource_spec*.  When
+    *resource_spec* is ``None``, only the three baseline directives are
+    returned and the cluster's default queue policy applies.
+
+    Memory values are normalised from common recipe spellings (``GiB``,
+    ``Gi``, ``GB``) to Slurm-accepted suffixes (``G``) before the directive
+    is written, so recipe authors can use any conventional notation.
+
+    Args:
+        workflow_name: Selects the job-name prefix.  Protein-evidence
+            alignment jobs use the short ``pe-`` prefix to stay within
+            Slurm's job-name character limit; everything else uses
+            ``flytetest-``.
+        run_id: Appended to the job name so Slurm accounting entries and
+            the run directory on disk share a correlatable identifier.
+        stdout_path: Passed verbatim to ``--output``; the ``%j`` token is
+            preserved for scheduler substitution at job acceptance time.
+        stderr_path: Passed verbatim to ``--error``.
+        resource_spec: CPU, memory, walltime, partition, account, and GPU
+            constraints from the frozen binding plan.  ``None`` means no
+            cluster-specific constraints are embedded in the script.
+
+    Returns:
+        Ordered list of ``#SBATCH`` directive strings ready to be embedded
+        in the submission script immediately after the shebang line.
+    """
     job_prefix = "pe" if workflow_name == "protein_evidence_alignment" else "flytetest"
     job_name = _slug(f"{job_prefix}-{run_id}", max_length=32)
     directives = [
@@ -1208,7 +1284,59 @@ def render_slurm_script(
     python_executable: str,
     resume_from_local_record: Path | None = None,
 ) -> str:
-    """Render a deterministic Slurm script for one frozen recipe artifact."""
+    """Render the bash script that Slurm runs when the job lands on a compute node.
+
+    The generated script is self-contained so the compute node does not need
+    FLyteTest to be pre-installed beyond what the repo tree and ``.venv``
+    provide.  Its execution sequence is:
+
+    1. ``cd`` to *repo_root* so all relative paths inside the recipe resolve
+       against the same checkout that produced it.
+    2. Load ``python/3.11.9`` and ``apptainer/1.4.1`` via the environment
+       module system when available — required on the HPC cluster but silently
+       skipped on hosts without ``module``.
+    3. Activate the project ``.venv`` when it exists.
+    4. Export ``FLYTETEST_TMPDIR`` and ``TMPDIR`` pointing at
+       ``results/.tmp`` under the repo, so tools write temporary files inside
+       the project tree rather than a potentially small node-local ``/tmp``.
+    5. Call ``_run_local_recipe_impl`` against the frozen *artifact_path*,
+       optionally passing *resume_from_local_record* so already-completed
+       local nodes are skipped on the cluster.
+    6. Exit 0 on success or 1 when the recipe returns ``supported=False``,
+       so Slurm records the job as ``FAILED`` rather than silently
+       ``COMPLETED`` when the execution reports an error.
+
+    Args:
+        artifact_path: Frozen recipe JSON baked verbatim into the script.
+            The compute node runs exactly this artifact regardless of
+            subsequent changes to the recipe directory.
+        workflow_name: Used by :func:`_slurm_directives` to pick the job-name
+            prefix (``pe-`` for protein-evidence alignment,
+            ``flytetest-`` otherwise).
+        run_id: Unique identifier used in the Slurm job name so accounting
+            entries and the run directory share a correlatable handle.
+        stdout_path: ``#SBATCH --output`` path; the ``%j`` token is preserved
+            so the scheduler substitutes the accepted job ID.
+        stderr_path: ``#SBATCH --error`` path.
+        resource_spec: CPU, memory, walltime, partition, account, and GPU
+            constraints translated into ``#SBATCH`` directives.  ``None``
+            lets the cluster's default queue policy apply.
+        repo_root: Absolute path to the FLyteTest checkout on the shared
+            filesystem.  The script ``cd``s here before executing anything;
+            the path must be accessible from compute nodes.
+        python_executable: Python interpreter embedded as the default
+            ``PYTHON_BIN``.  Overridden by the ``PYTHON_BIN`` environment
+            variable at runtime so cluster admins can pin a specific
+            interpreter without regenerating the script.
+        resume_from_local_record: When set, the embedded Python call passes
+            this record path to ``_run_local_recipe_impl`` so nodes that
+            finished in a prior local run are skipped on the cluster.
+
+    Returns:
+        Bash script text ready to be written to disk and passed to
+        ``sbatch``.  No side effects; the caller is responsible for
+        writing the file and setting permissions.
+    """
     python_call = f"result = _run_local_recipe_impl({str(artifact_path)!r})"
     if resume_from_local_record is not None:
         python_call = (
@@ -1720,7 +1848,46 @@ class SlurmWorkflowSpecExecutor:
         retry_parent: SlurmRunRecord | None = None,
         resume_from_local_record: Path | None = None,
     ) -> SlurmSpecExecutionResult:
-        """Render, submit, and persist one saved Slurm recipe artifact."""
+        """Render a Slurm script, submit it via sbatch, and save the run record.
+
+        This is the core submission path for :class:`SlurmWorkflowSpecExecutor`.
+        The full sequence is:
+
+        1. Load and validate the frozen recipe artifact.
+        2. Gate on ``execution_profile == "slurm"`` and ``sbatch`` availability;
+           return ``supported=False`` if either check fails.
+        3. Optionally validate and import completed-node state from a prior
+           local run record so the cluster job can skip already-done stages.
+        4. Allocate a unique run directory under ``run_root``.
+        5. Render the submission script and write it to the run directory.
+        6. Call ``sbatch`` and parse the accepted Slurm job ID from its output.
+        7. Write a :class:`SlurmRunRecord` immediately so the job is trackable
+           before the first status poll arrives.
+
+        Submission assumes FLyteTest is running inside an already-authenticated
+        HPC login-node session.  The cluster's 2FA policy prevents SSH key
+        pairing, so there is no automated credential refresh and this function
+        will fail with a limitation note if ``sbatch`` cannot reach the
+        scheduler.
+
+        Args:
+            artifact_path: Frozen recipe JSON to submit.  Baked into the
+                generated script so the compute node loads exactly this
+                artifact.
+            retry_parent: When retrying a failed run, pass the prior
+                :class:`SlurmRunRecord` here so the new record inherits the
+                lineage chain, retry policy, and attempt count.
+            resume_from_local_record: Path to a prior local run record whose
+                ``node_completion_state`` is embedded in the Slurm script,
+                letting the cluster job skip stages that already succeeded
+                locally.
+
+        Returns:
+            A :class:`SlurmSpecExecutionResult` with ``supported=True`` and
+            the accepted scheduler job ID when submission succeeds, or
+            ``supported=False`` with a ``limitations`` entry describing the
+            failure.
+        """
         artifact = _artifact_from_source(artifact_path)
         workflow_spec = artifact.workflow_spec
         binding_plan = artifact.binding_plan

@@ -49,15 +49,34 @@ def _find_compatible_successors(
     current_entry_name: str | None = None,
     max_breadth: int = DEFAULT_MAX_BREADTH_PER_STAGE,
 ) -> list[str]:
-    """Return registered stages that can consume the current stage's outputs.
+    """Find registered stages whose accepted planner types overlap the current stage's outputs.
+
+    Compatibility is determined by planner-type name intersection: if the
+    current stage produces a type that a candidate stage accepts, the candidate
+    is eligible as the next step.  This is the same planner-type system used
+    by the resolver and binding plan, so only stages that the planner can
+    already connect are considered.
+
+    The breadth cap keeps the composition search predictable and reviewable.
+    Without it, a stage that produces a common type like ``GenomeDir`` could
+    return dozens of candidates and make the greedy walk non-deterministic
+    across registry changes.
 
     Args:
-        current_entry: The registry entry whose outputs are being reused.
-        current_entry_name: The current entry name, used to avoid self-links.
-        max_breadth: Maximum number of next stages to return.
+        current_entry: Registry entry whose ``produced_planner_types`` are
+            used as the compatibility filter.  Stages that produce no types
+            return an empty list immediately.
+        current_entry_name: Name of the current stage, used to exclude
+            self-links.  ``None`` skips the self-exclusion check (used in
+            tests and bootstrapping).
+        max_breadth: Upper bound on the number of compatible next stages
+            returned.  Exists to keep the walk bounded; the first
+            ``max_breadth`` compatible entries in registry order are returned.
 
     Returns:
-        Registry entry names that can accept the current stage's outputs.
+        Registry entry names in registry order that could follow the current
+        stage, capped at *max_breadth* entries.  Empty when the current stage
+        produces no planner types or no registered stage accepts them.
     """
     produced_types = set(current_entry.compatibility.produced_planner_types or ())
     if not produced_types:
@@ -81,10 +100,23 @@ def _find_compatible_successors(
 
 
 def _get_all_synthesis_eligible_entries() -> list[str]:
-    """Return registered entries that are allowed to seed composition.
+    """Return the registry entry names that may seed or extend a composed workflow.
+
+    Only entries whose ``compatibility.synthesis_eligible`` flag is ``True``
+    are returned.  The flag is the human-curated gate that prevents experimental
+    or incompletely-registered stages from being pulled into automated
+    compositions — an entry must be explicitly opted in before the composition
+    engine can chain through it.
+
+    The registry import is deferred inside this function to avoid a circular
+    import: ``registry.py`` imports ``composition.py`` indirectly through the
+    type system, so a top-level import here would create a cycle at module
+    load time.
 
     Returns:
-        Registry entry names whose compatibility metadata allows composition.
+        Registry entry names in registration order whose
+        ``synthesis_eligible`` flag is set.  Empty when the registry is
+        unavailable or no entries have opted in.
     """
     eligible: list[str] = []
     try:
@@ -122,16 +154,39 @@ def compose_workflow_path(
     target_output_type: str | None = None,
     max_depth: int = DEFAULT_MAX_COMPOSITION_DEPTH,
 ) -> tuple[tuple[str, ...], CompositionDeclineReason | None]:
-    """Build a bounded path of registered stages that matches the request.
+    """Greedily walk the registry forward from a start stage to a target type.
+
+    The search is intentionally bounded and greedy rather than exhaustive:
+    at each step the first compatible successor in registry order is chosen,
+    the walk stops when no successor fits or the depth limit is reached, and
+    cycles are rejected immediately rather than backtracked.  This keeps
+    composed paths short, reviewable, and deterministic across calls with the
+    same registry state.
+
+    When *target_output_type* is given the final stage must produce that type
+    or the path is rejected with ``category="target_unreachable"``, even if
+    the walk itself succeeded.  This lets callers state a biological goal
+    (e.g. ``"EVMConsensusDir"``) and get an explicit failure instead of a
+    path that silently stops short.
 
     Args:
-        start_entry_name: Registry entry name to start from.
-        target_output_type: Optional biological type that should appear at the end.
-        max_depth: Maximum number of stages to include.
+        start_entry_name: Registry entry name for the first stage.  Must be
+            marked ``synthesis_eligible``; raises ``category="not_composition_eligible"``
+            when it is not, so callers learn which flag to set rather than
+            getting a silent empty path.
+        target_output_type: Planner type name that must appear in the final
+            stage's ``produced_planner_types``.  ``None`` accepts any endpoint
+            and returns the longest path that fits within *max_depth*.
+        max_depth: Hard ceiling on the number of stages in the composed path.
+            Exists to keep compositions short enough for a human reviewer to
+            verify before approval; the default of 5 covers the longest
+            notes-faithful pipeline sections without allowing runaway chains.
 
     Returns:
-        A tuple of ``(path, decline_reason)``. On success, ``decline_reason`` is
-        ``None``. On failure, the path is empty and the decline explains why.
+        ``(path, None)`` on success, where *path* is a non-empty tuple of
+        registry entry names in execution order.  ``((), decline_reason)``
+        on failure, where *decline_reason* carries a ``category`` label and
+        a human-readable ``message`` for the MCP response.
     """
     try:
         start_entry = get_entry(start_entry_name)
@@ -203,20 +258,43 @@ def bundle_composition_into_workflow_spec(
     biological_intent: str,
     source_prompt: str = "",
 ) -> tuple[WorkflowSpec | None, CompositionDeclineReason | None]:
-    """Bundle a composition path into a frozen, reviewable WorkflowSpec.
+    """Convert an ordered stage path into a frozen, reviewable WorkflowSpec.
 
-    This function takes a sequence of stage names and converts it into explicit
-    nodes, edges, and output bindings suitable for review and later execution.
+    Takes the output of :func:`compose_workflow_path` (or a manually assembled
+    path) and produces the same ``WorkflowSpec`` format that the typed planner
+    emits.  The resulting spec can be saved with
+    :func:`~flytetest.spec_artifacts.save_workflow_spec_artifact`, inspected
+    before approval, and executed through
+    :class:`~flytetest.spec_executor.LocalWorkflowSpecExecutor` or the Slurm
+    executor without any further planner involvement.
+
+    Single-stage paths produce a ``single_stage_*`` spec with no edges.
+    Multi-stage paths produce a ``composed_*`` spec with sequential edges
+    connecting the first output of each stage to the first input of the next;
+    this first-output / first-input convention is sufficient for the current
+    notes-faithful pipeline families, where stages pass one result directory
+    forward.
 
     Args:
-        composition_path: The ordered sequence of registry entry names to compose.
-        biological_intent: Human-readable description of what the composition is for.
-        source_prompt: Optional source prompt for provenance tracking.
+        composition_path: Ordered registry entry names to wire into the spec.
+            Must be non-empty; an empty path returns
+            ``category="empty_composition"`` immediately.  The names must be
+            resolvable through :func:`~flytetest.registry.get_entry`; any
+            missing entry returns ``category="invalid_stage"`` with the
+            position.
+        biological_intent: Human-readable description of the biological goal
+            this composition serves.  Stored in ``WorkflowSpec.analysis_goal``
+            so reviewers see the intent alongside the stage names when
+            inspecting the frozen artifact.
+        source_prompt: Original natural-language request that triggered the
+            composition, stored in ``replay_metadata`` for provenance.  Not
+            required for execution; omitting it produces an artifact that is
+            harder to trace back to a user session.
 
     Returns:
-        A tuple of (workflow_spec, decline_reason). On success, the spec is
-        non-None and decline_reason is None. On failure, the spec is None
-        and decline_reason explains why bundling failed.
+        ``(workflow_spec, None)`` when every stage resolves and the spec is
+        built successfully.  ``(None, decline_reason)`` when any stage is
+        missing or the path is empty.
     """
     if not composition_path:
         return (

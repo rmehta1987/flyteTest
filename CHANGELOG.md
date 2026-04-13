@@ -86,6 +86,23 @@ Entry template:
   Slurm, and downstream composed execution later reconciled to `FAILED` with
   exit code `1:0` as expected under the smoke's documented runtime
   limitations
+- [x] 2026-04-13 validated the Milestone 19 local-to-Slurm resume smoke on
+  RCC: the resume helper submitted a BUSCO recipe with a matching prior local
+  run record, and the monitored Slurm run reconciled to `COMPLETED` with
+  scheduler exit code `0:0`, confirming that compute-node execution honored
+  `resume_from_local_record` instead of only persisting the resume metadata in
+  the durable submission record
+- [x] 2026-04-13 validated the first real workflow Milestone 19 Slurm probe on
+  RCC with the protein-evidence lifecycle wrappers: the submit helper froze a
+  durable recipe artifact and Slurm run record, and the monitor helper later
+  reconciled the job to `COMPLETED` with scheduler exit code `0:0`, closing
+  the RCC-side real-workflow validation gate for Milestone 19
+- [x] 2026-04-13 added passive RCC poll-loop watcher helpers
+  `watch_slurm_run_record.py` and `watch_slurm_run_record.sh`; they reload the
+  durable JSON record directly at a fixed interval and print only the
+  background-reconciliation evidence fields, so RCC sessions can prove that
+  the MCP server's `slurm_poll_loop()` updated the record without using
+  `monitor_slurm_job`
 
 ### Documentation Sweep Planning
 

@@ -438,45 +438,42 @@ resource requests are interpreted before execution and then frozen into a
 Slurm execution profile that can be rendered into `sbatch` options.
 
 ```python
-@dataclass(frozen=True)
-class SlurmExecutionProfile:
-    """Cluster settings chosen before the run starts."""
+# Phase 1: Prepare — freeze resource settings into a saved recipe artifact.
+# resource_request fields map to ResourceSpec in src/flytetest/specs.py;
+# render_slurm_script() in spec_executor.py converts them to sbatch directives.
+recipe = prepare_run_recipe(
+    prompt="Run protein evidence alignment ...",
+    execution_profile="slurm",
+    resource_request={
+        "cpu": 8,
+        "memory": "32Gi",
+        "queue": "caslake",
+        "account": "rcc-staff",
+        "walltime": "02:00:00",
+    },
+    runtime_bindings={"exonerate_sif": "data/images/exonerate_2.2.0--1.sif"},
+)
+# artifact_path → .runtime/specs/<recipe_id>.json
+# verify: recipe.typed_plan.execution_profile == "slurm" before submitting
 
-    partition: str
-    cpus_per_task: int
-    memory_gb: int
-    walltime: str
-    log_path: Path
+# Phase 2: Submit — renders the sbatch script, calls sbatch, writes a durable
+# run record. The generated script is saved under .runtime/runs/<run_id>/ and
+# can be inspected to verify directives before or after submission.
+result = run_slurm_recipe(artifact_path=recipe.artifact_path)
+# run_record_path → .runtime/runs/<run_id>/slurm_run_record.json
 
+# Phase 3: Monitor — poll monitor_slurm_job until final_scheduler_state is
+# non-null. A non-null value means the job has reached a terminal state.
+status = monitor_slurm_job(run_record_path=result.run_record_path)
+# scheduler_state progression: PENDING → RUNNING → COMPLETED
+#                               or → FAILED / TIMEOUT / OUT_OF_MEMORY
 
-def sbatch_conf_for_recipe(recipe: RunRecipe, profile: SlurmExecutionProfile) -> dict[str, str]:
-    """Convert the frozen run recipe and profile into Slurm sbatch options."""
-
-    return {
-        "partition": profile.partition,
-        "job-name": f"flytetest-{recipe.recipe_id}",
-        "cpus-per-task": str(profile.cpus_per_task),
-        "mem": f"{profile.memory_gb}G",
-        "time": profile.walltime,
-        "output": str(profile.log_path),
-    }
-
-
-def submit_registered_stage_on_slurm(recipe_path: str) -> str:
-    """Render and submit one frozen run recipe through the scheduler."""
-
-    recipe = load_run_recipe(recipe_path)
-    verify_offline_inputs(recipe)
-    sbatch_script = render_slurm_script(recipe)
-    job_id = submit_sbatch_script(sbatch_script)
-    record_job_submission(recipe, job_id)
-    return job_id
-
-
-def slurm_backed_workflow(recipe_path: str) -> str:
-    """Submit the selected stage through the scheduler-bound execution layer."""
-
-    return submit_registered_stage_on_slurm(recipe_path=recipe_path)
+# Phase 4: Retry transient failures from the same frozen recipe.
+# retry_slurm_job resubmits unchanged and returns a new job_id and a new
+# run_record_path for the child run.
+# Resource failures (TIMEOUT, OUT_OF_MEMORY) require a new prepare_run_recipe
+# call with an updated resource_request — they cannot be retried in place.
+retry = retry_slurm_job(run_record_path=result.run_record_path)
 ```
 
 The design should preserve the scheduler lifecycle explicitly: submit jobs with

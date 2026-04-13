@@ -24,6 +24,13 @@ resources mean, and how to use the local and Slurm paths without guesswork.
 - [Recipe Flow](#recipe-flow)
 - [Local Walkthrough](#local-walkthrough)
 - [Validated Slurm Walkthrough](#validated-slurm-walkthrough)
+  - [Slurm Prerequisites](#slurm-prerequisites)
+  - [Phase 1: Prepare](#phase-1-prepare-a-slurm-recipe)
+  - [Phase 2: Submit](#phase-2-submit-the-saved-artifact)
+  - [Phase 3: Monitor](#phase-3-monitor-the-job)
+  - [Phase 4: On completion](#phase-4-on-successful-completion)
+  - [Phase 5: On failure](#phase-5-on-failure--retry-or-re-prepare)
+  - [Phase 6: Cancel](#phase-6-cancel-a-running-or-pending-job)
 - [Common Failure Modes](#common-failure-modes)
 - [Result Summary](#result-summary)
 - [Scope Boundary](#scope-boundary)
@@ -98,7 +105,7 @@ What the tools do:
 - `monitor_slurm_job`
   - checks a Slurm run record against the live scheduler state
 - `retry_slurm_job`
-  - resubmits a terminal, retryable Slurm run record from its frozen recipe
+  - resubmits a terminal Slurm run record from its original frozen recipe unchanged; if the failure was resource-related, prepare a new recipe with updated `resource_request` instead
 - `cancel_slurm_job`
   - records that a scheduler cancellation was requested
 - `prompt_and_run`
@@ -342,6 +349,24 @@ Plain-English input guide:
     container images stored as `.sif` files
 - `resource_request`
   - compute settings such as CPU, memory, queue, account, and walltime
+  - example:
+
+    ```json
+    {
+      "cpu": 8,
+      "memory": "32Gi",
+      "queue": "caslake",
+      "account": "rcc-staff",
+      "walltime": "02:00:00"
+    }
+    ```
+  - when unsure what to use, call `list_entries` and read
+    `compatibility.execution_defaults.slurm_resource_hints` for the target
+    workflow — it provides advisory cpu, memory, and walltime sized for a
+    typical small-to-medium eukaryote genome; queue and account are
+    cluster-specific and must always be supplied by the caller
+  - these fields can also be embedded in the prompt text as a fallback for LLM
+    clients that drop optional tool arguments
 - `execution_profile`
   - where the recipe should run, usually `local` or `slurm`
 - `runtime_image`
@@ -369,11 +394,13 @@ then verify the frozen recipe before submission.
 `run_slurm_recipe(artifact_path)` loads a saved artifact whose execution profile
 is `slurm`, renders a deterministic `sbatch` script under `.runtime/runs/`,
 submits it with `sbatch`, and records the accepted Slurm job ID in
-`slurm_run_record.json`. On the RCC cluster the frozen recipe also carries the
-Slurm account setting into the generated script so manual `sbatch --account=...`
-overrides are not required for submission. This path is supported only when the
-MCP server is running inside an already-authenticated scheduler-capable
-environment where `sbatch` is available on `PATH`.
+`slurm_run_record.json`. The generated `sbatch` script is saved alongside the
+run record under `.runtime/runs/<run_id>/` and can be inspected before or after
+submission to verify directives. On the RCC cluster the frozen recipe also
+carries the Slurm account setting into the generated script so manual
+`sbatch --account=...` overrides are not required for submission. This path is
+supported only when the MCP server is running inside an already-authenticated
+scheduler-capable environment where `sbatch` is available on `PATH`.
 
 `monitor_slurm_job(run_record_path)` reloads that durable record and reconciles
 it with `squeue`, `scontrol show job`, and `sacct`. When Slurm returns concrete
@@ -444,6 +471,23 @@ Then print exactly:
 The following prompt sequence was validated on the RCC cluster with an
 authenticated scheduler session.
 
+### Slurm Prerequisites
+
+All Slurm tools require the MCP server to be running inside an
+already-authenticated HPC login session. The RCC cluster uses 2FA and does not
+allow SSH key pairing, so the server must run from within an interactive session
+on a login node rather than connecting to the scheduler remotely.
+
+Before using any Slurm tool, confirm:
+
+- The MCP server process is running on a login node inside an active
+  authenticated session (tmux, screen, or equivalent)
+- `sbatch`, `squeue`, `scontrol`, `sacct`, and `scancel` are visible on `PATH`
+
+If any of these commands are missing, `run_slurm_recipe`, `monitor_slurm_job`,
+`retry_slurm_job`, and `cancel_slurm_job` will return an
+`unsupported_environment` limitation.
+
 Quick sanity check:
 
 ```text
@@ -463,7 +507,9 @@ For each one, print:
 - supported_execution_profiles
 ```
 
-Prepare a Slurm recipe:
+### Phase 1: Prepare a Slurm recipe
+
+Protein evidence alignment with explicit resource settings:
 
 ```text
 Use the flytetest MCP server.
@@ -483,7 +529,7 @@ Then print exactly:
 - limitations
 ```
 
-Prepare the M18 BUSCO fixture Slurm recipe:
+BUSCO fixture with explicit resource settings:
 
 ```text
 Use the flytetest MCP server.
@@ -503,7 +549,12 @@ Then print exactly:
 - limitations
 ```
 
-Submit the saved artifact:
+Before submitting, verify that both `typed_plan.execution_profile` and
+`typed_plan.binding_plan.execution_profile` are `slurm`. If either reads
+`local`, the client dropped the execution profile argument — re-run with the
+profile embedded in the prompt text.
+
+### Phase 2: Submit the saved artifact
 
 ```text
 Use the flytetest MCP server.
@@ -517,7 +568,16 @@ Then print exactly:
 - limitations
 ```
 
-Monitor, cancel, and reconcile:
+The `run_record_path` is the path to the durable run record. Save it — every
+subsequent monitoring, retry, and cancel call needs it. The generated `sbatch`
+script is also saved under `.runtime/runs/<run_id>/` and can be inspected to
+verify the directives that were submitted.
+
+### Phase 3: Monitor the job
+
+Call `monitor_slurm_job` with the `run_record_path` from Phase 2 and repeat
+until `final_scheduler_state` is non-null. A non-null `final_scheduler_state`
+means the job has reached a terminal state.
 
 ```text
 Use the flytetest MCP server.
@@ -528,9 +588,75 @@ Then print exactly:
 - supported
 - scheduler_state
 - final_scheduler_state
+- stdout_path
+- stderr_path
 - run_record_path
 - limitations
 ```
+
+Scheduler state reference:
+
+| `scheduler_state` | Meaning | What to do |
+|---|---|---|
+| `PENDING` | Queued, not yet started | Poll again later |
+| `RUNNING` | Active on compute node | Poll again; `stdout_path` available for live output |
+| `COMPLETED` | Finished successfully | Retrieve outputs — see Phase 4 |
+| `FAILED` | Non-zero exit code | Check `stderr_path`; see Phase 5 |
+| `TIMEOUT` | Exceeded walltime | See Phase 5 — retry requires a new recipe with longer `walltime` |
+| `OUT_OF_MEMORY` | OOM kill | See Phase 5 — retry requires a new recipe with more `memory` |
+| `CANCELLED` | Cancelled by user or admin | No retry path |
+
+### Phase 4: On successful completion
+
+When `scheduler_state = COMPLETED` and `final_scheduler_state` is non-null,
+the job finished successfully. The `stdout_path` and `stderr_path` fields point
+to the job output files on the shared filesystem.
+
+```text
+Use the flytetest MCP server.
+
+Call monitor_slurm_job with the run_record_path.
+
+Then print exactly:
+- supported
+- scheduler_state         (expect: COMPLETED)
+- final_scheduler_state   (expect: COMPLETED)
+- stdout_path
+- stderr_path
+- run_record_path
+- limitations
+```
+
+### Phase 5: On failure — retry or re-prepare
+
+If the job reached a terminal failure state (`FAILED`, `TIMEOUT`,
+`OUT_OF_MEMORY`), decide whether to retry or re-prepare:
+
+- **Transient failure (`FAILED`):** call `retry_slurm_job` to resubmit from
+  the same frozen recipe.
+- **Resource failure (`TIMEOUT` or `OUT_OF_MEMORY`):** the frozen recipe has
+  the same resource limits that caused the failure. Call `prepare_run_recipe`
+  again with a larger `resource_request` (e.g. more `memory` or longer
+  `walltime`), then submit the new artifact.
+
+Retry from a terminal failed run record:
+
+```text
+Use the flytetest MCP server.
+
+Call retry_slurm_job with the run_record_path from the terminal run.
+
+Then print exactly:
+- supported
+- job_id
+- run_record_path
+- limitations
+```
+
+The response returns a new `job_id` and a new `run_record_path` for the child
+run. Use the new `run_record_path` for all subsequent monitoring calls.
+
+### Phase 6: Cancel a running or pending job
 
 ```text
 Use the flytetest MCP server.
@@ -546,7 +672,8 @@ Then print exactly:
 - run_record.final_scheduler_state
 ```
 
-Reconcile once more after cancellation:
+Cancellation is recorded immediately, but the final cancelled state is
+confirmed by a subsequent `monitor_slurm_job` call:
 
 ```text
 Use the flytetest MCP server.
@@ -610,18 +737,15 @@ Do not use:
 
 Symptom:
 
-- `run_slurm_recipe`, `monitor_slurm_job`, or `cancel_slurm_job` return an
-  unsupported-environment limitation
-
-What it usually means:
-
-- the server is running outside an already-authenticated scheduler-capable
-  environment, or the Slurm commands are not visible on `PATH`
+- `run_slurm_recipe`, `monitor_slurm_job`, `retry_slurm_job`, or
+  `cancel_slurm_job` return an `unsupported_environment` limitation
 
 What to do:
 
-- start the MCP client and server inside an authenticated HPC session
+- see [Slurm Prerequisites](#slurm-prerequisites) above for the full setup
+  checklist
 - confirm `sbatch`, `squeue`, `scontrol`, `sacct`, and `scancel` are visible
+  on `PATH` inside the session where the server is running
 
 ### The artifact was prepared for the wrong execution profile
 

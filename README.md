@@ -27,25 +27,31 @@ artifact upload semantics.
   assembly, deterministic EVM execution, PASA post-EVM refinement, repeat
   filtering cleanup, BUSCO-based annotation QC, EggNOG functional annotation,
   and the AGAT statistics, conversion, and cleanup slices
-- Registry-constrained workflow composition (Milestone 15): the planner can
+- Registry-constrained workflow composition (Milestone 15 plus Milestone 19
+  execution guardrails): the planner can
   discover and gate multi-stage workflow compositions from registered stages
   for broad biology workflow intents that don't match hardcoded patterns;
-  compositions require explicit user approval before execution (Milestone 19
-  caching pending)
+  composed recipes now require explicit user approval before execution, and
+  the saved-recipe caching, resumability, and Slurm run-record layer backing
+  that gate is landed and validated on RCC through the approval-gate smoke,
+  the local-to-Slurm resume smoke, and a real protein-evidence Slurm workflow
+  probe
 - Active biological milestone: `AGAT post-processing after EggNOG`
-- Active architecture milestone: `realtime` refactor Milestones 0 through 14,
-  16, 17, 18a-18c, and 15 Phase 2 are complete
+- Active architecture milestone: `realtime` refactor Milestones 0 through 19
+  are complete; the next planned architecture slice is Milestone 20
+  storage-native durable asset return
 
 ### Deferred
 
 - Optional `table2asn` submission preparation
-- Resumability, remote/indexed discovery, and arbitrary Python task-code
-  generation
-- Milestone 19 approval-gating caching/resumability to finalize composed DAG execution
+- Remote/indexed discovery, broader generated-workflow execution coverage
+  beyond the current registered local-handler surface, and arbitrary Python
+  task-code generation
 
 ### Roadmap
 
-- Milestone 19 caching/resumability to make composed DAG execution safe and resumable
+- Milestone 20 storage-native durable asset return so workflow outputs can be
+  reloaded without depending only on local run-directory paths
 
 Important terminology:
 
@@ -538,8 +544,10 @@ HPC and Slurm execution:
 - `retry_slurm_job`
   - resubmits a terminal, retryable Slurm failure from its frozen run record
     while preserving parent/child retry lineage
-- local-to-Slurm resumability is available for the focused Milestone 19 smoke
-  path, while broader workflow-family resumability remains milestone-scoped
+- Milestone 19 local-to-Slurm resumability is available for frozen recipes and
+  has been validated on RCC through the focused resume smoke path; broader
+  generated-workflow execution still remains bounded by the current registered
+  local-handler surface
 - on RCC, the frozen Slurm recipe carries the account setting through to the
   generated script so submission does not depend on a manual
   `sbatch --account=...` override
@@ -549,8 +557,11 @@ HPC and Slurm execution:
   of pretending the scheduler is reachable
 - generated `sbatch` scripts currently load both `python/3.11.9` and
   `apptainer/1.4.1` before invoking the frozen local-recipe runner on RCC
-- `scripts/rcc/` includes protein-evidence Slurm lifecycle wrappers for
-  submit, monitor, and cancel with the same default account and queue policy
+- `scripts/rcc/` includes Milestone 19 approval and resume smoke wrappers plus
+  protein-evidence Slurm lifecycle wrappers for submit, monitor, and cancel;
+  the current validated RCC closure path is approval-gate smoke,
+  local-to-Slurm resume smoke, then protein-evidence submit/monitor to
+  `COMPLETED` with scheduler exit code `0:0`
 - `scripts/rcc/` also includes Milestone 18 BUSCO fixture wrappers that submit,
   monitor, synthesize a retryable `NODE_FAIL` seed record, and submit a retry
   child; the retry child is validated by monitoring its durable run record to

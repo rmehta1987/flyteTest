@@ -975,8 +975,9 @@ Status: Complete
 Goal: support caching and resumability for frozen recipes so interrupted work
 can continue without recomputing completed stages.
 
-Status: Not started; split into core resumability phases plus a separate async
-monitoring follow-on
+Status: Complete; core phases A-D and the async monitoring follow-on are
+landed, and RCC validation is recorded in `CHANGELOG.md` and
+`scripts/rcc/README.md`
 
 ### Core Phase A: Cache Identity And Durable Local Run Records
 
@@ -1096,7 +1097,7 @@ monitoring follow-on
   adds the caching and resumability needed to make execution-capable composed
   DAGs safe to expose.
 
-### Open blockers and design questions
+### Resolved blockers and follow-on notes
 
 - ~~There is not yet a generic durable local run-record model comparable to the
   Slurm run-record layer.~~
@@ -1109,26 +1110,29 @@ monitoring follow-on
   silently reuse stale outputs.~~
   - resolved: Phase D added `HANDLER_SCHEMA_VERSION` constant included in the cache key;
     bumping the version invalidates all prior records (2026-04-12)
-- The current composition work added approval gating, but there is still no
-  explicit approval-acceptance path for executing a composed recipe.
-- Local and Slurm resumability should probably share a common run-state model
-  before broader cache reuse is attempted.
+- Broader generated-workflow execution still depends on the current registered
+  local-handler surface; Milestone 19 validated approval gating and bounded
+  Slurm execution, not blanket end-to-end support for every generated
+  composition.
+- Per-handler schema versioning may still be worth adding if the repo-global
+  `HANDLER_SCHEMA_VERSION` constant proves too coarse, but that is a post-M19
+  refinement rather than an open blocker.
 
-### Suggested implementation order
+### Historical implementation order
 
-- [ ] Audit `src/flytetest/spec_executor.py`, `src/flytetest/spec_artifacts.py`,
+- [x] Audit `src/flytetest/spec_executor.py`, `src/flytetest/spec_artifacts.py`,
   and `src/flytetest/server.py` for the smallest durable local run-record
   insertion point.
-- [ ] Land the local run-record and cache-identity model before adding reuse.
-- [ ] Land local resume behavior before extending the same rules to Slurm.
-- [ ] Add approval acceptance only after the executor can resume deterministically.
-- [ ] Defer async polling until the core resume semantics are stable.
+- [x] Land the local run-record and cache-identity model before adding reuse.
+- [x] Land local resume behavior before extending the same rules to Slurm.
+- [x] Add approval acceptance only after the executor can resume deterministically.
+- [x] Defer async polling until the core resume semantics are stable.
 
 ### Acceptance evidence
 
 - `docs/realtime_refactor_plans/2026-04-08-milestone-19-caching-resumability.md`
 - `docs/realtime_refactor_plans/2026-04-10-milestone-19-part-b-async-slurm-monitoring.md`
-- `docs/realtime_refactor_milestone_19_submission_prompt.md`
+- `docs/realtime_refactor_plans/archive/realtime_refactor_milestone_19_submission_prompt.md`
 - Tests likely to include `tests/test_spec_executor.py`, `tests/test_server.py`,
   and any focused cache / resume coverage
 - `README.md`, `docs/capability_maturity.md`, and compatibility docs stay
@@ -1801,6 +1805,44 @@ Status: Not started
 - Breaking replay of current pre-EVM, EVM, or consensus result manifests
 - Blurring the current truth that the implemented consensus path is EVM-backed
 - Broadening the abstraction without any actual execution or planner benefit
+
+## Post-M19 Platform: Dataclass Serialization Consolidation
+
+**Gate: implement after M19 phases C and D are confirmed complete.**
+
+Status: Not started
+
+Plan: `docs/realtime_refactor_plans/2026-04-13-dataclass-serialization-consolidation.md`
+
+### Problem
+
+Three modules (`planner_types.py`, `types/assets.py`, `specs.py`) each
+maintain near-identical hand-rolled serialization helpers. Five modules repeat
+`notes`, `source_result_dir`, and `source_manifest_path` fields verbatim.
+`ReferenceGenome` is defined in both `planner_types.py` and `types/assets.py`.
+
+### Steps
+
+- [ ] Create `src/flytetest/serialization.py` with shared `serialize_value`,
+      `deserialize_value`, and `SerializableDataclass` mixin
+- [ ] Create `src/flytetest/common_types.py` with `NotesMixin` and
+      `ProvenanceMixin`
+- [ ] Refactor `planner_types.py` to use shared mixins and serialization
+- [ ] Refactor `types/assets.py`: rename duplicate `ReferenceGenome` to
+      `ReferenceGenomeAsset`, apply shared mixins
+- [ ] Refactor `spec_executor.py`: apply mixins to `LocalRunRecord` and
+      `SlurmRunRecord`
+- [ ] Refactor `specs.py`: replace local serialization helpers
+- [ ] Add explicit adapter functions at the planner/asset boundary in
+      `planner_adapters.py`
+- [ ] Alias cleanup and `__all__` declarations
+
+### Compatibility constraints
+
+- Do not change `ManifestSerializable.to_dict()` wire format — existing
+  `run_manifest.json` files on disk must still replay through the resolver
+- Do not change planner type names visible to the MCP surface
+- Do not use `slots=True` — breaks Flyte's `dataclasses.asdict()` path
 
 ## Verification Matrix
 

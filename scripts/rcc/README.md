@@ -94,6 +94,13 @@ The local smoke scripts can still use `data/images/*.sif`.
 - `cancel_slurm_run_record.py`: generic Python helper that requests
   cancellation for one durable Slurm run record path and prints the lifecycle
   JSON result
+- `watch_slurm_run_record.py`: generic passive watcher that reloads one
+  durable Slurm run record from disk at a fixed interval and prints JSON-line
+  snapshots of the poll-loop evidence fields without calling any monitor or
+  reconciliation helper
+- `watch_slurm_run_record.sh`: thin shell wrapper around the passive watcher;
+  accepts a direct run-record path, run directory, or pointer file plus an
+  optional interval and cycle cap
 - `monitor_m19_approval_slurm_job.sh`: reconciles the latest Milestone 19
   approval-gate Slurm run record, or a run record path that you pass
   explicitly
@@ -318,6 +325,37 @@ Both wrappers print small machine-readable JSON summaries:
   scheduler state, run-record updates, log paths when known, and any
   reconciliation limitations
 
+To prove that the MCP server's background `slurm_poll_loop()` is mutating the
+durable run record without a manual `monitor_*` call, watch the saved JSON file
+directly instead of reconciling it:
+
+```bash
+bash scripts/rcc/watch_slurm_run_record.sh \
+  .runtime/runs/latest_protein_evidence_slurm_run_record.txt 15
+```
+
+The watcher accepts either the real `slurm_run_record.json` path, the run
+directory that contains it, or a pointer file such as
+`.runtime/runs/latest_protein_evidence_slurm_run_record.txt`. Each output line
+contains the passive poll-loop evidence fields only:
+
+- `scheduler_state`
+- `scheduler_state_source`
+- `last_reconciled_at`
+- `final_scheduler_state`
+- `scheduler_exit_code`
+- `file_mtime`
+
+The helper stops automatically once `final_scheduler_state` is non-null. Pass a
+third argument such as `8` when you want to cap the watch at a fixed number of
+cycles instead.
+
+This submit-plus-monitor pair is also the final real-workflow Milestone 19
+validation gate on RCC. The current validated outcome is a monitored terminal
+state of `COMPLETED` with scheduler exit code `0:0`; once that result is
+captured, the remaining Milestone 19 work is documentation and history
+closeout rather than more cluster smoke runs.
+
 The cancel wrapper also prints a small machine-readable JSON summary:
 
 - cancel JSON: whether the cancellation request was accepted, which durable
@@ -401,6 +439,13 @@ reviewable and still validates the approval boundary, but the submitted job may
 later fail for the composed-stage runtime reasons called out in the JSON
 summary.
 
+Observed RCC result (2026-04-13): the unapproved submission was blocked for the
+expected missing-approval reason, the approved resubmission was accepted by
+Slurm, and the later composed job reconciled to `FAILED` with exit code `1:0`
+under the helper's documented runtime limitations. That later failure does not
+invalidate the approval-gate smoke; the smoke passes when the before-approval
+rejection and after-approval acceptance both happen.
+
 Run the Milestone 19 local-to-Slurm resume smoke:
 
 ```bash
@@ -426,6 +471,12 @@ local BUSCO result on the compute node. The helper updates:
 Unlike the approval smoke, the resume smoke is expected to complete as a real
 compute-node execution path because the job reuses the prior local BUSCO node
 result instead of rerunning BUSCO.
+
+Observed RCC result (2026-04-13): the monitored resume run reconciled to
+`COMPLETED` with scheduler exit code `0:0`. Treat that terminal state as the
+Milestone 19 proof that the compute-node Slurm script actually honored
+`resume_from_local_record` during execution rather than only copying the resume
+metadata into the durable Slurm run record.
 
 Run the protein-evidence workflow probe directly on Slurm:
 
@@ -460,6 +511,9 @@ The submit helper writes the latest durable run-record path to
 saved recipe artifact path to
 `.runtime/runs/latest_protein_evidence_slurm_artifact.txt` so the monitor and
 cancel helpers can follow the run without manual copy/paste.
+Observed RCC result (2026-04-13): this wrapper pair reached `COMPLETED` with
+scheduler exit code `0:0`, so it now serves as the first validated real
+workflow Slurm proof after the Milestone 19 approval and resume smokes.
 When the repo-local Exonerate image is present, the helper also freezes
 `exonerate_sif=data/images/exonerate_2.2.0--1.sif` into the recipe so the
 submitted workflow can use the same containerized Exonerate path proven by the

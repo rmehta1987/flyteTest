@@ -68,8 +68,10 @@ baseline unless the change is explicitly needed to support the target design.
   out of that shim.
 - Treat Slurm as a real execution target: submit, schedule, monitor, and cancel
   jobs from frozen run records rather than from ad hoc shell behavior.
-- Use the Flyte Slurm plugin or `sbatch` for submission, `squeue` / `scontrol
-  show job` / `sacct` for observation, and `scancel` for cancellation.
+- Use `sbatch` for submission from an already-authenticated HPC login session
+  (the cluster's 2FA policy prevents SSH key pairing, so the Flyte Slurm plugin
+  cannot be used); use `squeue` / `scontrol show job` / `sacct` for
+  observation, and `scancel` for cancellation.
 - Update the docs, manifests, and tests that describe a behavior when that
   behavior changes.
 - Keep `CHANGELOG.md` current as the shared agent memory for meaningful units
@@ -203,8 +205,10 @@ for more workflows, more tools, and more supported biology over time.
   guess what the system meant.
 - Treat Slurm as a real execution target: submit jobs from frozen run records,
   monitor job state, collect logs, and support cancellation.
-- Use the Flyte Slurm plugin or `sbatch` for submission, `squeue` / `scontrol
-  show job` / `sacct` for observation, and `scancel` for cancellation.
+- Use `sbatch` for submission from an already-authenticated HPC login session
+  (the cluster's 2FA policy prevents SSH key pairing, so the Flyte Slurm plugin
+  cannot be used); use `squeue` / `scontrol show job` / `sacct` for
+  observation, and `scancel` for cancellation.
 - Record the scheduler job ID as soon as a job is accepted.
 - Track the job through the scheduler lifecycle, including pending, running,
   completed, failed, and cancelled states.
@@ -214,5 +218,11 @@ for more workflows, more tools, and more supported biology over time.
   on staged containers, databases, or inputs.
 - Do not submit a Slurm job from vague resource language if the plan still
   needs clarification or confirmation.
-- Prefer explicit resource choices over hidden defaults when the user asks for
-  CPUs, memory, walltime, or partitioning.
+- When the user does not specify Slurm resources, read
+  `compatibility.execution_defaults.slurm_resource_hints` from the target
+  workflow's registry entry and use those values as the starting-point
+  `resource_request`; surface them to the user before freezing so they can
+  adjust.  Queue and account are never in the hints and must always come from
+  the user.
+- Prefer explicit resource choices over registry hints when the user asks for
+  specific CPUs, memory, walltime, or partitioning.

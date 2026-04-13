@@ -29,11 +29,11 @@ separate follow-on lane:
    - `docs/realtime_refactor_plans/2026-04-12-milestone-19-phase-a-audit.md`
 2. Core Phase B: local resume semantics from prior durable local run records.
    Primary references:
-   - `docs/realtime_refactor_milestone_19_submission_prompt.md`
+  - `docs/realtime_refactor_plans/archive/realtime_refactor_milestone_19_submission_prompt.md`
 3. Core Phase C: Slurm parity for resume plus explicit composed-recipe approval
    acceptance before execution.
    Primary references:
-   - `docs/realtime_refactor_milestone_19_phase_c_submission_prompt.md`
+  - `docs/realtime_refactor_plans/archive/realtime_refactor_milestone_19_phase_c_submission_prompt.md`
 4. Milestone 19 Part B (follow-on lane): asynchronous Slurm monitoring loop and
    non-blocking state reconciliation.
    Primary references:
@@ -42,7 +42,7 @@ separate follow-on lane:
 5. Phase D: deterministic cache-key normalization and versioned invalidation
    hardening.
    Primary references:
-   - `docs/realtime_refactor_milestone_19_phase_d_submission_prompt.md`
+  - `docs/realtime_refactor_plans/archive/realtime_refactor_milestone_19_phase_d_submission_prompt.md`
 
 ### Core Phase A
 
@@ -158,17 +158,21 @@ Out of scope:
 
 ### Phase References
 
+The phase handoff prompts now live under `docs/realtime_refactor_plans/archive/`
+because Milestone 19 is complete. Treat them as historical context rather than
+as active implementation prompts.
+
 - Core Phase A audit and implementation framing:
   - `docs/realtime_refactor_plans/2026-04-12-milestone-19-phase-a-audit.md`
 - Core Phase B handoff prompt:
-  - `docs/realtime_refactor_milestone_19_submission_prompt.md`
+  - `docs/realtime_refactor_plans/archive/realtime_refactor_milestone_19_submission_prompt.md`
 - Core Phase C handoff prompt:
-  - `docs/realtime_refactor_milestone_19_phase_c_submission_prompt.md`
+  - `docs/realtime_refactor_plans/archive/realtime_refactor_milestone_19_phase_c_submission_prompt.md`
 - Milestone 19 Part B plan and handoff prompt:
   - `docs/realtime_refactor_plans/2026-04-10-milestone-19-part-b-async-slurm-monitoring.md`
   - `docs/realtime_refactor_milestone_19_part_b_submission_prompt.md`
 - Phase D handoff prompt:
-  - `docs/realtime_refactor_milestone_19_phase_d_submission_prompt.md`
+  - `docs/realtime_refactor_plans/archive/realtime_refactor_milestone_19_phase_d_submission_prompt.md`
 
 ## Validation Steps
 

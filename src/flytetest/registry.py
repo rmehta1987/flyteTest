@@ -2432,23 +2432,75 @@ _WORKFLOW_LOCAL_RESOURCE_DEFAULTS: dict[str, dict[str, str]] = {
     "annotation_postprocess_agat_cleanup": {"cpu": "8", "memory": "32Gi", "execution_class": "local"},
 }
 
+# Slurm resource hints per workflow.  These are starting-point suggestions for
+# HPC submission, not enforced limits.  cpu and memory match or slightly exceed
+# the local defaults to account for Slurm job overhead; walltime is a
+# conservative upper bound for a typical small-to-medium eukaryote genome.
+# queue and account are intentionally absent — those are cluster-specific and
+# must be supplied by the user via resource_request or the prompt.
+_WORKFLOW_SLURM_RESOURCE_HINTS: dict[str, dict[str, str]] = {
+    # Lightweight QC and quantification
+    "busco_assess_proteins": {"cpu": "4", "memory": "16Gi", "walltime": "01:00:00"},
+    "rnaseq_qc_quant": {"cpu": "4", "memory": "16Gi", "walltime": "01:00:00"},
+    # RNA-seq evidence — Trinity can be memory-intensive; STAR index needs ~30 Gi
+    "transcript_evidence_generation": {"cpu": "16", "memory": "64Gi", "walltime": "04:00:00"},
+    # PASA alignment and refinement
+    "pasa_transcript_alignment": {"cpu": "8", "memory": "32Gi", "walltime": "04:00:00"},
+    "annotation_refinement_pasa": {"cpu": "8", "memory": "32Gi", "walltime": "08:00:00"},
+    # TransDecoder is fast; conservative 1-hour ceiling covers large transcript sets
+    "transdecoder_from_pasa": {"cpu": "8", "memory": "32Gi", "walltime": "01:00:00"},
+    # Exonerate protein alignment — runtime scales with chunk count
+    "protein_evidence_alignment": {"cpu": "8", "memory": "32Gi", "walltime": "04:00:00"},
+    # BRAKER3 ab initio — heaviest stage; 24 hours covers most small eukaryotes
+    "ab_initio_annotation_braker3": {"cpu": "16", "memory": "64Gi", "walltime": "24:00:00"},
+    # EVM consensus steps
+    "consensus_annotation_evm_prep": {"cpu": "16", "memory": "64Gi", "walltime": "02:00:00"},
+    "consensus_annotation_evm": {"cpu": "16", "memory": "64Gi", "walltime": "04:00:00"},
+    # RepeatMasker — slow; 12-hour ceiling for genome-scale repeat masking
+    "annotation_repeat_filtering": {"cpu": "16", "memory": "64Gi", "walltime": "12:00:00"},
+    # Post-filtering QC and annotation
+    "annotation_qc_busco": {"cpu": "16", "memory": "64Gi", "walltime": "04:00:00"},
+    "annotation_functional_eggnog": {"cpu": "16", "memory": "64Gi", "walltime": "04:00:00"},
+    # AGAT post-processing — statistics and conversion are fast; cleanup is moderate
+    "annotation_postprocess_agat": {"cpu": "4", "memory": "16Gi", "walltime": "00:30:00"},
+    "annotation_postprocess_agat_conversion": {"cpu": "4", "memory": "16Gi", "walltime": "00:30:00"},
+    "annotation_postprocess_agat_cleanup": {"cpu": "8", "memory": "32Gi", "walltime": "01:00:00"},
+}
+
 
 def _with_resource_defaults(name: str, metadata: RegistryCompatibilityMetadata) -> RegistryCompatibilityMetadata:
-    """Attach declarative local resource defaults to workflow compatibility metadata.
+    """Attach local resource defaults and Slurm resource hints to workflow compatibility metadata.
+
+    Local defaults are placed under ``execution_defaults["resources"]`` and are
+    used when no ``resource_request`` is supplied for a local run.  Slurm hints
+    are placed under ``execution_defaults["slurm_resource_hints"]`` and serve as
+    starting-point suggestions when the user requests Slurm execution without
+    specifying explicit resources.  Both are advisory; any explicit
+    ``resource_request`` from the caller takes precedence.
 
     Args:
-        name: The supported entry name being looked up.
-        metadata: The compatibility metadata to augment.
+        name: Workflow name to look up in the resource tables.
+        metadata: The compatibility metadata to augment with resource guidance.
 
     Returns:
-        A compatibility metadata object with local resource defaults attached.
+        Compatibility metadata with ``resources`` and ``slurm_resource_hints``
+        populated where table entries exist, and ``slurm`` added to
+        ``supported_execution_profiles`` when local defaults are present.
     """
-    resources = _WORKFLOW_LOCAL_RESOURCE_DEFAULTS.get(name)
-    if resources is None:
+    local_resources = _WORKFLOW_LOCAL_RESOURCE_DEFAULTS.get(name)
+    slurm_hints = _WORKFLOW_SLURM_RESOURCE_HINTS.get(name)
+    if local_resources is None and slurm_hints is None:
         return metadata
     execution_defaults = dict(metadata.execution_defaults)
-    execution_defaults.setdefault("resources", resources)
-    supported_profiles = tuple(dict.fromkeys((*metadata.supported_execution_profiles, "slurm")))
+    if local_resources is not None:
+        execution_defaults.setdefault("resources", local_resources)
+    if slurm_hints is not None:
+        execution_defaults.setdefault("slurm_resource_hints", slurm_hints)
+    supported_profiles = (
+        tuple(dict.fromkeys((*metadata.supported_execution_profiles, "slurm")))
+        if local_resources is not None
+        else metadata.supported_execution_profiles
+    )
     return replace(
         metadata,
         execution_defaults=execution_defaults,

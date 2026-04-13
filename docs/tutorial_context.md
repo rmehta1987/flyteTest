@@ -750,6 +750,25 @@ Validation:
 - use tool-backed smoke coverage only when PASA and its dependencies are available locally
 ```
 
+## Slurm Execution
+
+Running stages on the RCC cluster goes through the MCP Slurm path. The
+full lifecycle — prepare, submit, monitor, retry, cancel — is documented in
+`docs/mcp_showcase.md` under **Validated Slurm Walkthrough**.
+
+Key points for tutorial-oriented work:
+
+- All Slurm tools require the MCP server to run inside an already-authenticated
+  HPC login session; the cluster's 2FA policy prevents unattended SSH access.
+- Resource settings (`cpu`, `memory`, `queue`, `account`, `walltime`) are
+  frozen into the saved recipe at prepare time via `resource_request` and
+  cannot be changed without preparing a new recipe.
+- `TIMEOUT` and `OUT_OF_MEMORY` failures are terminal — recovering requires a
+  new `prepare_run_recipe` call with a larger `resource_request`, not a retry
+  of the same artifact.
+- For smoke-test sized runs, the BUSCO fixture is the validated reference: 2
+  CPUs, 8 Gi memory, `caslake` queue, 10-minute walltime.
+
 ## Short Reusable Prompt Block
 
 Copy this block when you want a compact tutorial-aware prompt prefix:

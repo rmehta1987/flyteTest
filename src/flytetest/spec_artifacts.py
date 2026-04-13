@@ -66,15 +66,35 @@ def artifact_from_typed_plan(
     created_at: str,
     replay_metadata: Mapping[str, Any] | None = None,
 ) -> SavedWorkflowSpecArtifact:
-    """Build a saved artifact from a successful typed-planning payload.
+    """Freeze a successful typed-planning response into a replayable artifact.
+
+    The planner layer returns a ``typed_plan`` dict by serializing the selected
+    ``WorkflowSpec`` and ``BindingPlan`` together with the original prompt,
+    biological goal, and matched stage names.  This function validates that
+    response and locks it into a :class:`SavedWorkflowSpecArtifact` that can
+    be saved to disk, approved, and re-executed without re-running the planner.
 
     Args:
-        typed_plan: Serialized typed-plan payload produced by the planner layer.
-        created_at: Timestamp recorded on the saved artifact.
-        replay_metadata: Extra metadata to embed alongside the frozen plan.
+        typed_plan: Serialized response from the ``plan_typed_request`` MCP
+            handler.  Must carry ``supported=True`` and both
+            ``workflow_spec`` and ``binding_plan`` keys; raises immediately
+            when either is missing so the caller cannot accidentally persist
+            an unsupported or partial plan.
+        created_at: UTC timestamp injected by the caller rather than computed
+            here so the artifact's ``created_at`` field matches the timestamp
+            the MCP response was returned to the client.  Injecting it also
+            keeps this function deterministic in tests.
+        replay_metadata: Additional key/value pairs embedded in
+            ``replay_metadata`` alongside the standard provenance fields.
+            Useful for clients that want to record the planner model version,
+            session ID, or other audit information without adding top-level
+            artifact fields.
 
     Returns:
-        Replayable workflow-spec artifact ready for disk persistence.
+        Frozen :class:`SavedWorkflowSpecArtifact` ready to pass to
+        :func:`save_workflow_spec_artifact`.  The artifact carries the full
+        workflow shape, binding plan, and prompt provenance so any later
+        execution can be traced back to the original planning decision.
     """
     if not typed_plan.get("supported"):
         raise ValueError("Only supported typed plans can be saved as replayable workflow spec artifacts.")
@@ -104,14 +124,28 @@ def artifact_from_typed_plan(
 
 
 def save_workflow_spec_artifact(artifact: SavedWorkflowSpecArtifact, destination: Path) -> Path:
-    """Write one saved workflow-spec artifact as stable, inspectable JSON.
+    """Write a frozen workflow-spec artifact to disk as human-readable JSON.
+
+    The file is written as pretty-printed, key-sorted JSON so it can be
+    inspected and reviewed in a text editor before the recipe is approved
+    or executed.  The write is not atomic-swapped (unlike run records) because
+    artifacts are write-once: an artifact path is allocated once and never
+    overwritten by a later call.
 
     Args:
-        artifact: Frozen workflow-spec artifact to serialize.
-        destination: Directory or file path where the artifact should be written.
+        artifact: Immutable workflow-spec artifact to serialize.  The content
+            is not validated here; callers should use
+            :func:`artifact_from_typed_plan` to construct a valid artifact
+            before saving.
+        destination: Directory path or explicit ``.json`` file path.  When
+            *destination* has no suffix (bare directory), the artifact is
+            written as ``workflow_spec_artifact.json`` inside that directory.
+            When it has a suffix, the path is used verbatim.  The parent
+            directory is created if it does not exist.
 
     Returns:
-        Path to the written artifact JSON file.
+        Absolute path to the written artifact JSON file, for the caller to
+        record in the MCP response or pass to the approval flow.
     """
     output_path = destination / DEFAULT_SPEC_ARTIFACT_FILENAME if destination.suffix == "" else destination
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -120,13 +154,30 @@ def save_workflow_spec_artifact(artifact: SavedWorkflowSpecArtifact, destination
 
 
 def load_workflow_spec_artifact(path: Path) -> SavedWorkflowSpecArtifact:
-    """Load a saved workflow-spec artifact from a JSON file or artifact directory.
+    """Reload a saved workflow-spec artifact so it can be executed or inspected.
+
+    Validates the ``schema_version`` field before deserializing.  The artifact
+    schema evolves as planning and binding fields are added; a version mismatch
+    means the stored file was written by an older code path and its field
+    layout may differ from what :class:`SavedWorkflowSpecArtifact` now expects.
+    Rejecting it here prevents silent data loss when unexpectedly missing fields
+    are filled with dataclass defaults.
 
     Args:
-        path: Artifact JSON file path or artifact directory path.
+        path: Artifact JSON file or the directory that contains it.  The
+            directory form is the normal case (matches the layout written by
+            :func:`save_workflow_spec_artifact`); the file form is used in
+            tests and when the caller already resolved the path.
 
     Returns:
-        Deserialized workflow-spec artifact.
+        :class:`SavedWorkflowSpecArtifact` whose ``workflow_spec`` and
+        ``binding_plan`` are ready to pass to
+        :meth:`~flytetest.spec_executor.LocalWorkflowSpecExecutor.execute`
+        or to :meth:`~flytetest.spec_executor.SlurmWorkflowSpecExecutor.submit`.
+
+    Raises:
+        ValueError: When the stored ``schema_version`` does not match
+            :data:`SPEC_ARTIFACT_SCHEMA_VERSION`.
     """
     payload = json.loads(_artifact_path(path).read_text())
     schema_version = payload.get("schema_version")
@@ -136,13 +187,20 @@ def load_workflow_spec_artifact(path: Path) -> SavedWorkflowSpecArtifact:
 
 
 def replayable_spec_pair(artifact: SavedWorkflowSpecArtifact) -> tuple[WorkflowSpec, BindingPlan]:
-    """Return the saved spec and binding plan without re-reading the original prompt.
+    """Extract the workflow spec and binding plan from a loaded artifact.
+
+    Exists so callers that only need the two execution-facing objects do not
+    have to unpack the artifact's fields by name.  The artifact itself is the
+    source of truth; this function adds no logic.
 
     Args:
-        artifact: Frozen workflow-spec artifact already loaded from disk.
+        artifact: Already-loaded :class:`SavedWorkflowSpecArtifact`; the
+            caller is responsible for loading it (and checking approval if
+            required) before extracting the pair.
 
     Returns:
-        The stored workflow spec and binding plan, ready for replay.
+        ``(workflow_spec, binding_plan)`` ready to hand directly to an
+        executor without re-running the planner against the original prompt.
     """
     return artifact.workflow_spec, artifact.binding_plan
 
@@ -174,17 +232,33 @@ def _approval_path_for_artifact(artifact_path: Path) -> Path:
     return artifact_path.parent / DEFAULT_RECIPE_APPROVAL_FILENAME
 
 
-def save_recipe_approval(record: RecipeApprovalRecord, artifact_path: Path) -> Path:
-    """Persist a recipe approval record as a companion file alongside the artifact.
+def save_recipe_approval(
+    record: RecipeApprovalRecord, artifact_path: Path
+) -> Path:
+    """Write an approval record as a sidecar file collocated with the artifact.
 
-    Uses atomic temp-file writes so the approval file is never partially written.
+    The approval record lives next to the artifact so the execution gate
+    (:func:`check_recipe_approval`) can locate it with only the artifact path.
+    Keeping them together also means the artifact directory is self-contained:
+    an artifact plus its sidecar can be moved or archived as a unit without
+    breaking the approval check.
+
+    The write is atomic via a temp-file swap so the sidecar is never left in a
+    partially-written state.  A partial approval file would cause
+    :func:`load_recipe_approval` to raise a parse error rather than silently
+    report a false approval.
 
     Args:
-        record: Approval state to persist as the recipe sidecar.
-        artifact_path: Frozen artifact path whose companion approval record should be written.
+        record: Approval state to write.  Typically produced by the
+            ``approve_composed_recipe`` MCP tool after the user confirms
+            the recipe details; never auto-generated by the planner.
+        artifact_path: Path to the frozen artifact JSON whose approval this
+            record represents.  Used to derive the sidecar path; the artifact
+            file itself is not modified.
 
     Returns:
-        Path to the written approval sidecar.
+        Path to the written sidecar file, so the MCP handler can include it
+        in the confirmation response.
     """
     output_path = _approval_path_for_artifact(artifact_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -203,17 +277,28 @@ def save_recipe_approval(record: RecipeApprovalRecord, artifact_path: Path) -> P
 
 
 def load_recipe_approval(artifact_path: Path) -> RecipeApprovalRecord:
-    """Load the companion approval record for a given artifact path.
+    """Read the approval sidecar for a given artifact so callers can inspect its fields.
+
+    Most callers should use :func:`check_recipe_approval` rather than this
+    function directly.  Load directly only when you need to read the full
+    record (e.g. to display approval details to a user) rather than just
+    the approved/rejected decision.
 
     Args:
-        artifact_path: Frozen artifact path or its parent directory.
+        artifact_path: Path to the frozen artifact JSON or its parent
+            directory.  The sidecar path is derived from this location by
+            :func:`_approval_path_for_artifact`.
 
     Returns:
-        Deserialized recipe approval record.
+        :class:`RecipeApprovalRecord` with the ``approved``, ``approved_at``,
+        and ``expires_at`` fields that callers can display or forward to
+        :func:`check_recipe_approval`.
 
     Raises:
-        FileNotFoundError: When no companion approval record exists.
-        ValueError: When the schema version does not match.
+        FileNotFoundError: When no sidecar exists, meaning the recipe has
+            never been explicitly approved or rejected.
+        ValueError: When the sidecar's ``schema_version`` does not match
+            :data:`RECIPE_APPROVAL_SCHEMA_VERSION`.
     """
     record_path = _approval_path_for_artifact(artifact_path)
     payload = json.loads(record_path.read_text())
@@ -224,15 +309,28 @@ def load_recipe_approval(artifact_path: Path) -> RecipeApprovalRecord:
 
 
 def check_recipe_approval(artifact_path: Path, now: str | None = None) -> tuple[bool, str]:
-    """Check whether a composed recipe has a valid, non-expired approval.
+    """Gate composed-recipe execution by checking approval state and expiry.
+
+    Called by execution tools before running any composed recipe so that
+    execution cannot start without explicit human approval through the
+    ``approve_composed_recipe`` MCP tool.  Never auto-approves; a missing
+    sidecar always returns ``(False, ...)``.  Approval is edge-triggered: once
+    ``expires_at`` passes, the recipe must be re-approved even if the artifact
+    and inputs are unchanged.
 
     Args:
-        artifact_path: Frozen artifact path whose approval sidecar should be checked.
-        now: ISO-8601 timestamp to use as the current time for expiry checks.
-            Defaults to the current UTC time.
+        artifact_path: Path to the frozen artifact JSON whose approval sidecar
+            should be checked.  The sidecar path is derived automatically.
+        now: ISO-8601 UTC timestamp to use as the current time for expiry
+            comparison.  Injected so tests can simulate future or past times
+            without patching the system clock.  Defaults to the actual current
+            UTC time when ``None``.
 
     Returns:
-        ``(True, "")`` when approved and not expired, otherwise ``(False, reason)``.
+        ``(True, "")`` when the recipe is approved and the approval has not
+        expired.  ``(False, reason)`` in all other cases, where *reason* is a
+        human-readable string suitable for embedding in an MCP limitation
+        response.
     """
     try:
         record = load_recipe_approval(artifact_path)
