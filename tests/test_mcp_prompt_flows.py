@@ -27,6 +27,9 @@ These tests complement the unit tests in ``test_server.py``, which call the
 coercion (all arguments arrive as strings from the client), multi-turn
 orchestration, and the ``supported`` / ``limitations`` contract as seen from
 the MCP boundary.
+
+ When you log onto the cluster you can submit these with:
+.venv/bin/python -m unittest tests.test_mcp_prompt_flows -v
 """
 
 from __future__ import annotations
