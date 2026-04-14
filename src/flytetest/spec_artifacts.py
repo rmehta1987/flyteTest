@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Mapping
@@ -22,6 +23,8 @@ SPEC_ARTIFACT_SCHEMA_VERSION = "workflow-spec-artifact-v1"
 DEFAULT_SPEC_ARTIFACT_FILENAME = "workflow_spec_artifact.json"
 RECIPE_APPROVAL_SCHEMA_VERSION = "recipe-approval-v1"
 DEFAULT_RECIPE_APPROVAL_FILENAME = "recipe_approval.json"
+DURABLE_ASSET_INDEX_SCHEMA_VERSION = "durable-asset-index-v1"
+DEFAULT_DURABLE_ASSET_INDEX_FILENAME = "durable_asset_index.json"
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,6 +49,146 @@ class SavedWorkflowSpecArtifact(SpecSerializable):
     created_at: str = "not_recorded"
     replay_metadata: dict[str, Any] = field(default_factory=dict)
     metadata_only: bool = True
+
+
+def _json_ready(value: Any) -> Any:
+    """Convert spec and executor values into stable JSON-compatible data.
+
+    Recursively converts ``Path`` objects to strings, calls ``.to_dict()`` on
+    objects that expose it, and recurses through mapping and sequence values.
+    This function is intentionally generic so it can be used by both
+    artifact-level and executor-level write helpers.
+    """
+    if isinstance(value, Path):
+        return str(value)
+    if hasattr(value, "to_dict"):
+        return _json_ready(value.to_dict())
+    if isinstance(value, Mapping):
+        return {str(key): _json_ready(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_ready(item) for item in value]
+    return value
+
+
+def _write_json_atomically(path: Path, payload: Mapping[str, Any]) -> None:
+    """Write a JSON payload through a temporary file before replacing it.
+
+    The temporary file is placed in the same directory as the target so the
+    final ``os.replace`` is always an in-filesystem rename rather than a
+    cross-device copy.  Writes are pretty-printed and key-sorted so diffs and
+    code-review remain readable.
+
+    Args:
+        path: Destination path for the JSON file.  The parent directory is
+            created when it does not exist.
+        payload: JSON-compatible data to write.  ``Path`` values and nested
+            ``SpecSerializable`` instances are recursively converted by
+            :func:`_json_ready` before serialization.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = path.with_suffix(path.suffix + ".tmp")
+    temporary_path.write_text(json.dumps(_json_ready(payload), indent=2, sort_keys=True) + "\n")
+    os.replace(temporary_path, path)
+
+
+@dataclass(frozen=True, slots=True)
+class DurableAssetRef(SpecSerializable):
+    """Stable identity record for one workflow output captured after local execution.
+
+    A ``DurableAssetRef`` names the filesystem location of one Path-valued
+    output from a completed local run so a later session can locate it without
+    knowing the exact path up front.  All refs for one run are written together
+    into a ``durable_asset_index.json`` sidecar alongside ``local_run_record.json``.
+
+    Attributes:
+        schema_version: Always ``DURABLE_ASSET_INDEX_SCHEMA_VERSION``; used to
+            reject index files written by an incompatible version.
+        run_id: Stable run identifier from the parent :class:`LocalRunRecord`.
+        workflow_name: Workflow that produced this output.
+        output_name: Field name of the output as declared in the workflow spec
+            (key in ``LocalRunRecord.final_outputs``-adjacent data).
+        node_name: Name of the workflow node whose handler produced this output.
+        asset_path: Absolute path to the output directory or file.
+        manifest_path: Path to the ``run_manifest.json`` inside *asset_path*,
+            or ``None`` when the handler did not write a manifest.
+        created_at: UTC timestamp from the parent ``LocalRunRecord.created_at``.
+        run_record_path: Absolute path to the companion ``local_run_record.json``
+            so callers can navigate from any ref back to the full run record.
+    """
+
+    schema_version: str
+    run_id: str
+    workflow_name: str
+    output_name: str
+    node_name: str
+    asset_path: Path
+    manifest_path: Path | None
+    created_at: str
+    run_record_path: Path
+
+
+def save_durable_asset_index(refs: Sequence[DurableAssetRef], run_dir: Path) -> Path:
+    """Write a ``durable_asset_index.json`` sidecar atomically to *run_dir*.
+
+    The index envelope carries top-level ``schema_version``, ``run_id``, and
+    ``workflow_name`` fields so tools can skip parsing individual entries when
+    they only need the run identity.  Each entry serializes a full
+    :class:`DurableAssetRef` so the index is self-contained.
+
+    Args:
+        refs: Non-empty sequence of refs to index.  All refs are assumed to
+            belong to the same run; the envelope fields are taken from the
+            first ref.
+        run_dir: Directory where the index is written.  Normally the per-run
+            subdirectory that already contains ``local_run_record.json``.
+
+    Returns:
+        Path to the written index file.
+
+    Raises:
+        ValueError: When *refs* is empty (an empty index is never valid).
+    """
+    if not refs:
+        raise ValueError("Cannot write an empty durable asset index.")
+    first = refs[0]
+    payload: dict[str, Any] = {
+        "schema_version": DURABLE_ASSET_INDEX_SCHEMA_VERSION,
+        "run_id": first.run_id,
+        "workflow_name": first.workflow_name,
+        "entries": [ref.to_dict() for ref in refs],
+    }
+    output_path = run_dir / DEFAULT_DURABLE_ASSET_INDEX_FILENAME
+    _write_json_atomically(output_path, payload)
+    return output_path
+
+
+def load_durable_asset_index(run_dir: Path) -> list[DurableAssetRef]:
+    """Load a ``durable_asset_index.json`` from *run_dir*; return ``[]`` if absent.
+
+    Returns an empty list rather than raising when the sidecar does not exist
+    so callers can treat pre-M20b run directories (which have no index) the
+    same as runs with no Path-valued outputs — both yield an empty sequence.
+
+    Args:
+        run_dir: Directory to search for ``durable_asset_index.json``.
+
+    Returns:
+        List of :class:`DurableAssetRef` entries, or ``[]`` when no index file
+        is present.
+
+    Raises:
+        ValueError: When an index file exists but carries an unrecognised
+            ``schema_version``, signalling that the file should not be
+            silently parsed under a different field layout.
+    """
+    index_path = run_dir / DEFAULT_DURABLE_ASSET_INDEX_FILENAME
+    if not index_path.exists():
+        return []
+    payload = json.loads(index_path.read_text())
+    schema_version = payload.get("schema_version")
+    if schema_version != DURABLE_ASSET_INDEX_SCHEMA_VERSION:
+        raise ValueError(f"Unsupported durable asset index schema version: {schema_version!r}")
+    return [DurableAssetRef.from_dict(entry) for entry in payload.get("entries", [])]
 
 
 def _artifact_path(path: Path) -> Path:
@@ -352,17 +495,22 @@ def check_recipe_approval(artifact_path: Path, now: str | None = None) -> tuple[
 
 
 __all__ = [
+    "DEFAULT_DURABLE_ASSET_INDEX_FILENAME",
     "DEFAULT_RECIPE_APPROVAL_FILENAME",
     "DEFAULT_SPEC_ARTIFACT_FILENAME",
+    "DURABLE_ASSET_INDEX_SCHEMA_VERSION",
     "RECIPE_APPROVAL_SCHEMA_VERSION",
     "SPEC_ARTIFACT_SCHEMA_VERSION",
+    "DurableAssetRef",
     "RecipeApprovalRecord",
     "SavedWorkflowSpecArtifact",
     "artifact_from_typed_plan",
     "check_recipe_approval",
+    "load_durable_asset_index",
     "load_recipe_approval",
     "load_workflow_spec_artifact",
     "replayable_spec_pair",
+    "save_durable_asset_index",
     "save_recipe_approval",
     "save_workflow_spec_artifact",
 ]

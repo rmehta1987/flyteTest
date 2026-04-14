@@ -17,6 +17,7 @@ sys.path.insert(0, str(SRC_DIR))
 
 from flytetest.planner_types import ProteinEvidenceSet, QualityAssessmentTarget, ReferenceGenome, TranscriptEvidenceSet
 from flytetest.resolver import LocalManifestAssetResolver
+from flytetest.spec_artifacts import DURABLE_ASSET_INDEX_SCHEMA_VERSION, DurableAssetRef
 from flytetest.types.assets import AbInitioResultBundle, AssetToolProvenance, ProteinEvidenceResultBundle, ProteinReferenceDatasetAsset
 from flytetest.types.assets import ReferenceGenome as AssetReferenceGenome
 
@@ -253,3 +254,94 @@ class ResolverTests(TestCase):
         self.assertIsInstance(result.resolved_value, QualityAssessmentTarget)
         self.assertEqual(result.resolved_value.annotation_gff3_path, result_dir / "all_repeats_removed.gff3")
         self.assertEqual(result.resolved_value.proteins_fasta_path, result_dir / "all_repeats_removed.proteins.fa")
+
+
+class DurableIndexResolverTests(TestCase):
+    """M20b checks for durable_index parameter on LocalManifestAssetResolver.resolve().
+
+    These tests verify that a missing manifest source reports a durable-ref
+    context limitation rather than failing silently, and that an existing source
+    is unaffected by a matching durable ref entry.
+"""
+
+    def test_resolver_reports_missing_path_with_durable_ref_context(self) -> None:
+        """When a manifest source path is missing but a matching DurableAssetRef
+        is in durable_index, resolve() must return an unresolved result whose
+        unresolved_requirements mention the run_id and output_name from the ref.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
+        resolver = LocalManifestAssetResolver()
+        with tempfile.TemporaryDirectory() as tmp:
+            asset_path = Path(tmp) / "missing_results"
+            missing_manifest = asset_path / "run_manifest.json"
+
+            ref = DurableAssetRef(
+                schema_version=DURABLE_ASSET_INDEX_SCHEMA_VERSION,
+                run_id="run-stale-abc123",
+                workflow_name="select_annotation_qc_busco",
+                output_name="results_dir",
+                node_name="annotation_qc_busco",
+                asset_path=asset_path,
+                manifest_path=missing_manifest,
+                created_at="2026-04-14T12:00:00Z",
+                run_record_path=asset_path.parent / "local_run_record.json",
+            )
+
+            result = resolver.resolve(
+                "QualityAssessmentTarget",
+                manifest_sources=(missing_manifest,),
+                durable_index=(ref,),
+            )
+
+        self.assertFalse(result.is_resolved)
+        all_messages = " ".join(result.unresolved_requirements)
+        self.assertIn("run-stale-abc123", all_messages)
+        self.assertIn("results_dir", all_messages)
+
+    def test_resolver_succeeds_when_durable_ref_path_exists(self) -> None:
+        """When a manifest source exists on disk, resolution must succeed
+        normally even when a matching DurableAssetRef is also in durable_index.
+        The durable ref must not interfere with the happy path.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
+        resolver = LocalManifestAssetResolver()
+        with tempfile.TemporaryDirectory() as tmp:
+            result_dir = Path(tmp) / "repeat_filter_results"
+            result_dir.mkdir()
+            (result_dir / "run_manifest.json").write_text(
+                json.dumps(
+                    {
+                        "workflow": "annotation_repeat_filtering",
+                        "assumptions": [],
+                        "inputs": {"reference_genome": "data/reference/genome.fa"},
+                        "outputs": {
+                            "all_repeats_removed_gff3": str(result_dir / "masked.gff3"),
+                            "final_proteins_fasta": str(result_dir / "proteins.fa"),
+                        },
+                    },
+                    indent=2,
+                )
+            )
+
+            ref = DurableAssetRef(
+                schema_version=DURABLE_ASSET_INDEX_SCHEMA_VERSION,
+                run_id="run-live-xyz",
+                workflow_name="select_annotation_qc_busco",
+                output_name="results_dir",
+                node_name="annotation_qc_busco",
+                asset_path=result_dir,
+                manifest_path=result_dir / "run_manifest.json",
+                created_at="2026-04-14T12:00:00Z",
+                run_record_path=result_dir.parent / "local_run_record.json",
+            )
+
+            result = resolver.resolve(
+                "QualityAssessmentTarget",
+                manifest_sources=(result_dir,),
+                durable_index=(ref,),
+            )
+
+        self.assertTrue(result.is_resolved)
+        self.assertIsInstance(result.resolved_value, QualityAssessmentTarget)

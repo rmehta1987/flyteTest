@@ -80,6 +80,43 @@ Entry template:
   for `monitor_slurm_job`; added Scenario 6 to `docs/mcp_cluster_prompt_tests.md`;
   updated retry and HPC integration rows in `docs/capability_maturity.md`
 
+### Milestone 20b — Storage-Native Durable Asset Return (2026-04-14)
+
+- [x] 2026-04-14 added `DURABLE_ASSET_INDEX_SCHEMA_VERSION`, `DEFAULT_DURABLE_ASSET_INDEX_FILENAME`,
+  and `DurableAssetRef` dataclass (frozen, slots, `SpecSerializable`) to
+  `spec_artifacts.py`; fields: `schema_version`, `run_id`, `workflow_name`,
+  `output_name`, `node_name`, `asset_path`, `manifest_path | None`,
+  `created_at`, `run_record_path`
+- [x] 2026-04-14 added `save_durable_asset_index(refs, run_dir)` and
+  `load_durable_asset_index(run_dir)` helpers to `spec_artifacts.py`; the index
+  is an atomic sidecar file `durable_asset_index.json` alongside
+  `local_run_record.json`; loading an absent file returns `[]` for legacy
+  compatibility; an unrecognised `schema_version` raises `ValueError`
+- [x] 2026-04-14 moved `_json_ready()` and `_write_json_atomically()` from
+  `spec_executor.py` to `spec_artifacts.py`; `spec_executor.py` now imports
+  `_write_json_atomically` from `spec_artifacts`; removed the duplicate
+  definitions and the now-unused `import os` from `spec_executor.py`
+- [x] 2026-04-14 added `_durable_refs_from_record(record: LocalRunRecord) -> list[DurableAssetRef]`
+  private helper to `spec_executor.py`; iterates `record.node_results`, emits
+  one `DurableAssetRef` per `Path`-valued output; non-Path outputs are skipped;
+  `manifest_path` is populated from `node_result.manifest_paths.get(output_name)`
+- [x] 2026-04-14 updated `LocalWorkflowSpecExecutor.execute()` to call
+  `save_durable_asset_index(refs, run_dir)` after `save_local_run_record()`
+  when `refs` is non-empty; `LocalRunRecord` fields are unchanged
+- [x] 2026-04-14 added `durable_index: Sequence[DurableAssetRef] = ()` parameter to
+  `LocalManifestAssetResolver.resolve()`; all existing callers are unaffected;
+  added `_durable_ref_for_missing_source()` helper to `resolver.py`; when a
+  manifest source raises `FileNotFoundError` and a matching durable ref is found,
+  an explicit limitation message citing `run_id` and `output_name` is added to
+  `unresolved_requirements`; imported `DurableAssetRef` from `spec_artifacts`
+  (no circular imports)
+- [x] 2026-04-14 added 8 new tests: 3 in `test_spec_artifacts.DurableAssetIndexTests`
+  (round-trip, missing-file, schema-version validation), 3 in
+  `test_spec_executor.DurableAssetIndexIntegrationTests` (index written alongside
+  record, fields match run record, legacy directory loads cleanly), 2 in
+  `test_resolver.DurableIndexResolverTests` (missing path reports context,
+  existing path succeeds); full test suite: 370 tests + 1 skipped
+
 ### MCP Doc Cross-linking
 
 - [x] 2026-04-13 linked the `Validated Slurm Walkthrough` in

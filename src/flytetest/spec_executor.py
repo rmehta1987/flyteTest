@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
 import shlex
 import shutil
@@ -26,7 +25,7 @@ from typing import Any
 from flytetest.registry import get_entry
 from flytetest.resolver import AssetResolver, LocalManifestAssetResolver, ResolutionResult
 from flytetest.planner_types import QualityAssessmentTarget
-from flytetest.spec_artifacts import SavedWorkflowSpecArtifact, load_workflow_spec_artifact
+from flytetest.spec_artifacts import SavedWorkflowSpecArtifact, load_workflow_spec_artifact, DurableAssetRef, DURABLE_ASSET_INDEX_SCHEMA_VERSION, save_durable_asset_index, _write_json_atomically
 from flytetest.specs import ResourceSpec, RuntimeImageSpec, SpecSerializable, WorkflowNodeSpec
 
 
@@ -712,25 +711,38 @@ def _manifest_paths_for_outputs(outputs: Mapping[str, Any]) -> dict[str, Path]:
     }
 
 
-def _json_ready(value: Any) -> Any:
-    """Convert executor values into stable JSON-compatible data."""
-    if isinstance(value, Path):
-        return str(value)
-    if hasattr(value, "to_dict"):
-        return _json_ready(value.to_dict())
-    if isinstance(value, Mapping):
-        return {str(key): _json_ready(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_json_ready(item) for item in value]
-    return value
+def _durable_refs_from_record(record: LocalRunRecord) -> list[DurableAssetRef]:
+    """Emit one DurableAssetRef per Path-valued output across all node results.
 
+    Iterates ``record.node_results`` and constructs a :class:`DurableAssetRef`
+    for each output value that is a :class:`~pathlib.Path`.  Non-Path outputs
+    (strings, dicts, ``None``) are skipped because they do not represent stable
+    filesystem assets that need to be indexed.
 
-def _write_json_atomically(path: Path, payload: Mapping[str, Any]) -> None:
-    """Write a JSON payload through a temporary file before replacing it."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary_path = path.with_suffix(path.suffix + ".tmp")
-    temporary_path.write_text(json.dumps(_json_ready(payload), indent=2, sort_keys=True) + "\n")
-    os.replace(temporary_path, path)
+    Args:
+        record: Completed local run record whose node outputs are indexed.
+
+    Returns:
+        List of refs, one per Path-valued output field across all nodes.
+        Returns an empty list when no node produced a Path-valued output.
+    """
+    refs: list[DurableAssetRef] = []
+    for node_result in record.node_results:
+        for output_name, output_value in node_result.outputs.items():
+            if not isinstance(output_value, Path):
+                continue
+            refs.append(DurableAssetRef(
+                schema_version=DURABLE_ASSET_INDEX_SCHEMA_VERSION,
+                run_id=record.run_id,
+                workflow_name=record.workflow_name,
+                output_name=output_name,
+                node_name=node_result.node_name,
+                asset_path=output_value,
+                manifest_path=node_result.manifest_paths.get(output_name),
+                created_at=record.created_at,
+                run_record_path=record.run_record_path,
+            ))
+    return refs
 
 
 def _slurm_run_record_path(source: Path) -> Path:
@@ -1757,6 +1769,9 @@ class LocalWorkflowSpecExecutor:
                 assumptions=tuple(dict.fromkeys(resume_assumptions)),
             )
             save_local_run_record(local_run_record)
+            refs = _durable_refs_from_record(local_run_record)
+            if refs:
+                save_durable_asset_index(refs, run_dir)
 
         return LocalSpecExecutionResult(
             supported=True,

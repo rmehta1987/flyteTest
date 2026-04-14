@@ -1568,17 +1568,17 @@ Status: Complete (2026-04-13)
 Goal: make workflow outputs durable and reusable as asset references without
 introducing a database-first architecture.
 
-Status: Not started (gate: Milestone 20a complete)
+Status: Complete (2026-04-14)
 
 ### Still required
 
-- [ ] Define a durable asset reference model for workflow outputs.
-- [ ] Persist or index outputs so they can be reloaded after the local run
+- [x] Define a durable asset reference model for workflow outputs.
+- [x] Persist or index outputs so they can be reloaded after the local run
       directory is gone.
-- [ ] Update manifests to carry durable asset references where appropriate.
-- [ ] Add tests for asset lookup, replay, and downstream reuse.
-- [ ] Keep legacy manifest paths working during the migration.
-- [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
+- [x] Update manifests to carry durable asset references where appropriate.
+- [x] Add tests for asset lookup, replay, and downstream reuse.
+- [x] Keep legacy manifest paths working during the migration.
+- [x] Update README, `docs/capability_maturity.md`, and the handoff prompt
       after the behavior lands.
 
 ### Milestone 20b implementation note
@@ -1591,15 +1591,23 @@ Status: Not started (gate: Milestone 20a complete)
   are introduced.
 - Do not start until Milestone 20a is merged; M20a and M20b both touch
   `spec_executor.py` in different sections.
+- `DurableAssetRef` dataclass added to `spec_artifacts.py`; the index is a
+  `durable_asset_index.json` sidecar, NOT a new field on `LocalRunRecord`.
+- `_write_json_atomically()` moved from `spec_executor.py` to `spec_artifacts.py`
+  so both the index writer and executor helpers share one implementation; the
+  executor now imports it from `spec_artifacts`.
+- `LocalManifestAssetResolver.resolve()` gains `durable_index: Sequence[DurableAssetRef] = ()`
+  — all existing callers are unaffected by the default.
+- When a manifest source path is missing and a durable ref matches, an explicit
+  limitation is reported — not a silent skip and not a fallback substitution.
 
 ### Acceptance evidence
 
 - `docs/realtime_refactor_plans/2026-04-08-milestone-20b-storage-native-durable-asset-return.md`
 - `docs/realtime_refactor_milestone_20b_submission_prompt.md`
-- Tests likely to include `tests/test_resolver.py`, `tests/test_spec_executor.py`,
-  and any focused asset-reference or replay coverage
-- `README.md`, `docs/capability_maturity.md`, and compatibility docs stay
-  aligned with the landed behavior
+- All 8 test cases implemented and passing: 3 in `tests/test_spec_artifacts.py`,
+  3 in `tests/test_spec_executor.py`, 2 in `tests/test_resolver.py`
+- `docs/capability_maturity.md` updated for durable asset / result-reload row
 
 ### Compatibility risks
 

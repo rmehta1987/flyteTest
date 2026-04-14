@@ -40,6 +40,7 @@ from flytetest.planner_types import (
     ReferenceGenome,
     TranscriptEvidenceSet,
 )
+from flytetest.spec_artifacts import DurableAssetRef
 from flytetest.types.assets import (
     AbInitioResultBundle,
     Braker3ResultBundle,
@@ -242,6 +243,39 @@ def _candidate_key(candidate: ResolutionCandidate) -> tuple[str, str]:
     return candidate.source.kind, candidate.source.label
 
 
+def _durable_ref_for_missing_source(
+    source: Path | Mapping[str, Any],
+    durable_index: Sequence[DurableAssetRef],
+) -> DurableAssetRef | None:
+    """Return the first DurableAssetRef whose paths match a missing manifest source.
+
+    Only Path sources are matched; inline ``Mapping`` sources have no filesystem
+    path to check.  The comparison tries three candidate paths in order:
+
+    1. ``durable_ref.manifest_path == source`` — source is the manifest JSON file
+       directly.
+    2. ``durable_ref.asset_path == source`` — source is the asset directory.
+    3. ``durable_ref.manifest_path == source / "run_manifest.json"`` — source is
+       an asset directory path (even though it doesn't exist as a dir on disk, the
+       original caller may have passed it intending to locate the sidecar manifest).
+
+    Args:
+        source: The manifest source that caused a FileNotFoundError during loading.
+        durable_index: Sequence of DurableAssetRef entries from a prior run's index.
+
+    Returns:
+        The first matching ref, or ``None`` when no match is found.
+    """
+    if not isinstance(source, Path) or not durable_index:
+        return None
+    for ref in durable_index:
+        if ref.manifest_path == source or ref.asset_path == source:
+            return ref
+        if ref.manifest_path == source / "run_manifest.json":
+            return ref
+    return None
+
+
 class LocalManifestAssetResolver:
     """Resolve planner-facing types from explicit local bindings and local manifests.
 
@@ -260,6 +294,7 @@ class LocalManifestAssetResolver:
         explicit_bindings: Mapping[str, Any] | None = None,
         manifest_sources: Sequence[Path | Mapping[str, Any]] = (),
         result_bundles: Sequence[Any] = (),
+        durable_index: Sequence[DurableAssetRef] = (),
     ) -> ResolutionResult:
         """Resolve one planner-facing type from local bindings, manifests, or bundles.
 
@@ -268,6 +303,11 @@ class LocalManifestAssetResolver:
         explicit_bindings: Caller-supplied planner values that should win over discovered inputs.
         manifest_sources: Manifest paths or inline manifest mappings that may contain planner values.
         result_bundles: A directory path used by the helper.
+        durable_index: Optional sequence of :class:`~flytetest.spec_artifacts.DurableAssetRef`
+            entries from a prior run's ``durable_asset_index.json``.  When a manifest source
+            path is missing from the filesystem, the index is searched for a matching entry
+            and an explicit limitation is added to guide the caller.  Defaults to ``()``
+            so all existing callers remain unaffected.
 
     Returns:
         A `ResolutionResult` result computed by this helper.
@@ -277,6 +317,7 @@ class LocalManifestAssetResolver:
 
         explicit_bindings = explicit_bindings or {}
         candidates: list[ResolutionCandidate] = []
+        durable_limitations: list[str] = []
         assumptions = (
             "This first resolver is local and manifest-backed only.",
             "Database-backed and remote-backed lookup remain out of scope in this milestone.",
@@ -307,7 +348,19 @@ class LocalManifestAssetResolver:
                 try:
                     manifest, manifest_path = _manifest_payload(source)
                     value = manifest_adapter(manifest_path if manifest_path is not None else manifest)
-                except (FileNotFoundError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+                except FileNotFoundError:
+                    # When the source is a filesystem path that no longer exists, check
+                    # whether the durable index has an entry for it.  If so, surface an
+                    # explicit limitation instead of silently skipping the source.
+                    matched_ref = _durable_ref_for_missing_source(source, durable_index)
+                    if matched_ref is not None:
+                        durable_limitations.append(
+                            f"Manifest at {source} no longer exists; it was last captured in run "
+                            f"{matched_ref.run_id!r} (output {matched_ref.output_name!r}). "
+                            "To reuse this output, restore the path or re-run the workflow."
+                        )
+                    continue
+                except (KeyError, TypeError, ValueError, json.JSONDecodeError):
                     continue
 
                 label = str(manifest_path) if manifest_path is not None else (
@@ -395,15 +448,16 @@ class LocalManifestAssetResolver:
                 assumptions=assumptions,
             )
 
+        base_unresolved = (
+            f"No {target_type_name} could be resolved from explicit bindings, manifests, or result bundles.",
+        )
         return ResolutionResult(
             target_type_name=target_type_name,
             resolved_value=None,
             selected_source=None,
             candidate_count=0,
             candidate_sources=(),
-            unresolved_requirements=(
-                f"No {target_type_name} could be resolved from explicit bindings, manifests, or result bundles.",
-            ),
+            unresolved_requirements=base_unresolved + tuple(durable_limitations),
             assumptions=assumptions,
         )
 

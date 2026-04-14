@@ -23,7 +23,14 @@ sys.path.insert(0, str(SRC_DIR))
 from flytetest.planner_types import ConsensusAnnotation, QualityAssessmentTarget, ReferenceGenome
 from flytetest.planning import plan_typed_request
 from flytetest.specs import ResourceSpec
-from flytetest.spec_artifacts import artifact_from_typed_plan, save_workflow_spec_artifact
+from flytetest.spec_artifacts import (
+    artifact_from_typed_plan,
+    save_workflow_spec_artifact,
+    DURABLE_ASSET_INDEX_SCHEMA_VERSION,
+    DEFAULT_DURABLE_ASSET_INDEX_FILENAME,
+    DurableAssetRef,
+    load_durable_asset_index,
+)
 from flytetest.spec_executor import (
     DEFAULT_LOCAL_RUN_RECORD_FILENAME,
     DEFAULT_SLURM_MAX_ATTEMPTS,
@@ -1990,3 +1997,111 @@ class ModuleLoadsAndResourceOverrideTests(TestCase):
         self.assertIsNotNone(reloaded.resource_overrides)
         self.assertEqual(reloaded.resource_overrides.memory, "128Gi")
         self.assertEqual(reloaded.resource_overrides.cpu, "32")
+
+
+class DurableAssetIndexIntegrationTests(TestCase):
+    """M20b checks for durable_asset_index.json written after local execution.
+
+    These tests verify that LocalWorkflowSpecExecutor writes the index sidecar
+    alongside local_run_record.json, that index fields match the run record, and
+    that pre-M20b run directories load without error.
+"""
+
+    def _run_busco_with_run_root(self, tmp_path: Path):
+        """Execute the BUSCO spec with run_root and return (run_dir, result)."""
+        artifact, _ = _busco_artifact_with_runtime_bindings(tmp_path)
+        artifact_path = tmp_path / "workflow_spec_artifact.json"
+        save_workflow_spec_artifact(artifact, artifact_path)
+
+        busco_out = tmp_path / "busco_results"
+        busco_out.mkdir(exist_ok=True)
+        (busco_out / "run_manifest.json").write_text(
+            json.dumps({"workflow": "annotation_qc_busco", "outputs": {"results_dir": str(busco_out)}})
+        )
+
+        def busco_handler(request: LocalNodeExecutionRequest) -> dict:
+            return {"results_dir": busco_out}
+
+        run_root = tmp_path / "local_runs"
+        executor = LocalWorkflowSpecExecutor({"annotation_qc_busco": busco_handler}, run_root=run_root)
+        result = executor.execute(artifact_path)
+        run_dirs = list(run_root.iterdir())
+        return run_dirs[0], result
+
+    def test_local_execution_writes_durable_asset_index_alongside_run_record(self) -> None:
+        """After a successful local execution the run directory must contain
+        durable_asset_index.json next to local_run_record.json.  At minimum the
+        entry must have the correct run_id, workflow_name, output_name, and asset_path.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            run_dir, result = self._run_busco_with_run_root(tmp_path)
+            index_exists = (run_dir / DEFAULT_DURABLE_ASSET_INDEX_FILENAME).exists()
+            refs = load_durable_asset_index(run_dir) if index_exists else []
+            record = load_local_run_record(run_dir)
+
+        self.assertTrue(result.supported)
+        self.assertTrue(index_exists, "durable_asset_index.json must be written next to local_run_record.json")
+        self.assertEqual(len(refs), 1)
+        ref = refs[0]
+        self.assertEqual(ref.run_id, record.run_id)
+        self.assertEqual(ref.workflow_name, "select_annotation_qc_busco")
+        self.assertEqual(ref.output_name, "results_dir")
+        self.assertIsNotNone(ref.asset_path)
+
+    def test_durable_asset_index_fields_match_run_record(self) -> None:
+        """The run_id, workflow_name, and created_at fields in the durable asset
+        index must be identical to those in the companion local_run_record.json.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            run_dir, _ = self._run_busco_with_run_root(tmp_path)
+            record = load_local_run_record(run_dir)
+            refs = load_durable_asset_index(run_dir)
+
+        self.assertEqual(len(refs), 1)
+        ref = refs[0]
+        self.assertEqual(ref.run_id, record.run_id)
+        self.assertEqual(ref.workflow_name, record.workflow_name)
+        self.assertEqual(ref.created_at, record.created_at)
+        self.assertEqual(ref.run_record_path, record.run_record_path)
+
+    def test_legacy_run_record_loads_without_durable_index(self) -> None:
+        """A pre-M20b run directory with only local_run_record.json must load
+        without error.  load_local_run_record must succeed and
+        load_durable_asset_index must return [] for the same directory.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run_legacy"
+            run_dir.mkdir()
+            node_result = LocalNodeExecutionResult(
+                node_name="annotation_qc_busco",
+                reference_name="annotation_qc_busco",
+                outputs={"results_dir": str(run_dir / "busco_results")},
+            )
+            record = LocalRunRecord(
+                schema_version=LOCAL_RUN_RECORD_SCHEMA_VERSION,
+                run_id="legacy-run-001",
+                workflow_name="select_annotation_qc_busco",
+                run_record_path=run_dir / DEFAULT_LOCAL_RUN_RECORD_FILENAME,
+                created_at="2026-01-01T00:00:00Z",
+                execution_profile="local",
+                resolved_planner_inputs={},
+                binding_plan_target="select_annotation_qc_busco",
+                node_completion_state={"annotation_qc_busco": True},
+                node_results=(node_result,),
+            )
+            save_local_run_record(record)
+            # No durable_asset_index.json is written (simulates pre-M20b run)
+            loaded_record = load_local_run_record(run_dir)
+            loaded_refs = load_durable_asset_index(run_dir)
+
+        self.assertEqual(loaded_record.run_id, "legacy-run-001")
+        self.assertEqual(loaded_refs, [])
+

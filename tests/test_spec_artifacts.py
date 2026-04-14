@@ -18,10 +18,15 @@ from flytetest.planner_types import ConsensusAnnotation, ReferenceGenome
 from flytetest.planning import plan_typed_request
 from flytetest.spec_artifacts import (
     DEFAULT_SPEC_ARTIFACT_FILENAME,
+    DURABLE_ASSET_INDEX_SCHEMA_VERSION,
+    DEFAULT_DURABLE_ASSET_INDEX_FILENAME,
     SPEC_ARTIFACT_SCHEMA_VERSION,
+    DurableAssetRef,
     artifact_from_typed_plan,
+    load_durable_asset_index,
     load_workflow_spec_artifact,
     replayable_spec_pair,
+    save_durable_asset_index,
     save_workflow_spec_artifact,
 )
 
@@ -125,3 +130,90 @@ class SpecArtifactTests(TestCase):
 
         with self.assertRaises(ValueError):
             artifact_from_typed_plan(typed_plan, created_at="2026-04-07T12:00:00Z")
+
+
+class DurableAssetIndexTests(TestCase):
+    """Coverage for DurableAssetRef, save_durable_asset_index, and load_durable_asset_index.
+
+    These tests keep the M20b durable-asset model explicit and guard the
+    documented index contract against regression.
+"""
+
+    def test_durable_asset_ref_round_trips_through_save_load(self) -> None:
+        """A DurableAssetRef constructed with known fields must survive a full
+        save/load cycle through durable_asset_index.json without losing any field.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run_001"
+            run_dir.mkdir()
+            asset_path = run_dir / "busco_results"
+            manifest_path = asset_path / "run_manifest.json"
+            run_record_path = run_dir / "local_run_record.json"
+
+            ref = DurableAssetRef(
+                schema_version=DURABLE_ASSET_INDEX_SCHEMA_VERSION,
+                run_id="20260414T120000Z-select_annotation_qc_busco-abc123",
+                workflow_name="select_annotation_qc_busco",
+                output_name="results_dir",
+                node_name="annotation_qc_busco",
+                asset_path=asset_path,
+                manifest_path=manifest_path,
+                created_at="2026-04-14T12:00:00Z",
+                run_record_path=run_record_path,
+            )
+
+            index_path = save_durable_asset_index([ref], run_dir)
+            loaded = load_durable_asset_index(run_dir)
+
+        self.assertEqual(index_path.name, DEFAULT_DURABLE_ASSET_INDEX_FILENAME)
+        self.assertEqual(len(loaded), 1)
+        loaded_ref = loaded[0]
+        self.assertEqual(loaded_ref.schema_version, DURABLE_ASSET_INDEX_SCHEMA_VERSION)
+        self.assertEqual(loaded_ref.run_id, "20260414T120000Z-select_annotation_qc_busco-abc123")
+        self.assertEqual(loaded_ref.workflow_name, "select_annotation_qc_busco")
+        self.assertEqual(loaded_ref.output_name, "results_dir")
+        self.assertEqual(loaded_ref.node_name, "annotation_qc_busco")
+        self.assertEqual(loaded_ref.asset_path, asset_path)
+        self.assertEqual(loaded_ref.manifest_path, manifest_path)
+        self.assertEqual(loaded_ref.created_at, "2026-04-14T12:00:00Z")
+        self.assertEqual(loaded_ref.run_record_path, run_record_path)
+
+    def test_load_durable_asset_index_returns_empty_for_missing_file(self) -> None:
+        """load_durable_asset_index must return [] without raising when there
+        is no durable_asset_index.json in the directory.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run_legacy"
+            run_dir.mkdir()
+
+            result = load_durable_asset_index(run_dir)
+
+        self.assertEqual(result, [])
+
+    def test_durable_asset_index_schema_version_is_validated(self) -> None:
+        """load_durable_asset_index must raise ValueError when schema_version
+        does not match the current DURABLE_ASSET_INDEX_SCHEMA_VERSION.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run_stale"
+            run_dir.mkdir()
+            index_path = run_dir / DEFAULT_DURABLE_ASSET_INDEX_FILENAME
+            stale_payload = {
+                "schema_version": "durable-asset-index-v0-stale",
+                "run_id": "old-run",
+                "workflow_name": "old_wf",
+                "entries": [],
+            }
+            index_path.write_text(json.dumps(stale_payload))
+
+            with self.assertRaises(ValueError) as ctx:
+                load_durable_asset_index(run_dir)
+
+        self.assertIn("durable-asset-index-v0-stale", str(ctx.exception))
