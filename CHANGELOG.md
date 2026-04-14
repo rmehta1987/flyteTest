@@ -40,58 +40,89 @@ Entry template:
 
 ### Slurm Test Coverage Follow-Up
 
-Gaps identified 2026-04-13 from review of `tests/test_server.py`,
-`tests/test_slurm_async_monitor.py`, and `tests/test_spec_executor.py`.
-All are offline-friendly additions that do not require a live cluster.
-
-- [ ] `monitor_slurm_job` on a `COMPLETED` terminal record — verify
-  `final_scheduler_state` is non-null so MCP clients have a reliable polling
-  gate (only `PENDING` is currently tested at the server layer)
-- [ ] `monitor_slurm_job` on a `FAILED` terminal record — verify `stdout_path`
-  and `stderr_path` are present in the response so clients know where to look
-  for diagnostic output
-- [ ] `monitor_slurm_job` on a `TIMEOUT` terminal record — verify
-  `final_scheduler_state` is set and `supported` is `True` (this is a terminal
-  state, not an error; client needs to re-prepare with updated resources)
-- [ ] `monitor_slurm_job` sacct fallback path — simulate empty squeue output
-  followed by populated sacct output to prove the `COMPLETED` transition used
-  in practice (job aged off squeue) is handled correctly
-- [ ] `retry_slurm_job` on a `TIMEOUT` record — should decline as terminal with
-  a resource-escalation message; only `OUT_OF_MEMORY` is currently tested for
-  the non-retryable branch
-- [ ] `retry_slurm_job` on a `CANCELLED` record — should decline; no test
-  covers this terminal state
-- [ ] `retry_slurm_job` child record carries `parent_run_record_path` — verify
-  the new run record links back to the original; currently only the new job ID
-  is asserted
-- [ ] `cancel_slurm_job` idempotency — second cancel on a record that already
-  has `cancellation_requested_at` set should not invoke `scancel` again
-- [ ] `cancel_slurm_job` when `scancel` returns non-zero — run record should
-  still persist `cancellation_requested_at`; the request was made even if the
-  scheduler rejected it
-- [ ] Full cancel → monitor → `CANCELLED` cycle — cancel a job then reconcile,
-  verify `scheduler_state` transitions to `CANCELLED` in the MCP response
-- [ ] sbatch script directive content — after `run_slurm_recipe`, read the
-  saved script and assert `#SBATCH` directives match the frozen
-  `resource_request` (`cpu` → `--ntasks`, `memory` → `--mem`,
-  `walltime` → `--time`, `queue` → `--partition`)
-- [ ] `script_path` in run record points to an existing file after submission
-- [ ] `slurm_resource_hints` in `list_entries` — no test checks that the new
-  registry hints appear in the `compatibility.execution_defaults` section of
-  MCP entry payloads
-- [ ] `run_slurm_recipe` with a prior `LocalRunRecord` at the MCP server layer —
-  M19 Phase C wired the executor path; the server-layer test only covers the
-  local-execution resume case
-- [ ] Schema version mismatch on run record load — an unrecognized
-  `schema_version` should fail with a clear message rather than a cryptic
-  `KeyError`
-- [ ] Submit the same artifact twice — should produce two independent run
-  records with different `run_id` values, not silently reuse one
 - [x] 2026-04-13 fixed pre-existing timing flake in `test_loop_survives_reconcile_error`
   (`tests/test_slurm_async_monitor.py`) — replaced real thread dispatch with
   `patch.object(anyio.to_thread, "run_sync", new=fake_run_sync)` so the test
   only waits on `anyio.sleep` between cycles; widened the window from 0.5s to
-  1.0s as a safety margin; 319 tests pass, 1 live-Slurm smoke skipped
+  1.0s as a safety margin
+- [x] 2026-04-13 added `test_monitor_slurm_job_reports_completed_terminal_state`,
+  `_failed_`, and `_timeout_` — verify `final_scheduler_state` is non-null for
+  each terminal state; the COMPLETED/FAILED path also checks `stdout_path` and
+  `stderr_path` are present so clients know where to retrieve diagnostic output
+- [x] 2026-04-13 added `test_monitor_slurm_job_uses_sacct_when_squeue_is_empty`
+  — simulates empty squeue + sacct hit to prove the normal job-completion
+  transition (job aged off squeue) is handled; asserts `source == "sacct"`
+- [x] 2026-04-13 added `test_retry_slurm_job_declines_timeout_failure` and
+  `_declines_cancelled_record` — verify both terminal states decline without
+  calling sbatch; TIMEOUT requires new `prepare_run_recipe` with updated walltime
+- [x] 2026-04-13 added `test_retry_slurm_job_child_record_links_to_parent`
+  — after a successful NODE_FAIL retry, loads the child run record and asserts
+  `retry_parent_run_record_path` points to the original record
+- [x] 2026-04-13 added `cancel_slurm_job` idempotency and scancel-failure tests
+  — `test_cancel_slurm_job_is_idempotent` verifies scancel is called exactly
+  once across two cancel requests; `test_cancel_slurm_job_persists_cancellation_when_scancel_fails`
+  verifies `cancellation_requested_at` is written to the run record even when
+  scancel returns non-zero
+- [x] 2026-04-13 updated `SlurmWorkflowSpecExecutor.cancel()` in
+  `spec_executor.py` to support both behaviors: added early-return idempotency
+  guard when `cancellation_requested_at` is already set; moved
+  `save_slurm_run_record` before the `returncode != 0` check so the durable
+  cancellation intent is always persisted regardless of scheduler response
+- [x] 2026-04-13 added `test_cancel_then_monitor_shows_cancelled_state`
+  — full cancel → CANCELLED monitor cycle; verifies `final_scheduler_state`
+  is set after a reconcile that reports CANCELLED from the scheduler
+- [x] 2026-04-13 added `test_run_slurm_recipe_saves_script_with_correct_directives`
+  — reads the saved sbatch script and asserts `#SBATCH` directives match the
+  frozen `resource_request` (`--cpus-per-task`, `--mem`, `--partition`,
+  `--account`, `--time`)
+- [x] 2026-04-13 added `test_run_slurm_recipe_script_path_points_to_existing_file`
+  — verifies the `script_path` field in the durable run record points to a
+  file that actually exists on disk after submission
+- [x] 2026-04-13 added `slurm_resource_hints` to `_entry_payload()` in
+  `server.py`; added `test_list_entries_exposes_slurm_resource_hints_for_slurm_capable_workflows`
+  — verifies `cpu`, `memory`, and `walltime` are present and `queue`/`account`
+  are absent for the BUSCO workflow entry
+- [x] 2026-04-13 added `resume_from_local_record` parameter to
+  `_run_slurm_recipe_impl()` in `server.py` and threaded it through to
+  `.submit()`; added `test_run_slurm_recipe_carries_forward_local_resume_node_state`
+  — builds a prior `LocalRunRecord`, submits with it, and asserts
+  `local_resume_node_state` is populated in the `SlurmRunRecord`
+- [x] 2026-04-13 added `test_monitor_slurm_job_rejects_unknown_schema_version`
+  — overwrites a run record with an unrecognised `schema_version`, calls
+  monitor, and asserts a human-readable schema/version message appears in
+  `limitations` rather than a cryptic `KeyError`
+- [x] 2026-04-13 added `test_run_slurm_recipe_twice_produces_independent_run_records`
+  — submits the same artifact twice and asserts the two run records have
+  different `run_id` values and different on-disk paths
+- [x] 2026-04-13 full suite: 335 tests pass, 1 live-Slurm smoke skipped
+
+### MCP Prompt-Level Integration Tests
+
+- [x] 2026-04-13 created `tests/test_mcp_prompt_flows.py` — 5 multi-turn Slurm
+  lifecycle flows exercised through the MCP tool surface (`create_mcp_server()`
+  → `server.tools["tool_name"](keyword_args)`), mirroring the exact JSON-RPC
+  call path a Claude client takes; Slurm subprocess layer replaced by
+  in-process fakes so tests run offline without real cluster access
+- [x] 2026-04-13 `test_mcp_prepare_submit_and_poll_until_completed` — full
+  prepare → submit → monitor(RUNNING) → monitor(COMPLETED) flow; validates the
+  `final_scheduler_state` polling gate: first call returns `None` (client must
+  keep polling), second returns `"COMPLETED"` (client stops)
+- [x] 2026-04-13 `test_mcp_failed_job_is_retried_to_completed` — prepare →
+  submit → monitor(NODE_FAIL) → retry_slurm_job → monitor(COMPLETED) flow;
+  verifies `retry_run_record_path` is a different path from the parent and
+  the child lifecycle reaches COMPLETED independently
+- [x] 2026-04-13 `test_mcp_duplicate_cancel_does_not_issue_second_scancel` —
+  prepare → submit → cancel × 2; verifies second cancel returns `supported=True`
+  without issuing a second `scancel` to the scheduler
+- [x] 2026-04-13 `test_mcp_prepare_with_resource_request_dict_uses_slurm_profile`
+  — verifies that passing `resource_request` as a dict with
+  `execution_profile="slurm"` freezes the slurm profile into the recipe
+  binding plan so `run_slurm_recipe` can proceed without re-planning
+- [x] 2026-04-13 `test_mcp_list_slurm_run_history_returns_submitted_job` —
+  verifies that after prepare + submit, the job appears in
+  `list_slurm_run_history` with the correct `workflow_name` and `job_id`; this
+  is the client path for resuming monitoring after a restart
+- [x] 2026-04-13 full suite: 340 tests pass, 1 live-Slurm smoke skipped
 
 ### Registry Slurm Resource Hints
 

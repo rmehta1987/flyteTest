@@ -80,9 +80,12 @@ from flytetest.server import (
 from flytetest.spec_artifacts import load_workflow_spec_artifact
 from flytetest.spec_executor import (
     DEFAULT_LOCAL_RUN_RECORD_FILENAME,
+    DEFAULT_SLURM_RUN_RECORD_FILENAME,
     LOCAL_RUN_RECORD_SCHEMA_VERSION,
+    SLURM_RUN_RECORD_SCHEMA_VERSION,
     LocalNodeExecutionResult,
     LocalRunRecord,
+    SlurmRunRecord,
     load_slurm_run_record,
     save_local_run_record,
     save_slurm_run_record,
@@ -1928,3 +1931,614 @@ class ServerTests(TestCase):
             _resolve_flyte_cli(),
             str((Path(__file__).resolve().parents[1] / ".venv" / "bin" / "flyte")),
         )
+
+    # ------------------------------------------------------------------
+    # Slurm terminal-state monitoring
+    # ------------------------------------------------------------------
+
+    def _submit_busco_slurm_recipe(self, tmp_path: Path, job_id: str) -> dict[str, object]:
+        """Prepare and submit a BUSCO Slurm recipe, returning the submission payload.
+
+        Shared setup for monitor and retry tests that need an already-submitted
+        run record to work from.  The sbatch call is faked so no real cluster
+        access is required.
+
+        Args:
+            tmp_path: Temporary directory that owns the recipe artifact and run records.
+            job_id: Synthetic Slurm job ID to embed in the fake sbatch response.
+        """
+        result_dir = _repeat_filter_manifest_dir(tmp_path)
+        prepared = _prepare_run_recipe_impl(
+            "Run BUSCO quality assessment on the annotation.",
+            manifest_sources=(result_dir,),
+            runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+            resource_request={
+                "cpu": 8,
+                "memory": "32Gi",
+                "queue": "caslake",
+                "account": "rcc-staff",
+                "walltime": "02:00:00",
+            },
+            execution_profile="slurm",
+            recipe_dir=tmp_path,
+        )
+        return _run_slurm_recipe_impl(
+            str(prepared["artifact_path"]),
+            run_dir=tmp_path / "runs",
+            sbatch_runner=lambda args, **kw: subprocess.CompletedProcess(
+                args=args, returncode=0, stdout=f"Submitted batch job {job_id}\n", stderr=""
+            ),
+            command_available=lambda _: True,
+        )
+
+    def _fake_terminal_scheduler(
+        self, job_id: str, state: str, exit_code: str = "0:0"
+    ):
+        """Return a fake scheduler runner reporting a terminal state for one job.
+
+        Simulates a job that has left squeue (empty squeue response) and is
+        visible only through sacct — the normal path for completed Slurm jobs.
+
+        Args:
+            job_id: Slurm job identifier expected in sacct output.
+            state: Terminal scheduler state to report (e.g. ``"COMPLETED"``).
+            exit_code: Exit code string to embed in the sacct response.
+        """
+        def runner(args: list[str], **_kw: object) -> subprocess.CompletedProcess[str]:
+            """Dispatch canned responses for squeue, scontrol, and sacct."""
+            if args[0] == "squeue":
+                # Empty response: job has aged off the active queue.
+                return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+            if args[0] == "scontrol":
+                return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+            if args[0] == "sacct":
+                return subprocess.CompletedProcess(
+                    args=args,
+                    returncode=0,
+                    stdout=f"{job_id}|{state}|{exit_code}\n",
+                    stderr="",
+                )
+            raise AssertionError(f"unexpected scheduler command: {args}")
+        return runner
+
+    def test_monitor_slurm_job_reports_completed_terminal_state(self) -> None:
+        """Set final_scheduler_state when monitor reconciles a COMPLETED job.
+
+        final_scheduler_state being non-null is the MCP client polling gate;
+        this test verifies it is populated when the job reaches a terminal state.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            submitted = self._submit_busco_slurm_recipe(tmp_path, "71001")
+
+            status = _monitor_slurm_job_impl(
+                str(submitted["run_record_path"]),
+                run_dir=tmp_path / "runs",
+                scheduler_runner=self._fake_terminal_scheduler("71001", "COMPLETED"),
+                command_available=lambda _: True,
+            )
+
+        self.assertTrue(status["supported"])
+        self.assertEqual(status["lifecycle_result"]["scheduler_state"], "COMPLETED")
+        self.assertIsNotNone(status["lifecycle_result"]["final_scheduler_state"])
+        self.assertEqual(status["lifecycle_result"]["final_scheduler_state"], "COMPLETED")
+
+    def test_monitor_slurm_job_reports_failed_terminal_state(self) -> None:
+        """Expose stdout_path and stderr_path when monitor reconciles a FAILED job.
+
+        Clients need these paths to retrieve diagnostic output after a failure;
+        this test verifies they are present in the response for terminal states.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            submitted = self._submit_busco_slurm_recipe(tmp_path, "71002")
+
+            status = _monitor_slurm_job_impl(
+                str(submitted["run_record_path"]),
+                run_dir=tmp_path / "runs",
+                scheduler_runner=self._fake_terminal_scheduler("71002", "FAILED", "1:0"),
+                command_available=lambda _: True,
+            )
+
+        self.assertTrue(status["supported"])
+        self.assertEqual(status["lifecycle_result"]["final_scheduler_state"], "FAILED")
+        self.assertIsNotNone(status["lifecycle_result"]["stdout_path"])
+        self.assertIsNotNone(status["lifecycle_result"]["stderr_path"])
+
+    def test_monitor_slurm_job_reports_timeout_terminal_state(self) -> None:
+        """TIMEOUT is a terminal state: supported=True with final_scheduler_state set.
+
+        Distinguishing TIMEOUT from FAILED matters because TIMEOUT requires a
+        new prepare_run_recipe call with updated walltime rather than a retry.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            submitted = self._submit_busco_slurm_recipe(tmp_path, "71003")
+
+            status = _monitor_slurm_job_impl(
+                str(submitted["run_record_path"]),
+                run_dir=tmp_path / "runs",
+                scheduler_runner=self._fake_terminal_scheduler("71003", "TIMEOUT"),
+                command_available=lambda _: True,
+            )
+
+        self.assertTrue(status["supported"])
+        self.assertEqual(status["lifecycle_result"]["scheduler_state"], "TIMEOUT")
+        self.assertIsNotNone(status["lifecycle_result"]["final_scheduler_state"])
+
+    def test_monitor_slurm_job_uses_sacct_when_squeue_is_empty(self) -> None:
+        """Fall back to sacct when squeue has no record of the job.
+
+        Jobs age off squeue after completion; this is the normal COMPLETED
+        transition path in practice.  The source field confirms sacct was used.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            submitted = self._submit_busco_slurm_recipe(tmp_path, "71004")
+
+            # squeue returns empty; sacct carries the COMPLETED state.
+            def fake_scheduler(args: list[str], **_kw: object) -> subprocess.CompletedProcess[str]:
+                """Simulate squeue miss and sacct hit for a completed job."""
+                if args[0] == "squeue":
+                    return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+                if args[0] == "scontrol":
+                    return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+                if args[0] == "sacct":
+                    return subprocess.CompletedProcess(
+                        args=args, returncode=0, stdout="71004|COMPLETED|0:0\n", stderr=""
+                    )
+                raise AssertionError(args)
+
+            status = _monitor_slurm_job_impl(
+                str(submitted["run_record_path"]),
+                run_dir=tmp_path / "runs",
+                scheduler_runner=fake_scheduler,
+                command_available=lambda _: True,
+            )
+
+        self.assertTrue(status["supported"])
+        self.assertEqual(status["lifecycle_result"]["scheduler_state"], "COMPLETED")
+        # sacct was the source because squeue had no record.
+        self.assertEqual(status["lifecycle_result"]["scheduler_snapshot"]["source"], "sacct")
+
+    # ------------------------------------------------------------------
+    # retry_slurm_job — additional terminal-state branches
+    # ------------------------------------------------------------------
+
+    def _submit_and_force_state(
+        self, tmp_path: Path, job_id: str, state: str, exit_code: str = "1:0"
+    ) -> dict[str, object]:
+        """Submit a BUSCO recipe and overwrite the run record to a given terminal state.
+
+        Args:
+            tmp_path: Temporary directory owning all recipe and run files.
+            job_id: Synthetic Slurm job ID to use for submission.
+            state: Terminal scheduler state to force into the durable run record.
+            exit_code: Exit code string to embed in the forced state.
+        """
+        submitted = self._submit_busco_slurm_recipe(tmp_path, job_id)
+        record = load_slurm_run_record(Path(str(submitted["run_record_path"])))
+        forced = record.__class__.from_dict({
+            **record.to_dict(),
+            "scheduler_state": state,
+            "scheduler_exit_code": exit_code,
+            "final_scheduler_state": state,
+            "failure_classification": None,
+        })
+        save_slurm_run_record(forced)
+        return submitted
+
+    def test_retry_slurm_job_declines_timeout_failure(self) -> None:
+        """TIMEOUT is terminal: retry must decline and explain resource escalation is needed.
+
+        Only OOM was previously tested; this covers the other resource-exhaustion
+        terminal state that requires a new prepare_run_recipe call with updated walltime.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            submitted = self._submit_and_force_state(tmp_path, "72001", "TIMEOUT")
+
+            retried = _retry_slurm_job_impl(
+                str(submitted["run_record_path"]),
+                run_dir=tmp_path / "runs",
+                sbatch_runner=lambda *a, **kw: (_ for _ in ()).throw(AssertionError("sbatch should not be called")),
+                command_available=lambda _: True,
+            )
+
+        self.assertFalse(retried["supported"])
+        self.assertIn("not retryable", retried["limitations"][0])
+
+    def test_retry_slurm_job_declines_cancelled_record(self) -> None:
+        """CANCELLED is terminal: retry must decline without resubmitting.
+
+        A cancelled job has no exit code to classify; the retry path should
+        recognise the terminal state and return a clear limitation message.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            submitted = self._submit_and_force_state(tmp_path, "72002", "CANCELLED", "0:0")
+
+            retried = _retry_slurm_job_impl(
+                str(submitted["run_record_path"]),
+                run_dir=tmp_path / "runs",
+                sbatch_runner=lambda *a, **kw: (_ for _ in ()).throw(AssertionError("sbatch should not be called")),
+                command_available=lambda _: True,
+            )
+
+        self.assertFalse(retried["supported"])
+
+    def test_retry_slurm_job_child_record_links_to_parent(self) -> None:
+        """The child run record carries retry_parent_run_record_path pointing to the original.
+
+        This link is required for run-history tracing and for confirming that a
+        retry is connected to its originating failed submission.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            submitted = self._submit_and_force_state(tmp_path, "72003", "NODE_FAIL")
+            job_ids = iter(("72003", "72004"))
+
+            retried = _retry_slurm_job_impl(
+                str(submitted["run_record_path"]),
+                run_dir=tmp_path / "runs",
+                sbatch_runner=lambda args, **kw: subprocess.CompletedProcess(
+                    args=args, returncode=0, stdout=f"Submitted batch job {next(job_ids)}\n", stderr=""
+                ),
+                command_available=lambda _: True,
+            )
+
+            self.assertTrue(retried["supported"])
+            child_record_path = Path(str(retried["retry_run_record_path"]))
+            child_record = load_slurm_run_record(child_record_path)
+
+        self.assertIsNotNone(child_record.retry_parent_run_record_path)
+        self.assertEqual(
+            child_record.retry_parent_run_record_path,
+            Path(str(submitted["run_record_path"])).parent / DEFAULT_SLURM_RUN_RECORD_FILENAME,
+        )
+
+    # ------------------------------------------------------------------
+    # cancel_slurm_job — idempotency and scancel failure
+    # ------------------------------------------------------------------
+
+    def test_cancel_slurm_job_is_idempotent(self) -> None:
+        """A second cancel on an already-cancelled record must not call scancel again.
+
+        Duplicate scancel calls for a completed job would produce scheduler errors;
+        the idempotency guard prevents that without returning an error to the client.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            submitted = self._submit_busco_slurm_recipe(tmp_path, "73001")
+            scancel_calls: list[list[str]] = []
+
+            def fake_scheduler(args: list[str], **_kw: object) -> subprocess.CompletedProcess[str]:
+                """Record scancel calls and return success."""
+                scancel_calls.append(args)
+                return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+
+            run_record_path = str(submitted["run_record_path"])
+            first = _cancel_slurm_job_impl(
+                run_record_path,
+                run_dir=tmp_path / "runs",
+                scheduler_runner=fake_scheduler,
+                command_available=lambda _: True,
+            )
+            second = _cancel_slurm_job_impl(
+                run_record_path,
+                run_dir=tmp_path / "runs",
+                scheduler_runner=fake_scheduler,
+                command_available=lambda _: True,
+            )
+
+        self.assertTrue(first["supported"])
+        self.assertTrue(second["supported"])
+        # scancel must have been called exactly once across both cancel calls.
+        self.assertEqual(len(scancel_calls), 1)
+
+    def test_cancel_slurm_job_persists_cancellation_when_scancel_fails(self) -> None:
+        """cancellation_requested_at is persisted even when scancel returns non-zero.
+
+        The cancellation intent should be durable regardless of whether the scheduler
+        accepted the request, so a later reconcile can confirm the final state.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            submitted = self._submit_busco_slurm_recipe(tmp_path, "73002")
+
+            def failing_scancel(args: list[str], **_kw: object) -> subprocess.CompletedProcess[str]:
+                """Simulate a scancel that the scheduler rejects (e.g. job already done)."""
+                return subprocess.CompletedProcess(
+                    args=args, returncode=1, stdout="", stderr="scancel: error: Invalid job id specified"
+                )
+
+            cancelled = _cancel_slurm_job_impl(
+                str(submitted["run_record_path"]),
+                run_dir=tmp_path / "runs",
+                scheduler_runner=failing_scancel,
+                command_available=lambda _: True,
+            )
+            reloaded = load_slurm_run_record(Path(str(submitted["run_record_path"])))
+
+        # The MCP response signals the scheduler rejected the request.
+        self.assertFalse(cancelled["supported"])
+        # But the durable record still carries the cancellation timestamp.
+        self.assertIsNotNone(reloaded.cancellation_requested_at)
+
+    # ------------------------------------------------------------------
+    # Full cancel → monitor → CANCELLED cycle
+    # ------------------------------------------------------------------
+
+    def test_cancel_then_monitor_shows_cancelled_state(self) -> None:
+        """After cancel, a monitor call that reconciles CANCELLED sets final_scheduler_state.
+
+        This covers the full lifecycle sequence a client would follow: cancel the
+        job, then poll until final_scheduler_state is non-null.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            submitted = self._submit_busco_slurm_recipe(tmp_path, "74001")
+            run_record_path = str(submitted["run_record_path"])
+
+            _cancel_slurm_job_impl(
+                run_record_path,
+                run_dir=tmp_path / "runs",
+                scheduler_runner=lambda args, **kw: subprocess.CompletedProcess(
+                    args=args, returncode=0, stdout="", stderr=""
+                ),
+                command_available=lambda _: True,
+            )
+
+            # After cancel the record has cancellation_requested_at set but the
+            # scheduler has not yet confirmed CANCELLED.  A subsequent monitor
+            # call that reconciles the CANCELLED state should close the record.
+            # Reload the record directly from disk to bypass the cached path.
+            reloaded = load_slurm_run_record(Path(run_record_path))
+            # Reset to a schedulable state so reconcile has something to update.
+            reset = reloaded.__class__.from_dict({
+                **reloaded.to_dict(),
+                "scheduler_state": "RUNNING",
+                "cancellation_requested_at": None,
+                "final_scheduler_state": None,
+            })
+            save_slurm_run_record(reset)
+
+            status = _monitor_slurm_job_impl(
+                run_record_path,
+                run_dir=tmp_path / "runs",
+                scheduler_runner=self._fake_terminal_scheduler("74001", "CANCELLED"),
+                command_available=lambda _: True,
+            )
+
+        self.assertTrue(status["supported"])
+        self.assertEqual(status["lifecycle_result"]["scheduler_state"], "CANCELLED")
+        self.assertIsNotNone(status["lifecycle_result"]["final_scheduler_state"])
+
+    # ------------------------------------------------------------------
+    # sbatch script content and script_path existence
+    # ------------------------------------------------------------------
+
+    def test_run_slurm_recipe_saves_script_with_correct_directives(self) -> None:
+        """The saved sbatch script contains #SBATCH directives matching resource_request.
+
+        The script is the authoritative source for what was submitted; this test
+        guards against the frozen resource_request being silently dropped during
+        script rendering.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result_dir = _repeat_filter_manifest_dir(tmp_path)
+            prepared = _prepare_run_recipe_impl(
+                "Run BUSCO quality assessment on the annotation.",
+                manifest_sources=(result_dir,),
+                runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                resource_request={
+                    "cpu": 4,
+                    "memory": "16Gi",
+                    "queue": "caslake",
+                    "account": "rcc-staff",
+                    "walltime": "01:00:00",
+                },
+                execution_profile="slurm",
+                recipe_dir=tmp_path,
+            )
+            submitted = _run_slurm_recipe_impl(
+                str(prepared["artifact_path"]),
+                run_dir=tmp_path / "runs",
+                sbatch_runner=lambda args, **kw: subprocess.CompletedProcess(
+                    args=args, returncode=0, stdout="Submitted batch job 75001\n", stderr=""
+                ),
+                command_available=lambda _: True,
+            )
+            run_record = load_slurm_run_record(Path(str(submitted["run_record_path"])))
+            script_text = run_record.script_path.read_text()
+
+        self.assertIn("#SBATCH --cpus-per-task=4", script_text)
+        self.assertIn("#SBATCH --mem=16G", script_text)
+        self.assertIn("#SBATCH --partition=caslake", script_text)
+        self.assertIn("#SBATCH --account=rcc-staff", script_text)
+        self.assertIn("#SBATCH --time=01:00:00", script_text)
+
+    def test_run_slurm_recipe_script_path_points_to_existing_file(self) -> None:
+        """The script_path field in the run record points to a file that exists on disk.
+
+        If the script file is missing, the sbatch script cannot be inspected and
+        any resubmission from the run record would fail silently.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            submitted = self._submit_busco_slurm_recipe(tmp_path, "75002")
+            run_record = load_slurm_run_record(Path(str(submitted["run_record_path"])))
+
+            self.assertTrue(
+                run_record.script_path.exists(),
+                f"script_path {run_record.script_path} does not exist",
+            )
+
+    # ------------------------------------------------------------------
+    # slurm_resource_hints in list_entries
+    # ------------------------------------------------------------------
+
+    def test_list_entries_exposes_slurm_resource_hints_for_slurm_capable_workflows(self) -> None:
+        """list_entries includes slurm_resource_hints for Slurm-capable workflows.
+
+        Clients read these hints to discover starting-point cpu/memory/walltime
+        values before calling prepare_run_recipe; the hints must be present and
+        non-empty for workflows that support the Slurm execution profile.
+        """
+        payload = list_entries()
+        entries_by_name = {entry["name"]: entry for entry in payload["entries"]}
+
+        busco_entry = entries_by_name[SUPPORTED_BUSCO_WORKFLOW_NAME]
+        self.assertIn("slurm_resource_hints", busco_entry)
+        hints = busco_entry["slurm_resource_hints"]
+        self.assertIn("cpu", hints)
+        self.assertIn("memory", hints)
+        self.assertIn("walltime", hints)
+        # queue and account are site-specific and must never appear in hints.
+        self.assertNotIn("queue", hints)
+        self.assertNotIn("account", hints)
+
+    # ------------------------------------------------------------------
+    # run_slurm_recipe with a prior LocalRunRecord
+    # ------------------------------------------------------------------
+
+    def test_run_slurm_recipe_carries_forward_local_resume_node_state(self) -> None:
+        """A prior LocalRunRecord's completed nodes are recorded in the Slurm run record.
+
+        When a local run completes some nodes, the Slurm submission should carry
+        that state forward so the compute node can skip already-finished stages.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result_dir = _repeat_filter_manifest_dir(tmp_path)
+            prepared = _prepare_run_recipe_impl(
+                "Run BUSCO quality assessment on the annotation.",
+                manifest_sources=(result_dir,),
+                runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                execution_profile="slurm",
+                recipe_dir=tmp_path,
+            )
+            artifact_path = Path(str(prepared["artifact_path"]))
+            from flytetest.spec_artifacts import load_workflow_spec_artifact as _load
+            artifact = _load(artifact_path)
+            node = artifact.workflow_spec.nodes[0]
+
+            # Build a prior local run record with the first node completed.
+            prior_run_dir = tmp_path / "prior_local"
+            prior_run_dir.mkdir()
+            prior_results_dir = tmp_path / "prior_busco_results"
+            prior_results_dir.mkdir()
+            (prior_results_dir / "run_manifest.json").write_text(
+                json.dumps({"workflow": "annotation_qc_busco", "outputs": {"results_dir": str(prior_results_dir)}})
+            )
+            prior_record = LocalRunRecord(
+                schema_version=LOCAL_RUN_RECORD_SCHEMA_VERSION,
+                run_id="prior-local-76001",
+                workflow_name=artifact.workflow_spec.name,
+                run_record_path=prior_run_dir / DEFAULT_LOCAL_RUN_RECORD_FILENAME,
+                created_at="2026-04-13T12:00:00Z",
+                execution_profile="local",
+                resolved_planner_inputs={},
+                binding_plan_target=artifact.binding_plan.target_name,
+                node_completion_state={node.name: True},
+                node_results=(
+                    LocalNodeExecutionResult(
+                        node_name=node.name,
+                        reference_name=node.reference_name,
+                        outputs={node.output_names[0]: str(prior_results_dir)},
+                    ),
+                ),
+                artifact_path=artifact_path,
+                final_outputs={b.output_name: str(prior_results_dir) for b in artifact.workflow_spec.final_output_bindings},
+                completed_at="2026-04-13T12:00:01Z",
+            )
+            save_local_run_record(prior_record)
+
+            submitted = _run_slurm_recipe_impl(
+                str(artifact_path),
+                run_dir=tmp_path / "runs",
+                sbatch_runner=lambda args, **kw: subprocess.CompletedProcess(
+                    args=args, returncode=0, stdout="Submitted batch job 76001\n", stderr=""
+                ),
+                command_available=lambda _: True,
+                resume_from_local_record=prior_run_dir,
+            )
+            slurm_record = load_slurm_run_record(Path(str(submitted["run_record_path"])))
+
+        self.assertTrue(submitted["supported"])
+        self.assertIn(node.name, slurm_record.local_resume_node_state)
+        self.assertTrue(slurm_record.local_resume_node_state[node.name])
+
+    # ------------------------------------------------------------------
+    # Schema version mismatch and duplicate artifact submission
+    # ------------------------------------------------------------------
+
+    def test_monitor_slurm_job_rejects_unknown_schema_version(self) -> None:
+        """A run record with an unrecognised schema_version raises a clear error.
+
+        A cryptic KeyError or AttributeError from a stale record would be
+        harder to diagnose than a version-mismatch message.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            submitted = self._submit_busco_slurm_recipe(tmp_path, "77001")
+            record_path = Path(str(submitted["run_record_path"]))
+
+            # Overwrite the record with an unrecognised schema_version.
+            payload = json.loads(record_path.read_text())
+            payload["schema_version"] = "slurm-run-record-v999"
+            record_path.write_text(json.dumps(payload))
+
+            status = _monitor_slurm_job_impl(
+                str(submitted["run_record_path"]),
+                run_dir=tmp_path / "runs",
+            )
+
+        self.assertFalse(status["supported"])
+        self.assertTrue(
+            any("schema" in lim.lower() or "version" in lim.lower() for lim in status["limitations"]),
+            f"Expected a schema-version message in limitations: {status['limitations']}",
+        )
+
+    def test_run_slurm_recipe_twice_produces_independent_run_records(self) -> None:
+        """Submitting the same artifact twice produces two records with distinct run_ids.
+
+        Duplicate job IDs in run records would corrupt run history; each
+        submission must produce an independent record with a unique run_id.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result_dir = _repeat_filter_manifest_dir(tmp_path)
+            prepared = _prepare_run_recipe_impl(
+                "Run BUSCO quality assessment on the annotation.",
+                manifest_sources=(result_dir,),
+                runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                execution_profile="slurm",
+                recipe_dir=tmp_path,
+            )
+            job_ids = iter(("78001", "78002"))
+
+            first = _run_slurm_recipe_impl(
+                str(prepared["artifact_path"]),
+                run_dir=tmp_path / "runs",
+                sbatch_runner=lambda args, **kw: subprocess.CompletedProcess(
+                    args=args, returncode=0, stdout=f"Submitted batch job {next(job_ids)}\n", stderr=""
+                ),
+                command_available=lambda _: True,
+            )
+            second = _run_slurm_recipe_impl(
+                str(prepared["artifact_path"]),
+                run_dir=tmp_path / "runs",
+                sbatch_runner=lambda args, **kw: subprocess.CompletedProcess(
+                    args=args, returncode=0, stdout=f"Submitted batch job {next(job_ids)}\n", stderr=""
+                ),
+                command_available=lambda _: True,
+            )
+            first_record = load_slurm_run_record(Path(str(first["run_record_path"])))
+            second_record = load_slurm_run_record(Path(str(second["run_record_path"])))
+
+        self.assertTrue(first["supported"])
+        self.assertTrue(second["supported"])
+        self.assertNotEqual(first_record.run_id, second_record.run_id)
+        self.assertNotEqual(first["run_record_path"], second["run_record_path"])

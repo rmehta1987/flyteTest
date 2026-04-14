@@ -37,15 +37,27 @@ def _mtime_at(path: Path) -> str:
 
 
 def _resolve_run_record_path(raw_path: Path) -> Path:
-    """Resolve one CLI path into the concrete ``slurm_run_record.json`` path.
+    """Resolve the user-supplied CLI path to the concrete slurm_run_record.json.
+
+    Three path forms are accepted because the record shows up differently
+    depending on how the caller obtained it:
+
+    - A run directory: the MCP server returns the run directory, not the JSON
+      file path, in its submission response.  Appending the standard filename
+      avoids making the caller know the internal layout.
+    - A ``.txt`` pointer file: the convenience scripts in ``scripts/rcc/``
+      write the current record path into ``latest_slurm_run_record.txt`` after
+      each submission so the same watch invocation works without copy-pasting
+      the full run directory name.  The pointer may itself point at a directory,
+      so the resolution is recursive.
+    - A direct JSON path: used in tests and when the caller already has the
+      exact path from a prior ``ls`` or log line.
 
     Args:
-        raw_path: User-supplied path. It may already point at the JSON file, a
-            run directory that contains it, or a small pointer file whose
-            contents are the real JSON path.
+        raw_path: User-supplied path from the CLI positional argument.
 
     Returns:
-        The concrete JSON record path to watch.
+        Concrete path to ``slurm_run_record.json`` ready for periodic reload.
     """
     if raw_path.is_dir():
         return raw_path / DEFAULT_SLURM_RUN_RECORD_FILENAME
@@ -58,17 +70,34 @@ def _resolve_run_record_path(raw_path: Path) -> Path:
 
 
 def _load_snapshot(run_record_path: Path, *, cycle: int) -> dict[str, Any]:
-    """Load the current watch snapshot from disk.
+    """Read the current record from disk and extract the fields that prove poll-loop activity.
+
+    Only a small projection of the full 40+ field record is returned.  The
+    selected fields are the minimum set needed to verify that the background
+    ``slurm_poll_loop()`` inside the MCP server is writing to the record:
+
+    - ``scheduler_state`` and ``scheduler_state_source`` change when
+      ``squeue`` or ``sacct`` returns a new state.
+    - ``last_reconciled_at`` is the timestamp written by
+      ``reconcile_active_slurm_jobs()`` on every successful update cycle;
+      its progression across snapshots proves the loop is running.
+    - ``final_scheduler_state`` signals that the job has entered a terminal
+      state so the watcher can exit cleanly without polling indefinitely.
+    - ``file_mtime`` is read directly from the filesystem rather than from the
+      JSON payload, so it catches any write to the file even if the embedded
+      fields are unchanged (e.g. a retry that rewrites the record).
 
     Args:
-        run_record_path: Concrete durable Slurm JSON record path to reload.
-        cycle: One-based watch iteration number so later output can show when
-            the background poller first touched the record.
+        run_record_path: Concrete durable JSON record path to reload on this
+            cycle.  The file is re-read from disk every call so changes written
+            by the MCP server between cycles are reflected immediately.
+        cycle: One-based watch iteration counter embedded in the output so a
+            reader can tell at which snapshot ``last_reconciled_at`` first
+            changed.
 
     Returns:
-        A compact dict containing only the fields needed to prove passive poll
-        loop activity: scheduler state, its source, reconciliation timestamp,
-        terminal state, exit code, and file mtime.
+        Compact dict suitable for ``json.dumps`` and line-by-line streaming
+        to stdout.
     """
     payload = json.loads(run_record_path.read_text(encoding="utf-8"))
     return {
@@ -124,7 +153,22 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 
 
 def main(argv: list[str]) -> int:
-    """Watch the requested durable record and print one JSON line per cycle."""
+    """Watch one durable Slurm run record and print a JSON snapshot each cycle.
+
+    Prints one compact JSON line per cycle to stdout so the output can be
+    piped, redirected, or inspected live in an RCC terminal.  Runs until one
+    of three stopping conditions is met:
+
+    - The record's ``final_scheduler_state`` is set (job reached a terminal
+      Slurm state); exits 0 so callers can use the exit code as a success
+      signal.
+    - ``--max-cycles`` snapshots have been emitted; exits 0.
+    - The user sends SIGINT (Ctrl-C); exits 130, matching the standard
+      shell convention for Ctrl-C termination.
+
+    Does not call any MCP handler, monitor helper, or scheduler command.
+    The only side effect is reading the JSON file from disk on each cycle.
+    """
     args = _parse_args(argv)
     run_record_path = _resolve_run_record_path(Path(args.run_record_path))
     if not run_record_path.is_file():

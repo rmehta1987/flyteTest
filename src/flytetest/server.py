@@ -337,6 +337,7 @@ def _entry_payload(name: str) -> dict[str, object]:
         "description": entry.description,
         "supported_execution_profiles": list(entry.compatibility.supported_execution_profiles),
         "default_execution_profile": entry.compatibility.execution_defaults.get("profile", "local"),
+        "slurm_resource_hints": entry.compatibility.execution_defaults.get("slurm_resource_hints", {}),
         "required_inputs": [asdict(field) for field in required_inputs],
         "optional_inputs": [asdict(field) for field in optional_inputs],
         "outputs": [asdict(field) for field in entry.outputs],
@@ -1518,6 +1519,7 @@ def _run_slurm_recipe_impl(
     run_dir: Path | None = None,
     sbatch_runner: Any = subprocess.run,
     command_available: Any = None,
+    resume_from_local_record: str | Path | None = None,
 ) -> dict[str, object]:
     """Submit one frozen workflow-spec recipe through `sbatch`.
 
@@ -1526,6 +1528,9 @@ def _run_slurm_recipe_impl(
         run_dir: Directory that stores the generated run record and logs.
         sbatch_runner: Injected submission command runner used for Slurm submission.
         command_available: Command probe used to confirm Slurm tooling is available.
+        resume_from_local_record: Optional path to a prior local run record whose
+            completed node state is carried forward into the Slurm submission so
+            already-finished stages are not re-executed on the compute node.
 """
     # Check approval for composed recipes before submission.
     try:
@@ -1551,7 +1556,10 @@ def _run_slurm_recipe_impl(
         repo_root=REPO_ROOT,
         sbatch_runner=sbatch_runner,
         command_available=command_available or _command_is_available,
-    ).submit(Path(artifact_path))
+    ).submit(
+        Path(artifact_path),
+        resume_from_local_record=Path(resume_from_local_record) if resume_from_local_record is not None else None,
+    )
     active_run_dir = run_dir or DEFAULT_RUN_DIR
     if result.supported and result.run_record is not None:
         _write_latest_slurm_submission_pointers(

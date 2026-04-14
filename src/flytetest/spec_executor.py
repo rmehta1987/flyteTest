@@ -2169,6 +2169,26 @@ class SlurmWorkflowSpecExecutor:
                 limitations=(str(exc),),
             )
 
+        # Idempotency: a second cancel on a record that already has
+        # cancellation_requested_at set would be a duplicate scancel call.
+        # Return the existing cancellation state without contacting the scheduler.
+        if record.cancellation_requested_at is not None:
+            snapshot = SlurmSchedulerSnapshot(
+                job_id=record.job_id,
+                scheduler_state="cancellation_requested",
+                source="scancel",
+                reason="Cancellation was already requested; no duplicate scancel issued.",
+            )
+            return SlurmLifecycleResult(
+                supported=True,
+                run_record=record,
+                scheduler_snapshot=snapshot,
+                action="cancel",
+                assumptions=(
+                    "Cancellation was already requested for this job; the existing cancellation record is returned unchanged.",
+                ),
+            )
+
         missing_commands = self._missing_commands(("scancel",))
         if missing_commands:
             return SlurmLifecycleResult(
@@ -2193,20 +2213,10 @@ class SlurmWorkflowSpecExecutor:
                 action="cancel",
                 limitations=(f"scancel could not be executed: {exc}",),
             )
-        if cancellation.returncode != 0:
-            return SlurmLifecycleResult(
-                supported=False,
-                run_record=record,
-                action="cancel",
-                limitations=(
-                    _slurm_command_failure_limitation(
-                        command="scancel",
-                        stderr=cancellation.stderr or cancellation.stdout or "unknown scancel error",
-                        action="cancellation",
-                    ),
-                ),
-            )
 
+        # Always persist cancellation_requested_at regardless of the scancel exit
+        # code.  The request was made and should be recorded as the durable intent
+        # even when the scheduler rejects it (e.g. job already completed).
         updated_record = replace(
             record,
             scheduler_state="cancellation_requested",
@@ -2223,6 +2233,22 @@ class SlurmWorkflowSpecExecutor:
             source="scancel",
             reason="Cancellation requested through scancel.",
         )
+
+        if cancellation.returncode != 0:
+            return SlurmLifecycleResult(
+                supported=False,
+                run_record=updated_record,
+                scheduler_snapshot=snapshot,
+                action="cancel",
+                limitations=(
+                    _slurm_command_failure_limitation(
+                        command="scancel",
+                        stderr=cancellation.stderr or cancellation.stdout or "unknown scancel error",
+                        action="cancellation",
+                    ),
+                ),
+            )
+
         return SlurmLifecycleResult(
             supported=True,
             run_record=updated_record,
