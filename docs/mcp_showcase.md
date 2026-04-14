@@ -469,7 +469,9 @@ Then print exactly:
 ## Validated Slurm Walkthrough
 
 The following prompt sequence was validated on the RCC cluster with an
-authenticated scheduler session.
+authenticated scheduler session. For the step-by-step live-cluster scenarios
+and pass criteria that mirror this walkthrough, see
+[the live-cluster prompt tests](mcp_cluster_prompt_tests.md).
 
 ### Slurm Prerequisites
 

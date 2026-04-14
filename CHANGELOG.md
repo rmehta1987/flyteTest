@@ -38,6 +38,13 @@ Entry template:
 
 ## Unreleased
 
+### MCP Doc Cross-linking
+
+- [x] 2026-04-13 linked the `Validated Slurm Walkthrough` in
+  `docs/mcp_showcase.md` to `docs/mcp_cluster_prompt_tests.md` so the general
+  MCP guide points to the detailed live-cluster prompt test script instead of
+  repeating the acceptance scenarios inline
+
 ### Slurm Test Coverage Follow-Up
 
 - [x] 2026-04-13 fixed pre-existing timing flake in `test_loop_survives_reconcile_error`
