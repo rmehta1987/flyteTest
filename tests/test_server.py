@@ -1120,6 +1120,35 @@ class ServerTests(TestCase):
         self.assertEqual(prepared["typed_plan"]["binding_plan"]["execution_profile"], "slurm")
         self.assertEqual(artifact.binding_plan.execution_profile, "slurm")
 
+    def test_prepare_run_recipe_persists_module_loads_in_frozen_artifact(self) -> None:
+        """module_loads passed via resource_request flows through to the frozen artifact.
+
+        This covers the full MCP surface path: resource_request dict with a module_loads
+        list → _coerce_resource_spec → _merge_resource_specs → artifact binding_plan.
+        The executor and rendering tests (test_spec_executor.py) only verify the render
+        layer; this test verifies the planning-layer wiring.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            prepared = _prepare_run_recipe_impl(
+                "Run protein evidence alignment with genome data/braker3/reference/genome.fa and protein evidence data/braker3/protein_data/fastas/proteins.fa",
+                runtime_bindings={"exonerate_sif": "data/images/exonerate_2.2.0--1.sif"},
+                resource_request={
+                    "account": "rcc-staff",
+                    "queue": "caslake",
+                    "cpu": 8,
+                    "memory": "32Gi",
+                    "walltime": "02:00:00",
+                    "module_loads": ["cuda/12.0", "python/3.12"],
+                },
+                execution_profile="slurm",
+                recipe_dir=tmp_path,
+            )
+            artifact = load_workflow_spec_artifact(Path(str(prepared["artifact_path"])))
+
+        self.assertTrue(prepared["supported"])
+        self.assertEqual(artifact.binding_plan.resource_spec.module_loads, ("cuda/12.0", "python/3.12"))
+
     def test_prepare_run_recipe_accepts_m18_busco_fixture_prompt(self) -> None:
         """Freeze the M18 BUSCO fixture task through the MCP recipe path."""
         with tempfile.TemporaryDirectory() as tmp:
