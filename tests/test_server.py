@@ -49,8 +49,10 @@ from flytetest.mcp_contract import (
 )
 from flytetest.server import (
     SERVER_RESOURCE_URIS,
+    MAX_MONITOR_TAIL_LINES,
     _prepare_direct_workflow_inputs,
     _prompt_and_run_impl,
+    _read_text_tail,
     _resolve_flyte_cli,
     _should_skip_stdio_line,
     _prepare_run_recipe_impl,
@@ -2542,3 +2544,246 @@ class ServerTests(TestCase):
         self.assertTrue(second["supported"])
         self.assertNotEqual(first_record.run_id, second_record.run_id)
         self.assertNotEqual(first["run_record_path"], second["run_record_path"])
+
+    # ------------------------------------------------------------------
+    # M20a: resource_overrides escalation retry via _retry_slurm_job_impl
+    # ------------------------------------------------------------------
+
+    def test_retry_slurm_job_oom_with_resource_overrides_escalates(self) -> None:
+        """OOM + resource_overrides memory resubmits with the new memory value.
+
+        Validates that _retry_slurm_job_impl passes resource_overrides through
+        to the executor and the child run record reflects the escalated memory.
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            submitted = self._submit_and_force_state(tmp_path, "79001", "OUT_OF_MEMORY", "1:0")
+            job_ids = iter(("79002",))
+
+            retried = _retry_slurm_job_impl(
+                str(submitted["run_record_path"]),
+                run_dir=tmp_path / "runs",
+                sbatch_runner=lambda args, **kw: subprocess.CompletedProcess(
+                    args=args, returncode=0, stdout=f"Submitted batch job {next(job_ids)}\n", stderr=""
+                ),
+                command_available=lambda _: True,
+                resource_overrides={"memory": "64Gi"},
+            )
+
+            child_record = load_slurm_run_record(Path(str(retried["retry_run_record_path"])))
+
+        self.assertTrue(retried["supported"], retried.get("limitations"))
+        self.assertEqual(retried["job_id"], "79002")
+        self.assertEqual(child_record.resource_spec.memory, "64Gi")
+        self.assertIsNotNone(child_record.resource_overrides)
+        self.assertEqual(child_record.resource_overrides.memory, "64Gi")
+
+    def test_retry_slurm_job_unknown_resource_override_key_is_declined(self) -> None:
+        """An unrecognised resource_overrides key must be declined without submitting.
+
+        The validation must fire for any failure class, not just resource_exhaustion.
+        This guards the escalation path from silently ignoring misspelled fields.
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            submitted = self._submit_and_force_state(tmp_path, "79101", "NODE_FAIL", "0:0")
+
+            retried = _retry_slurm_job_impl(
+                str(submitted["run_record_path"]),
+                run_dir=tmp_path / "runs",
+                sbatch_runner=lambda *a, **kw: (_ for _ in ()).throw(AssertionError("sbatch must not be called")),
+                command_available=lambda _: True,
+                resource_overrides={"unknown_key": "bad_value"},
+            )
+
+        self.assertFalse(retried["supported"])
+        self.assertTrue(
+            any("unknown_key" in lim or "not supported" in lim or "unsupported" in lim for lim in retried["limitations"]),
+            f"Expected limitation mentioning unknown_key or unsupported, got: {retried['limitations']}",
+        )
+
+    def test_retry_slurm_job_deadline_is_declined_even_with_walltime_override(self) -> None:
+        """DEADLINE is not eligible for escalation even when walltime is supplied.
+
+        DEADLINE reflects a scheduler-enforced policy rejection, not a soft
+        limit.  The user must call prepare_run_recipe with an updated walltime.
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            submitted = self._submit_and_force_state(tmp_path, "79201", "DEADLINE", "0:1")
+
+            retried = _retry_slurm_job_impl(
+                str(submitted["run_record_path"]),
+                run_dir=tmp_path / "runs",
+                sbatch_runner=lambda *a, **kw: (_ for _ in ()).throw(AssertionError("sbatch must not be called")),
+                command_available=lambda _: True,
+                resource_overrides={"walltime": "24:00:00"},
+            )
+
+        self.assertFalse(retried["supported"])
+
+    # ------------------------------------------------------------------
+    # M20a: _read_text_tail and monitor log-tail tests
+    # ------------------------------------------------------------------
+
+    def test_read_text_tail_raises_for_negative_tail_lines(self) -> None:
+        """_read_text_tail must raise ValueError when tail_lines is negative."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            log_file = tmp_path / "test.log"
+            log_file.write_text("line\n")
+
+            with self.assertRaises(ValueError):
+                _read_text_tail(log_file, tail_lines=-1, allowed_root=tmp_path)
+
+    def test_read_text_tail_clamps_oversized_tail_lines_to_max(self) -> None:
+        """_read_text_tail silently clamps tail_lines above MAX_MONITOR_TAIL_LINES.
+
+        An oversized request must not raise; it should return at most
+        MAX_MONITOR_TAIL_LINES lines from the file.
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            log_file = tmp_path / "big.log"
+            # Write 10 lines; oversized clamp should still return all 10.
+            log_file.write_text("\n".join(f"line {i}" for i in range(10)))
+
+            result = _read_text_tail(
+                log_file, tail_lines=MAX_MONITOR_TAIL_LINES + 9999, allowed_root=tmp_path
+            )
+
+        self.assertIsNotNone(result)
+        lines = result.splitlines()
+        self.assertLessEqual(len(lines), MAX_MONITOR_TAIL_LINES)
+        self.assertEqual(len(lines), 10)
+
+    def test_read_text_tail_returns_none_for_path_outside_allowed_root(self) -> None:
+        """_read_text_tail returns None for paths that resolve outside allowed_root.
+
+        This guards against a tampered run record pointing stdout_path at an
+        arbitrary file outside the run directory.
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            run_dir = tmp_path / "runs"
+            run_dir.mkdir()
+            outside_file = tmp_path / "secret.txt"
+            outside_file.write_text("sensitive content\n")
+
+            result = _read_text_tail(outside_file, tail_lines=10, allowed_root=run_dir)
+
+        self.assertIsNone(result)
+
+    def test_monitor_slurm_job_includes_stdout_tail_for_terminal_state(self) -> None:
+        """monitor_slurm_job returns stdout_tail with the last N lines when terminal.
+
+        Validates the full pipeline: submit → force terminal state → monitor
+        with a log file present → stdout_tail is non-None.
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            submitted = self._submit_busco_slurm_recipe(tmp_path, "76001")
+            run_record_path = Path(str(submitted["run_record_path"]))
+            record = load_slurm_run_record(run_record_path)
+
+            # Write a synthetic stdout log so the tail reader has content.
+            log_dir = run_record_path.parent
+            stdout_file = log_dir / "slurm-76001.out"
+            stdout_file.write_text("\n".join(f"output line {i}" for i in range(10)) + "\n")
+
+            # Force terminal state with paths pointing at the synthetic log.
+            forced = record.__class__.from_dict({
+                **record.to_dict(),
+                "scheduler_state": "COMPLETED",
+                "final_scheduler_state": "COMPLETED",
+                "scheduler_exit_code": "0:0",
+                "failure_classification": None,
+                "stdout_path": str(stdout_file),
+                "stderr_path": None,
+            })
+            save_slurm_run_record(forced)
+
+            status = _monitor_slurm_job_impl(
+                str(run_record_path),
+                run_dir=tmp_path / "runs",
+                scheduler_runner=lambda args, **kw: subprocess.CompletedProcess(
+                    args=args, returncode=0, stdout="76001|COMPLETED|0:0\n" if args[0] == "sacct" else "", stderr=""
+                ),
+                command_available=lambda _: True,
+                tail_lines=5,
+            )
+
+        self.assertTrue(status["supported"])
+        stdout_tail = status["lifecycle_result"].get("stdout_tail")
+        self.assertIsNotNone(stdout_tail, "stdout_tail must be set for a terminal run with a log file")
+        # Only the last 5 lines of 10 should be returned.
+        tail_lines = stdout_tail.splitlines()
+        self.assertLessEqual(len(tail_lines), 5)
+
+    def test_monitor_slurm_job_sets_stdout_tail_to_none_for_running_job(self) -> None:
+        """monitor_slurm_job sets stdout_tail to None when the job is still running.
+
+        Log tails must only be present for terminal states.  Returning partial
+        logs for a live job could mislead the client about completion.
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            submitted = self._submit_busco_slurm_recipe(tmp_path, "76201")
+
+            status = _monitor_slurm_job_impl(
+                str(submitted["run_record_path"]),
+                run_dir=tmp_path / "runs",
+                scheduler_runner=lambda args, **kw: subprocess.CompletedProcess(
+                    args=args,
+                    returncode=0,
+                    stdout=("RUNNING\n" if args[0] == "squeue"
+                            else f"JobId=76201 JobState=RUNNING ExitCode=0:0 StdOut={tmp_path / 'job.out'} StdErr={tmp_path / 'job.err'} Reason=None\n"
+                            if args[0] == "scontrol"
+                            else ""),
+                    stderr="",
+                ),
+                command_available=lambda _: True,
+            )
+
+        self.assertTrue(status["supported"])
+        self.assertIsNone(status["lifecycle_result"].get("stdout_tail"))
+        self.assertIsNone(status["lifecycle_result"].get("stderr_tail"))
+
+    def test_monitor_slurm_job_stdout_tail_is_none_when_log_file_absent(self) -> None:
+        """monitor_slurm_job sets stdout_tail to None when the log file does not exist.
+
+        A terminal job whose output has been cleaned up or was never written
+        must not cause an error; stdout_tail should simply be None.
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            submitted = self._submit_busco_slurm_recipe(tmp_path, "76301")
+            run_record_path = Path(str(submitted["run_record_path"]))
+            record = load_slurm_run_record(run_record_path)
+
+            # Force terminal state with a non-existent stdout_path.
+            forced = record.__class__.from_dict({
+                **record.to_dict(),
+                "scheduler_state": "COMPLETED",
+                "final_scheduler_state": "COMPLETED",
+                "scheduler_exit_code": "0:0",
+                "failure_classification": None,
+                "stdout_path": str(tmp_path / "nonexistent_76301.out"),
+                "stderr_path": None,
+            })
+            save_slurm_run_record(forced)
+
+            status = _monitor_slurm_job_impl(
+                str(run_record_path),
+                run_dir=tmp_path / "runs",
+                scheduler_runner=lambda args, **kw: subprocess.CompletedProcess(
+                    args=args,
+                    returncode=0,
+                    stdout="76301|COMPLETED|0:0\n" if args[0] == "sacct" else "",
+                    stderr="",
+                ),
+                command_available=lambda _: True,
+            )
+
+        self.assertTrue(status["supported"])
+        self.assertIsNone(status["lifecycle_result"].get("stdout_tail"))

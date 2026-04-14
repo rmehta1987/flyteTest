@@ -22,10 +22,12 @@ sys.path.insert(0, str(SRC_DIR))
 
 from flytetest.planner_types import ConsensusAnnotation, QualityAssessmentTarget, ReferenceGenome
 from flytetest.planning import plan_typed_request
+from flytetest.specs import ResourceSpec
 from flytetest.spec_artifacts import artifact_from_typed_plan, save_workflow_spec_artifact
 from flytetest.spec_executor import (
     DEFAULT_LOCAL_RUN_RECORD_FILENAME,
     DEFAULT_SLURM_MAX_ATTEMPTS,
+    DEFAULT_SLURM_MODULE_LOADS,
     DEFAULT_SLURM_RUN_RECORD_FILENAME,
     LOCAL_RUN_RECORD_SCHEMA_VERSION,
     LocalNodeExecutionRequest,
@@ -38,6 +40,7 @@ from flytetest.spec_executor import (
     load_local_run_record,
     load_slurm_run_record,
     parse_sbatch_job_id,
+    render_slurm_script,
     save_local_run_record,
     save_slurm_run_record,
     SlurmRunRecord,
@@ -1653,3 +1656,337 @@ class CacheIdentityKeyTests(TestCase):
 
         self.assertIsNotNone(record.cache_identity_key)
         self.assertEqual(len(record.cache_identity_key), 16)
+
+
+class ModuleLoadsAndResourceOverrideTests(TestCase):
+    """M20a tests for ResourceSpec.module_loads, render_slurm_script, and escalation retry.
+
+    Covers:
+    - module_loads round-trips through ResourceSpec.from_dict/_coerce_resource_spec
+    - merge preserves base module_loads when override is empty
+    - render_slurm_script uses custom module_loads when set and falls back to defaults
+    - shell-quoting of module names
+    - escalation retry (OOM / TIMEOUT) with resource_overrides
+    - DEADLINE is not eligible for escalation retry
+    - unknown resource_overrides key is rejected before sbatch
+    - child resource_overrides round-trips through save/load
+"""
+
+    # ------------------------------------------------------------------
+    # Data-model tests
+    # ------------------------------------------------------------------
+
+    def test_resource_spec_module_loads_round_trips_via_from_dict(self) -> None:
+        """ResourceSpec.from_dict restores module_loads for both new and legacy records.
+
+        A new record with an explicit module_loads list must survive a to_dict /
+        from_dict round-trip unchanged. A legacy dict without the key must
+        deserialize cleanly with the default empty tuple.
+"""
+        spec = ResourceSpec(cpu="4", memory="16Gi", module_loads=("gcc/11.2", "samtools/1.16"))
+        payload = spec.to_dict()
+        reloaded = ResourceSpec.from_dict(payload)
+
+        self.assertEqual(reloaded.module_loads, ("gcc/11.2", "samtools/1.16"))
+
+        # Legacy dict without module_loads key must default to empty tuple.
+        legacy_payload = {k: v for k, v in payload.items() if k != "module_loads"}
+        legacy = ResourceSpec.from_dict(legacy_payload)
+        self.assertEqual(legacy.module_loads, ())
+
+    def test_merge_resource_specs_preserves_base_module_loads_when_override_is_empty(self) -> None:
+        """_merge_resource_specs keeps base module_loads when the override has none.
+
+        This guards the common case where a per-call resource_request does not
+        include module_loads but the registry default does.
+"""
+        from flytetest.planning import _merge_resource_specs
+
+        base = ResourceSpec(cpu="8", module_loads=("python/3.11.9", "apptainer/1.4.1"))
+        override = ResourceSpec(memory="64Gi")
+
+        merged = _merge_resource_specs(base, override)
+
+        self.assertIsNotNone(merged)
+        self.assertEqual(merged.module_loads, ("python/3.11.9", "apptainer/1.4.1"))
+        self.assertEqual(merged.memory, "64Gi")
+        self.assertEqual(merged.cpu, "8")
+
+    def test_merge_resource_specs_override_module_loads_takes_precedence(self) -> None:
+        """_merge_resource_specs uses override.module_loads when the override has a value."""
+        from flytetest.planning import _merge_resource_specs
+
+        base = ResourceSpec(cpu="8", module_loads=("python/3.11.9",))
+        override = ResourceSpec(module_loads=("python/3.12.0", "cuda/12.0"))
+
+        merged = _merge_resource_specs(base, override)
+
+        self.assertIsNotNone(merged)
+        self.assertEqual(merged.module_loads, ("python/3.12.0", "cuda/12.0"))
+
+    # ------------------------------------------------------------------
+    # render_slurm_script module-load tests
+    # ------------------------------------------------------------------
+
+    def test_render_slurm_script_uses_custom_module_loads(self) -> None:
+        """Custom module_loads from ResourceSpec appear in the rendered script."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            artifact = _slurm_busco_artifact_with_runtime_bindings(tmp_path)
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+
+            # Render with a custom ResourceSpec carrying extra modules.
+            custom_spec = ResourceSpec(
+                cpu="4",
+                memory="16Gi",
+                queue="batch",
+                walltime="01:00:00",
+                module_loads=("custom_tool/9.9", "extra_lib/2.0"),
+            )
+            script = render_slurm_script(
+                artifact_path=artifact_path,
+                workflow_name="annotation_qc_busco",
+                run_id="run-custom",
+                stdout_path=Path("/runs/run-custom/slurm-%j.out"),
+                stderr_path=Path("/runs/run-custom/slurm-%j.err"),
+                resource_spec=custom_spec,
+                repo_root=tmp_path,
+                python_executable="/usr/bin/python3",
+            )
+
+        self.assertIn("module load custom_tool/9.9", script)
+        self.assertIn("module load extra_lib/2.0", script)
+        # The defaults must NOT appear when custom loads are specified.
+        self.assertNotIn("module load python/3.11.9", script)
+        self.assertNotIn("module load apptainer/1.4.1", script)
+
+    def test_render_slurm_script_falls_back_to_default_module_loads(self) -> None:
+        """A spec with no module_loads renders the DEFAULT_SLURM_MODULE_LOADS."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            artifact = _slurm_busco_artifact_with_runtime_bindings(tmp_path)
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+
+            bare_spec = ResourceSpec(cpu="4", memory="16Gi", queue="batch", walltime="01:00:00")
+            script = render_slurm_script(
+                artifact_path=artifact_path,
+                workflow_name="annotation_qc_busco",
+                run_id="run-bare",
+                stdout_path=Path("/runs/run-bare/slurm-%j.out"),
+                stderr_path=Path("/runs/run-bare/slurm-%j.err"),
+                resource_spec=bare_spec,
+                repo_root=tmp_path,
+                python_executable="/usr/bin/python3",
+            )
+
+        for mod in DEFAULT_SLURM_MODULE_LOADS:
+            self.assertIn(f"module load {mod}", script)
+
+    def test_render_slurm_script_shell_quotes_module_names(self) -> None:
+        """Module names with spaces are shell-quoted so the rendered script is safe."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            artifact = _slurm_busco_artifact_with_runtime_bindings(tmp_path)
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+
+            # A module name with a space would break shell parsing unless quoted.
+            spec_with_space = ResourceSpec(
+                cpu="4",
+                memory="16Gi",
+                queue="batch",
+                module_loads=("tool with spaces/1.0",),
+            )
+            script = render_slurm_script(
+                artifact_path=artifact_path,
+                workflow_name="annotation_qc_busco",
+                run_id="run-quoted",
+                stdout_path=Path("/runs/run-quoted/slurm-%j.out"),
+                stderr_path=Path("/runs/run-quoted/slurm-%j.err"),
+                resource_spec=spec_with_space,
+                repo_root=tmp_path,
+                python_executable="/usr/bin/python3",
+            )
+
+        # shlex.quote wraps names containing spaces in single quotes.
+        self.assertIn("module load 'tool with spaces/1.0'", script)
+
+    # ------------------------------------------------------------------
+    # Escalation retry tests
+    # ------------------------------------------------------------------
+
+    def _submit_busco_slurm_artifact(
+        self, tmp_path: Path, job_id: str
+    ) -> tuple[Path, Path]:
+        """Return (artifact_path, run_record_path) from a fake sbatch submission."""
+        artifact = _slurm_busco_artifact_with_runtime_bindings(tmp_path)
+        artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+        result = SlurmWorkflowSpecExecutor(
+            run_root=tmp_path / "runs",
+            repo_root=tmp_path,
+            sbatch_runner=lambda args, **kw: subprocess.CompletedProcess(
+                args=args, returncode=0, stdout=f"Submitted batch job {job_id}\n", stderr=""
+            ),
+            command_available=lambda _: True,
+        ).submit(artifact_path)
+        return artifact_path, result.run_record.run_record_path
+
+    def _force_terminal_state(
+        self,
+        run_record_path: Path,
+        *,
+        state: str,
+        exit_code: str = "1:0",
+        reason: str = "",
+    ) -> None:
+        """Overwrite a submitted run record with a synthetic terminal state."""
+        record = load_slurm_run_record(run_record_path)
+        forced = record.__class__.from_dict({
+            **record.to_dict(),
+            "scheduler_state": state,
+            "scheduler_exit_code": exit_code,
+            "final_scheduler_state": state,
+            "scheduler_reason": reason,
+            "failure_classification": None,
+        })
+        save_slurm_run_record(forced)
+
+    def test_oom_with_resource_overrides_escalates_memory_and_records_override(self) -> None:
+        """OOM + memory resource_override resubmits with the new memory, records both specs.
+
+        Validates:
+        - Child run record resource_spec.memory == the overridden value.
+        - Child run record resource_overrides.memory == the overridden value.
+        - Rendered sbatch script contains the overridden memory directive.
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            _, run_record_path = self._submit_busco_slurm_artifact(tmp_path, "80001")
+            self._force_terminal_state(run_record_path, state="OUT_OF_MEMORY", exit_code="1:0", reason="Out Of Memory")
+
+            retry_job_ids = iter(("80002",))
+            retried = SlurmWorkflowSpecExecutor(
+                run_root=tmp_path / "runs",
+                repo_root=tmp_path,
+                sbatch_runner=lambda args, **kw: subprocess.CompletedProcess(
+                    args=args, returncode=0, stdout=f"Submitted batch job {next(retry_job_ids)}\n", stderr=""
+                ),
+                command_available=lambda _: True,
+            ).retry(run_record_path, resource_overrides={"memory": "64Gi"})
+
+            child_record = load_slurm_run_record(retried.retry_execution.run_record.run_record_path)
+            child_script = child_record.script_path.read_text()
+
+        self.assertTrue(retried.supported)
+        # Child resource_spec carries the escalated memory.
+        self.assertEqual(child_record.resource_spec.memory, "64Gi")
+        # resource_overrides records what the caller supplied.
+        self.assertIsNotNone(child_record.resource_overrides)
+        self.assertEqual(child_record.resource_overrides.memory, "64Gi")
+        # The rendered sbatch directive reflects the escalated value.
+        self.assertIn("--mem=64G", child_script)
+
+    def test_timeout_with_walltime_resource_override_escalates_walltime(self) -> None:
+        """TIMEOUT + walltime resource_override resubmits with the extended walltime."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            _, run_record_path = self._submit_busco_slurm_artifact(tmp_path, "81001")
+            self._force_terminal_state(run_record_path, state="TIMEOUT", exit_code="0:1")
+
+            retry_job_ids = iter(("81002",))
+            retried = SlurmWorkflowSpecExecutor(
+                run_root=tmp_path / "runs",
+                repo_root=tmp_path,
+                sbatch_runner=lambda args, **kw: subprocess.CompletedProcess(
+                    args=args, returncode=0, stdout=f"Submitted batch job {next(retry_job_ids)}\n", stderr=""
+                ),
+                command_available=lambda _: True,
+            ).retry(run_record_path, resource_overrides={"walltime": "08:00:00"})
+
+            child_record = load_slurm_run_record(retried.retry_execution.run_record.run_record_path)
+
+        self.assertTrue(retried.supported)
+        self.assertEqual(child_record.resource_spec.walltime, "08:00:00")
+        self.assertIsNotNone(child_record.resource_overrides)
+        self.assertEqual(child_record.resource_overrides.walltime, "08:00:00")
+
+    def test_oom_without_resource_overrides_is_declined_without_escalation(self) -> None:
+        """OOM with no resource_overrides must be declined: unchanged behavior."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            _, run_record_path = self._submit_busco_slurm_artifact(tmp_path, "82001")
+            self._force_terminal_state(run_record_path, state="OUT_OF_MEMORY", exit_code="1:0", reason="Out Of Memory")
+
+            retried = SlurmWorkflowSpecExecutor(
+                run_root=tmp_path / "runs",
+                repo_root=tmp_path,
+                sbatch_runner=lambda *a, **kw: (_ for _ in ()).throw(AssertionError("sbatch must not be called")),
+                command_available=lambda _: True,
+            ).retry(run_record_path)
+
+        self.assertFalse(retried.supported)
+        self.assertIn("not retryable", retried.limitations[0])
+
+    def test_deadline_is_declined_even_with_walltime_override(self) -> None:
+        """DEADLINE (scheduler-enforced, not walltime-soft) must not be escalated.
+
+        DEADLINE is excluded from the escalation path because it reflects a
+        policy-level rejection, not a soft resource exhaustion.  A new
+        prepare_run_recipe call is required.
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            _, run_record_path = self._submit_busco_slurm_artifact(tmp_path, "83001")
+            self._force_terminal_state(run_record_path, state="DEADLINE", exit_code="0:1")
+
+            retried = SlurmWorkflowSpecExecutor(
+                run_root=tmp_path / "runs",
+                repo_root=tmp_path,
+                sbatch_runner=lambda *a, **kw: (_ for _ in ()).throw(AssertionError("sbatch must not be called")),
+                command_available=lambda _: True,
+            ).retry(run_record_path, resource_overrides={"walltime": "24:00:00"})
+
+        self.assertFalse(retried.supported)
+
+    def test_unknown_resource_override_key_is_rejected_before_sbatch(self) -> None:
+        """An unrecognised resource_overrides key must decline without calling sbatch."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            _, run_record_path = self._submit_busco_slurm_artifact(tmp_path, "84001")
+            self._force_terminal_state(run_record_path, state="NODE_FAIL", exit_code="0:0")
+
+            retried = SlurmWorkflowSpecExecutor(
+                run_root=tmp_path / "runs",
+                repo_root=tmp_path,
+                sbatch_runner=lambda *a, **kw: (_ for _ in ()).throw(AssertionError("sbatch must not be called")),
+                command_available=lambda _: True,
+            ).retry(run_record_path, resource_overrides={"unknown_field": "value"})
+
+        self.assertFalse(retried.supported)
+        self.assertTrue(
+            any("unknown_field" in lim or "not supported" in lim or "unsupported" in lim for lim in retried.limitations),
+            f"Expected limitation mentioning unknown_field or unsupported, got: {retried.limitations}",
+        )
+
+    def test_child_resource_overrides_round_trip_through_save_load(self) -> None:
+        """resource_overrides written into a child run record survive a save/load cycle."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            _, run_record_path = self._submit_busco_slurm_artifact(tmp_path, "85001")
+            self._force_terminal_state(run_record_path, state="OUT_OF_MEMORY", exit_code="1:0", reason="Out Of Memory")
+
+            retry_job_ids = iter(("85002",))
+            retried = SlurmWorkflowSpecExecutor(
+                run_root=tmp_path / "runs",
+                repo_root=tmp_path,
+                sbatch_runner=lambda args, **kw: subprocess.CompletedProcess(
+                    args=args, returncode=0, stdout=f"Submitted batch job {next(retry_job_ids)}\n", stderr=""
+                ),
+                command_available=lambda _: True,
+            ).retry(run_record_path, resource_overrides={"memory": "128Gi", "cpu": "32"})
+
+            child_record_path = retried.retry_execution.run_record.run_record_path
+            reloaded = load_slurm_run_record(child_record_path)
+
+        self.assertIsNotNone(reloaded.resource_overrides)
+        self.assertEqual(reloaded.resource_overrides.memory, "128Gi")
+        self.assertEqual(reloaded.resource_overrides.cpu, "32")

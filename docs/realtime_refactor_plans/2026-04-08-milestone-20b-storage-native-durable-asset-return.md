@@ -1,10 +1,15 @@
-# Milestone 20 Storage-Native Durable Asset Return
+# Milestone 20b Storage-Native Durable Asset Return
 
 Date: 2026-04-08
 Status: Proposed
 
 Related checklist milestone:
-- `docs/realtime_refactor_checklist.md` Milestone 20
+- `docs/realtime_refactor_checklist.md` Milestone 20b
+
+Ordering note:
+- Milestone 20a (HPC Failure Recovery) must be merged before starting this
+  work. M20a and M20b touch different sections of `spec_executor.py`; see
+  `ml20_plan.md` for the branch isolation strategy.
 
 Implementation note:
 - This slice should make workflow outputs durable and reusable as asset

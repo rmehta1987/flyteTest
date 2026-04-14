@@ -38,6 +38,48 @@ Entry template:
 
 ## Unreleased
 
+### Milestone 20a — HPC Failure Recovery (in progress)
+
+- [x] 2026-04-13 added `ResourceSpec.module_loads: tuple[str, ...]` field with
+  an empty default so per-workflow or per-call Slurm module aliases can be
+  frozen into a recipe without breaking existing artifacts; updated
+  `_coerce_resource_spec()` and `_merge_resource_specs()` in `planning.py` to
+  handle the new field with the same coercion pattern as `notes`
+- [x] 2026-04-13 added `SlurmRunRecord.resource_overrides: ResourceSpec | None`
+  field so each retry can record both the effective (merged) resource spec that
+  was actually submitted and the caller-supplied override for audit purposes
+- [x] 2026-04-13 added `DEFAULT_SLURM_MODULE_LOADS`, `_coerce_retry_resource_overrides()`,
+  `_effective_resource_spec()`, and `_slurm_module_load_lines()` helpers to
+  `spec_executor.py`; replaced hardcoded module-load lines in `render_slurm_script()`
+  with `*_slurm_module_load_lines(resource_spec)` so custom loads render when
+  present and the defaults apply when `module_loads` is empty
+- [x] 2026-04-13 extended `_submit_saved_artifact()` to accept
+  `resource_overrides` and compute `_effective_resource_spec()` before rendering
+  the sbatch script; both the effective spec and the raw override are stored in
+  the child `SlurmRunRecord`
+- [x] 2026-04-13 replaced `retry()` in `SlurmWorkflowSpecExecutor` with a new
+  version that accepts `resource_overrides`, validates keys against
+  `_RETRY_RESOURCE_OVERRIDE_FIELDS` (unknown keys → `supported=False` before sbatch),
+  and enables an escalation path for `resource_exhaustion` failures (OOM and TIMEOUT)
+  that are not `DEADLINE`; `DEADLINE` is explicitly excluded and always requires a
+  new `prepare_run_recipe` call
+- [x] 2026-04-13 added `MAX_MONITOR_TAIL_LINES = 500`, `_read_text_tail()` with
+  path-traversal guard (resolves and validates path is under `allowed_root`), and
+  `ValueError` for negative `tail_lines`; updated `_monitor_slurm_job_impl()` to
+  include `stdout_tail` / `stderr_tail` in the response for terminal states, null
+  for non-terminal or absent files
+- [x] 2026-04-13 updated `_retry_slurm_job_impl()` and `retry_slurm_job()` in
+  `server.py` to accept and forward `resource_overrides`; updated `mcp_contract.py`
+  with expanded tool description rules documenting valid override keys, DEADLINE
+  exclusion, and `tail_lines` parameter
+- [x] 2026-04-13 added 22 new tests across `test_spec_executor.ModuleLoadsAndResourceOverrideTests`,
+  `test_server.ServerTests`, and `test_mcp_prompt_flows.SlurmMcpPromptFlowTests`;
+  full test suite: 362 tests + 1 skipped (up from 340)
+- [x] 2026-04-13 updated Phase 5 in `docs/mcp_showcase.md` to document escalation
+  retry path, `resource_overrides` valid keys, DEADLINE exclusion, and `tail_lines`
+  for `monitor_slurm_job`; added Scenario 6 to `docs/mcp_cluster_prompt_tests.md`;
+  updated retry and HPC integration rows in `docs/capability_maturity.md`
+
 ### MCP Doc Cross-linking
 
 - [x] 2026-04-13 linked the `Validated Slurm Walkthrough` in

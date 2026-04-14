@@ -1504,12 +1504,71 @@ Status: Complete
 - Updating only the type names without changing the actual emitted internal
   surface
 
-## Milestone 20
+## Milestone 20a
+
+Goal: HPC failure recovery — resource-escalation retries, configurable Slurm
+module loads, and bounded scheduler log tails surfaced via `monitor_slurm_job`.
+
+Status: Complete (2026-04-13)
+
+### Still required
+
+- [x] Add `module_loads` field to `ResourceSpec` and flow it through
+      `_coerce_resource_spec()` and `_merge_resource_specs()` in `planning.py`.
+- [x] Add typed `resource_overrides: ResourceSpec | None` field to
+      `SlurmRunRecord` and update save/load round-trips.
+- [x] Add `_coerce_retry_resource_overrides()`, `_effective_resource_spec()`,
+      and `_slurm_module_load_lines()` helpers in `spec_executor.py`.
+- [x] Replace hardcoded module-load lines in `render_slurm_script()` with
+      configurable, shell-quoted module names.
+- [x] Update `_submit_saved_artifact()` to accept and apply `resource_overrides`
+      without modifying the frozen artifact.
+- [x] Update `SlurmWorkflowSpecExecutor.retry()` to accept `resource_overrides`
+      and allow escalation retries for `resource_exhaustion` failures.
+- [x] Add `_read_text_tail()` (bounded, path-traversal-safe) and `tail_lines`
+      param to `_monitor_slurm_job_impl()` in `server.py`.
+- [x] Add `resource_overrides` param to `_retry_slurm_job_impl()` and
+      `retry_slurm_job()` in `server.py`.
+- [x] Update `mcp_contract.py` tool descriptions.
+- [x] Add tests (module_loads flow, typed override round-trip, OOM/TIMEOUT
+      escalation, tail bounds, path traversal guard, shell quoting, legacy
+      deserialization, DEADLINE exclusion, MCP prompt flow extension).
+- [x] Update `docs/mcp_showcase.md`, `docs/mcp_cluster_prompt_tests.md`,
+      `docs/capability_maturity.md`, and `CHANGELOG.md`.
+
+### Milestone 20a implementation note
+
+- `resource_overrides` field type is `ResourceSpec | None`, not `dict[str, str]`.
+- Log tails belong in the MCP response dict only; do not add them to executor
+  dataclasses.
+- `classify_slurm_failure()` is unchanged — TIMEOUT/OOM stay `retryable=False`;
+  the new escalation path is an explicit user action, not automatic.
+- `DEADLINE` is excluded from escalation (same treatment as TIMEOUT); document
+  this explicitly.
+- M20b must not start until M20a is merged.
+
+### Acceptance evidence
+
+- `docs/realtime_refactor_milestone_20a_submission_prompt.md`
+- `plan-m20aHpcFailureRecovery.prompt.md`
+- Test suite passes with all new M20a tests included
+- `docs/mcp_showcase.md` and `docs/mcp_cluster_prompt_tests.md` reflect the
+  new escalation-retry path
+
+### Compatibility risks
+
+- Adding `module_loads` to `ResourceSpec` changes `dataclasses.asdict()` output
+  and therefore `cache_identity_key` for any artifact that includes a
+  `ResourceSpec`; legacy artifacts lacking the field must still deserialize
+- `SlurmRunRecord.resource_overrides` is a new optional field; legacy records
+  without it must still load correctly via `from_dict()`
+
+## Milestone 20b
 
 Goal: make workflow outputs durable and reusable as asset references without
 introducing a database-first architecture.
 
-Status: Not started
+Status: Not started (gate: Milestone 20a complete)
 
 ### Still required
 
@@ -1522,7 +1581,7 @@ Status: Not started
 - [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
       after the behavior lands.
 
-### Milestone 20 implementation note
+### Milestone 20b implementation note
 
 - This slice should stay manifest-driven and filesystem-backed in its first
   form.
@@ -1530,11 +1589,13 @@ Status: Not started
   asset platform.
 - Legacy paths and replay behavior should stay intact while durable references
   are introduced.
+- Do not start until Milestone 20a is merged; M20a and M20b both touch
+  `spec_executor.py` in different sections.
 
 ### Acceptance evidence
 
-- `docs/realtime_refactor_plans/2026-04-08-milestone-20-storage-native-durable-asset-return.md`
-- `docs/realtime_refactor_milestone_20_submission_prompt.md`
+- `docs/realtime_refactor_plans/2026-04-08-milestone-20b-storage-native-durable-asset-return.md`
+- `docs/realtime_refactor_milestone_20b_submission_prompt.md`
 - Tests likely to include `tests/test_resolver.py`, `tests/test_spec_executor.py`,
   and any focused asset-reference or replay coverage
 - `README.md`, `docs/capability_maturity.md`, and compatibility docs stay

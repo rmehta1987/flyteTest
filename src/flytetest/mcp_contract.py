@@ -172,7 +172,8 @@ RECIPE_INPUT_RUNTIME_RULES = (
     "`list_slurm_run_history` reads durable `.runtime/runs/` records only, supports optional `workflow_name`, `active_only`, and `terminal_only` filters, and does not require live scheduler access.",
     "Slurm recipe submission and lifecycle tools require FLyteTest to run inside an already-authenticated scheduler-capable environment with the needed Slurm CLI commands on PATH.",
     "`monitor_slurm_job`, `retry_slurm_job`, and `cancel_slurm_job` operate from durable `.runtime/runs/` Slurm run records and return explicit unsupported-environment limitations when that scheduler boundary is unavailable.",
-    "`retry_slurm_job` stays Slurm-specific, reuses the frozen saved recipe plus recorded execution profile, and declines when the run record is not terminal, not clearly retryable, or already at its attempt limit.",
+    "`retry_slurm_job` stays Slurm-specific, reuses the frozen saved recipe plus recorded execution profile, and declines when the run record is not terminal, not clearly retryable, or already at its attempt limit. For `resource_exhaustion` failures (`OUT_OF_MEMORY`, `TIMEOUT`), pass `resource_overrides` with one or more of `cpu`, `memory`, `walltime`, `queue`, `account`, or `gpu` to escalate resources without re-preparing the recipe. `DEADLINE` failures are excluded from escalation and require a new `prepare_run_recipe` call.",
+    "`monitor_slurm_job` accepts an optional `tail_lines` parameter (default 50, max 500). When the job has reached a terminal state, the response includes `stdout_tail` and `stderr_tail` with the last N lines of the scheduler log files. Set `tail_lines=0` to disable log reading.",
     "Runtime image policy can be frozen as `RuntimeImageSpec` metadata, while existing workflow SIF inputs remain explicit runtime bindings.",
 )
 

@@ -18,6 +18,7 @@ import sys
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime
+from collections import deque
 from collections.abc import Mapping, Sequence
 from io import TextIOWrapper
 from pathlib import Path
@@ -1583,12 +1584,67 @@ def run_slurm_recipe(artifact_path: str) -> dict[str, object]:
     return _run_slurm_recipe_impl(artifact_path)
 
 
+# ---------------------------------------------------------------------------
+# Slurm log-tail helper
+# ---------------------------------------------------------------------------
+
+MAX_MONITOR_TAIL_LINES: int = 500
+"""Hard cap on lines returned from scheduler log tails to avoid OOM reads."""
+
+
+def _read_text_tail(
+    path: Path | None,
+    *,
+    tail_lines: int,
+    allowed_root: Path,
+) -> str | None:
+    """Read a bounded tail from a scheduler log under the run directory.
+
+    The path is resolved and validated against *allowed_root* before any
+    file I/O, so a tampered run-record pointing ``stdout_path`` outside the
+    run directory cannot read arbitrary files on the host.  The file is read
+    using a :class:`collections.deque` with a bounded ``maxlen`` so the whole
+    file is never loaded into memory regardless of file size.
+
+    Args:
+        path: Absolute path to the scheduler log file, or ``None`` to skip.
+        tail_lines: Number of lines to return from the end of the file.
+            Must be >= 0.  Clamped to ``MAX_MONITOR_TAIL_LINES``.
+        allowed_root: Directory that the resolved *path* must be relative to.
+            Returns ``None`` for any path that resolves outside this root.
+
+    Returns:
+        The last ``tail_lines`` lines joined into a single string, or
+        ``None`` when the file is absent, unreadable, or outside
+        *allowed_root*.  Returns ``None`` when *tail_lines* is 0.
+
+    Raises:
+        ValueError: If *tail_lines* is negative.
+    """
+    if tail_lines < 0:
+        raise ValueError(f"tail_lines must be >= 0, got {tail_lines}")
+    if path is None or tail_lines == 0:
+        return None
+
+    line_count = min(tail_lines, MAX_MONITOR_TAIL_LINES)
+    try:
+        resolved_path = path.resolve()
+        resolved_root = allowed_root.resolve()
+        if not resolved_path.is_relative_to(resolved_root) or not resolved_path.is_file():
+            return None
+        with resolved_path.open("r", encoding="utf-8", errors="replace") as handle:
+            return "".join(deque(handle, maxlen=line_count)).rstrip("\n") or None
+    except OSError:
+        return None
+
+
 def _monitor_slurm_job_impl(
     run_record_path: str | Path,
     *,
     run_dir: Path | None = None,
     scheduler_runner: Any = subprocess.run,
     command_available: Any = None,
+    tail_lines: int = 50,
 ) -> dict[str, object]:
     """Reconcile one Slurm job from its durable run record.
 
@@ -1597,6 +1653,9 @@ def _monitor_slurm_job_impl(
         run_dir: Directory that stores run records and scheduler logs.
         scheduler_runner: Injected scheduler command runner used for status and cancellation.
         command_available: Command probe used to confirm scheduler tooling is available.
+        tail_lines: Maximum number of lines to read from the scheduler stdout
+            and stderr logs when the job has reached a terminal state.  Set to
+            0 to disable log reading.  Clamped to ``MAX_MONITOR_TAIL_LINES``.
 """
     result = SlurmWorkflowSpecExecutor(
         run_root=run_dir or DEFAULT_RUN_DIR,
@@ -1604,17 +1663,37 @@ def _monitor_slurm_job_impl(
         scheduler_runner=scheduler_runner,
         command_available=command_available or _command_is_available,
     ).reconcile(Path(run_record_path))
+    lifecycle = _result_from_slurm_lifecycle(result)
+    record = result.run_record
+    if record is not None and record.final_scheduler_state is not None:
+        log_root = record.run_record_path.parent
+        lifecycle["stdout_tail"] = _read_text_tail(
+            record.stdout_path, tail_lines=tail_lines, allowed_root=log_root
+        )
+        lifecycle["stderr_tail"] = _read_text_tail(
+            record.stderr_path, tail_lines=tail_lines, allowed_root=log_root
+        )
+    else:
+        lifecycle["stdout_tail"] = None
+        lifecycle["stderr_tail"] = None
     return {
         "supported": bool(result.supported),
         "run_record_path": str(run_record_path),
-        "lifecycle_result": _result_from_slurm_lifecycle(result),
+        "lifecycle_result": lifecycle,
         "limitations": list(result.limitations),
     }
 
 
-def monitor_slurm_job(run_record_path: str) -> dict[str, object]:
-    """Inspect and reconcile a submitted Slurm job from its run record."""
-    return _monitor_slurm_job_impl(run_record_path)
+def monitor_slurm_job(run_record_path: str, tail_lines: int = 50) -> dict[str, object]:
+    """Inspect and reconcile a submitted Slurm job from its run record.
+
+    Args:
+        run_record_path: Path to the durable Slurm run record.
+        tail_lines: Lines of scheduler stdout/stderr to include in the
+            response when the job has reached a terminal state.  Set to 0
+            to omit log tails.  Capped at ``MAX_MONITOR_TAIL_LINES`` (500).
+    """
+    return _monitor_slurm_job_impl(run_record_path, tail_lines=tail_lines)
 
 
 def _cancel_slurm_job_impl(
@@ -1658,6 +1737,7 @@ def _retry_slurm_job_impl(
     sbatch_runner: Any = subprocess.run,
     scheduler_runner: Any = subprocess.run,
     command_available: Any = None,
+    resource_overrides: dict[str, Any] | None = None,
 ) -> dict[str, object]:
     """Retry one failed Slurm job from its durable run record.
 
@@ -1667,6 +1747,9 @@ def _retry_slurm_job_impl(
         sbatch_runner: Injected submission command runner used for Slurm submission.
         scheduler_runner: Injected scheduler command runner used for status and cancellation.
         command_available: Command probe used to confirm scheduler tooling is available.
+        resource_overrides: Optional resource escalation values for
+            ``resource_exhaustion`` retries.  Valid keys are ``cpu``,
+            ``memory``, ``walltime``, ``queue``, ``account``, and ``gpu``.
 """
     result = SlurmWorkflowSpecExecutor(
         run_root=run_dir or DEFAULT_RUN_DIR,
@@ -1674,7 +1757,7 @@ def _retry_slurm_job_impl(
         sbatch_runner=sbatch_runner,
         scheduler_runner=scheduler_runner,
         command_available=command_available or _command_is_available,
-    ).retry(Path(run_record_path))
+    ).retry(Path(run_record_path), resource_overrides=resource_overrides)
     retry_run_record = result.retry_execution.run_record if result.retry_execution is not None else None
     return {
         "supported": bool(result.supported),
@@ -1686,9 +1769,24 @@ def _retry_slurm_job_impl(
     }
 
 
-def retry_slurm_job(run_record_path: str) -> dict[str, object]:
-    """Retry a failed Slurm job from its durable run record."""
-    return _retry_slurm_job_impl(run_record_path)
+def retry_slurm_job(
+    run_record_path: str,
+    resource_overrides: dict[str, Any] | None = None,
+) -> dict[str, object]:
+    """Retry a failed Slurm job from its durable run record.
+
+    For ``resource_exhaustion`` failures (``OUT_OF_MEMORY`` and ``TIMEOUT``)
+    you can supply *resource_overrides* to escalate resources without
+    preparing a new recipe.  Valid keys are ``cpu``, ``memory``,
+    ``walltime``, ``queue``, ``account``, and ``gpu``.  ``DEADLINE``
+    failures require a new ``prepare_run_recipe`` call with an updated
+    ``walltime``.
+
+    Args:
+        run_record_path: Path to the durable Slurm run record.
+        resource_overrides: Optional resource escalation values.
+    """
+    return _retry_slurm_job_impl(run_record_path, resource_overrides=resource_overrides)
 
 
 def approve_composed_recipe(

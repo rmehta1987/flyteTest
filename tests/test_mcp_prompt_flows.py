@@ -274,6 +274,7 @@ class _PatchedServer:
                 sbatch_runner=retry_sbatch_runner,
                 scheduler_runner=retry_scheduler,
                 command_available=lambda _: True,
+                resource_overrides=kwargs.get("resource_overrides"),
             )
 
         self._patches = [
@@ -659,3 +660,105 @@ class SlurmMcpPromptFlowTests(TestCase):
         entry = entries[0]
         self.assertEqual(entry["job_id"], job_id)
         self.assertIn("busco", entry["workflow_name"].lower())
+
+    # ------------------------------------------------------------------
+    # Flow 4 (M20a): OOM failure + escalation retry with resource_overrides
+    # ------------------------------------------------------------------
+
+    def test_mcp_oom_job_is_retried_with_resource_overrides_to_completed(self) -> None:
+        """prepare → submit → monitor(OUT_OF_MEMORY) → retry(resource_overrides) → COMPLETED.
+
+        Validates the escalation-retry lifecycle from the MCP client perspective:
+        - ``retry_slurm_job`` with ``resource_overrides`` must return a *new*
+          ``retry_run_record_path`` and a *new* ``job_id``.
+        - The child run record carries the overridden memory in both
+          ``resource_spec`` and ``resource_overrides``.
+        - Monitoring the child record must reach COMPLETED.
+"""
+        from flytetest.spec_executor import load_slurm_run_record as _load_record
+
+        parent_job_id = "99401"
+        retry_job_id = "99402"
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            manifest_dir = _make_manifest_dir(tmp_path)
+
+            ctx = _PatchedServer(
+                tmp_path=tmp_path,
+                sbatch_runner=_fake_sbatch(parent_job_id),
+                monitor_scheduler=_fake_terminal_scheduler(parent_job_id, "OUT_OF_MEMORY", "1:0"),
+                retry_sbatch_runner=_fake_sbatch(retry_job_id),
+                retry_scheduler=_fake_terminal_scheduler(parent_job_id, "OUT_OF_MEMORY", "1:0"),
+            )
+            with ctx as server:
+                # Prepare + submit the parent job.
+                prepared = server.tools["prepare_run_recipe"](
+                    prompt="Run BUSCO quality assessment on the annotation.",
+                    manifest_sources=[str(manifest_dir)],
+                    runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                    resource_request={
+                        "cpu": 8,
+                        "memory": "32Gi",
+                        "queue": "caslake",
+                        "account": "rcc-staff",
+                        "walltime": "02:00:00",
+                    },
+                    execution_profile="slurm",
+                )
+                self.assertTrue(prepared["supported"], prepared.get("limitations"))
+
+                submitted = server.tools["run_slurm_recipe"](
+                    artifact_path=str(prepared["artifact_path"])
+                )
+                self.assertTrue(submitted["supported"], submitted.get("limitations"))
+                parent_run_record_path = submitted["run_record_path"]
+
+                # Monitor → OUT_OF_MEMORY.
+                failed_status = server.tools["monitor_slurm_job"](
+                    run_record_path=str(parent_run_record_path)
+                )
+                self.assertTrue(failed_status["supported"], failed_status.get("limitations"))
+                self.assertEqual(
+                    failed_status["lifecycle_result"]["final_scheduler_state"],
+                    "OUT_OF_MEMORY",
+                )
+
+                # Retry with resource_overrides to escalate memory.
+                retry_result = server.tools["retry_slurm_job"](
+                    run_record_path=str(parent_run_record_path),
+                    resource_overrides={"memory": "64Gi"},
+                )
+                self.assertTrue(retry_result["supported"], retry_result.get("limitations"))
+                self.assertEqual(
+                    retry_result["job_id"],
+                    retry_job_id,
+                    "retry_slurm_job must report the new Slurm job ID for the escalation retry",
+                )
+                child_run_record_path = retry_result["retry_run_record_path"]
+                self.assertIsNotNone(child_run_record_path)
+                self.assertNotEqual(child_run_record_path, parent_run_record_path)
+
+                # Verify child run record carries the overridden memory.
+                child_record = _load_record(Path(str(child_run_record_path)))
+                self.assertEqual(
+                    child_record.resource_spec.memory,
+                    "64Gi",
+                    "Child resource_spec.memory must reflect the resource_override",
+                )
+                self.assertIsNotNone(child_record.resource_overrides)
+                self.assertEqual(child_record.resource_overrides.memory, "64Gi")
+
+                # Monitor the child → COMPLETED.
+                child_status = _monitor_slurm_job_impl(
+                    str(child_run_record_path),
+                    run_dir=tmp_path / "runs",
+                    scheduler_runner=_fake_terminal_scheduler(retry_job_id, "COMPLETED"),
+                    command_available=lambda _: True,
+                )
+                self.assertTrue(child_status["supported"], child_status.get("limitations"))
+                self.assertEqual(
+                    child_status["lifecycle_result"]["final_scheduler_state"],
+                    "COMPLETED",
+                    "Child run record must reach COMPLETED after escalation retry",
+                )

@@ -497,7 +497,7 @@ def _coerce_resource_spec(value: Mapping[str, Any] | ResourceSpec | None) -> Res
     if isinstance(value, ResourceSpec):
         return value
 
-    allowed_fields = {"cpu", "memory", "gpu", "queue", "account", "walltime", "execution_class", "notes"}
+    allowed_fields = {"cpu", "memory", "gpu", "queue", "account", "walltime", "execution_class", "module_loads", "notes"}
     kwargs: dict[str, Any] = {}
     for key in allowed_fields:
         if key not in value or value[key] in (None, ""):
@@ -508,6 +508,13 @@ def _coerce_resource_spec(value: Mapping[str, Any] | ResourceSpec | None) -> Res
                 (str(notes_value),)
                 if isinstance(notes_value, str) or not isinstance(notes_value, Sequence)
                 else tuple(str(note) for note in notes_value)
+            )
+        elif key == "module_loads":
+            mods_value = value[key]
+            kwargs[key] = (
+                (str(mods_value),)
+                if isinstance(mods_value, str) or not isinstance(mods_value, Sequence)
+                else tuple(str(m) for m in mods_value)
             )
         else:
             kwargs[key] = str(value[key])
@@ -571,6 +578,7 @@ def _merge_resource_specs(base: ResourceSpec | None, override: ResourceSpec | No
         account=override.account or base.account,
         walltime=override.walltime or base.walltime,
         execution_class=override.execution_class or base.execution_class,
+        module_loads=override.module_loads or base.module_loads,
         notes=(*base.notes, *override.notes),
     )
 

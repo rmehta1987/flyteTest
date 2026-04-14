@@ -280,6 +280,7 @@ class SlurmRunRecord(SpecSerializable):
     job_id: str
     execution_profile: str
     resource_spec: ResourceSpec | None = None
+    resource_overrides: ResourceSpec | None = None
     runtime_image: RuntimeImageSpec | None = None
     submitted_at: str = "not_recorded"
     scheduler_stdout: str = ""
@@ -1210,6 +1211,117 @@ def _normalize_slurm_memory(memory: str | None) -> str | None:
     return normalized
 
 
+# ---------------------------------------------------------------------------
+# Slurm resource-escalation retry helpers
+# ---------------------------------------------------------------------------
+
+DEFAULT_SLURM_MODULE_LOADS: tuple[str, ...] = ("python/3.11.9", "apptainer/1.4.1")
+"""Default environment modules loaded when none are specified in the recipe."""
+
+_RETRY_RESOURCE_OVERRIDE_FIELDS: frozenset[str] = frozenset(
+    {"cpu", "memory", "walltime", "queue", "account", "gpu"}
+)
+
+
+def _coerce_retry_resource_overrides(
+    value: Mapping[str, Any] | ResourceSpec | None,
+) -> tuple[ResourceSpec | None, tuple[str, ...]]:
+    """Normalize MCP retry overrides into a typed resource spec.
+
+    Accepts a plain mapping at the API edge so MCP callers do not need to
+    construct a full ``ResourceSpec``, then validates that all keys are
+    known escalation fields.  Durable records always store a typed
+    ``ResourceSpec``.
+
+    Args:
+        value: Optional MCP-provided escalation values.  Mappings are
+            accepted at the API edge; durable records store a typed
+            ``ResourceSpec``.
+
+    Returns:
+        A ``(ResourceSpec | None, limitations)`` pair.  A non-empty
+        limitations tuple means the caller should decline without
+        submitting a job.
+    """
+    if value is None:
+        return None, ()
+    if isinstance(value, ResourceSpec):
+        return value, ()
+
+    unknown = sorted(set(value) - _RETRY_RESOURCE_OVERRIDE_FIELDS)
+    if unknown:
+        return None, (f"Unsupported resource override key(s): {', '.join(unknown)}.",)
+
+    kwargs: dict[str, str] = {
+        key: str(raw)
+        for key, raw in value.items()
+        if key in _RETRY_RESOURCE_OVERRIDE_FIELDS and raw not in (None, "")
+    }
+    if not kwargs:
+        return None, (
+            "resource_overrides was provided but did not contain any non-empty override values.",
+        )
+    return ResourceSpec(**kwargs), ()
+
+
+def _effective_resource_spec(
+    frozen_resource_spec: ResourceSpec | None,
+    resource_overrides: ResourceSpec | None,
+) -> ResourceSpec | None:
+    """Overlay retry escalation values onto the frozen Slurm resource spec.
+
+    The frozen artifact is never modified.  Overrides are applied only at
+    submission time so the saved recipe remains an exact record of the
+    original intent.
+
+    Args:
+        frozen_resource_spec: Resource spec from the frozen recipe artifact.
+        resource_overrides: Explicit user-requested escalation values from
+            a retry call.  ``None`` means use the frozen spec unchanged.
+
+    Returns:
+        The effective resource spec used for the Slurm submission, or
+        ``None`` when both sides are absent.
+    """
+    if resource_overrides is None:
+        return frozen_resource_spec
+    base = frozen_resource_spec or ResourceSpec()
+    return replace(
+        base,
+        cpu=resource_overrides.cpu or base.cpu,
+        memory=resource_overrides.memory or base.memory,
+        gpu=resource_overrides.gpu or base.gpu,
+        queue=resource_overrides.queue or base.queue,
+        account=resource_overrides.account or base.account,
+        walltime=resource_overrides.walltime or base.walltime,
+        execution_class=resource_overrides.execution_class or base.execution_class,
+        module_loads=resource_overrides.module_loads or base.module_loads,
+        notes=(*base.notes, *resource_overrides.notes),
+    )
+
+
+def _slurm_module_load_lines(resource_spec: ResourceSpec | None) -> list[str]:
+    """Render scheduler module-load commands for the generated Slurm script.
+
+    Falls back to ``DEFAULT_SLURM_MODULE_LOADS`` when the resource spec
+    carries no explicit ``module_loads`` so existing recipes continue to
+    get the same default modules without change.  All module names are
+    shell-quoted so spaces or special characters in a name do not break
+    the generated script.
+
+    Args:
+        resource_spec: Effective resource spec for this submission, or
+            ``None`` to use defaults.
+
+    Returns:
+        A list of ``  module load <quoted_name>`` lines ready to embed
+        in the submission script body.
+    """
+    module_loads = resource_spec.module_loads if resource_spec is not None else ()
+    selected = module_loads or DEFAULT_SLURM_MODULE_LOADS
+    return [f"  module load {shlex.quote(name)}" for name in selected]
+
+
 def _slurm_directives(
     *,
     workflow_name: str,
@@ -1364,8 +1476,7 @@ def render_slurm_script(
             "set -euo pipefail",
             f"cd {shlex.quote(str(repo_root))}",
             "if command -v module >/dev/null 2>&1; then",
-            "  module load python/3.11.9",
-            "  module load apptainer/1.4.1",
+            *_slurm_module_load_lines(resource_spec),
             "fi",
             f"if [[ -f {shlex.quote(str(repo_root / '.venv/bin/activate'))} ]]; then",
             f"  source {shlex.quote(str(repo_root / '.venv/bin/activate'))}",
@@ -1847,6 +1958,7 @@ class SlurmWorkflowSpecExecutor:
         *,
         retry_parent: SlurmRunRecord | None = None,
         resume_from_local_record: Path | None = None,
+        resource_overrides: ResourceSpec | None = None,
     ) -> SlurmSpecExecutionResult:
         """Render a Slurm script, submit it via sbatch, and save the run record.
 
@@ -1952,7 +2064,7 @@ class SlurmWorkflowSpecExecutor:
             run_id=run_id,
             stdout_path=stdout_path,
             stderr_path=stderr_path,
-            resource_spec=binding_plan.resource_spec,
+            resource_spec=_effective_resource_spec(binding_plan.resource_spec, resource_overrides),
             repo_root=self._repo_root,
             python_executable=self._python_executable,
             resume_from_local_record=resume_from_local_record,
@@ -1973,7 +2085,7 @@ class SlurmWorkflowSpecExecutor:
                     supported=False,
                     workflow_name=workflow_spec.name,
                     execution_profile=binding_plan.execution_profile,
-                    resource_spec=binding_plan.resource_spec,
+                    resource_spec=_effective_resource_spec(binding_plan.resource_spec, resource_overrides),
                     runtime_image=binding_plan.runtime_image,
                     script_text=script_text,
                     limitations=(
@@ -1990,7 +2102,7 @@ class SlurmWorkflowSpecExecutor:
                 supported=False,
                 workflow_name=workflow_spec.name,
                 execution_profile=binding_plan.execution_profile,
-                resource_spec=binding_plan.resource_spec,
+                resource_spec=_effective_resource_spec(binding_plan.resource_spec, resource_overrides),
                 runtime_image=binding_plan.runtime_image,
                 script_text=script_text,
                 limitations=(str(exc),),
@@ -2025,6 +2137,7 @@ class SlurmWorkflowSpecExecutor:
             else run_record_path
         )
 
+        effective_resource_spec = _effective_resource_spec(binding_plan.resource_spec, resource_overrides)
         record = SlurmRunRecord(
             schema_version=SLURM_RUN_RECORD_SCHEMA_VERSION,
             run_id=run_id,
@@ -2037,7 +2150,8 @@ class SlurmWorkflowSpecExecutor:
             run_record_path=run_record_path,
             job_id=job_id,
             execution_profile=binding_plan.execution_profile,
-            resource_spec=binding_plan.resource_spec,
+            resource_spec=effective_resource_spec,
+            resource_overrides=resource_overrides,
             runtime_image=binding_plan.runtime_image,
             submitted_at=submitted_at,
             scheduler_stdout=submission.stdout or "",
@@ -2063,7 +2177,7 @@ class SlurmWorkflowSpecExecutor:
             supported=True,
             workflow_name=workflow_spec.name,
             execution_profile=binding_plan.execution_profile,
-            resource_spec=binding_plan.resource_spec,
+            resource_spec=effective_resource_spec,
             runtime_image=binding_plan.runtime_image,
             run_record=record,
             script_text=script_text,
@@ -2259,8 +2373,32 @@ class SlurmWorkflowSpecExecutor:
             ),
         )
 
-    def retry(self, run_record_source: Path) -> SlurmRetryResult:
-        """Resubmit one retryable Slurm run from its durable failed run record."""
+    def retry(
+        self,
+        run_record_source: Path,
+        *,
+        resource_overrides: Mapping[str, Any] | ResourceSpec | None = None,
+    ) -> SlurmRetryResult:
+        """Resubmit one retryable Slurm run from its durable failed run record.
+
+        Supports explicit resource-escalation retries for
+        ``resource_exhaustion`` failures (``OUT_OF_MEMORY``, ``TIMEOUT``).
+        Pass *resource_overrides* with updated ``memory``, ``walltime``, or
+        other fields to override the frozen recipe's resource spec for this
+        submission only.  The frozen artifact is never modified.
+
+        ``DEADLINE`` failures are excluded from the escalation path and behave
+        the same as ``TIMEOUT`` — they require a new ``prepare_run_recipe``
+        call with an updated resource request rather than an escalation retry.
+
+        Args:
+            run_record_source: Path to the durable ``SlurmRunRecord`` JSON for
+                the failed run.
+            resource_overrides: Optional resource escalation values for
+                ``resource_exhaustion`` retries.  Valid keys are
+                ``cpu``, ``memory``, ``walltime``, ``queue``, ``account``,
+                and ``gpu``.  Ignored for regular retryable failures.
+        """
         try:
             source_record = load_slurm_run_record(run_record_source)
         except (FileNotFoundError, json.JSONDecodeError, ValueError) as exc:
@@ -2282,6 +2420,18 @@ class SlurmWorkflowSpecExecutor:
                     f"Run record `{source_record.run_record_path}` already has explicit retry child record(s): {child_paths}. "
                     "Retry the latest child record instead of branching from a stale parent.",
                 ),
+            )
+
+        # Validate resource overrides at the gate before any scheduler calls.
+        override_spec, override_limitations = _coerce_retry_resource_overrides(resource_overrides)
+        if override_limitations:
+            return SlurmRetryResult(
+                supported=False,
+                source_run_record=source_record,
+                failure_classification=source_record.failure_classification,
+                retry_policy=source_record.retry_policy,
+                action="retry",
+                limitations=override_limitations,
             )
 
         current_record = source_record
@@ -2311,7 +2461,18 @@ class SlurmWorkflowSpecExecutor:
                 ),
             )
 
-        if not failure_classification.retryable:
+        # Allow escalation retry when the user explicitly provides resource
+        # overrides for a resource_exhaustion failure.  DEADLINE is excluded
+        # from this path (same treatment as TIMEOUT without overrides) because
+        # it represents a wall-clock policy that requires a new recipe with
+        # an updated walltime rather than an escalation of the existing one.
+        escalation_retry = (
+            failure_classification.failure_class == "resource_exhaustion"
+            and failure_classification.scheduler_state != "DEADLINE"
+            and override_spec is not None
+        )
+
+        if not failure_classification.retryable and not escalation_retry:
             return SlurmRetryResult(
                 supported=False,
                 source_run_record=current_record,
@@ -2352,7 +2513,11 @@ class SlurmWorkflowSpecExecutor:
                 ),
             )
 
-        retry_execution = self._submit_saved_artifact(current_record.artifact_path, retry_parent=current_record)
+        retry_execution = self._submit_saved_artifact(
+            current_record.artifact_path,
+            retry_parent=current_record,
+            resource_overrides=override_spec,
+        )
         if not retry_execution.supported or retry_execution.run_record is None:
             return SlurmRetryResult(
                 supported=False,
@@ -2389,6 +2554,7 @@ class SlurmWorkflowSpecExecutor:
 __all__ = [
     "DEFAULT_LOCAL_RUN_RECORD_FILENAME",
     "DEFAULT_SLURM_MAX_ATTEMPTS",
+    "DEFAULT_SLURM_MODULE_LOADS",
     "DEFAULT_SLURM_RUN_RECORD_FILENAME",
     "DEFAULT_SLURM_SCRIPT_FILENAME",
     "LOCAL_RUN_RECORD_SCHEMA_VERSION",

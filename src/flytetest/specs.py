@@ -151,7 +151,17 @@ class TypedFieldSpec(SpecSerializable):
 
 @dataclass(frozen=True, slots=True)
 class ResourceSpec(SpecSerializable):
-    """Describe the expected compute resources for one step or workflow."""
+    """Describe the expected compute resources for one step or workflow.
+
+    Attributes:
+        module_loads: Scheduler environment modules to load before activating
+            the project runtime.  Empty means use FLyteTest's Slurm defaults
+            (``python/3.11.9`` and ``apptainer/1.4.1``) for backward-compatible
+            submissions.  Adding this field changes ``dataclasses.asdict()``
+            output and therefore ``cache_identity_key`` for any artifact that
+            carries a ``ResourceSpec``; legacy artifacts that lack this field
+            still deserialize correctly because the default is ``()``.
+    """
 
     cpu: str | None = None
     memory: str | None = None
@@ -160,6 +170,7 @@ class ResourceSpec(SpecSerializable):
     account: str | None = None
     walltime: str | None = None
     execution_class: str | None = None
+    module_loads: tuple[str, ...] = field(default_factory=tuple)
     notes: tuple[str, ...] = field(default_factory=tuple)
 
 

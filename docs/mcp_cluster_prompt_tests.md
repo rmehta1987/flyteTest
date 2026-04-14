@@ -369,6 +369,99 @@ Then print exactly:
 
 ---
 
+## Scenario 6 — Escalation retry: resubmit after OOM with more memory
+
+**Goal:** Verify that `retry_slurm_job` with `resource_overrides` creates a
+new child run record that uses the escalated resources, and that the child
+lifecycle reaches COMPLETED or FAILED independently of the parent.
+
+**Prerequisite:** A terminal `OUT_OF_MEMORY` run record must exist.  Use the
+smoke-record helper to synthesise one:
+
+```bash
+# Run this in the terminal (not in OpenCode) before the prompts below.
+# Replace <run_record_path> with a path from a prior BUSCO Slurm submission.
+FLYTETEST_M20A_ESCALATION_SMOKE_STATE=OUT_OF_MEMORY \
+  python scripts/rcc/m18_make_retry_smoke_record.py <run_record_path>
+```
+
+The script prints the path of the synthetic `OUT_OF_MEMORY` record.  Use that
+path in the prompts below.
+
+**Step 6a — Verify the synthetic record shows OUT_OF_MEMORY:**
+
+```text
+Use the flytetest MCP server.
+
+Call monitor_slurm_job with the run_record_path printed by m18_make_retry_smoke_record.py.
+
+Then print exactly:
+- supported
+- scheduler_state
+- final_scheduler_state   (expect: OUT_OF_MEMORY)
+- limitations
+```
+
+**Pass criteria for 6a:**
+
+- `final_scheduler_state` is `"OUT_OF_MEMORY"` (terminal, resource_exhaustion class).
+
+---
+
+**Step 6b — Escalation retry with more memory:**
+
+```text
+Use the flytetest MCP server.
+
+Call retry_slurm_job with:
+  run_record_path: <path from the terminal OUT_OF_MEMORY run>
+  resource_overrides: {"memory": "64Gi"}
+
+Then print exactly:
+- supported
+- job_id                  (new Slurm job ID)
+- retry_run_record_path   (path to the child run record)
+- limitations
+```
+
+**Pass criteria for 6b:**
+
+- `supported` is `true`.
+- `job_id` is a new numeric string different from the parent job.
+- `retry_run_record_path` is a different path from the parent run record.
+- `limitations` is empty.
+
+---
+
+**Step 6c — Confirm the child record carries the escalated memory:**
+
+```text
+Use the flytetest MCP server.
+
+Read and print the child run record JSON at retry_run_record_path.
+Then print:
+- resource_spec.memory    (expect: 64Gi)
+- resource_overrides.memory  (expect: 64Gi)
+```
+
+**Pass criteria for 6c:**
+
+- `resource_spec.memory` is `"64Gi"`.
+- `resource_overrides.memory` is `"64Gi"`.
+
+---
+
+**Step 6d — Poll the child run record:**
+
+Use the same polling pattern as Scenario 2, Step 2c with `retry_run_record_path`.
+
+**Pass criteria for 6d:**
+
+- While active: `scheduler_state` is `PENDING` or `RUNNING`.
+- On completion: `final_scheduler_state` is `COMPLETED`.
+
+---
+
 ## Quick reference: fields to print for each tool
 
 | Tool | Fields to print |

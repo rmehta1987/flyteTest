@@ -669,16 +669,39 @@ Then print exactly:
 ### Phase 5: On failure — retry or re-prepare
 
 If the job reached a terminal failure state (`FAILED`, `TIMEOUT`,
-`OUT_OF_MEMORY`), decide whether to retry or re-prepare:
+`OUT_OF_MEMORY`, `DEADLINE`), decide whether to retry, escalate, or re-prepare:
 
-- **Transient failure (`FAILED`):** call `retry_slurm_job` to resubmit from
-  the same frozen recipe.
-- **Resource failure (`TIMEOUT` or `OUT_OF_MEMORY`):** the frozen recipe has
-  the same resource limits that caused the failure. Call `prepare_run_recipe`
-  again with a larger `resource_request` (e.g. more `memory` or longer
-  `walltime`), then submit the new artifact.
+- **Transient failure (`FAILED`, `NODE_FAIL`):** call `retry_slurm_job` to
+  resubmit from the same frozen recipe. No extra arguments needed.
+- **Resource failure (`OUT_OF_MEMORY`):** pass `resource_overrides` to
+  `retry_slurm_job` with the new memory value and optionally other fields.
+  The executor resubmits using those new limits and records both the original
+  `resource_spec` and the override in the child run record. Valid keys:
+  `cpu`, `memory`, `walltime`, `queue`, `account`, `gpu`.
+- **Soft time limit (`TIMEOUT`):** same as `OUT_OF_MEMORY` — pass
+  `resource_overrides` with a new `walltime` to `retry_slurm_job`.
+- **Policy-level deadline (`DEADLINE`):** `DEADLINE` is a scheduler-enforced
+  policy rejection, not a soft resource limit. `retry_slurm_job` with a
+  `walltime` override will be declined. You must call `prepare_run_recipe`
+  again with a new recipe that fits within the scheduler's policy limits.
 
-Retry from a terminal failed run record:
+Escalation retry example (OOM with more memory):
+
+```text
+Use the flytetest MCP server.
+
+Call retry_slurm_job with:
+  run_record_path: <path from the terminal run>
+  resource_overrides: {"memory": "64Gi"}
+
+Then print exactly:
+- supported
+- job_id
+- retry_run_record_path
+- limitations
+```
+
+Simple retry for a transient failure:
 
 ```text
 Use the flytetest MCP server.
@@ -688,12 +711,18 @@ Call retry_slurm_job with the run_record_path from the terminal run.
 Then print exactly:
 - supported
 - job_id
-- run_record_path
+- retry_run_record_path
 - limitations
 ```
 
-The response returns a new `job_id` and a new `run_record_path` for the child
-run. Use the new `run_record_path` for all subsequent monitoring calls.
+The response returns a new `job_id` and a new `retry_run_record_path` for the
+child run. Use the new `retry_run_record_path` for all subsequent monitoring
+calls.
+
+When monitoring a terminal job, the response now also includes `stdout_tail`
+and `stderr_tail` fields with the last 50 lines (default) of the scheduler
+output logs. Pass `tail_lines=N` to `monitor_slurm_job` to control the count
+(0 to disable, capped at 500).
 
 ### Phase 6: Cancel a running or pending job
 
