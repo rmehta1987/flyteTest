@@ -1620,25 +1620,48 @@ Status: Complete (2026-04-14)
 ## Milestone 21
 
 Goal: support bounded ad hoc task execution through MCP and local execution
-without weakening the recipe-first workflow model.
+without weakening the recipe-first workflow model. Also bundles TODO 12
+(run dashboard) and TODO 16 (binding discovery) from the Phase 2 HPC roadmap,
+plus low-hanging fruit TODO 15 and TODO 17.
 
 Status: Not started
 
 ### Still required
 
-- [ ] Define which registered tasks are eligible for user-facing ad hoc
-      execution and which helper tasks must remain internal-only.
-- [ ] Add an explicit task-execution contract that keeps ad hoc task runs
-      distinct from saved workflow recipe execution.
-- [ ] Support explicit task input binding for scalar values plus local
-      `File` / `Dir` and collection-shaped task inputs when those shapes are
-      part of the registered task signature.
-- [ ] Preserve structured result summaries, explicit assumptions, and stable
-      manifest or output-path reporting for ad hoc task runs.
-- [ ] Add tests for task eligibility, task input coercion, structured
-      declines, and successful direct task execution.
-- [ ] Update README, `docs/mcp_showcase.md`, `docs/capability_maturity.md`,
-      and the handoff prompt after the behavior lands.
+**Part 1 — Ad hoc task surface (M21 core):**
+- [ ] Gate eligibility via explicit `ShowcaseTarget(category="task")` opt-in
+      in `mcp_contract.py`; do NOT auto-expose `synthesis_eligible` tasks.
+- [ ] Add `fastqc` and `gffread_proteins` to `SHOWCASE_TARGETS`.
+- [ ] Update `run_task()` to use `SUPPORTED_TASK_NAMES` (derived from
+      showcase) instead of the hardcoded 2-task set.
+- [ ] Add per-task parameter blocks for `fastqc` and `gffread_proteins`
+      following the existing `busco_assess_proteins` pattern; refactor to a
+      dispatch dict if there are 4+ tasks.
+- [ ] Add 4 tests (T1–T4): unknown name, missing required input, unknown
+      key, route for all supported tasks with synthetic handler.
+
+**Part 2 — TODO 16: Binding discovery:**
+- [ ] Implement `list_available_bindings(task_name, search_root=None)`
+      with heuristic file extension scan (depth 3 cap, per-param patterns).
+- [ ] Add tool description to `mcp_contract.py`.
+- [ ] Add 3 tests (T5–T7): unknown task, FASTA discovery, scalar hints.
+
+**Part 3 — TODO 12: Run dashboard:**
+- [ ] Implement `get_run_summary(limit=20)` — offline, reads persisted
+      `slurm_run_record.json` / `local_run_record.json` only; groups by state;
+      caps scan at `limit * 5` directories.
+- [ ] Add tool description to `mcp_contract.py`.
+- [ ] Add 3 tests (T8–T10): missing run dir, state grouping, local records.
+
+**Part 4 — Low-hanging fruit:**
+- [ ] TODO 15: Actionable errors in `prepare_run_recipe` via
+      `difflib.get_close_matches()` against `SUPPORTED_TARGET_NAMES`.
+- [ ] TODO 17: `inspect_run_result(run_record_path)` — load one run record,
+      return structured summary; no scheduler calls.
+
+**Docs:**
+- [ ] Update `docs/mcp_showcase.md`, `docs/capability_maturity.md`,
+      `README.md`, and the handoff prompt after the behavior lands.
 
 ### Milestone 21 implementation note
 

@@ -1092,45 +1092,65 @@ This phase should:
 
 ## 10. Repository Layout
 
-FLyteTest should evolve toward a layout that keeps biological stages, planning
-logic, execution logic, and interface code separate. The goal is to make the
-codebase easy to navigate for both humans and agents.
+The goal is to keep biological stages, planning logic, execution logic, and
+interface code in separate modules so the codebase is easy to navigate for
+both humans and agents.
 
-A target layout could look like this:
+### Current layout (as of 2026-04-14)
 
 ```text
 src/flytetest/
-  config.py
-  planner_types.py
-  planner_adapters.py
-  planning.py
-  resolver.py
-  registry.py
-  specs.py
-  spec_artifacts.py
-  spec_executor.py
-  server.py
-  mcp_contract.py
+  config.py            # shared Flyte TaskEnvironment defaults, per-family overrides
+  composition.py       # registry-constrained graph traversal for multi-stage composition
+  gff3.py              # GFF3 parsing helpers
+  manifest_envelope.py # shared run_manifest.json envelope helpers
+  manifest_io.py       # manifest read/write utilities
+  mcp_contract.py      # SHOWCASE_TARGETS, tool descriptions, MCP surface contract
+  planner_adapters.py  # adapt current assets/manifests into planner dataclasses
+  planner_types.py     # stable biology-facing planner dataclasses
+  planning.py          # plan_typed_request(), intent matching, decline handling
+  registry.py          # registered tasks, workflows, compatibility metadata
+  resolver.py          # LocalManifestAssetResolver, binding resolution
+  server.py            # FastMCP server, all tool implementations
+  slurm_monitor.py     # async background Slurm polling loop
+  spec_artifacts.py    # WorkflowSpec, BindingPlan, DurableAssetRef, sidecar I/O
+  spec_executor.py     # LocalWorkflowSpecExecutor, SlurmWorkflowSpecExecutor
+  specs.py             # normalized spec + planning/replay metadata contracts
   tasks/
-    qc.py
-    transcript_evidence.py
-    protein_evidence.py
+    agat.py            # AGAT post-processing tasks (statistics, conversion, cleanup)
+    annotation.py      # BRAKER3 ab initio annotation
+    consensus.py       # EVM consensus
+    eggnog.py          # EggNOG functional annotation
+    filtering.py       # GFF3 filtering (gffread_proteins, agat variants)
+    functional.py      # functional annotation helpers
+    pasa.py            # PASA transcript assembly
+    protein_evidence.py  # Exonerate protein alignment
+    qc.py              # FastQC, BUSCO quality control
+    quant.py           # STAR quantification
+    transdecoder.py    # TransDecoder ORF prediction
+    transcript_evidence.py  # STAR alignment
+  types/
+    assets.py          # ManifestSerializable, typed AssetToolProvenance, generic asset names
+  workflows/
+    agat.py
     annotation.py
     consensus.py
+    eggnog.py
     filtering.py
     functional.py
-    submission.py
-  workflows/
+    pasa.py
+    protein_evidence.py
     rnaseq_qc_quant.py
     transcript_evidence.py
-    pasa.py
     transdecoder.py
-    protein_evidence.py
-    annotation.py
-    consensus.py
-    filtering.py
-    functional.py
 ```
+
+### Divergences from original target
+
+- `submission.py` (tasks) — not yet created; `table2asn` submission is deferred
+- `composition.py`, `gff3.py`, `manifest_envelope.py`, `manifest_io.py`,
+  `slurm_monitor.py` — added since the original target was written
+- `types/assets.py` — added as a subpackage for generic biology asset types
 
 ### Layout Principles
 
