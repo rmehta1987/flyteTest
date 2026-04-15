@@ -18,6 +18,17 @@ Current artifact handling is local-path-only: task and workflow boundaries wrap
 filesystem paths directly, and ordinary execution does not depend on remote
 artifact upload semantics.
 
+## What This Is
+
+| | flyteTest |
+|---|---|
+| **What it does** | Runs genome annotation jobs on a compute cluster and tracks them end-to-end |
+| **How you interact** | Describe what you want in plain language; the system prepares and submits the job |
+| **Biology focus** | Eukaryotic genome annotation — from raw assembly to functionally annotated genes |
+| **Job tracking** | Every submission is saved; jobs can be monitored, retried, or cancelled by name |
+| **Reliability** | Jobs are locked in before submission — nothing is guessed or regenerated at run time |
+| **What it is not** | A command generator or general-purpose bioinformatics assistant |
+
 ## Current Status
 
 ### Implemented Now

@@ -31,6 +31,23 @@ run recipes.
 | `docs/tutorial_context.md` | Prompting and fixture context |
 | `.codex/testing.md` | Validation and testing expectations |
 
+## TL;DR — Core Decisions
+
+- **Plan before execute:** run recipes are frozen and inspectable before
+  anything runs; nothing is generated or inferred at execution time.
+- **Registered building blocks:** only curated, typed tasks and workflows
+  are composed — no invented biology, no ad-hoc runtime logic.
+- **Typed contracts:** every task boundary is strongly typed; incompatible
+  inputs are caught before submission, not at runtime.
+- **Full traceability:** every run records the prompt, resolved inputs,
+  container images, and scheduler state — no manual record-keeping.
+- **Execution profiles:** local, containerised, and Slurm HPC are all
+  first-class; the same frozen recipe can target any profile.
+- **Current scope:** eukaryotic genome annotation is the first supported
+  pipeline family; the architecture is designed to grow to others.
+- **Deferred:** remote artifact discovery, arbitrary workflow generation,
+  and `table2asn` submission preparation.
+
 ## Overview
 
 The primary objective of FLyteTest is to minimize the computational and
@@ -105,7 +122,7 @@ pipeline transparency, and reproducible execution remain paramount.
 
 - Enable natural-language planning for supported bioinformatics workflow families.
 - Compose pipelines from a curated registry of typed tasks and reviewed workflow stages.
-- Preserve the current notes-faithful genome annotation baseline through BUSCO QC.
+- Preserve the notes-faithful genome annotation pipeline as the first implemented family while the architecture matures to support additional pipeline families.
 - Represent dynamically composed workflows as saved, inspectable run recipes rather than opaque generated code.
 - Resolve inputs from explicit bindings, prior manifests, and registered result bundles.
 - Treat Slurm HPC execution as a first-class project goal, including natural-language resource requests, explicit CPU and memory binding, queue or partition selection, and generated `sbatch` run artifacts.
@@ -1066,16 +1083,23 @@ This phase should:
 ### 9.4 Broaden the Biological Scope
 
 Once the core planning and execution path is stable, the biological coverage can
-expand downstream of the current annotation baseline.
+expand to additional pipeline families. The architecture is not limited to genome
+annotation — any bioinformatics pipeline can be supported as long as its tasks
+exist in the registry and their inputs and outputs are typed.
 
-This phase should add or refine:
+Near-term annotation extensions:
 
 - EggNOG-mapper support
 - AGAT statistics and conversion
 - optional `table2asn` submission preparation
 - broader transcript evidence handling when needed
-- additional evidence or annotation families only when they can be grounded in
-  established tasks and reviewed workflow stages
+
+Longer-term pipeline families (examples, not exhaustive):
+
+- variant calling and genotyping
+- RNA-seq differential expression
+- metagenomics and taxonomic profiling
+- any other family grounded in registered, typed tasks and reviewed workflow stages
 
 ### 9.5 Mature the MCP Interface
 
