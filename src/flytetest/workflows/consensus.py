@@ -1,14 +1,18 @@
 """Consensus-stage workflow entrypoints for FLyteTest.
 
-This module preserves the note-faithful pre-EVM bundle workflow and adds the
-downstream deterministic EVidenceModeler execution workflow that consumes it.
+Stage ordering and the pre-EVM file contract follow `docs/braker3_evm_notes.md`.
+Tool-level command and input/output expectations follow the tool references
+under `docs/tool_refs/` (notably `evidencemodeler.md`).
+
+This module preserves the pre-EVM bundle workflow and adds the downstream
+deterministic EVidenceModeler execution workflow that consumes it.
 """
 
 from __future__ import annotations
 
 from flyte.io import Dir
 
-from flytetest.config import consensus_env
+from flytetest.config import consensus_prep_env
 from flytetest.tasks.consensus import (
     collect_evm_results,
     collect_evm_prep_results,
@@ -25,14 +29,14 @@ from flytetest.tasks.consensus import (
 
 # Flyte 2.0.10 in this repo exposes env.task but not env.workflow, so this
 # workflow entrypoint remains a composed task to preserve current behavior.
-@consensus_env.task
+@consensus_prep_env.task
 def consensus_annotation_evm_prep(
     pasa_results: Dir,
     transdecoder_results: Dir,
     protein_evidence_results: Dir,
     braker3_results: Dir,
 ) -> Dir:
-    """Assemble the corrected pre-EVM file contract from upstream evidence bundles."""
+    """Assemble the corrected pre-EVidenceModeler file contract from evidence bundles."""
     transcript_inputs = prepare_evm_transcript_inputs(
         pasa_results=pasa_results,
     )
@@ -54,7 +58,7 @@ def consensus_annotation_evm_prep(
     )
 
 
-@consensus_env.task
+@consensus_prep_env.task
 def consensus_annotation_evm(
     evm_prep_results: Dir,
     evm_weights_text: str = "",
@@ -68,7 +72,7 @@ def consensus_annotation_evm(
     evm_overlap_size: int = 300000,
     evm_sif: str = "",
 ) -> Dir:
-    """Run deterministic EVM execution downstream of the existing pre-EVM bundle."""
+    """Execute EVidenceModeler deterministic consensus gene-model integration."""
     execution_inputs = prepare_evm_execution_inputs(
         evm_prep_results=evm_prep_results,
         evm_weights_text=evm_weights_text,

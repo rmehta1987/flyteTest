@@ -2,27 +2,36 @@
 
 ## Purpose
 
-Generate annotation statistics and perform GFF/GTF format conversions or cleanup steps.
+Generate annotation statistics, GFF/GTF conversion, and deterministic cleanup slices around the EggNOG-annotated annotation bundle while keeping `table2asn` separate.
+
+## Input Data
+
+- GFF3 or GTF annotation files
+- optional companion FASTA for the statistics slice
+- AGAT conversion results for the cleanup slice
+
+## Output Data
+
+- annotation statistics reports
+- converted or normalized annotation files
+- cleaned GFF3 files and cleanup summaries
 
 ## Key Inputs
 
 - GFF3 or GTF annotation files
-- optional companion FASTA or conversion settings depending on the subcommand
+- optional companion FASTA for the statistics slice
+- AGAT conversion results for the cleanup slice
 
 ## Key Outputs
 
 - annotation statistics reports
 - converted or normalized annotation files
+- cleaned GFF3 files and cleanup summaries
 
 ## Pipeline Fit
 
-- downstream post-processing and reporting after annotation refinement and functional annotation
-
-## Notes And Caveats
-
-- AGAT is deferred in FLyteTest scope for now.
-- AGAT is a task family rather than one monolithic behavior; future implementations should model statistics, conversion, and cleanup steps separately.
-- This repo should keep any format normalization explicit so downstream submission preparation remains auditable.
+- downstream post-processing, reporting, and GFF3 cleanup after annotation refinement and functional annotation
+- this repo now implements the statistics, conversion, and cleanup boundaries after EggNOG functional annotation
 
 ## Official Documentation
 
@@ -33,14 +42,19 @@ Generate annotation statistics and perform GFF/GTF format conversions or cleanup
   - [agat_sp_statistics.pl](https://nbisweden.github.io/AGAT/tools/agat_sp_statistics/)
 - The official docs clearly treat AGAT as many small scripts, split across `_sp_` and `_sq_` families.
 
-## Tutorial And Training References
+## Tutorial References
 
 - GTN coverage for AGAT specifically is weak; we did not find a dedicated AGAT walkthrough.
 - The closest training context is general genome annotation and GFF/GTF format material, which is useful background but not AGAT-specific implementation guidance.
 
+## Code Reference
+
+- [`src/flytetest/tasks/agat.py`](src/flytetest/tasks/agat.py)
+- that module implements the statistics and conversion shell boundaries plus the deterministic in-repo cleanup slice
+
 ## Native Command Context
 
-- AGAT is invoked as a set of Perl scripts, for example `agat_convert_sp_gxf2gxf.pl -g input.gff -o output.gff` and `agat_sp_statistics.pl --gff input.gff`.
+- AGAT is invoked as a set of Perl scripts, for example `agat_sp_statistics.pl --gff input.gff --output stats.tsv` and `agat_convert_sp_gxf2gxf.pl -g input.gtf -o output.gff3`.
 - `_sp_` scripts slurp the file into memory for standardization and repair; `_sq_` scripts stream linearly and are more lightweight.
 - For FLyteTest, that means AGAT should be modeled as several explicit subcommands rather than one opaque annotation-cleanup task.
 
@@ -56,21 +70,42 @@ Generate annotation statistics and perform GFF/GTF format conversions or cleanup
 Use docs/tool_refs/agat.md as the reference for AGAT post-processing work.
 
 Goal:
-Plan or implement the `agat_statistics` stage for cleaned annotation outputs.
+Plan or implement one of the AGAT post-processing slices: `agat_statistics`, `agat_convert_sp_gxf2gxf`, or `agat_cleanup_gff3`.
 
 Inputs:
-- final or near-final annotation GFF3
-- optional companion FASTA or mapping files depending on the AGAT subcommand
-- output path for statistics or normalized annotation products
-- optional `agat_sif` container image
+- GFF3 or GTF annotation files for statistics or conversion
+- optional companion FASTA for statistics
+- AGAT conversion results bundle for cleanup
 
 Constraints:
 - keep AGAT scoped to post-processing and reporting after the main annotation graph
-- state the exact AGAT subcommand rather than saying only "run AGAT"
-- treat command shapes as inferred until the stage is fully implemented
+- keep the cleanup rules deterministic and notes-backed
+- do not run `table2asn` or add submission packaging in this slice
 
 Deliver:
-- the AGAT command pattern or task change
-- expected statistics or normalized annotation outputs
+- the AGAT task or workflow change
+- expected statistics, conversion, or cleaned-GFF3 outputs
 - any assumptions that need to stay explicit
 ```
+
+## Notes And Caveats
+
+- AGAT is now implemented in FLyteTest as separate statistics, conversion, and
+  cleanup slices after EggNOG functional annotation.
+- AGAT is a task family rather than one monolithic behavior, so future
+  implementations should keep statistics, conversion, cleanup, and submission
+  preparation steps separate.
+- This repo should keep any format normalization explicit so downstream
+  submission preparation remains auditable.
+- The statistics slice models the core `agat_sp_statistics.pl` command from the
+  notes and the official AGAT docs. The notes also mention a companion FASTA
+  and `-d` histogram output; those details stay explicit and optional.
+- The conversion slice models the core `agat_convert_sp_gxf2gxf.pl` command
+  family. The notes show a GTF-to-GFF3 example; using the same AGAT converter
+  on the EggNOG-annotated GFF3 bundle is an inferred normalization step and is
+  kept explicit in the manifest.
+- The cleanup slice consumes the AGAT conversion bundle and applies the
+  notes-backed deterministic GFF3 attribute edits: propagate parent mRNA `Name`
+  values onto child CDS `product` attributes, remove gene-level `Note`
+  attributes, and replace CDS products beginning with `-` with `putative`.
+- `table2asn` remains deferred and should not be folded into AGAT cleanup.

@@ -1,8 +1,8 @@
 """Synthetic tests for the transcript-to-PASA contract.
 
-These checks keep the de novo-plus-genome-guided Trinity branch, StringTie
-flags, and PASA handoff honest without requiring STAR, Trinity, StringTie,
-or PASA binaries.
+    These checks keep the de novo-plus-genome-guided Trinity branch, StringTie
+    flags, and PASA handoff honest without requiring STAR, Trinity, StringTie,
+    or PASA binaries.
 """
 
 from __future__ import annotations
@@ -31,35 +31,48 @@ import flytetest.workflows.pasa as pasa_workflows
 
 
 def _artifact_dir(path: Path) -> Dir:
-    """Create a stub Flyte directory artifact from a local path."""
-    return Dir.from_local_sync(str(path))
+    """Wrap a filesystem path in Flyte's `Dir` type for synthetic fixtures."""
+    return Dir(path=str(path))
 
 
 def _read_json(path: Path) -> dict[str, object]:
-    """Read one JSON file for assertions."""
+    """Load a JSON payload for assertions."""
     return json.loads(path.read_text())
 
 
 def _fixed_datetime() -> type:
     """Return a deterministic timestamp provider for result-directory naming."""
 
+    # Keep the synthetic result-directory name stable for manifest assertions.
     class _Stamp:
+        """Datetime stub that always returns the same synthetic timestamp."""
+
         def strftime(self, fmt: str) -> str:
+            """Return the fixed timestamp string expected by the assertions."""
             return "20260402_130000"
 
     class _FixedDatetime:
+        """Shim that exposes the `datetime.now()` call used by the code."""
+
         @classmethod
         def now(cls) -> _Stamp:
+            """Return the fixed timestamp stub used by the synthetic tests."""
             return _Stamp()
 
     return _FixedDatetime
 
 
 class TranscriptContractTests(TestCase):
-    """Coverage for the transcript-evidence branch and PASA handoff."""
+    """Coverage for the transcript-evidence branch and PASA handoff.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
     def test_trinity_denovo_assemble_uses_single_sample_paired_end_shape(self) -> None:
-        """Keep the de novo Trinity task explicit and deterministic."""
+        """Keep the de novo Trinity task explicit and deterministic.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             left = tmp_path / "reads_1.fq.gz"
@@ -75,6 +88,7 @@ class TranscriptContractTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
+                """Capture the Trinity command without running the real binary."""
                 captured["cmd"] = cmd
 
             with patch.object(transcript_tasks, "run_tool", side_effect=fake_run_tool):
@@ -96,7 +110,10 @@ class TranscriptContractTests(TestCase):
             self.assertNotIn("--genome_guided_bam", cmd)
 
     def test_stringtie_assemble_uses_note_backed_flags(self) -> None:
-        """Keep the exposed StringTie command aligned with the attached notes."""
+        """Keep the exposed StringTie command aligned with the StringTie task reference.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             merged_bam = tmp_path / "merged.bam"
@@ -110,6 +127,7 @@ class TranscriptContractTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
+                """Capture the StringTie command without running the real binary."""
                 captured["cmd"] = cmd
 
             with patch.object(transcript_tasks, "run_tool", side_effect=fake_run_tool):
@@ -131,7 +149,10 @@ class TranscriptContractTests(TestCase):
             self.assertEqual(cmd[cmd.index("-p") + 1], "16")
 
     def test_collect_transcript_evidence_results_marks_bundle_as_pasa_ready(self) -> None:
-        """Mark the collected transcript bundle as upstream-complete for PASA."""
+        """Mark the collected transcript bundle as upstream-complete for PASA.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             genome = tmp_path / "genome.fa"
@@ -189,11 +210,20 @@ class TranscriptContractTests(TestCase):
             self.assertIn("de novo Trinity before STAR alignment", assumptions)
             self.assertIn("aligning all RNA-seq samples", assumptions)
             self.assertIn("Trinity --left/--right", assumptions)
-            self.assertIn("StringTie is run with the note-backed fixed flags", assumptions)
+            self.assertIn("StringTie is run with the fixed flags", assumptions)
             self.assertIn("trinity_denovo_fasta", manifest["outputs"])
+            self.assertIn("rna_seq_alignment", manifest["assets"])
+            self.assertIn("star_alignment", manifest["assets"])
+            self.assertEqual(
+                manifest["assets"]["rna_seq_alignment"]["provenance"]["source_manifest_key"],
+                "rna_seq_alignment",
+            )
 
     def test_pasa_transcript_alignment_uses_internal_denovo_trinity_from_bundle(self) -> None:
-        """Resolve the de novo Trinity FASTA from the transcript bundle instead of an external path."""
+        """Resolve the de novo Trinity FASTA from the transcript bundle instead of an external path.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             transcript_bundle = tmp_path / "transcript_bundle"
@@ -228,26 +258,32 @@ class TranscriptContractTests(TestCase):
             captured: dict[str, dict[str, object]] = {}
 
             def fake_combine_trinity_fastas(**kwargs: object) -> File:
+                """Capture the PASA workflow input wiring for the combined Trinity FASTA."""
                 captured["combine"] = kwargs
                 return File(path=str(combined))
 
             def fake_pasa_accession_extract(**kwargs: object) -> File:
+                """Capture the PASA accession-extract wiring for the denovo transcript FASTA."""
                 captured["accession"] = kwargs
                 return File(path=str(tdn_accs))
 
             def fake_pasa_seqclean(**kwargs: object) -> Dir:
+                """Capture the PASA SeqClean wiring and return a synthetic directory."""
                 captured["seqclean"] = kwargs
                 return Dir(path=str(seqclean_dir))
 
             def fake_pasa_create_sqlite_db(**kwargs: object) -> Dir:
+                """Capture the PASA SQLite setup wiring and return a synthetic directory."""
                 captured["config"] = kwargs
                 return Dir(path=str(config_dir))
 
             def fake_pasa_align_assemble(**kwargs: object) -> Dir:
+                """Capture the PASA align-and-assemble wiring and return a synthetic directory."""
                 captured["align"] = kwargs
                 return Dir(path=str(pasa_dir))
 
             def fake_collect_pasa_results(**kwargs: object) -> Dir:
+                """Capture the PASA result-collection wiring and return a synthetic directory."""
                 captured["collect"] = kwargs
                 return Dir(path=str(result_dir))
 

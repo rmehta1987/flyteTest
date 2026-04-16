@@ -4,8 +4,8 @@ This page groups FLyteTest tool references by biological stage so future prompts
 
 Scope note:
 
-- the current executable MCP showcase is hard-limited to `ab_initio_annotation_braker3`, `protein_evidence_alignment`, and `exonerate_align_chunk`
-- the multi-stage references below are repo planning aids, not the current server-exposed workflow catalog
+- the current executable MCP showcase still exposes a narrow surface, but the repo now implements and documents broader stage families for PASA, TransDecoder, repeat filtering, BUSCO, EggNOG, AGAT, and EVM prep/execution
+- the stage refs below are planning aids that stay anchored to implemented task and workflow boundaries rather than to an incomplete showcase catalog
 
 Use this page when:
 
@@ -319,7 +319,7 @@ Refine `annotation_repeat_filtering` or one of its explicit repeat-filter tasks.
 Context:
 - consume the PASA-updated sorted GFF3 boundary, not an earlier EVM shortcut
 - keep RepeatMasker conversion, gffread protein extraction, overlap cleanup, repeat blasting, and final GFF3/protein collection explicit
-- use the local `data/repeatmasker/` fixture directory for smoke-test planning when binaries are available and synthetic tests otherwise
+- use synthetic tests or an external RepeatMasker `.out` file for smoke-test planning; this repo does not currently ship a checked-in `data/repeatmasker/` fixture directory
 - state any inferred funannotate wrapper behavior explicitly
 
 Deliver:
@@ -334,12 +334,18 @@ Stage status:
 
 - FastQC and Salmon are implemented as part of the older RNA-seq baseline
 - BUSCO is now implemented as the first post-repeat-filtering QC milestone
-- EggNOG-mapper and AGAT remain deferred for later post-BUSCO milestones
+- EggNOG-mapper is implemented as the next post-BUSCO functional-annotation milestone
+- AGAT statistics, conversion, and cleanup are implemented as post-EggNOG slices
+- `table2asn` submission-prep remains deferred after AGAT
 
 Primary workflows:
 
 - `rnaseq_qc_quant`
 - `annotation_qc_busco`
+- `annotation_functional_eggnog`
+- `annotation_postprocess_agat`
+- `annotation_postprocess_agat_conversion`
+- `annotation_postprocess_agat_cleanup`
 
 Primary tasks:
 
@@ -347,8 +353,11 @@ Primary tasks:
 - `salmon_index`
 - `salmon_quant`
 - `busco_assess_proteins`
-- future: `eggnog_map`
-- future: `agat_statistics`
+- `agat_statistics`
+- `agat_convert_sp_gxf2gxf`
+- `agat_cleanup_gff3`
+- `collect_eggnog_results`
+- `eggnog_map`
 
 Tool refs:
 
@@ -361,8 +370,9 @@ Tool refs:
 Use this stage when you need to:
 
 - work on the legacy RNA-seq QC and quant baseline
-- refine the implemented BUSCO QC boundary without overstating later EggNOG or AGAT work
-- define AGAT reporting or cleanup work as a distinct later stage
+- refine the implemented BUSCO QC boundary
+- work on EggNOG functional annotation of repeat-filtered proteins
+- work on AGAT statistics, conversion, or cleanup after EggNOG functional annotation while keeping `table2asn` deferred
 
 Prompt starter:
 
@@ -370,17 +380,37 @@ Prompt starter:
 Use the QC and downstream annotation stage refs in docs/tool_refs/stage_index.md.
 
 Goal:
-Refine `annotation_qc_busco`, `busco_assess_proteins`, or the legacy `rnaseq_qc_quant` baseline using the listed tool refs.
+Refine `annotation_qc_busco`, `annotation_functional_eggnog`, `annotation_postprocess_agat`, `annotation_postprocess_agat_conversion`, `annotation_postprocess_agat_cleanup`, `busco_assess_proteins`, or the legacy `rnaseq_qc_quant` baseline using the listed tool refs.
 
 Context:
 - keep FastQC and Salmon separate from the active genome-annotation milestone
-- keep BUSCO strictly downstream of repeat filtering and keep EggNOG-mapper and AGAT deferred unless the milestone explicitly changes
+- keep BUSCO strictly downstream of repeat filtering and keep EggNOG-mapper implemented as the next functional-annotation boundary
 - preserve tool-specific input and output contracts
+- keep AGAT scoped to post-EggNOG statistics, conversion, and deterministic cleanup until a later slice opens `table2asn`
 
 Deliver:
 - the command plan or task/workflow change
 - expected reports or annotation-enrichment outputs
 - any assumptions about deferred stages that need to remain explicit
+```
+
+Prompt starter for AGAT planning:
+
+```text
+Use the AGAT tool ref in docs/tool_refs/stage_index.md.
+
+Goal:
+Plan or implement the AGAT cleanup slice after AGAT conversion.
+
+Context:
+- keep AGAT scoped to post-processing and reporting after EggNOG
+- preserve the repeat-filtered and EggNOG-annotated GFF3 boundary explicitly
+- keep `table2asn` deferred until a later slice is explicitly opened
+
+Deliver:
+- the task/workflow change
+- expected cleaned GFF3 output and cleanup summary
+- any assumptions that remain inferred from notes or runtime constraints
 ```
 
 ## Submission Prep

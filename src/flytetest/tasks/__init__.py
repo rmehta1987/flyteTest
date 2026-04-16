@@ -1,7 +1,7 @@
 """Task exports for the implemented FLyteTest pipeline stages.
 
-This package-level shim keeps optional task families importable from one place
-while newer annotation modules continue to land incrementally.
+    This package-level shim keeps optional task families importable from one place
+    while newer annotation modules continue to land incrementally.
 """
 
 from importlib.util import find_spec
@@ -88,6 +88,23 @@ if find_spec("flytetest.tasks.functional") is not None:
 else:
     _functional_exports = ()
 
+if find_spec("flytetest.tasks.eggnog") is not None:
+    from flytetest.tasks.eggnog import collect_eggnog_results, eggnog_map
+
+    _eggnog_exports = (
+        "collect_eggnog_results",
+        "eggnog_map",
+    )
+else:
+    _eggnog_exports = ()
+
+if find_spec("flytetest.tasks.agat") is not None:
+    from flytetest.tasks.agat import agat_cleanup_gff3, agat_convert_sp_gxf2gxf, agat_statistics
+
+    _agat_exports = ("agat_cleanup_gff3", "agat_convert_sp_gxf2gxf", "agat_statistics")
+else:
+    _agat_exports = ()
+
 from flytetest.tasks.pasa import (
     collect_pasa_results,
     collect_pasa_update_results,
@@ -138,6 +155,8 @@ __all__ = [
     *_consensus_exports,
     *_filtering_exports,
     *_functional_exports,
+    *_eggnog_exports,
+    *_agat_exports,
     "collect_pasa_results",
     "collect_pasa_update_results",
     "collect_results",

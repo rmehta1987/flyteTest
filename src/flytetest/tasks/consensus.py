@@ -1,8 +1,12 @@
 """Consensus-stage preparation and EVM execution tasks for FLyteTest.
 
-This module preserves the note-faithful pre-EVM contract assembly boundary,
-then runs deterministic EVidenceModeler partitioning, command generation,
-execution, and recombination strictly downstream of that existing bundle.
+Stage ordering and the pre-EVM file contract follow `docs/braker3_evm_notes.md`.
+Tool-level command and input/output expectations follow the tool references
+under `docs/tool_refs/` (notably `evidencemodeler.md`).
+
+This module preserves the current pre-EVM contract assembly boundary, then runs
+deterministic EVidenceModeler partitioning, command generation, execution, and
+recombination strictly downstream of that existing bundle.
 """
 
 from __future__ import annotations
@@ -10,7 +14,6 @@ from __future__ import annotations
 import json
 import shlex
 import shutil
-import tempfile
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -25,7 +28,8 @@ from flytetest.config import (
     CONSENSUS_WORKFLOW_NAME,
     RESULTS_ROOT,
     consensus_evm_env,
-    consensus_env,
+    consensus_prep_env,
+    project_mkdtemp,
     require_path,
     run_tool,
 )
@@ -45,7 +49,7 @@ from flytetest.types import (
 
 
 def _as_json_compatible(value: Any) -> Any:
-    """Recursively convert manifest values into JSON-serializable primitives."""
+    """Convert manifest values into JSON-serializable primitives."""
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, dict):
@@ -58,24 +62,24 @@ def _as_json_compatible(value: Any) -> Any:
 
 
 def _read_json(path: Path) -> dict[str, Any]:
-    """Read a JSON manifest into a dictionary."""
+    """Read a JSON manifest file into a Python dictionary."""
     return json.loads(path.read_text())
 
 
 def _copy_file(source: Path, destination: Path) -> Path:
-    """Copy one file into a deterministic destination and return the new path."""
+    """Copy a file into a deterministic staging location and preserve metadata."""
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(source, destination)
     return destination
 
 
 def _manifest_path(results_dir: Path, label: str) -> Path:
-    """Resolve the run manifest for one upstream or prepared bundle."""
+    """Locate the canonical `run_manifest.json` file in a results bundle directory."""
     return require_path(results_dir / "run_manifest.json", f"{label} manifest")
 
 
 def _manifest_output_path(manifest: dict[str, Any], key: str, description: str) -> Path | None:
-    """Resolve one output path recorded in a manifest when it is present."""
+    """Resolve a named output path from a stage manifest's `outputs` section if present."""
     output_path = manifest.get("outputs", {}).get(key)
     if not output_path:
         return None
@@ -83,7 +87,7 @@ def _manifest_output_path(manifest: dict[str, Any], key: str, description: str) 
 
 
 def _pasa_assemblies_gff3_from_results(results_dir: Path, manifest: dict[str, Any]) -> Path:
-    """Resolve `${db}.pasa_assemblies.gff3` from a PASA results bundle."""
+    """Locate the PASA assemblies GFF3 file from an upstream PASA results bundle."""
     manifest_path = _manifest_output_path(
         manifest,
         "pasa_assemblies_gff3",
@@ -104,7 +108,7 @@ def _pasa_assemblies_gff3_from_results(results_dir: Path, manifest: dict[str, An
 
 
 def _transdecoder_genome_gff3_from_results(results_dir: Path, manifest: dict[str, Any]) -> Path:
-    """Resolve the PASA-derived TransDecoder genome GFF3 from a results bundle."""
+    """Locate the TransDecoder genome GFF3 from PASA/TransDecoder results."""
     manifest_path = _manifest_output_path(
         manifest,
         "transdecoder_genome_gff3",
@@ -132,7 +136,7 @@ def _transdecoder_genome_gff3_from_results(results_dir: Path, manifest: dict[str
 
 
 def _protein_evidence_gff3_from_results(results_dir: Path, manifest: dict[str, Any]) -> Path:
-    """Resolve the downstream-ready protein evidence GFF3 from a results bundle."""
+    """Locate the final processed protein evidence GFF3 file from upstream Exonerate results."""
     manifest_path = _manifest_output_path(
         manifest,
         "concatenated_evm_protein_gff3",
@@ -144,7 +148,7 @@ def _protein_evidence_gff3_from_results(results_dir: Path, manifest: dict[str, A
 
 
 def _normalized_braker_gff3_from_results(results_dir: Path, manifest: dict[str, Any]) -> Path:
-    """Resolve the normalized BRAKER3 GFF3 prepared for later EVM use."""
+    """Resolve the normalized BRAKER3 GFF3 file prepared for evidence integration."""
     manifest_path = _manifest_output_path(
         manifest,
         "normalized_braker_gff3",
@@ -159,13 +163,13 @@ def _normalized_braker_gff3_from_results(results_dir: Path, manifest: dict[str, 
 
 
 def _braker_genome_fasta(results_dir: Path) -> Path:
-    """Resolve the authoritative staged genome copied through the BRAKER3 bundle."""
+    """Retrieve the reference genome FASTA from the BRAKER3 results staging area."""
     staged_inputs_dir = require_path(results_dir / "staged_inputs", "BRAKER3 staged inputs directory")
     return _staged_genome_fasta(staged_inputs_dir)
 
 
 def _write_concatenated_gff3(source_paths: list[Path], destination: Path) -> Path:
-    """Concatenate one or more GFF3 files while emitting a single canonical header."""
+    """Concatenate multiple GFF3 files into one canonical merged file with unified header."""
     destination.parent.mkdir(parents=True, exist_ok=True)
     with destination.open("w") as out_handle:
         out_handle.write("##gff-version 3\n")
@@ -179,7 +183,7 @@ def _write_concatenated_gff3(source_paths: list[Path], destination: Path) -> Pat
 
 
 def _prepared_prediction_transdecoder_gff3(prepared_dir: Path, manifest: dict[str, Any]) -> Path:
-    """Resolve the staged TransDecoder genome GFF3 after the prepared directory is copied."""
+    """Resolve the staged TransDecoder genome GFF3 within a prepared prediction bundle."""
     recorded_path = manifest.get("outputs", {}).get("transdecoder_genome_gff3")
     if recorded_path:
         return require_path(
@@ -195,16 +199,16 @@ def _prepared_prediction_transdecoder_gff3(prepared_dir: Path, manifest: dict[st
     )
 
 
-@consensus_env.task
+@consensus_prep_env.task
 def prepare_evm_transcript_inputs(
     pasa_results: Dir,
 ) -> Dir:
-    """Stage `${db}.pasa_assemblies.gff3` as the final `transcripts.gff3` channel."""
+    """Stage PASA transcript evidence as the EVM transcript channel input."""
     results_dir = require_path(Path(pasa_results.download_sync()), "PASA results directory")
     manifest = _read_json(_manifest_path(results_dir, "PASA"))
     pasa_assemblies_gff3 = _pasa_assemblies_gff3_from_results(results_dir, manifest)
 
-    out_dir = Path(tempfile.mkdtemp(prefix="evm_transcript_inputs_")) / "transcript_inputs"
+    out_dir = project_mkdtemp("evm_transcript_inputs_") / "transcript_inputs"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     staged_gff3 = _copy_file(pasa_assemblies_gff3, out_dir / "transcripts.gff3")
@@ -214,7 +218,7 @@ def prepare_evm_transcript_inputs(
         transcripts_gff3_path=staged_gff3,
         source_results_dir=results_dir,
         notes=(
-            "The notes-faithful transcript channel is the PASA assemblies GFF3 copied directly to transcripts.gff3.",
+            "The transcript channel is the PASA assemblies GFF3 copied directly to transcripts.gff3.",
         ),
     )
     run_manifest = {
@@ -223,7 +227,7 @@ def prepare_evm_transcript_inputs(
         "evm_source_fields": list(source_fields),
         "evm_weight_categories": ["TRANSCRIPT" for _ in source_fields],
         "assumptions": [
-            "The attached notes define `${db}.pasa_assemblies.gff3` as the transcript evidence input to the pre-EVM boundary.",
+            "The source notes define `${db}.pasa_assemblies.gff3` as the transcript evidence input to the pre-EVM boundary.",
             "This milestone does not invent an additional PASA-to-EVM transcript conversion step beyond deterministic staging to transcripts.gff3.",
         ],
         "source_results_bundle": str(results_dir),
@@ -234,14 +238,14 @@ def prepare_evm_transcript_inputs(
         "assets": _as_json_compatible({"evm_transcript_input_bundle": asdict(asset)}),
     }
     (out_dir / "run_manifest.json").write_text(json.dumps(run_manifest, indent=2))
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
-@consensus_env.task
+@consensus_prep_env.task
 def prepare_evm_protein_inputs(
     protein_evidence_results: Dir,
 ) -> Dir:
-    """Stage Exonerate-derived protein evidence as the final `proteins.gff3` channel."""
+    """Stage protein homology evidence as the EVM protein channel input."""
     results_dir = require_path(
         Path(protein_evidence_results.download_sync()),
         "Protein evidence results directory",
@@ -249,7 +253,7 @@ def prepare_evm_protein_inputs(
     manifest = _read_json(_manifest_path(results_dir, "Protein evidence"))
     protein_gff3 = _protein_evidence_gff3_from_results(results_dir, manifest)
 
-    out_dir = Path(tempfile.mkdtemp(prefix="evm_protein_inputs_")) / "protein_inputs"
+    out_dir = project_mkdtemp("evm_protein_inputs_") / "protein_inputs"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     staged_gff3 = _copy_file(protein_gff3, out_dir / "proteins.gff3")
@@ -279,15 +283,15 @@ def prepare_evm_protein_inputs(
         "assets": _as_json_compatible({"evm_protein_input_bundle": asdict(asset)}),
     }
     (out_dir / "run_manifest.json").write_text(json.dumps(run_manifest, indent=2))
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
-@consensus_env.task
+@consensus_prep_env.task
 def prepare_evm_prediction_inputs(
     transdecoder_results: Dir,
     braker3_results: Dir,
 ) -> Dir:
-    """Assemble `predictions.gff3` from normalized BRAKER3 and TransDecoder genome GFF3."""
+    """Assemble ab initio and coding predictions as the EVM predictions channel."""
     transdecoder_results_dir = require_path(
         Path(transdecoder_results.download_sync()),
         "TransDecoder results directory",
@@ -303,7 +307,7 @@ def prepare_evm_prediction_inputs(
     normalized_braker_gff3 = _normalized_braker_gff3_from_results(braker3_results_dir, braker_manifest)
     genome_fasta = _braker_genome_fasta(braker3_results_dir)
 
-    out_dir = Path(tempfile.mkdtemp(prefix="evm_prediction_inputs_")) / "prediction_inputs"
+    out_dir = project_mkdtemp("evm_prediction_inputs_") / "prediction_inputs"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     staged_braker_gff3 = _copy_file(normalized_braker_gff3, out_dir / "braker.gff3")
@@ -327,7 +331,7 @@ def prepare_evm_prediction_inputs(
         source_braker3_results_dir=braker3_results_dir,
         source_transdecoder_results_dir=transdecoder_results_dir,
         notes=(
-            "The notes-faithful predictions channel is assembled by concatenating braker.gff3 with the PASA-derived TransDecoder genome GFF3.",
+            "The predictions channel is assembled by concatenating braker.gff3 with the PASA-derived TransDecoder genome GFF3.",
             "The staged braker.gff3 copy comes from the deterministic normalized BRAKER3 result bundle produced upstream.",
         ),
     )
@@ -339,7 +343,7 @@ def prepare_evm_prediction_inputs(
             for source_name in source_fields
         ],
         "notes_backed_behavior": [
-            "The attached notes define predictions.gff3 as braker.gff3 plus `${db}.assemblies.fasta.transdecoder.genome.gff3`.",
+            "The source notes define predictions.gff3 as braker.gff3 plus `${db}.assemblies.fasta.transdecoder.genome.gff3`.",
         ],
         "tutorial_backed_behavior": [
             "The upstream BRAKER3 source bundle comes from the repo's Galaxy tutorial-backed runtime model.",
@@ -370,10 +374,10 @@ def prepare_evm_prediction_inputs(
         "assets": _as_json_compatible({"evm_prediction_input_bundle": asdict(asset)}),
     }
     (out_dir / "run_manifest.json").write_text(json.dumps(run_manifest, indent=2))
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
-@consensus_env.task
+@consensus_prep_env.task
 def collect_evm_prep_results(
     transcript_inputs: Dir,
     protein_inputs: Dir,
@@ -383,7 +387,7 @@ def collect_evm_prep_results(
     protein_evidence_results: Dir,
     braker3_results: Dir,
 ) -> Dir:
-    """Collect the final pre-EVM contract files and their upstream provenance."""
+    """Finalize the pre-EVM evidence bundle with consolidated provenance."""
     transcript_inputs_dir = require_path(Path(transcript_inputs.download_sync()), "Prepared transcript inputs")
     protein_inputs_dir = require_path(Path(protein_inputs.download_sync()), "Prepared protein inputs")
     prediction_inputs_dir = require_path(Path(prediction_inputs.download_sync()), "Prepared prediction inputs")
@@ -578,29 +582,29 @@ def collect_evm_prep_results(
         "assets": _as_json_compatible({"evm_input_preparation_bundle": asdict(bundle_asset)}),
     }
     (out_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2))
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> Path:
-    """Write one JSON payload with indentation and return the written path."""
+    """Write a JSON manifest to disk with indentation for human readability."""
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2))
     return path
 
 
 def _copy_tree(source: Path, destination: Path) -> Path:
-    """Copy one directory tree into a deterministic destination and return it."""
+    """Copy an entire directory tree to a deterministic staging location."""
     shutil.copytree(source, destination, dirs_exist_ok=True)
     return destination
 
 
 def _manifest_from_dir(results_dir: Path, label: str) -> dict[str, Any]:
-    """Read the manifest emitted for one staged or collected directory."""
+    """Load the run manifest associated with a staged or results collection directory."""
     return _read_json(_manifest_path(results_dir, label))
 
 
 def _gff3_source_names(gff3_path: Path) -> tuple[str, ...]:
-    """Resolve the unique GFF3 source-column values in first-appearance order."""
+    """Extract unique GFF3 source-column values in first-appearance order."""
     source_names: list[str] = []
     seen: set[str] = set()
     for raw_line in gff3_path.read_text().splitlines():
@@ -617,22 +621,22 @@ def _gff3_source_names(gff3_path: Path) -> tuple[str, ...]:
 
 
 def _workspace_file(workspace_dir: Path, name: str, description: str) -> Path:
-    """Resolve one required file from an EVM workspace directory."""
+    """Validate and resolve a required file within an EVM execution workspace."""
     return require_path(workspace_dir / name, description)
 
 
 def _partition_listing_path(workspace_dir: Path) -> Path:
-    """Resolve the canonical partition listing emitted by EVM partitioning."""
+    """Locate the `partitions_list.out` file produced by EVM partitioning."""
     return _workspace_file(workspace_dir, "partitions_list.out", "EVM partition listing")
 
 
 def _commands_path(workspace_dir: Path) -> Path:
-    """Resolve the canonical command list emitted by EVM command generation."""
+    """Locate the `commands.list` file produced by EVM command generation."""
     return _workspace_file(workspace_dir, "commands.list", "EVM commands list")
 
 
 def _recombined_gff3_paths(workspace_dir: Path, output_file_name: str) -> list[Path]:
-    """Resolve converted partition GFF3 files in deterministic relative-path order."""
+    """Collect per-partition GFF3 result files in deterministic lexicographic order."""
     candidates = sorted(
         workspace_dir.rglob(f"{output_file_name}.gff3"),
         key=lambda path: str(path.relative_to(workspace_dir)),
@@ -645,17 +649,17 @@ def _recombined_gff3_paths(workspace_dir: Path, output_file_name: str) -> list[P
 
 
 def _partition_entries(partition_listing: Path) -> list[str]:
-    """Return non-empty partition-listing rows without trailing whitespace."""
+    """Parse the EVM partition listing file into a normalized entry list."""
     return [line.strip() for line in partition_listing.read_text().splitlines() if line.strip()]
 
 
 def _command_lines(commands_path: Path) -> list[str]:
-    """Return normalized non-empty command lines in file order."""
+    """Parse the EVM commands.list file into a normalized command set."""
     return [line.strip() for line in commands_path.read_text().splitlines() if line.strip()]
 
 
 def _weight_spec_for_source(source_name: str) -> tuple[str, int]:
-    """Map one source name to the inferred EVM weight spec for this repo."""
+    """Infer EVM evidence category and default weight from a GFF3 source name."""
     normalized = source_name.strip().lower()
     if normalized in {"exonerate", "exonerate_protein"}:
         return ("PROTEIN", 5)
@@ -671,7 +675,7 @@ def _inferred_evm_weight_lines(
     protein_sources: tuple[str, ...],
     prediction_sources: tuple[str, ...],
 ) -> list[str]:
-    """Build deterministic inferred EVM weight lines from the staged source fields."""
+    """Generate EVM weight file lines from discovered GFF3 source names."""
     grouped: dict[str, list[str]] = {
         "ABINITIO_PREDICTION": [],
         "PROTEIN": [],
@@ -709,7 +713,7 @@ def _write_evm_weights(
     prediction_sources: tuple[str, ...],
     evm_weights_text: str,
 ) -> Path:
-    """Write either explicit or inferred EVM weights into the workspace."""
+    """Write an EVM weights file from explicit text or inferred source categories."""
     destination.parent.mkdir(parents=True, exist_ok=True)
     if evm_weights_text.strip():
         weight_lines = [line.rstrip() for line in evm_weights_text.strip().splitlines() if line.strip()]
@@ -724,7 +728,7 @@ def _write_evm_weights(
 
 
 def _write_blank_line_filtered_gff3(source: Path, destination: Path) -> Path:
-    """Remove blank lines from a GFF3 file without changing record order."""
+    """Remove blank lines from a GFF3 file to produce syntactically clean output."""
     destination.parent.mkdir(parents=True, exist_ok=True)
     filtered_lines = [line for line in source.read_text().splitlines() if line.strip()]
     destination.write_text("\n".join(filtered_lines) + "\n")
@@ -736,14 +740,14 @@ def prepare_evm_execution_inputs(
     evm_prep_results: Dir,
     evm_weights_text: str = "",
 ) -> Dir:
-    """Stage the pre-EVM bundle into an EVM execution workspace plus weights file."""
+    """Stage pre-EVM evidence into an execution workspace with computed weights."""
     prep_results_dir = require_path(
         Path(evm_prep_results.download_sync()),
         "Pre-EVM results directory",
     )
     prep_manifest = _manifest_from_dir(prep_results_dir, "Pre-EVM")
 
-    out_dir = Path(tempfile.mkdtemp(prefix="evm_execution_inputs_")) / "evm_execution_inputs"
+    out_dir = project_mkdtemp("evm_execution_inputs_") / "evm_execution_inputs"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     transcripts_gff3 = _copy_file(
@@ -822,7 +826,7 @@ def prepare_evm_execution_inputs(
         "assets": _as_json_compatible({"evm_execution_input_bundle": asdict(execution_asset)}),
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @consensus_evm_env.task
@@ -833,14 +837,14 @@ def evm_partition_inputs(
     evm_overlap_size: int = 300000,
     evm_sif: str = "",
 ) -> Dir:
-    """Run deterministic EVM partitioning from one staged execution workspace."""
+    """Partition genome and evidence tracks into segments for distributed EVM execution."""
     execution_inputs_dir = require_path(
         Path(evm_execution_inputs.download_sync()),
         "EVM execution input directory",
     )
     input_manifest = _manifest_from_dir(execution_inputs_dir, "EVM execution inputs")
 
-    out_dir = Path(tempfile.mkdtemp(prefix="evm_partition_")) / "evm_partitioned"
+    out_dir = project_mkdtemp("evm_partition_") / "evm_partitioned"
     _copy_tree(execution_inputs_dir, out_dir)
 
     cmd = [
@@ -925,7 +929,7 @@ def evm_partition_inputs(
         "assets": _as_json_compatible({"evm_partition_bundle": asdict(partition_asset)}),
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @consensus_evm_env.task
@@ -935,14 +939,14 @@ def evm_write_commands(
     evm_output_file_name: str = "evm.out",
     evm_sif: str = "",
 ) -> Dir:
-    """Generate and normalize the deterministic per-partition EVM command list."""
+    """Generate the EvidenceModeler command list for each partition and normalize it."""
     partitioned_dir = require_path(
         Path(partitioned_evm_inputs.download_sync()),
         "Partitioned EVM directory",
     )
     partition_manifest = _manifest_from_dir(partitioned_dir, "Partitioned EVM inputs")
 
-    out_dir = Path(tempfile.mkdtemp(prefix="evm_commands_")) / "evm_commands"
+    out_dir = project_mkdtemp("evm_commands_") / "evm_commands"
     _copy_tree(partitioned_dir, out_dir)
 
     commands_path = out_dir / "commands.list"
@@ -1007,7 +1011,7 @@ def evm_write_commands(
         "assets": _as_json_compatible({"evm_command_set": asdict(command_asset)}),
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @consensus_evm_env.task
@@ -1015,11 +1019,11 @@ def evm_execute_commands(
     evm_commands: Dir,
     evm_sif: str = "",
 ) -> Dir:
-    """Execute EVM partition commands sequentially in deterministic file order."""
+    """Execute the generated EVM partition commands sequentially in deterministic order."""
     commands_dir = require_path(Path(evm_commands.download_sync()), "EVM commands directory")
     commands_manifest = _manifest_from_dir(commands_dir, "EVM commands")
 
-    out_dir = Path(tempfile.mkdtemp(prefix="evm_execute_")) / "evm_executed"
+    out_dir = project_mkdtemp("evm_execute_") / "evm_executed"
     _copy_tree(commands_dir, out_dir)
 
     normalized_commands = _command_lines(_commands_path(out_dir))
@@ -1065,7 +1069,7 @@ def evm_execute_commands(
         },
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @consensus_evm_env.task
@@ -1077,14 +1081,14 @@ def evm_recombine_outputs(
     evm_output_file_name: str = "evm.out",
     evm_sif: str = "",
 ) -> Dir:
-    """Recombine partition outputs, convert them to GFF3, and finalize sorting."""
+    """Recombine partitioned EVM outputs and convert them into a final sorted GFF3."""
     executed_dir = require_path(
         Path(executed_evm_commands.download_sync()),
         "Executed EVM command directory",
     )
     execution_manifest = _manifest_from_dir(executed_dir, "Executed EVM commands")
 
-    out_dir = Path(tempfile.mkdtemp(prefix="evm_recombine_")) / "evm_recombined"
+    out_dir = project_mkdtemp("evm_recombine_") / "evm_recombined"
     _copy_tree(executed_dir, out_dir)
 
     run_tool(
@@ -1165,7 +1169,7 @@ def evm_recombine_outputs(
         "sorting_applied": bool(gff3sort_script.strip()),
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @consensus_evm_env.task
@@ -1177,7 +1181,7 @@ def collect_evm_results(
     executed_evm_commands: Dir,
     recombined_evm_outputs: Dir,
 ) -> Dir:
-    """Collect stage-explicit EVM outputs into one manifest-bearing results bundle."""
+    """Collect the full EVM result hierarchy into a single manifest-bearing bundle."""
     prep_results_dir = require_path(Path(evm_prep_results.download_sync()), "Pre-EVM results directory")
     execution_inputs_dir = require_path(
         Path(evm_execution_inputs.download_sync()),
@@ -1349,7 +1353,7 @@ def collect_evm_results(
         "assets": _as_json_compatible({"evm_consensus_result_bundle": asdict(result_bundle)}),
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 __all__ = [

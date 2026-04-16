@@ -1,740 +1,1252 @@
-# FLyteTest Design Specification
-
-## 1. Purpose
-
-This project began as a small Flyte v2 RNA-seq workflow that:
-
-- runs FastQC
-- builds a Salmon index
-- quantifies transcript abundance with Salmon
-
-The updated target system is broader and is now grounded in the working Markdown companion at `docs/braker3_evm_notes.md`.
-The end goal is a prompt-driven genome annotation platform in which users can request analyses in natural language and the system executes supported Flyte workflows, while also allowing controlled runtime creation of new Flyte tasks or workflows when the checked-in catalog is insufficient.
-
-The long-term target platform should cover the full path from RNA-seq evidence generation to consensus genome annotation, post-processing, QC, and submission preparation.
-
-## 1.1 Active Implementation Milestone
-
-The active implementation milestone is `annotation QC with BUSCO after repeat filtering`.
-
-For this milestone, the repo must preserve the documented pre-EVM, EVM, PASA-update, and repeat-filter result boundaries described in `docs/braker3_evm_notes.md`, then execute BUSCO strictly downstream of them:
-
-- `transcripts.gff3` copied from PASA assemblies GFF3
-- `predictions.gff3` created from `braker.gff3` plus `${db}.assemblies.fasta.transdecoder.genome.gff3`
-- `proteins.gff3` created from Exonerate-derived protein evidence GFF3
-
-Current repo state now satisfies that filename-level contract, already emits deterministic EVM outputs such as `EVM.all.sort.gff3`, already collects deterministic PASA outputs such as `post_pasa_updates.sort.gff3`, and already collects deterministic repeat-filter outputs such as `all_repeats_removed.proteins.fa`.
-The BUSCO milestone should therefore use the final repeat-filtered proteins FASTA as the sole annotation-QC input boundary.
-
-Stop rule:
-
-- no milestone should reopen or rename the corrected pre-EVM filenames above while implementing BUSCO
-- no milestone should reopen or rename the final EVM outputs `EVM.all.gff3`, `EVM.all.removed.gff3`, and `EVM.all.sort.gff3` while implementing BUSCO
-- no milestone should reopen or rename the PASA post-update outputs `post_pasa_updates.gff3`, `post_pasa_updates.removed.gff3`, and `post_pasa_updates.sort.gff3` while implementing BUSCO
-- no milestone should reopen or rename the repeat-filter outputs `all_repeats_removed.gff3` and `all_repeats_removed.proteins.fa` while implementing BUSCO
-- no post-repeat-filtering milestone work should proceed beyond BUSCO-based QC in this milestone
-- specifically blocked in this milestone: EggNOG, AGAT, and `table2asn`
-
-## 2. Design Philosophy
-
-### 2.1 Registry-first composition with controlled runtime synthesis
-
-Users should not need code changes for ordinary analysis requests.
-For the common case, the system should:
-
-1. interpret the user prompt
-2. choose from supported tasks and workflows
-3. bind typed inputs and parameters
-4. execute the selected workflow
-
-This keeps execution reproducible and reviewable.
-
-When the checked-in catalog is not sufficient, the system may also synthesize new runtime tasks or workflows under explicit guardrails:
-
-1. generated entities must expose strongly typed inputs and outputs
-2. generated entities must record their generation inputs, assumptions, and source prompt in provenance metadata
-3. generated entities must resolve to explicit tool invocations or deterministic transformations rather than opaque free-form code
-4. generated entities should be persisted as inspectable artifacts or registry records when they are meant to be reused
-5. ordinary user requests should still prefer registered entities before synthesis is attempted
-
-### 2.2 Model the real pipeline, not a simplified fantasy
-
-The attached notes describe a long multi-stage annotation pipeline with transcript evidence, protein evidence, consensus modeling, PASA updates, repeat filtering, functional annotation, and NCBI preparation.
-
-The design of this repo should reflect those real stages.
-
-### 2.3 Be explicit about inferred steps
-
-The notes clearly use `braker.gff3` as an ab initio input to EVM, but the Markdown companion does not document every BRAKER3 command detail.
-
-Therefore:
-
-- BRAKER3 should be treated as a required task family and upstream evidence source
-- its invocation details should be documented as inferred until a fuller protocol is added
-
-### 2.4 Separate planning from execution
-
-Prompt interpretation should produce a structured analysis plan.
-Flyte should execute either:
-
-- a pre-registered workflow chosen from that plan, or
-- a runtime-synthesized task/workflow specification that satisfies the same typing and provenance requirements
-
-### 2.5 Code readability is part of the system design
-
-This repo is meant to be extended over time by both humans and delegated coding agents.
-That means code readability is not a cosmetic preference; it is part of the architecture.
-
-Implementation conventions should therefore include:
-
-- a short module docstring at the top of each Python file describing the file's purpose and pipeline role
-- concise docstrings on top-level functions so task, workflow, and helper boundaries are clear in the source
-- selective inline comments for non-obvious biological assumptions, path-discovery rules, normalization logic, or runtime workarounds
-
-Comments should not replace manifests or user-facing docs, but they should make the codebase navigable without forcing readers to infer every boundary from call sites alone.
-
-## 3. Goals
-
-### 3.1 Current milestone goals
-
-- Preserve the repo's active contracts at the notes-faithful pre-EVM, final EVM, final PASA-update, and final repeat-filter boundaries while implementing BUSCO downstream of them
-- Build or preserve deterministic upstream workflows for transcript evidence, PASA, TransDecoder, protein evidence, and BRAKER3
-- Make inferred behavior explicit where the notes are incomplete, especially for BRAKER3 and TransDecoder invocation details
-- Keep outputs predictable and machine-readable at the exact filename boundary that EVM consumes, the final EVM GFF3 collection boundary, the final PASA-updated GFF3 boundary, the final repeat-filtered GFF3/protein FASTA boundary, and the final BUSCO QC boundary
-- Treat the Galaxy-derived fixture files staged under `data/`, especially the final protein FASTA path carried through repeat filtering, as canonical lightweight inputs for this milestone's validation work when BUSCO tooling is locally available
-- Require the BUSCO milestone to add or tighten tests for lineage parsing, BUSCO command wiring, repeat-filter boundary resolution, and deterministic multi-lineage result collection, using synthetic tests first and fixture-backed smoke tests when binaries and lineage datasets are available
-
-### 3.2 Longer-term goals
-
-- Build a modular Flyte v2 task library representing the full annotation pipeline stages in the notes
-- Support workflows from RNA-seq evidence generation through BRAKER3/EVM consensus and downstream curation after the pre-EVM contract is stable
-- Expose a stable prompt-to-plan interface
-- Support controlled runtime creation of new tasks and workflows when existing registered capabilities do not cover a valid user request
-- Preserve support for both local development and HPC/containerized execution
-
-## 4. Non-Goals
-
-- arbitrary runtime generation of untyped or untracked task code for end users
-- free-form autonomous rewriting of the workflow graph without provenance, constraints, or inspectable generated artifacts
-- hiding external evidence or post-processing assumptions behind one opaque task
-- treating provisional staging bundles as if they already satisfy the notes-faithful EVM input contract
-- inventing undocumented BRAKER3 substeps and presenting them as if they were stated in the notes
-- silently inventing unsupported EVM source weights or pretending inferred local execution details came directly from the notes
-- silently inventing unsupported PASA update config content, round counts, or command flags and presenting them as if they were stated in the notes
-
-## 5. Pipeline Summary From The Attached Notes
-
-The extracted notes describe the following logical stages:
-
-1. directory and input setup
-2. Trinity de novo transcriptome assembly
-3. STAR genome index generation
-4. STAR RNA-seq alignment per sample
-5. BAM merge for transcriptome support
-6. Trinity genome-guided assembly
-7. StringTie transcript assembly and quantification
-8. PASA transcript preparation and PASA align/assemble run
-9. TransDecoder coding prediction from PASA assemblies
-10. protein evidence alignment with Exonerate against UniProt and RefSeq
-11. BRAKER3 ab initio predictions producing `braker.gff3`
-12. EVidenceModeler consensus annotation
-13. PASA update rounds to add UTRs and alternative transcripts
-14. repeat filtering using RepeatMasker output and funannotate utilities
-15. BUSCO assessment of predicted proteins
-16. EggNOG functional annotation and name propagation into GFF3
-17. AGAT statistics and format conversions
-18. optional NCBI submission preparation with `table2asn`
-
-## 5.1 Corrected Pre-EVM Contract
-
-Immediately before EVM execution, the repo should materialize the following exact files from the note-defined sources:
-
-- `predictions.gff3` from `braker.gff3` plus `${db}.assemblies.fasta.transdecoder.genome.gff3`
-- `proteins.gff3` from concatenated Exonerate-derived protein evidence GFF3
-- `transcripts.gff3` from `${db}.pasa_assemblies.gff3`
-
-This filename-level contract is the active milestone boundary.
-The `consensus_annotation_evm_prep` workflow materializes that boundary, and `consensus_annotation_evm` consumes it directly as the Milestone 2 EVM input contract.
-
-## 6. Task Families
-
-### 6.1 Setup and staging
-
-Expected tasks:
-
-- `stage_reference_genome`
-- `stage_rnaseq_reads`
-- `stage_protein_databases`
-- `initialize_annotation_workspace`
-
-The notes assume a directory structure with categories such as:
-
-- `reference/`
-- `transcript_data/fastqs/`
-- `transcript_data/bams/`
-- `transcript_data/stringtie/`
-- `transcript_data/trinity_denovo/`
-- `transcript_data/trinity_gg/`
-- `transcript_data/pasa/`
-- `protein_data/uniprot_results/`
-- `protein_data/refseq_results/`
-- `braker/`
-
-Flyte should not depend on this exact on-disk layout, but these stage boundaries are still useful for workflow design.
-
-### 6.2 Transcript evidence generation
-
-Expected tasks:
-
-- `trinity_denovo_assemble`
-- `star_genome_index`
-- `star_align_sample`
-- `samtools_merge_bams`
-- `trinity_genome_guided_assemble`
-- `stringtie_assemble`
-
-Outputs from this family include:
-
-- de novo Trinity transcript FASTA
-- genome-guided Trinity FASTA
-- merged BAM
-- StringTie GTF and abundance summary
-
-### 6.3 PASA preparation and transcript alignment
-
-Expected tasks:
-
-- `pasa_accession_extract`
-- `combine_trinity_fastas`
-- `pasa_seqclean`
-- `pasa_create_sqlite_db`
-- `pasa_align_assemble`
-
-The notes emphasize that PASA has real external dependencies:
-
-- SQLite or MySQL
-- samtools
-- BioPerl
-- minimap2
-- BLAT
-- gmap
-
-These requirements should be represented explicitly in task metadata and runtime docs.
-
-### 6.4 Coding prediction from transcript evidence
-
-Expected tasks:
-
-- `transdecoder_train_from_pasa`
-
-The notes specifically describe generating:
-
-- `${db}.assemblies.fasta.transdecoder.genome.gff3`
-
-This file is later merged with BRAKER predictions for EVM input.
-
-### 6.5 Protein evidence generation
-
-Expected tasks:
-
-- `fetch_uniprot_proteins`
-- `fetch_refseq_proteins`
-- `exonerate_align_chunk`
-- `exonerate_convert_to_evm_gff3`
-- `exonerate_concat_results`
-
-Important pattern from the notes:
-
-- Exonerate is chunked across many jobs
-- both raw Exonerate outputs and EVM-compatible converted outputs are needed
-
-### 6.6 Ab initio annotation
-
-Expected tasks:
-
-- `braker3_predict`
-- `normalize_braker3_for_evm`
-
-Important note:
-
-- the extracted notes do not describe the exact BRAKER3 command line
-- however, they clearly assume a `braker.gff3` output that feeds into EVM as an ab initio prediction source
-
-### 6.7 Consensus annotation with EVidenceModeler
-
-Expected tasks:
-
-- `evm_prepare_predictions_gff3`
-- `evm_prepare_proteins_gff3`
-- `evm_prepare_transcripts_gff3`
-- `evm_partition_inputs`
-- `evm_write_commands`
-- `evm_execute_partitions`
-- `evm_recombine_outputs`
-- `evm_convert_and_sort_gff3`
-
-The notes describe EVM source weighting with categories such as:
-
-- `ABINITIO_PREDICTION`
-- `PROTEIN`
-- `TRANSCRIPT`
-- `OTHER_PREDICTION`
-
-EVM execution should remain downstream of that corrected contract rather than re-deriving transcript, protein, or prediction evidence internally.
-
-That weighting scheme should become a configurable workflow input rather than being hardcoded forever.
-
-### 6.8 PASA-based gene model update
-
-Expected tasks:
-
-- `pasa_load_current_annotations`
-- `pasa_update_gene_models_round`
-- `pasa_sort_updated_gff3`
-
-Important behavior from the notes:
-
-- at least two PASA update rounds may be required
-- the second round loads the first updated GFF3 rather than the original EVM file
-
-### 6.9 Repeat and TE filtering
-
-Expected tasks:
-
-- `repeatmasker_out_to_gff3`
-- `repeatmasker_gff3_to_bed`
-- `gffread_extract_proteins`
-- `sanitize_protein_fasta_for_diamond`
-- `funannotate_remove_bad_models_overlap`
-- `remove_repeat_overlap_features_from_gff3`
-- `funannotate_repeat_blast`
-- `reformat_repeat_blast_hits`
-- `remove_repeat_blast_features_from_gff3`
-
-This family is important because the notes use two distinct repeat-removal passes:
-
-1. overlap with RepeatMasker-derived BED regions
-2. blast-based matching to funannotate repeat databases
-
-### 6.10 QC and functional annotation
-
-Expected tasks:
-
-- `busco_assess_proteins`
-- `eggnog_download_databases`
-- `eggnog_map`
-- `make_tx2gene_table`
-- `add_eggnog_names_to_gff3`
-- `agat_statistics`
-- `agat_convert_gxf`
-
-Important behavior from the notes:
-
-- BUSCO is intended to run against several lineages
-- EggNOG annotations need additional rewriting because transcript-level names are not sufficient for downstream gene feature handling
-
-### 6.11 Submission preparation
-
-Expected tasks:
-
-- `propagate_mrna_name_to_cds_product`
-- `cleanup_gff3_for_ncbi`
-- `table2asn_package`
-- `stage_ncbi_upload_bundle`
-
-These steps should be optional and belong to a submission-prep workflow, not the core biological annotation workflow.
-
-## 7. Candidate Workflows
-
-### 7.1 Existing baseline
-
-- `rnaseq_qc_quant`
-
-### 7.2 Transcript evidence workflows
-
-- `transcript_evidence_generation`
-  - Trinity de novo
-  - STAR index
-  - STAR alignment
-  - BAM merge
-  - Trinity genome-guided
-  - StringTie
-
-- `pasa_transcript_alignment`
-  - PASA accession extraction
-  - transcript combination
-  - seqclean
-  - PASA align/assemble
-
-### 7.3 Protein evidence workflows
-
-- `protein_evidence_alignment_uniprot`
-- `protein_evidence_alignment_refseq`
-- `protein_evidence_alignment_combined`
-
-### 7.4 Annotation workflows
-
-- `abinitio_annotation_braker3`
-- `consensus_annotation_evm_prep`
-  - active refactor target for the corrected pre-EVM contract
-  - must emit `transcripts.gff3`, `predictions.gff3`, and `proteins.gff3` before EVM work begins
-
-- `consensus_annotation_evm`
-  - consumes the existing corrected pre-EVM contract directly
-  - keeps weights staging, partitioning, command generation, execution, and recombination explicit
-
-- `annotation_refinement_pasa`
-  - consumes the existing PASA align/assemble bundle plus the existing EVM results bundle
-  - keeps annotation loading, update rounds, and final GFF3 cleanup explicit
-
-### 7.5 Post-processing workflows
-
-- `annotation_repeat_filtering`
-- `annotation_functional_qc`
-- `annotation_submission_prep`
-
-These remain future workflows and are blocked until after the PASA refinement milestone.
-
-### 7.6 End-to-end workflows
-
-- `end_to_end_genome_annotation`
-  - transcript evidence generation
-  - PASA transcript alignment
-  - protein evidence alignment
-  - BRAKER3
-  - EVM consensus after the pre-EVM contract is complete
-  - PASA updates after the pre-EVM contract is complete
-  - repeat filtering after the pre-EVM contract is complete
-  - BUSCO and EggNOG after the pre-EVM contract is complete
-
-- `end_to_end_genome_annotation_with_submission_prep`
-  - everything above
-  - AGAT summary after the pre-EVM contract is complete
-  - NCBI packaging after the pre-EVM contract is complete
-
-## 8. Domain Inputs
-
-The system should support typed inputs for:
-
-- paired-end RNA-seq reads
-- optional single-end RNA-seq reads
-- reference genome FASTA
-- optional repeat-masked genome FASTA
-- STAR genome index directory
-- protein FASTA collections from UniProt and RefSeq
-- PASA config files or equivalents
-- BRAKER3 outputs
-- RepeatMasker `.out` file
-- lineage identifiers for BUSCO
-- EggNOG database scope
-- NCBI template files for submission prep
-
-Each task and workflow should declare exactly which of these it expects.
-
-## 9. Architecture Overview
-
-The preferred architecture is:
+# FLyteTest: Full Design Specification
+
+A prompt-driven biology workflow platform for composing, validating, and
+executing curated bioinformatics pipelines through natural language and typed
+run recipes.
+
+## Table of Contents
+
+1. Goals and Non-Goals
+2. Landscape and Positioning
+3. Architecture Overview
+4. Core Design Examples
+5. Biological Pipeline Scope
+6. Prompting and MCP Interface
+7. Execution Strategy
+8. Validation and Testing
+9. Implementation Roadmap
+10. Repository Layout
+11. Open Questions and Risks
+
+## Related Documents
+
+| Document | Purpose |
+| --- | --- |
+| `AGENTS.md` | Repository rules and biological pipeline constraints |
+| `README.md` | Current user-facing scope and runnable entrypoints |
+| `docs/braker3_evm_notes.md` | Biological source notes and pipeline order |
+| `docs/mcp_showcase.md` | Current MCP surface and prompt behavior |
+| `docs/capability_maturity.md` | Capability snapshot by area |
+| `docs/realtime_refactor_checklist.md` | Architecture refactor status |
+| `docs/tutorial_context.md` | Prompting and fixture context |
+| `.codex/testing.md` | Validation and testing expectations |
+
+## TL;DR — Core Decisions
+
+- **Plan before execute:** run recipes are frozen and inspectable before
+  anything runs; nothing is generated or inferred at execution time.
+- **Registered building blocks:** only curated, typed tasks and workflows
+  are composed — no invented biology, no ad-hoc runtime logic.
+- **Typed contracts:** every task boundary is strongly typed; incompatible
+  inputs are caught before submission, not at runtime.
+- **Full traceability:** every run records the prompt, resolved inputs,
+  container images, and scheduler state — no manual record-keeping.
+- **Execution profiles:** local, containerised, and Slurm HPC are all
+  first-class; the same frozen recipe can target any profile.
+- **Current scope:** eukaryotic genome annotation is the first supported
+  pipeline family; the architecture is designed to grow to others.
+- **Deferred:** remote artifact discovery, arbitrary workflow generation,
+  and `table2asn` submission preparation.
+
+## Overview
+
+The primary objective of FLyteTest is to minimize the computational and
+engineering burden on scientists by enabling dynamic composition of
+bioinformatics pipelines from natural-language requests. The platform uses an
+agent-assisted planning layer over a curated registry of established tools,
+typed tasks, and reviewed workflow stages, allowing researchers to explore
+biological questions without writing boilerplate workflow code.
+
+Ultimately, a user should be able to prompt the system with requests such as:
+
+> "Build an RNA-seq QC and quantification workflow that runs FastQC on paired-end
+> reads and uses Salmon to build a transcriptome index and quantify the reads,
+> allocating 6 CPU cores and 32 GB of memory."
+
+For supported workflow families, the system should turn that request into a
+biology-aware plan, resolve required inputs from explicit bindings or prior
+manifests, select or compose registered workflow stages, and bind explicit
+runtime resources. The result should be a saved, inspectable run recipe: a
+record of what steps will run, what each step consumes and produces, which
+containers and resources it will use, and how the outputs trace back to the
+original prompt and input data. Dynamic planning happens before execution; once
+the run recipe is created, execution follows that frozen record so the
+resulting pipelines remain transparent and reproducible.
+
+To achieve this, the architecture is built on three core pillars:
+
+### 1. Dynamic, Strongly Typed Composition From Registered Building Blocks
+
+The agent-assisted planner dynamically assembles the correct sequence of
+bioinformatics tools by mapping user intent to ground-truth, pre-validated
+workflow templates or by chaining registered tasks and reference workflows.
+Every generated or selected workflow must declare strongly typed inputs and
+outputs, preventing incompatible assets such as BAM files from being passed to
+tools expecting FASTA inputs. Runtime requirements, including CPU, memory,
+scheduler hints, and container images, are bound explicitly before execution.
+
+### 2. Execution With Comprehensive Traceability
+
+The platform bridges the planning layer with robust compute infrastructure
+through explicit execution profiles, including local development runs,
+containerized runs, and Slurm-oriented HPC deployments. Because workflows
+may be dynamically composed, the system maintains an automated audit trail for
+every run:
+
+- **Prompt-to-result tracking:** The system records the pathway from the user's
+  natural-language prompt to the final biological output, including the selected
+  or generated workflow, resolved input files, and produced result bundle.
+- **Version-locked environments:** Tools run inside explicitly defined
+  containers when container paths are supplied. The platform records the exact
+  container image used for each task, avoiding hidden local dependency drift.
+- **Automated execution logs:** Each task records standard output and error logs,
+  result paths, and, when running under an HPC profile, scheduler job IDs and
+  actual compute resources used.
+
+This allows researchers and reviewers to retrieve the reproducible execution
+graph for a finding without relying on manual record-keeping.
+
+### 3. Reproducibility And Scientific Grounding
+
+Natural-language interpretation may be dynamic, but the executable plan must be
+frozen before launch. Given the same saved spec, input assets, container images,
+tool databases, and execution profile, the platform should produce the same
+result bundle and manifest. The system must not introduce AI-generated
+biological assumptions, hidden data modifications, or unreviewable workflow
+steps to make results superficially match expectations. Scientific validation,
+pipeline transparency, and reproducible execution remain paramount.
+
+## 1. Goals and Non-Goals
+
+### Goals
+
+- Enable natural-language planning for supported bioinformatics workflow families.
+- Compose pipelines from a curated registry of typed tasks and reviewed workflow stages.
+- Preserve the notes-faithful genome annotation pipeline as the first implemented family while the architecture matures to support additional pipeline families.
+- Represent dynamically composed workflows as saved, inspectable run recipes rather than opaque generated code.
+- Resolve inputs from explicit bindings, prior manifests, and registered result bundles.
+- Treat Slurm HPC execution as a first-class project goal, including natural-language resource requests, explicit CPU and memory binding, queue or partition selection, and generated `sbatch` run artifacts.
+- Support offline compute-node environments by staging containers, tool databases, input manifests, and runtime configuration before job execution.
+- Produce traceable result bundles with machine-readable manifests that record prompt provenance, containers, resources, scheduler metadata, and outputs.
+
+### Non-Goals
+
+- Generating ungrounded workflows from arbitrary biology prompts. New workflows
+  may be dynamically composed only when their steps can be mapped to established,
+  registered tasks or reviewed workflow stages.
+- Generating free-form Python task code as the default user-facing behavior.
+- Replacing current `flyte run` compatibility entrypoints.
+- Treating MCP as the planner itself rather than as an interface layer.
+- Submitting or monitoring arbitrary cluster jobs without a frozen, inspectable run recipe.
+- Assuming compute nodes have internet access.
+- Using a database or remote asset index as a prerequisite for the current architecture.
+- Inventing unsupported biological steps when source notes or tool references are incomplete.
+
+## 2. Landscape and Positioning
+
+Bioinformatics workflow users already have strong execution systems, including
+Nextflow, Snakemake, and Flyte. FLyteTest is not trying to replace those systems
+as a generic workflow language. Its goal is to add a biology-aware planning and
+composition layer on top of curated, reproducible workflow building blocks.
+
+| System | Strength | Limitation FLyteTest Addresses |
+| --- | --- | --- |
+| Nextflow | Mature workflow execution across local, cloud, and HPC environments | Users still generally work through workflow code, configuration files, and channel-level concepts rather than biology-facing prompt intent |
+| Snakemake | Transparent file-oriented DAGs and strong local/HPC usability | Rules are powerful but still require users to encode analysis logic and file dependencies manually |
+| Flyte | Typed workflow execution, task isolation, and containerized reproducibility | It does not by itself provide a biology-specific prompt planner, manifest-backed biological asset resolver, or curated annotation-stage registry |
+| Ad hoc scripts and notebooks | Flexible and familiar for exploratory analysis | Hard to replay, audit, compose, or transfer across local and HPC environments |
+| General AI agents | Flexible natural-language interaction | Without a curated registry and frozen run recipes, they can invent unsupported steps or produce unreproducible workflows |
+
+FLyteTest fills the gap between workflow engines and natural-language
+scientific intent. It uses AI-assisted planning to interpret a request, but it
+grounds every runnable workflow in established tasks, approved workflow stages,
+typed inputs and outputs, explicit containers, resource choices, and saved
+records.
+
+The intended user experience is:
 
 ```text
-User prompt
-  -> prompt interpreter / planner
-    -> workflow catalog + task catalog
-      -> selected registered workflow
-        -> Flyte tasks
-          -> local or HPC/container execution
-            -> structured outputs and manifests
-      -> or runtime synthesis layer
-        -> generated typed task/workflow spec
-          -> Flyte execution surface
-            -> structured outputs, manifests, and generation provenance
+Natural-language request
+  -> biology-aware plan
+  -> registered task/workflow composition
+  -> saved run recipe
+  -> local or Slurm-oriented execution
+  -> traceable result bundle
 ```
 
-The prompt layer should prefer supported workflows first, then fall back to controlled runtime synthesis only when the request cannot be satisfied faithfully by the existing catalog.
+The project's differentiator is not that it can create arbitrary pipelines from
+scratch. The differentiator is that it can dynamically compose supported
+bioinformatics workflows while preserving the reproducibility expectations of
+publication-grade computational biology.
 
-## 10. Planning Layer
+## 3. Architecture Overview
 
-The planning layer should convert free text into a structured request.
+FLyteTest is organized as a layered planning and execution system. Natural
+language is accepted at the boundary, but execution is driven by strongly typed,
+inspectable run records.
+
+```text
+Natural-language request
+    |
+    v
+Intent planning
+    - identify the biological goal
+    - identify the requested workflow family
+    - interpret requested runtime preferences
+    |
+    v
+Strong datatypes
+    - define what each step is allowed to consume and produce
+    - prevent incompatible files or result bundles from being connected
+    - allow new biological data categories to be added as the platform grows
+    |
+    v
+Input and output resolution
+    - use explicit user-provided paths
+    - reuse outputs from prior run records
+    - connect compatible outputs to downstream workflow inputs
+    |
+    v
+Curated workflow catalog
+    - registered tasks
+    - reviewed workflow stages
+    - supported input and output types
+    - allowed composition rules
+    |
+    v
+Run recipe
+    - selected registered workflow, or
+    - composed workflow from registered stages, or
+    - generated inspectable DAG from established tasks
+    |
+    v
+Execution binding
+    - input paths
+    - output locations
+    - container images
+    - CPU and memory
+    - Slurm queue or partition
+    - scheduler-specific settings
+    |
+    v
+Execution
+    - local Flyte run
+    - local saved run recipe execution
+    - containerized execution
+    - Slurm job submission, scheduling, and monitoring
+    |
+    v
+Result bundle
+    - biological outputs
+    - run_manifest.json
+    - task logs
+    - containers used
+    - resources requested and used
+    - scheduler job IDs when applicable
+    - links back to the prompt, run recipe, and input data
+```
+
+The central invariant is:
+
+> Dynamic interpretation happens before execution. Execution only consumes a
+> frozen run recipe with explicit inputs, outputs, resources, containers,
+> assumptions, and scheduler settings.
+
+This separation lets the system support natural-language interaction without
+turning execution into an unreviewable agent action. The planner may interpret a
+request dynamically, but the executor should not improvise. It should run the
+registered workflow, composed workflow, or generated DAG that was saved in the
+run recipe.
+
+## 4. Core Design Examples
+
+This section shows the shape of the system in short examples. The examples are
+not full implementations, but they should make the data flow easy to follow.
+
+### 4.1 Strong Datatypes
+
+Strong datatypes describe what a value means biologically, not just what file
+it came from.
+
+```python
+@dataclass(frozen=True)
+class ReferenceGenome:
+    """A genome that downstream tools may index, align against, or annotate."""
+
+    fasta_path: Path
+    organism_name: str | None = None
+    source_run_manifest: Path | None = None
+
+
+@dataclass(frozen=True)
+class ReadSet:
+    """A paired RNA-seq read set with enough metadata for planning."""
+
+    sample_id: str
+    left_reads: Path
+    right_reads: Path
+
+
+@dataclass(frozen=True)
+class TranscriptEvidenceSet:
+    """Evidence produced from RNA-seq assembly and alignment steps."""
+
+    reference_genome: ReferenceGenome
+    read_sets: tuple[ReadSet, ...]
+    merged_bam: Path | None = None
+    stringtie_gtf: Path | None = None
+    source_run_manifest: Path | None = None
+```
+
+The datatype catalog can grow over time, but only when a new type helps describe
+a real biological boundary.
+
+### 4.2 Tool-Level Task Example
+
+A task should represent one biological tool invocation or one deterministic
+transformation.
+
+```python
+@transcript_evidence_env.task
+def star_align_sample(
+    genome_index: Dir,
+    left_reads: File,
+    right_reads: File,
+    sample_id: str,
+    star_threads: int = 8,
+    star_sif: str = "",
+) -> Dir:
+    """Align one paired-end RNA-seq sample to a prepared STAR genome index."""
+
+    index_dir = require_path(Path(genome_index.download_sync()), "STAR genome index")
+    left_path = require_path(Path(left_reads.download_sync()), "Left reads")
+    right_path = require_path(Path(right_reads.download_sync()), "Right reads")
+    out_dir = make_stage_output_dir("star_align_sample", sample_id=sample_id)
+    run_tool(
+        ["STAR", "--genomeDir", str(index_dir), "--readFilesIn", str(left_path), str(right_path), "--runThreadN", str(star_threads), "--outFileNamePrefix", str(out_dir / f"{sample_id}.")],
+        sif=star_sif,
+        bind_paths=[index_dir, left_path.parent, right_path.parent, out_dir],
+    )
+    return Dir(path=str(out_dir))
+```
+
+### 4.3 Workflow Example
+
+A workflow should show the biological steps in order by composing registered
+tasks.
+
+```python
+@transcript_evidence_env.task
+def transcript_evidence_generation(
+    genome: File,
+    left_reads: File,
+    right_reads: File,
+    sample_id: str,
+    star_sif: str = "",
+    samtools_sif: str = "",
+    trinity_sif: str = "",
+    stringtie_sif: str = "",
+) -> Dir:
+    """Generate transcript evidence from one paired-end RNA-seq sample."""
+
+    de_novo_transcripts = trinity_denovo_assemble(
+        left_reads=left_reads,
+        right_reads=right_reads,
+        sample_id=sample_id,
+        trinity_sif=trinity_sif,
+    )
+
+    genome_index = star_genome_index(
+        genome=genome,
+        star_sif=star_sif,
+    )
+
+    aligned_bam = star_align_sample(
+        genome_index=genome_index,
+        left_reads=left_reads,
+        right_reads=right_reads,
+        sample_id=sample_id,
+        star_sif=star_sif,
+    )
+
+    merged_bam = samtools_merge_bams(
+        sample_bams=[aligned_bam],
+        samtools_sif=samtools_sif,
+    )
+
+    genome_guided_transcripts = trinity_genome_guided_assemble(
+        merged_bam=merged_bam,
+        genome=genome,
+        trinity_sif=trinity_sif,
+    )
+
+    stringtie_gtf = stringtie_assemble(
+        merged_bam=merged_bam,
+        stringtie_sif=stringtie_sif,
+    )
+
+    return collect_transcript_evidence_results(
+        genome=genome,
+        de_novo_transcripts=de_novo_transcripts,
+        merged_bam=merged_bam,
+        genome_guided_transcripts=genome_guided_transcripts,
+        stringtie_gtf=stringtie_gtf,
+    )
+```
+
+### 4.4 Saved Run Recipe Example
+
+A run recipe is the frozen record created after dynamic planning and before
+execution. It records the steps, inputs, outputs, containers, resources, and
+links back to the prompt and input data.
+
+```python
+@dataclass(frozen=True)
+class RunRecipe:
+    """A saved, inspectable execution plan produced from a prompt."""
+
+    recipe_id: str
+    source_prompt: str
+    workflow_name: str
+    nodes: tuple[RunNode, ...]
+    input_bindings: dict[str, Path]
+    output_root: Path
+    execution_profile: str
+    resources: dict[str, ResourceRequest]
+    containers: dict[str, Path]
+    assumptions: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class RunNode:
+    """One task or reviewed workflow stage in the planned run."""
+
+    name: str
+    registered_target: str
+    inputs: dict[str, str]
+    outputs: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ResourceRequest:
+    """The frozen resource request for one run node or workflow."""
+
+    cpu: int
+    memory_gb: int
+    walltime: str | None = None
+    partition: str | None = None
+```
+
+The planner may create this recipe dynamically, but execution should use the
+saved recipe as-is.
+
+### 4.5 Slurm Job Example
+
+Slurm support should make FLyteTest feel closer to Nextflow or Snakemake on
+HPC: the system should send jobs to the cluster, watch them, and cancel them
+when needed from frozen run recipes. The supported topology is a local
+MCP/server process running inside an already-authenticated scheduler-capable
+session. In that model, FLyteTest renders the scheduler submission itself and
+drives `sbatch` directly instead of delegating to a separate Flyte Slurm
+plugin.
+
+The job settings still come from the saved run recipe. Natural-language
+resource requests are interpreted before execution and then frozen into a
+Slurm execution profile that can be rendered into `sbatch` options.
+
+```python
+# Phase 1: Prepare — freeze resource settings into a saved recipe artifact.
+# resource_request fields map to ResourceSpec in src/flytetest/specs.py;
+# render_slurm_script() in spec_executor.py converts them to sbatch directives.
+recipe = prepare_run_recipe(
+    prompt="Run protein evidence alignment ...",
+    execution_profile="slurm",
+    resource_request={
+        "cpu": 8,
+        "memory": "32Gi",
+        "queue": "caslake",
+        "account": "rcc-staff",
+        "walltime": "02:00:00",
+    },
+    runtime_bindings={"exonerate_sif": "data/images/exonerate_2.2.0--1.sif"},
+)
+# artifact_path → .runtime/specs/<recipe_id>.json
+# verify: recipe.typed_plan.execution_profile == "slurm" before submitting
+
+# Phase 2: Submit — renders the sbatch script, calls sbatch, writes a durable
+# run record. The generated script is saved under .runtime/runs/<run_id>/ and
+# can be inspected to verify directives before or after submission.
+result = run_slurm_recipe(artifact_path=recipe.artifact_path)
+# run_record_path → .runtime/runs/<run_id>/slurm_run_record.json
+
+# Phase 3: Monitor — poll monitor_slurm_job until final_scheduler_state is
+# non-null. A non-null value means the job has reached a terminal state.
+status = monitor_slurm_job(run_record_path=result.run_record_path)
+# scheduler_state progression: PENDING → RUNNING → COMPLETED
+#                               or → FAILED / TIMEOUT / OUT_OF_MEMORY
+
+# Phase 4: Retry transient failures from the same frozen recipe.
+# retry_slurm_job resubmits unchanged and returns a new job_id and a new
+# run_record_path for the child run.
+# Resource failures (TIMEOUT, OUT_OF_MEMORY) require a new prepare_run_recipe
+# call with an updated resource_request — they cannot be retried in place.
+retry = retry_slurm_job(run_record_path=result.run_record_path)
+```
+
+The design should preserve the scheduler lifecycle explicitly: submit jobs with
+`sbatch`, check state with `squeue`, `scontrol show job <job-id>`, and `sacct`,
+and cancel jobs with `scancel`. FLyteTest should record those job IDs and
+state changes in the run record alongside the prompt, inputs, containers, logs,
+and outputs.
+
+For offline compute-node environments, the scheduler-bound execution layer must
+verify that containers, databases, input files, and the saved run recipe are
+staged on filesystems visible to compute nodes before submission.
+
+## 5. Biological Pipeline Scope
+
+FLyteTest starts from a concrete genome-annotation pipeline rather than a
+generic workflow abstraction. The current biological scope follows the order
+captured in `docs/braker3_evm_notes.md`.
+
+The platform should keep this order:
+
+```text
+Raw RNA-seq reads and genome setup
+  -> transcript evidence generation
+  -> PASA transcript alignment and assembly
+  -> TransDecoder coding prediction
+  -> protein evidence alignment
+  -> BRAKER3 ab initio annotation
+  -> EVM input preparation
+  -> EVM consensus annotation
+  -> PASA gene model updates
+  -> repeat and transposable-element filtering
+  -> BUSCO quality assessment
+  -> functional annotation and statistics
+  -> optional submission preparation
+```
+
+### 5.1 Transcript Evidence
+
+Transcript evidence workflows should produce RNA-seq-derived evidence that can
+feed PASA, TransDecoder, and consensus annotation.
+
+Representative tools and tasks include Trinity de novo assembly, STAR genome
+indexing and alignment, samtools BAM merge/sort/index, Trinity genome-guided
+assembly, and StringTie transcript assembly. The workflow should keep raw-read
+handling, alignment, assembly, and result collection visible as separate steps.
+
+### 5.2 PASA and TransDecoder
+
+PASA workflows should prepare transcript assemblies, align them to the genome,
+and produce transcript models that can support later gene-model refinement.
+
+Representative tools and tasks include PASA accession extraction, SeqClean,
+PASA alignment and assembly, and TransDecoder coding prediction from PASA
+assemblies.
+
+The stage order comes from `docs/braker3_evm_notes.md`, but the task-level
+command shapes and input/output expectations should come from the tool
+references in `docs/tool_refs/pasa.md` and `docs/tool_refs/transdecoder.md`.
+These stages should record assumptions about PASA configuration, local
+database setup, and runtime-specific dependencies.
+
+### 5.3 Protein and Ab Initio Evidence
+
+Protein and ab initio workflows should prepare independent evidence sources for
+consensus annotation.
+
+Representative tools and tasks include protein FASTA staging, Exonerate
+chunked protein-to-genome alignment, conversion of Exonerate output to
+EVM-ready GFF3, BRAKER3 ab initio prediction, and normalization of
+`braker.gff3` for downstream review.
+
+BRAKER3 should remain documented as a required upstream source for EVM while
+avoiding unsupported claims about unimplemented BRAKER3 substeps.
+
+### 5.4 Consensus Annotation and Refinement
+
+Consensus annotation workflows should combine transcript, protein, and ab initio
+evidence into a reviewed gene-model boundary.
+
+Representative tools and tasks include EVM input preparation, EVM partitioning,
+EVM command generation, EVM execution and recombination, and PASA gene model
+update rounds.
+
+The corrected pre-EVM inputs should stay explicit:
+
+- `transcripts.gff3` from PASA assemblies
+- `predictions.gff3` from BRAKER3 and PASA-derived TransDecoder predictions
+- `proteins.gff3` from Exonerate-derived protein evidence
+
+### 5.5 Repeat Filtering, QC, and Submission
+
+Post-consensus workflows should clean, assess, annotate, and prepare the final
+annotation for downstream use.
+
+Representative tools and tasks include RepeatMasker output conversion,
+funannotate repeat filtering, gffread protein extraction, BUSCO quality
+assessment, EggNOG-mapper functional annotation, AGAT statistics and format
+conversion, and optional `table2asn` submission preparation.
+
+These stages should remain composable so users can request only the part of the
+post-processing path they need.
+
+## 6. Prompting and MCP Interface
+
+FLyteTest treats natural language as the primary user-facing entrypoint, but not
+as the execution mechanism. A prompt should be converted into a structured plan
+that can be inspected, saved, executed, and replayed.
+
+The MCP server is the main interface for conversational clients. It should expose
+small, typed tools for planning, previewing, generating run recipes, launching
+approved executions, and inspecting results. The client owns the conversation;
+FLyteTest owns the workflow catalog, input/output resolution, run recipe
+generation, and execution records.
+
+### 6.1 Prompt Interpretation
+
+A user prompt may describe:
+
+- the biological goal
+- the desired workflow family
+- input datasets or prior result bundles
+- desired outputs
+- runtime preferences such as CPUs, memory, walltime, partition, or container
+  choices
+- execution mode, such as local, containerized, or Slurm-backed
 
 Example:
 
-```json
-{
-  "goal": "consensus_annotation",
-  "workflow": "end_to_end_genome_annotation",
-  "inputs": {
-    "genome_fasta": "/path/to/genome.fa",
-    "reads_1": "/path/to/reads_1.fq.gz",
-    "reads_2": "/path/to/reads_2.fq.gz",
-    "uniprot_fasta": "/path/to/uniprot.fa",
-    "refseq_fasta": "/path/to/refseq.fa"
-  },
-  "options": {
-    "run_qc": true,
-    "run_busco": true,
-    "run_eggnog": true,
-    "prepare_ncbi_submission": false,
-    "execution_mode": "hpc"
-  }
-}
-```
-
-This structure should be enough to drive workflow selection without editing source in the common case.
-When synthesis is needed, the plan should also be able to describe whether the request resolved to:
-
-- a registered workflow
-- a registered task composition
-- a generated runtime task/workflow specification
-
-## 11. Registry
-
-The project should eventually expose a registry of tasks and workflows.
-That registry may include both checked-in entities and persisted runtime-generated entities that have been recorded for later reuse.
-
-Each registered entity should include:
-
-- name
-- category
-- description
-- biological stage
-- input schema
-- output schema
-- runtime requirements
-- tags such as `transcript_evidence`, `protein_evidence`, `abinitio`, `evm`, `pasa`, `repeat_filtering`, `functional_annotation`, `submission`
-
-This registry is the bridge between prompts and Flyte execution.
-When runtime synthesis is used, the generated entity should either be captured in this registry or emitted with enough equivalent metadata that it can be inspected and replayed later.
-
-## 11.1 Implementation Guides
-
-The repo-local guides under `.codex/` operationalize this design for day-to-day implementation work.
-
-Use them as follows:
-
-- `.codex/tasks.md`: task boundaries, task shape, default hardware conventions, and task-level pseudocode
-- `.codex/workflows.md`: workflow composition, collector-stage conventions, and workflow-level pseudocode
-- `.codex/documentation.md`: how milestones, assumptions, manifests, and user-facing docs should be written
-- `.codex/testing.md`: verification expectations and validation strategy
-- `.codex/code-review.md`: review priorities and expected review framing
-
-Agents should read the relevant `.codex` guide after `AGENTS.md` and this design document, especially when making changes in the corresponding area.
-
-If there is any conflict:
-
-- `AGENTS.md` and `DESIGN.md` take precedence
-- `.codex` guides refine implementation behavior and repository workflow, not biological scope
-
-## 12. Why Registry-Driven Design Matters
-
-If the goal is "the pipeline will do it without modifying code," then most user prompts should resolve to supported workflows rather than ad hoc code generation.
-
-Without a registry:
-
-- the model invents behavior
-- the system becomes harder to validate
-- reproducibility suffers
-
-With a registry:
-
-- supported capabilities are explicit
-- unsupported prompts can fail honestly
-- users get consistent results
-- generated runtime entities can be captured, reviewed, and reused instead of disappearing after one run
-
-## 13. Execution Model
-
-### 13.1 Local mode
-
-Local runs are useful for:
-
-- development
-- schema validation
-- lightweight task testing
-- small fixture-based examples
-- lightweight real-data smoke tests built around the tutorial-derived files in `data/`
-
-### 13.3 Fixture-backed validation
-
-The repo now has a lightweight validation dataset based on the Galaxy Training Network Braker3 tutorial.
-
-Current local fixture set:
-
-- `data/genome.fa`
-- `data/RNAseq.bam`
-- `data/proteins.fa`
-
-These files should be used to grow milestone-scoped smoke tests for the active EVM execution milestone.
-
-Validation expectations for milestone work:
-
-- keep synthetic tests for deterministic staging, discovery, concatenation, and manifest shaping
-- add fixture-backed smoke tests when a stage can be exercised locally with acceptable runtime
-- prefer temporary subsets or copied working files over mutating fixture inputs in place
-- do not treat fixture-backed smoke coverage as a substitute for eventual HPC-scale validation
-
-### 13.2 HPC mode
-
-The attached notes strongly imply that the main annotation pipeline is HPC-first.
-HPC mode is essential for:
-
-- Trinity assemblies
-- STAR alignments over many samples
-- chunked Exonerate runs
-- EVM partition execution
-- PASA update runs
-- BUSCO and EggNOG at realistic scale
-
-Containerized execution should remain first-class.
-Apptainer/Singularity support is important for cluster portability.
-
-## 14. Result Model
-
-Every workflow should produce:
-
-- a structured result directory
-- a machine-readable manifest
-- stage-specific outputs in predictable subdirectories
-
-For example:
-
 ```text
-results/
-  run_manifest.json
-  qc/
-  transcript_evidence/
-  pasa/
-  transdecoder/
-  protein_evidence/
-  braker/
-  evm/
-  annotation_refinement/
-  repeat_filtering/
-  functional_annotation/
-  submission/
+Build an RNA-seq QC and quantification workflow that runs FastQC on paired-end
+reads and uses Salmon to build a transcriptome index and quantify the reads.
+Use 6 CPU cores, 32 GB of memory, and run it on the normal Slurm partition.
 ```
 
-The manifest should record:
+The prompt interpreter should produce a structured planning result:
 
-- workflow name
-- input paths
-- key intermediate products
-- final annotation products
-- stage completion status
-- runtime metadata
-- whether the run used a registered or runtime-generated entity
-- generation prompt, generation assumptions, and generated entity identifier when synthesis was used
+```python
+@dataclass(frozen=True)
+class PromptPlan:
+    """The structured interpretation of one natural-language request."""
 
-## 15. Proposed Package Layout
+    original_prompt: str
+    biological_goal: str
+    workflow_family: str
+    selected_targets: tuple[str, ...]
+    resolved_inputs: dict[str, Path]
+    missing_inputs: tuple[str, ...]
+    resource_request: ResourceRequest | None
+    execution_mode: str
+    assumptions: tuple[str, ...]
+    supported: bool
+```
 
-As functionality expands, the repository should move toward:
+If the prompt asks for unsupported biology or missing resources, the planner
+should return a clear decline or missing-input report instead of inventing steps.
+
+### 6.2 MCP Tool Surface
+
+The MCP interface should expose the system in small steps rather than one opaque
+"do everything" call.
+
+Target tools:
+
+- `list_entries`: list registered tasks and workflows.
+- `plan_request`: convert natural language into a structured plan.
+- `run_task`: run one explicitly supported registered task for bounded ad hoc
+  experimentation when the request is stage-scoped rather than workflow-scoped.
+- `prepare_run_recipe`: save an inspectable run recipe from a supported plan.
+- `validate_run_recipe`: check inputs, outputs, containers, resources, and
+  offline-compute assumptions.
+- `run_local_recipe`: execute a saved run recipe locally when supported.
+- `prepare_slurm_recipe`: convert a saved run recipe into a Slurm-backed Flyte
+  execution plan.
+- `submit_slurm_recipe`: submit a Slurm-backed recipe through the supported
+  authenticated-session `sbatch` path after validation.
+- `monitor_slurm_job`: inspect scheduler state, logs, and job IDs.
+- `inspect_result`: read result manifests and summarize produced outputs.
+
+The tool surface should remain stable and machine-readable. New tools should be
+additive unless an intentional compatibility migration is documented.
+Ad hoc task execution should remain a bounded, explicit surface and should not
+replace saved recipe generation for multi-stage reproducible workflow runs.
+
+### 6.3 MCP Resources
+
+MCP resources should provide small, inspectable reference data for clients:
+
+- `flytetest://scope`
+- `flytetest://registered-workflows`
+- `flytetest://example-prompts`
+- `flytetest://execution-profiles`
+- `flytetest://slurm-profile`
+- `flytetest://run-recipes/<recipe_id>`
+- `flytetest://result-manifests/<run_id>`
+
+Resources should describe capabilities and saved records. They should not become
+large logs, full datasets, or a substitute for result directories.
+
+### 6.4 Prompt Safety Rules
+
+The prompt layer must follow these rules:
+
+- It may dynamically interpret intent and resource preferences.
+- It may compose new workflows only from established, registered tasks or
+  reviewed workflow stages.
+- It must freeze execution into a saved run recipe before launching work.
+- It must report missing inputs, unsupported stages, ambiguous matches, and
+  offline-compute violations explicitly.
+- It must not modify biological data to satisfy expected outcomes.
+- It must not submit Slurm jobs from vague or unresolved resource requests.
+
+## 7. Execution Strategy
+
+FLyteTest separates planning from execution. Planning may be dynamic and
+prompt-driven, but execution should be controlled by a saved run recipe with
+explicit inputs, outputs, containers, resource requests, and scheduler settings.
+
+The execution layer should support several modes without changing the biological
+meaning of the workflow.
+
+### 7.1 Local Execution
+
+Local execution is the development and smoke-test path. It should remain useful
+for small examples, fixture-backed tests, and workflows that can run on a single
+machine.
+
+Local execution should:
+
+- run registered workflows through the Flyte entrypoint when possible
+- support bounded direct task execution for explicit registered task targets
+  when users need stage-level experimentation or debugging
+- support saved run recipes for composed workflows
+- write the same result bundle and manifest structure expected from other
+  execution modes
+- use explicit `.venv/bin/...` commands in examples and generated scripts
+
+### 7.2 Containerized Execution
+
+Bioinformatics tools should not depend on whatever binaries happen to be
+installed on a user's machine. Each task should be able to run natively for
+local development or inside an explicitly supplied container image.
+
+Containerized execution should:
+
+- support Apptainer or Singularity image paths for cluster portability
+- record the exact container path or image identifier used for each task
+- bind only the needed input and output directories
+- fail clearly when a required container or runtime is missing
+
+### 7.3 Flyte-Managed Execution
+
+Flyte should own the workflow graph and task-level execution semantics. FLyteTest
+adds the biology-aware planning layer, but it should not bypass Flyte when a
+Flyte-native task or workflow execution path is available.
+
+Flyte-managed execution should:
+
+- preserve typed task and workflow boundaries
+- keep task isolation and result passing explicit
+- allow task-level resource and runtime settings
+- keep compatibility with existing `flyte run` entrypoints
+
+### 7.4 Slurm-Backed Execution
+
+Slurm is a first-class execution goal. FLyteTest should support Slurm through
+the scheduler-bound execution layer that runs inside an already-authenticated
+scheduler-capable session, renders `sbatch` scripts from frozen run recipes,
+and manages the job lifecycle directly.
+
+Slurm-backed execution should:
+
+- translate a saved run recipe and resource request into explicit `sbatch`
+  settings
+- render the job script from the frozen recipe and execution profile
+- submit jobs with `sbatch`
+- track scheduler job IDs
+- monitor job state with `squeue`, `scontrol show job`, and `sacct`
+- support cancellation through `scancel`
+- collect task logs and connect completed outputs back to the run record
+
+The goal is a user experience similar to Nextflow or Snakemake on HPC: the user
+asks for the analysis and resources, FLyteTest builds the run record, and the
+execution system handles submission, scheduling, monitoring, logs, and outputs
+without requiring a separate plugin-backed SSH control path.
+
+### 7.5 Offline Compute Nodes
+
+Many HPC systems allow internet access on login nodes but not compute nodes.
+FLyteTest should treat this as a normal deployment shape rather than an
+exception.
+
+Before a Slurm-backed run is submitted, the system should verify that the
+compute job can run offline:
+
+- input files are on filesystems visible to compute nodes
+- container images are staged and readable
+- tool databases such as BUSCO lineages or EggNOG databases are staged locally
+- the saved run recipe is visible to the job
+- output and log directories are writable
+- no task expects to download data during compute-node execution
+
+If a required dependency is missing, the system should fail before submission
+with a clear report of what must be staged.
+
+### 7.6 Execution Records
+
+Every execution mode should produce a result record that can be used later for
+inspection, reruns, or downstream workflow composition.
+
+The record should include:
+
+- the original prompt
+- the saved run recipe identifier
+- input files and prior result bundles used
+- workflow stages executed
+- task logs and output paths
+- container images used
+- requested resources and observed resources when available
+- Slurm job IDs and scheduler states when applicable
+- assumptions and warnings that affected the run
+
+The execution record is what lets dynamic workflow planning remain reproducible.
+
+## 8. Validation and Testing
+
+FLyteTest must test both biological workflow behavior and orchestration
+behavior. Dynamic planning is only acceptable when the generated run recipe,
+resolved inputs, workflow graph, resource bindings, and execution records can be
+tested independently.
+
+Validation should stay useful on a developer machine, even when real tools,
+containers, Slurm access, or large reference databases are not available.
+
+### 8.1 Small Local Test Datasets
+
+FLyteTest should maintain small, representative datasets that allow fast local
+testing without requiring full production-scale genomes, read sets, or protein
+databases.
+
+These datasets should be small enough to run on a developer laptop or a single
+local workstation, but structured enough to exercise the same file contracts as
+real runs.
+
+Small test datasets should include:
+
+- a tiny reference genome FASTA
+- paired-end RNA-seq read fixtures
+- a small transcriptome FASTA for QC and quantification
+- a small protein FASTA for Exonerate-backed protein evidence tests
+- minimal PASA-style or EVM-style fixture outputs when the real tools are too heavy for local tests
+- a tiny RepeatMasker `.out` fixture
+- small BUSCO-like or lineage-path fixtures for path handling without a full BUSCO database
+- saved `run_manifest.json` examples from representative stage boundaries
+
+Local test datasets should be used for:
+
+- fast smoke tests of workflow wiring
+- manifest shape tests
+- input/output resolution tests
+- prompt-to-run-recipe tests
+- container path validation tests
+- Slurm run-recipe generation tests that do not require a real scheduler
+
+Full biological validation on real datasets remains separate from fast local
+testing. The local fixtures prove that contracts, paths, manifests, and DAG
+composition behave correctly; they do not replace scientific validation of tool
+performance on production data.
+
+### 8.2 Static and Import Checks
+
+Every milestone should keep the Python source importable and compile cleanly.
+
+Checks should include:
+
+- Python compilation for touched modules
+- import checks for task and workflow modules
+- compatibility checks for `flyte_rnaseq_workflow.py`
+- registry lookups for new tasks and workflows
+- MCP tool and resource name checks
+
+### 8.3 Strong Datatype and Wiring Tests
+
+Strong datatype tests should prove that workflow composition cannot connect
+incompatible biological objects.
+
+Tests should cover:
+
+- serialization and reload of strong datatypes
+- conversion from result manifests into typed biological objects
+- valid wiring between compatible workflow stages
+- rejection of invalid wiring, such as passing BAM-only evidence where a genome FASTA is required
+
+### 8.4 Prompt Planning Tests
+
+Prompt planning tests should prove that natural-language requests become stable,
+reviewable plans.
+
+Tests should cover:
+
+- supported prompts resolving to the expected workflow family
+- prompts with resource requests producing explicit CPU, memory, walltime, and partition bindings
+- prompts that require Slurm producing a Slurm execution profile
+- ambiguous prompts reporting ambiguity instead of guessing
+- unsupported biology being declined instead of invented
+- generated workflows being grounded only in registered tasks or reviewed stages
+
+### 8.5 Run Recipe Tests
+
+Run recipe tests should prove that dynamic planning freezes into a stable record
+before execution.
+
+Tests should cover:
+
+- run recipe creation from a supported prompt plan
+- saving and reloading a run recipe without re-parsing the original prompt
+- stable steps and their connections
+- explicit input and output bindings
+- explicit container and resource bindings
+- recorded assumptions and warnings
+- deterministic replay from the saved record
+
+### 8.6 Workflow and Manifest Tests
+
+Workflow tests should verify stage boundaries without requiring full-scale
+biological runs for every change.
+
+Tests should cover:
+
+- fixture-backed workflow smoke tests when tool dependencies are available
+- synthetic tests for collector tasks and result bundle shape
+- `run_manifest.json` keys and expected output paths
+- downstream reuse of prior result bundles
+- preservation of the notes-faithful annotation stage order
+
+### 8.7 MCP Interface Tests
+
+MCP tests should ensure the tool interface remains stable for conversational
+clients.
+
+Tests should cover:
+
+- stable tool names
+- stable resource URIs
+- structured `plan_request` responses
+- run recipe preparation responses
+- clear decline messages for unsupported prompts
+- result inspection responses
+- additive changes that do not break existing clients unless an intentional migration is documented
+
+### 8.8 Slurm and HPC Tests
+
+Slurm validation should start with synthetic and dry-run coverage, then progress
+to real cluster integration tests when a configured Slurm environment is
+available.
+
+Tests should cover:
+
+- translation from run recipe resources to `sbatch` settings and script text
+- validation of authenticated-session scheduler access
+- validation that containers, databases, inputs, and run recipes are staged on compute-visible filesystems
+- scheduler job ID capture, polling, cancellation, and log path recording
+
+Real Slurm tests should be optional and clearly marked because they depend on
+cluster access, scheduler policy, and local deployment configuration.
+
+### 8.9 Representative Test Examples
+
+A few representative tests are enough to show the testing style. The suite does
+not need to spell out every tool-specific check in the design document.
+
+```python
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest import TestCase
+
+from flytetest.planner_types import ReferenceGenome, ReadSet
+from flytetest.planning import plan_typed_request
+from flytetest.spec_artifacts import (
+    artifact_from_typed_plan,
+    load_workflow_spec_artifact,
+    save_workflow_spec_artifact,
+)
+
+
+class PromptPlanningTests(TestCase):
+    def test_prompt_planning_resolves_supported_rnaseq_request(self) -> None:
+        genome = ReferenceGenome(fasta_path=Path("data/genome.fa"))
+        reads = ReadSet(
+            sample_id="sample-1",
+            left_reads_path=Path("data/reads_1.fq.gz"),
+            right_reads_path=Path("data/reads_2.fq.gz"),
+        )
+
+        plan = plan_typed_request(
+            "Build transcript evidence from RNA-seq reads.",
+            explicit_bindings={
+                "ReferenceGenome": genome,
+                "ReadSet": reads,
+            },
+        )
+
+        self.assertTrue(plan["supported"])
+        self.assertEqual(plan["biological_goal"], "transcript_evidence_generation")
+        self.assertIn("transcript_evidence_generation", plan["matched_entry_names"])
+
+
+class RunRecipeTests(TestCase):
+    def test_saved_run_recipe_round_trips_without_reprompting(self) -> None:
+        genome = ReferenceGenome(fasta_path=Path("data/genome.fa"))
+        reads = ReadSet(
+            sample_id="sample-1",
+            left_reads_path=Path("data/reads_1.fq.gz"),
+            right_reads_path=Path("data/reads_2.fq.gz"),
+        )
+
+        typed_plan = plan_typed_request(
+            "Build transcript evidence from RNA-seq reads.",
+            explicit_bindings={
+                "ReferenceGenome": genome,
+                "ReadSet": reads,
+            },
+        )
+
+        artifact = artifact_from_typed_plan(typed_plan, created_at="2026-04-07T12:00:00Z")
+
+        with TemporaryDirectory() as tmpdir:
+            saved_path = save_workflow_spec_artifact(artifact, Path(tmpdir))
+            loaded = load_workflow_spec_artifact(saved_path)
+
+        self.assertEqual(loaded.source_prompt, "Build transcript evidence from RNA-seq reads.")
+        self.assertEqual(loaded.workflow_spec.name, artifact.workflow_spec.name)
+```
+
+A Slurm dry-run test should fail before submission if inputs, containers, or
+databases are not staged for the compute nodes.
+
+## 9. Implementation Roadmap
+
+This roadmap describes how FLyteTest should evolve toward the target design.
+It is not limited to the current workflow structure. Existing workflows,
+registry entries, planner behavior, and MCP surfaces may be refactored as needed
+when the design calls for a clearer or more correct architecture.
+
+### 9.1 Ground the Design in the Current Biological Baseline
+
+The first priority is to preserve the notes-faithful genome-annotation pipeline
+as the scientific baseline while making room for the broader prompt-driven
+architecture.
+
+This phase should keep the biological intent visible while allowing refactors of:
+
+- workflow composition
+- task boundaries
+- planner behavior
+- run record structure
+- execution profile handling
+- Slurm-oriented job generation and monitoring
+
+### 9.2 Refactor Toward Strong Datatypes and Run Recipes
+
+The current workflow code should be reshaped so that biological data is
+described through strong datatypes and selected runs are represented as saved
+run recipes.
+
+This phase should:
+
+- expand biological datatypes where the pipeline needs clearer boundaries
+- make prompt planning produce structured plans instead of ad hoc execution
+- make result directories and manifests easier to reuse downstream
+- make composed workflows easier to save, inspect, and replay
+- refactor existing workflow implementations if they are too narrow for the
+  target design
+
+### 9.3 Make Resources and SLURM First-Class
+
+Resource handling should move from incidental task flags to explicit planning
+and execution decisions.
+
+This phase should:
+
+- interpret CPU, memory, walltime, and partition requests from prompts
+- freeze resource choices into the saved run recipe
+- generate Slurm-ready execution records and `sbatch`-aligned settings
+- use the scheduler-bound authenticated-session topology for submission,
+  scheduling, monitoring, and cancellation
+- validate offline compute-node assumptions before submission
+- refactor workflow or execution code if current shapes cannot support these
+  resource decisions cleanly
+
+### 9.4 Broaden the Biological Scope
+
+Once the core planning and execution path is stable, the biological coverage can
+expand to additional pipeline families. The architecture is not limited to genome
+annotation — any bioinformatics pipeline can be supported as long as its tasks
+exist in the registry and their inputs and outputs are typed.
+
+Near-term annotation extensions:
+
+- EggNOG-mapper support
+- AGAT statistics and conversion
+- optional `table2asn` submission preparation
+- broader transcript evidence handling when needed
+
+Longer-term pipeline families (examples, not exhaustive):
+
+- variant calling and genotyping
+- RNA-seq differential expression
+- metagenomics and taxonomic profiling
+- any other family grounded in registered, typed tasks and reviewed workflow stages
+
+### 9.5 Mature the MCP Interface
+
+The MCP layer should become a practical entrypoint for planning, recipe
+generation, execution launching, and result inspection.
+
+This phase should:
+
+- expose prompt planning, run recipe preparation, validation, and inspection
+- surface Slurm-ready run records and job status
+- keep the tool surface small, typed, and machine-readable
+- preserve compatibility where possible, but allow deliberate migrations when
+  the architecture demands them
+
+## 10. Repository Layout
+
+The goal is to keep biological stages, planning logic, execution logic, and
+interface code in separate modules so the codebase is easy to navigate for
+both humans and agents.
+
+### Current layout (as of 2026-04-14)
 
 ```text
 src/flytetest/
-  config.py
-  registry.py
-  marshal.py
+  config.py            # shared Flyte TaskEnvironment defaults, per-family overrides
+  composition.py       # registry-constrained graph traversal for multi-stage composition
+  gff3.py              # GFF3 parsing helpers
+  manifest_envelope.py # shared run_manifest.json envelope helpers
+  manifest_io.py       # manifest read/write utilities
+  mcp_contract.py      # SHOWCASE_TARGETS, tool descriptions, MCP surface contract
+  planner_adapters.py  # adapt current assets/manifests into planner dataclasses
+  planner_types.py     # stable biology-facing planner dataclasses
+  planning.py          # plan_typed_request(), intent matching, decline handling
+  registry.py          # registered tasks, workflows, compatibility metadata
+  resolver.py          # LocalManifestAssetResolver, binding resolution
+  server.py            # FastMCP server, all tool implementations
+  slurm_monitor.py     # async background Slurm polling loop
+  spec_artifacts.py    # WorkflowSpec, BindingPlan, DurableAssetRef, sidecar I/O
+  spec_executor.py     # LocalWorkflowSpecExecutor, SlurmWorkflowSpecExecutor
+  specs.py             # normalized spec + planning/replay metadata contracts
   tasks/
-    qc.py
-    transcript_evidence.py
-    protein_evidence.py
+    agat.py            # AGAT post-processing tasks (statistics, conversion, cleanup)
+    annotation.py      # BRAKER3 ab initio annotation
+    consensus.py       # EVM consensus
+    eggnog.py          # EggNOG functional annotation
+    filtering.py       # GFF3 filtering (gffread_proteins, agat variants)
+    functional.py      # functional annotation helpers
+    pasa.py            # PASA transcript assembly
+    protein_evidence.py  # Exonerate protein alignment
+    qc.py              # FastQC, BUSCO quality control
+    quant.py           # STAR quantification
+    transdecoder.py    # TransDecoder ORF prediction
+    transcript_evidence.py  # STAR alignment
+  types/
+    assets.py          # ManifestSerializable, typed AssetToolProvenance, generic asset names
+  workflows/
+    agat.py
     annotation.py
+    consensus.py
+    eggnog.py
     filtering.py
     functional.py
-    submission.py
-  workflows/
+    pasa.py
+    protein_evidence.py
     rnaseq_qc_quant.py
     transcript_evidence.py
-    protein_evidence.py
-    consensus_annotation.py
-    annotation_postprocess.py
-    submission.py
-    end_to_end_annotation.py
+    transdecoder.py
 ```
 
-This is preferable to growing one monolithic workflow file forever.
+### Divergences from original target
 
-## 16. Prompt-Driven User Experience
+- `submission.py` (tasks) — not yet created; `table2asn` submission is deferred
+- `composition.py`, `gff3.py`, `manifest_envelope.py`, `manifest_io.py`,
+  `slurm_monitor.py` — added since the original target was written
+- `types/assets.py` — added as a subpackage for generic biology asset types
 
-Examples of target user requests:
+### Layout Principles
 
-- "Generate transcript evidence from my RNA-seq reads and genome."
-- "Run BRAKER3 plus protein and transcript evidence to create a consensus annotation."
-- "Update the annotation with PASA and remove TE-associated models."
-- "Assess the final protein set with BUSCO and functionally annotate with EggNOG."
-- "Prepare the final GFF3 and SQN bundle for NCBI submission."
+- keep task code in task modules, not in planners or workflows
+- keep workflow composition in workflow modules, not in the MCP layer
+- keep planning and input resolution separate from execution code
+- keep run recipe and manifest logic separate from runtime orchestration
+- keep Slurm-specific code in its own execution layer once that layer grows
+- keep compatibility entrypoints stable for users who still rely on `flyte run`
 
-The system should classify these requests into supported workflows and compose them from registered tasks when possible.
-When the current catalog is insufficient but the request is still biologically valid and technically supported, the system may synthesize a new task or workflow shape under the runtime-generation guardrails above.
+### Supporting Files
 
-## 17. Controlled Runtime Generation
+The repository should also keep a small number of top-level docs and handoff
+files that explain the design and current scope:
 
-Generating new Flyte code for every user request without constraints would make this system:
+- `README.md`
+- `DESIGN.md`
+- `CHANGELOG.md`
+- `docs/mcp_showcase.md`
+- `docs/tutorial_context.md`
+- `docs/capability_maturity.md`
+- `docs/realtime_refactor_checklist.md`
 
-- harder to validate
-- harder to reproduce on HPC
-- harder to maintain across many external tools
+## 11. Open Questions and Risks
 
-For developers, code generation can still help scaffold new tasks.
-For end users, declarative workflow selection remains the correct default.
+This design is intentionally opinionated, but a few questions still matter
+because they affect how the system should evolve and how much flexibility it
+should leave for future workflow families.
 
-Runtime generation is appropriate only when:
+### 11.1 Open Questions
 
-- the checked-in catalog cannot satisfy the requested biological stage faithfully
-- the generated task or workflow can still expose typed inputs and outputs
-- the generated execution plan remains inspectable and deterministic
-- the generated entity records enough provenance to be replayed later
+- How much of the natural-language planning should be interpreted by the prompt
+  layer versus by explicit user-selected execution profiles?
+- Which resource phrases should map to fixed cluster settings, and which should
+  require confirmation before submission?
+- How should the system represent multiple valid ways to resolve the same
+  input, such as a genome available from both a direct path and a prior run
+  manifest?
+- How far should the curated workflow catalog grow before the design needs a
+  more formal compatibility model?
+- Should the first Slurm integration focus on submitting Flyte-backed tasks, or
+  should it also support prepared cluster scripts from the start?
+- Which biological stage families should be added next after the current
+  annotation pipeline, and which should remain outside the design until a
+  concrete user need appears?
 
-Runtime generation should not be used to hide uncertainty.
-If the notes or the biological protocol are underspecified, the generated entity must record that uncertainty explicitly rather than inventing unsupported behavior.
+### 11.2 Risks
 
-## 18. Incremental Roadmap
+- The planner could become too permissive and start inventing workflows that
+  are not grounded in established tasks or reviewed workflow stages.
+- Resource interpretation could become inconsistent if vague phrases like
+  "high memory" or "short queue" are not tied to a cluster profile.
+- Slurm support could become fragmented if script generation, submission,
+  scheduling, and monitoring are implemented as disconnected pieces.
+- Offline compute-node support could fail if containers, databases, or input
+  files are not staged as a first-class part of the run recipe.
+- The design could drift back toward file-plumbing language if strong datatypes
+  are not kept central in planning and execution.
+- The repository could accumulate too many partial execution paths if local,
+  Flyte-managed, and Slurm-backed modes are not kept clearly separated.
+- MCP could become too broad if every planning and execution action is exposed
+  as a separate tool without a clear user flow.
 
-### Phase 1
+### 11.3 Design Rules To Keep
 
-- keep the current RNA-seq workflow working
-- split code into tasks and workflows modules
-- add a registry
-
-### Phase 2
-
-- implement transcript evidence tasks and workflows from the notes
-- add PASA preparation and TransDecoder tasks
-- add protein evidence alignment tasks
-
-### Phase 3
-
-- implement BRAKER3 as an explicit task family
-- implement EVM consensus workflows
-- implement PASA update rounds and repeat filtering workflows
-
-### Phase 4
-
-- implement BUSCO, EggNOG, AGAT, and submission-prep workflows
-- add a prompt-to-plan layer that maps user requests to registered workflows
-
-### Phase 5
-
-- optionally expose the registry and execution layer through MCP
-- optionally add richer client-side routing if the workflow catalog grows large
-- add controlled runtime task/workflow synthesis with provenance capture, typed interfaces, and replayable generated artifacts
-- future TODO: auto-discover checked-in tasks and workflows into the registry alongside persisted runtime-generated entities when appropriate
-
-## 19. Success Criteria
-
-The architecture is successful when:
-
-- transcript evidence, protein evidence, EVM, PASA, repeat filtering, and annotation QC are each represented explicitly
-- new tasks can be added without redesigning the whole system
-- workflows compose naturally from existing tasks
-- most common user prompts are satisfied by selecting supported workflows
-- uncommon but valid user prompts can be handled by controlled runtime-generated tasks or workflows without sacrificing provenance
-- local and HPC execution remain consistent
-- outputs are structured and predictable
-
-## 20. Immediate Next Steps
-
-1. refactor the current code into `tasks` and `workflows`
-2. define the registry schema for task and workflow discovery
-3. implement transcript evidence tasks first
-4. implement the EVM consensus workflow using `braker.gff3`, PASA, and Exonerate-derived evidence
-5. implement functional annotation workflows after the repeat-filtering boundary
-6. add a simple prompt-to-plan interface that selects from registered workflows first and leaves room for future runtime synthesis
+- New workflows may be dynamically composed only when grounded in established
+  tasks or reviewed workflow stages.
+- Execution must consume a frozen run recipe, not reinterpret the original
+  prompt.
+- Slurm support should behave like a real HPC interface, including submission,
+  scheduling, monitoring, cancellation, and logging.
+- Result bundles and manifests should remain the main source of truth for
+  downstream reuse.
+- The biological pipeline should remain the anchor for all architecture
+  changes.

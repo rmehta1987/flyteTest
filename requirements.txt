@@ -1,2 +1,9 @@
-flyte>=2.0,<3.0
-mcp[cli]>=1.0,<2.0
+# Runtime dependencies for FLyteTest.
+# Cluster/local install:
+#   python3 -m venv .venv
+#   . .venv/bin/activate
+#   python -m pip install -U pip
+#   python -m pip install -r requirements-cluster.txt
+anyio>=4,<5
+flyte>=2,<3
+mcp[cli]>=1,<2

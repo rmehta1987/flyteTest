@@ -1,6 +1,8 @@
 """PASA task implementations for FLyteTest transcript and post-EVM refinement.
 
-This module covers PASA transcript preparation and align/assemble using the
+The stage order follows `docs/braker3_evm_notes.md`, while the PASA command
+shapes and input/output expectations follow `docs/tool_refs/pasa.md`. This
+module covers PASA transcript preparation and align/assemble using the
 internally collected Trinity transcript branch, plus downstream post-EVM PASA
 update rounds.
 """
@@ -10,7 +12,6 @@ from __future__ import annotations
 import json
 import shutil
 import sqlite3
-import tempfile
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -26,13 +27,22 @@ from flytetest.config import (
     RESULTS_ROOT,
     pasa_env,
     pasa_update_env,
+    project_mkdtemp,
     require_path,
     run_tool,
 )
+from flytetest.manifest_io import (
+    as_json_compatible as _as_json_compatible,
+    copy_file as _copy_file,
+    copy_tree as _copy_tree,
+    read_json as _read_json,
+    write_json as _write_json,
+)
 from flytetest.types import (
+    AssetToolProvenance,
+    CleanedTranscriptDataset,
     CombinedTrinityTranscriptAsset,
     PasaAlignmentAssemblyResult,
-    PasaCleanedTranscriptAsset,
     PasaGeneModelUpdateInputBundleAsset,
     PasaGeneModelUpdateResultBundle,
     PasaGeneModelUpdateRoundResult,
@@ -43,22 +53,8 @@ from flytetest.types import (
     TrinityGenomeGuidedAssemblyResult,
 )
 
-
-def _as_json_compatible(value: Any) -> Any:
-    """Recursively convert manifest values into JSON-serializable primitives."""
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, dict):
-        return {key: _as_json_compatible(item) for key, item in value.items()}
-    if isinstance(value, tuple):
-        return [_as_json_compatible(item) for item in value]
-    if isinstance(value, list):
-        return [_as_json_compatible(item) for item in value]
-    return value
-
-
 def _trinity_gg_fasta(trinity_dir: Path) -> Path:
-    """Resolve the primary genome-guided Trinity FASTA from a task output directory."""
+    """Resolve the genome-guided Trinity FASTA from a Trinity output directory."""
     for candidate in (
         trinity_dir / "Trinity-GG.fasta",
         trinity_dir / "Trinity.fasta",
@@ -75,7 +71,7 @@ def _trinity_gg_fasta(trinity_dir: Path) -> Path:
 
 
 def _trinity_denovo_fasta(trinity_dir: Path) -> Path:
-    """Resolve the primary de novo Trinity FASTA from a task output directory."""
+    """Resolve the de novo Trinity FASTA from a Trinity output directory."""
     for candidate in (
         trinity_dir / "Trinity.fasta",
         trinity_dir / "trinity_denovo.Trinity.fasta",
@@ -96,12 +92,12 @@ def _trinity_denovo_fasta(trinity_dir: Path) -> Path:
 
 
 def _stringtie_gtf(stringtie_dir: Path) -> Path:
-    """Resolve the main StringTie transcript GTF used as PASA input."""
+    """Resolve the StringTie GTF that feeds PASA align/assemble."""
     return require_path(stringtie_dir / "transcripts.gtf", "StringTie transcripts GTF")
 
 
 def _stringtie_abundance(stringtie_dir: Path) -> Path | None:
-    """Return StringTie's gene abundance table when it is present."""
+    """Return the optional StringTie gene-abundance table."""
     candidate = stringtie_dir / "gene_abund.tab"
     if candidate.exists():
         return candidate
@@ -109,7 +105,7 @@ def _stringtie_abundance(stringtie_dir: Path) -> Path | None:
 
 
 def _seqclean_clean_fasta(seqclean_dir: Path) -> Path:
-    """Resolve the single cleaned transcript FASTA produced by `seqclean`."""
+    """Resolve the cleaned transcript FASTA produced by `seqclean`."""
     clean_candidates = sorted(seqclean_dir.glob("*.clean"))
     if len(clean_candidates) == 1:
         return clean_candidates[0]
@@ -122,7 +118,7 @@ def _pasa_config_path(config_dir: Path) -> Path:
 
 
 def _sqlite_db_path(config_dir: Path) -> Path:
-    """Resolve the single SQLite database file created for a PASA run."""
+    """Resolve the SQLite database file created for a PASA run."""
     candidates = sorted(
         path
         for path in config_dir.iterdir()
@@ -144,7 +140,7 @@ def _first_existing(directory: Path, suffixes: tuple[str, ...], prefixes: tuple[
 
 
 def _pasa_output_prefixes(database_name: str) -> tuple[str, ...]:
-    """Return PASA filename prefixes compatible with a database name and its stem."""
+    """Return PASA filename prefixes for a database name and its stem."""
     stem = Path(database_name).stem
     if stem == database_name:
         return (database_name,)
@@ -152,12 +148,12 @@ def _pasa_output_prefixes(database_name: str) -> tuple[str, ...]:
 
 
 def _pasa_assemblies_fasta(pasa_dir: Path, database_name: str) -> Path | None:
-    """Resolve the PASA assemblies FASTA if the run produced one."""
+    """Resolve the PASA assemblies FASTA when the run produced one."""
     return _first_existing(pasa_dir, (".assemblies.fasta",), _pasa_output_prefixes(database_name))
 
 
 def _pasa_assemblies_gff3(pasa_dir: Path, database_name: str) -> Path | None:
-    """Resolve the PASA assemblies GFF3 if the run produced one."""
+    """Resolve the PASA assemblies GFF3 when the run produced one."""
     return _first_existing(
         pasa_dir,
         (".pasa_assemblies.gff3", ".assemblies.gff3"),
@@ -166,7 +162,7 @@ def _pasa_assemblies_gff3(pasa_dir: Path, database_name: str) -> Path | None:
 
 
 def _pasa_assemblies_gtf(pasa_dir: Path, database_name: str) -> Path | None:
-    """Resolve the PASA assemblies GTF if the run produced one."""
+    """Resolve the PASA assemblies GTF when the run produced one."""
     return _first_existing(
         pasa_dir,
         (".pasa_assemblies.gtf", ".assemblies.gtf"),
@@ -193,7 +189,7 @@ def _pasa_polyasites_fasta(pasa_dir: Path, database_name: str) -> Path | None:
 
 
 def _sample_id_from_transcript_evidence(results_dir: Path) -> str:
-    """Extract the sample identifier from a transcript-evidence manifest when available."""
+    """Extract the sample identifier from a transcript-evidence manifest."""
     manifest_path = results_dir / "run_manifest.json"
     if not manifest_path.exists():
         return "sample"
@@ -206,9 +202,9 @@ def pasa_accession_extract(
     denovo_trinity_fasta: File,
     pasa_sif: str = "",
 ) -> File:
-    """Extract PASA TDN accessions from the de novo Trinity FASTA."""
+    """Extract TDN accessions from the de novo Trinity FASTA."""
     denovo_path = require_path(Path(denovo_trinity_fasta.download_sync()), "De novo Trinity FASTA")
-    out_dir = Path(tempfile.mkdtemp(prefix="pasa_accs_"))
+    out_dir = project_mkdtemp("pasa_accs_")
     out_dir.mkdir(parents=True, exist_ok=True)
     accession_path = out_dir / "tdn.accs"
 
@@ -217,7 +213,7 @@ def pasa_accession_extract(
         pasa_sif,
         [denovo_path.parent, out_dir],
     )
-    return File.from_local_sync(str(accession_path))
+    return File(path=str(accession_path))
 
 
 @pasa_env.task
@@ -225,11 +221,11 @@ def combine_trinity_fastas(
     genome_guided_trinity_fasta: File,
     denovo_trinity_fasta: File,
 ) -> File:
-    """Concatenate de novo and genome-guided Trinity FASTAs for PASA input."""
+    """Concatenate the Trinity de novo and genome-guided FASTAs for PASA."""
     gg_path = require_path(Path(genome_guided_trinity_fasta.download_sync()), "Genome-guided Trinity FASTA")
     denovo_path = require_path(Path(denovo_trinity_fasta.download_sync()), "De novo Trinity FASTA")
 
-    out_dir = Path(tempfile.mkdtemp(prefix="pasa_combined_"))
+    out_dir = project_mkdtemp("pasa_combined_")
     out_dir.mkdir(parents=True, exist_ok=True)
     combined_path = out_dir / "trinity_transcripts.fa"
 
@@ -239,7 +235,7 @@ def combine_trinity_fastas(
                 shutil.copyfileobj(input_handle, handle)
             handle.write(b"\n")
 
-    return File.from_local_sync(str(combined_path))
+    return File(path=str(combined_path))
 
 
 @pasa_env.task
@@ -253,7 +249,7 @@ def pasa_seqclean(
     transcripts_path = require_path(Path(transcripts.download_sync()), "Combined Trinity transcript FASTA")
     univec_path = require_path(Path(univec_fasta.download_sync()), "UniVec FASTA")
 
-    out_dir = Path(tempfile.mkdtemp(prefix="pasa_seqclean_")) / "seqclean"
+    out_dir = project_mkdtemp("pasa_seqclean_") / "seqclean"
     out_dir.mkdir(parents=True, exist_ok=True)
     staged_transcripts = out_dir / transcripts_path.name
     shutil.copy2(transcripts_path, staged_transcripts)
@@ -271,7 +267,7 @@ def pasa_seqclean(
         [out_dir, univec_path.parent],
         cwd=out_dir,
     )
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @pasa_env.task
@@ -279,9 +275,9 @@ def pasa_create_sqlite_db(
     pasa_config_template: File,
     pasa_db_name: str = "pasa.sqlite",
 ) -> Dir:
-    """Create a SQLite-backed PASA config directory from a user template."""
+    """Create a PASA config directory with a SQLite-backed database."""
     template_path = require_path(Path(pasa_config_template.download_sync()), "PASA align/assemble template config")
-    out_dir = Path(tempfile.mkdtemp(prefix="pasa_config_")) / "config"
+    out_dir = project_mkdtemp("pasa_config_") / "config"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     database_path = out_dir / pasa_db_name
@@ -308,7 +304,7 @@ def pasa_create_sqlite_db(
         )
 
     config_path.write_text("\n".join(rendered_lines) + "\n")
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @pasa_env.task
@@ -324,7 +320,7 @@ def pasa_align_assemble(
     pasa_cpu: int = 4,
     pasa_max_intron_length: int = 100000,
 ) -> Dir:
-    """Run PASA align-and-assemble with required de novo and genome-guided Trinity evidence."""
+    """Run PASA align/assemble on the staged genome and transcript inputs."""
     genome_path = require_path(Path(genome.download_sync()), "Reference genome FASTA")
     cleaned_dir = require_path(Path(cleaned_transcripts.download_sync()), "seqclean output directory")
     clean_fasta_path = _seqclean_clean_fasta(cleaned_dir)
@@ -334,7 +330,7 @@ def pasa_align_assemble(
     config_path = _pasa_config_path(config_dir)
     accession_path = require_path(Path(tdn_accs.download_sync()), "PASA de novo accession list")
 
-    out_dir = Path(tempfile.mkdtemp(prefix="pasa_run_")) / "pasa"
+    out_dir = project_mkdtemp("pasa_run_") / "pasa"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     cmd = [
@@ -377,7 +373,7 @@ def pasa_align_assemble(
     ]
 
     run_tool(cmd, pasa_sif, bind_paths, cwd=out_dir)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @pasa_env.task
@@ -394,7 +390,7 @@ def collect_pasa_results(
     tdn_accs: File,
     sample_id: str = "sample",
 ) -> Dir:
-    """Collect PASA preparation outputs into a stable manifest-bearing results bundle."""
+    """Collect PASA preparation outputs into a manifest-bearing results bundle."""
     genome_input = Path(str(genome.path))
     transcript_evidence_path = require_path(
         Path(transcript_evidence_results.download_sync()),
@@ -461,13 +457,19 @@ def collect_pasa_results(
             "The combined transcript FASTA follows the note order: de novo Trinity first, then Trinity-GG.",
         ),
     )
-    cleaned_asset = PasaCleanedTranscriptAsset(
+    cleaned_asset = CleanedTranscriptDataset(
         output_dir=copied_seqclean_dir,
         clean_fasta_path=_seqclean_clean_fasta(copied_seqclean_dir),
         input_transcripts=combined_asset,
         univec_fasta_path=univec_input,
         notes=(
             "seqclean output is staged in its own directory because PASA tooling writes auxiliary files beside the cleaned FASTA.",
+        ),
+        provenance=AssetToolProvenance(
+            tool_name="PASA seqclean",
+            tool_stage="transcript cleaning",
+            legacy_asset_name="PasaCleanedTranscriptAsset",
+            source_manifest_key="cleaned_transcript_dataset",
         ),
     )
     sqlite_database_path = _sqlite_db_path(copied_config_dir)
@@ -509,7 +511,7 @@ def collect_pasa_results(
         stringtie_gtf_path=stringtie_asset.transcript_gtf_path,
         database_config=database_asset,
         notes=(
-            "The PASA align/assemble invocation mirrors the flags shown in the attached notes for aligners, max intron length, ALT_SPLICE, create/run, -T, and stringent alignment overlap.",
+            "The PASA align/assemble invocation uses the fixed aligner, intron, ALT_SPLICE, create/run, -T, and alignment-overlap flag set expected by the PASA tool reference.",
         ),
     )
 
@@ -520,7 +522,7 @@ def collect_pasa_results(
         "notes_alignment": {
             "status": "implemented_with_documented_simplifications",
             "requires_external_denovo_trinity": False,
-            "reason": "PASA now consumes both internally produced Trinity branches from the transcript-evidence bundle, while that upstream bundle still keeps the notes-backed all-sample STAR/BAM path simplified to one paired-end sample.",
+            "reason": "PASA now consumes both internally produced Trinity branches from the transcript-evidence bundle, while that upstream bundle still keeps the full all-sample STAR/BAM path simplified to one paired-end sample.",
         },
         "assumptions": [
             "This workflow consumes the transcript_evidence_generation bundle, specifically trinity_denovo/, trinity_gg/, and stringtie/ outputs.",
@@ -555,7 +557,8 @@ def collect_pasa_results(
                 "trinity_de_novo": asdict(denovo_asset),
                 "combined_trinity": asdict(combined_asset),
                 "stringtie": asdict(stringtie_asset),
-                "pasa_cleaned_transcripts": asdict(cleaned_asset),
+                "cleaned_transcript_dataset": cleaned_asset.to_dict(),
+                "pasa_cleaned_transcripts": cleaned_asset.to_dict(),
                 "pasa_database_config": asdict(database_asset),
                 "pasa_alignment_assembly": asdict(pasa_asset),
             }
@@ -566,46 +569,19 @@ def collect_pasa_results(
         "pasa_files": sorted(path.name for path in copied_pasa_dir.glob("*")),
     }
     (out_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2))
-    return Dir.from_local_sync(str(out_dir))
-
-
-def _read_json(path: Path) -> dict[str, Any]:
-    """Read one JSON manifest into a dictionary."""
-    return json.loads(path.read_text())
-
+    return Dir(path=str(out_dir))
 
 def _manifest_path(results_dir: Path, label: str) -> Path:
-    """Resolve the run manifest path for one staged or collected directory."""
+    """Resolve the run manifest path for a staged or collected results directory."""
     return require_path(results_dir / "run_manifest.json", f"{label} manifest")
 
 
 def _manifest_output_path(manifest: dict[str, Any], key: str, description: str) -> Path | None:
-    """Resolve one manifest-recorded output path when present."""
+    """Resolve a manifest-recorded output path when the manifest includes one."""
     output_path = manifest.get("outputs", {}).get(key)
     if not output_path:
         return None
     return require_path(Path(str(output_path)), description)
-
-
-def _copy_file(source: Path, destination: Path) -> Path:
-    """Copy one file into a deterministic destination and return the copy path."""
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, destination)
-    return destination
-
-
-def _copy_tree(source: Path, destination: Path) -> Path:
-    """Copy one directory tree into a deterministic destination and return it."""
-    shutil.copytree(source, destination, dirs_exist_ok=True)
-    return destination
-
-
-def _write_json(path: Path, payload: dict[str, Any]) -> Path:
-    """Write one JSON payload with indentation and return the file path."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2))
-    return path
-
 
 def _pasa_clean_fasta_from_results(results_dir: Path, manifest: dict[str, Any]) -> Path:
     """Resolve the cleaned Trinity transcript FASTA from a PASA results bundle."""
@@ -657,7 +633,7 @@ def _evm_sorted_gff3_from_results(results_dir: Path, manifest: dict[str, Any]) -
 
 
 def _evm_reference_genome_from_results(results_dir: Path) -> Path:
-    """Resolve the authoritative reference genome copied through the EVM bundle."""
+    """Resolve the reference genome copied through the EVM results bundle."""
     for candidate in (
         results_dir / "evm_execution_inputs" / "genome.fa",
         results_dir / "pre_evm_bundle" / "reference" / "genome.fa",
@@ -670,7 +646,7 @@ def _evm_reference_genome_from_results(results_dir: Path) -> Path:
 
 
 def _pasa_update_workspace_annotations(workspace_dir: Path) -> Path:
-    """Resolve the canonical current-annotations GFF3 within an update workspace."""
+    """Resolve the canonical current-annotations GFF3 in an update workspace."""
     return require_path(
         workspace_dir / "annotations" / "current_annotations.gff3",
         "PASA update current annotations GFF3",
@@ -678,7 +654,7 @@ def _pasa_update_workspace_annotations(workspace_dir: Path) -> Path:
 
 
 def _pasa_update_align_config(workspace_dir: Path) -> Path:
-    """Resolve the copied PASA alignAssembly config within an update workspace."""
+    """Resolve the copied PASA alignAssembly config in an update workspace."""
     return require_path(
         workspace_dir / "config" / "pasa.alignAssembly.config",
         "PASA update alignAssembly config",
@@ -686,7 +662,7 @@ def _pasa_update_align_config(workspace_dir: Path) -> Path:
 
 
 def _pasa_update_annot_compare_config(workspace_dir: Path) -> Path:
-    """Resolve the copied PASA annotCompare config within an update workspace."""
+    """Resolve the copied PASA annotCompare config in an update workspace."""
     return require_path(
         workspace_dir / "config" / "pasa.annotCompare.config",
         "PASA update annotCompare config",
@@ -694,12 +670,12 @@ def _pasa_update_annot_compare_config(workspace_dir: Path) -> Path:
 
 
 def _pasa_update_database(workspace_dir: Path) -> Path:
-    """Resolve the copied PASA SQLite database within an update workspace."""
+    """Resolve the copied PASA SQLite database in an update workspace."""
     return _sqlite_db_path(require_path(workspace_dir / "config", "PASA update config directory"))
 
 
 def _pasa_update_cleaned_transcripts(workspace_dir: Path) -> Path:
-    """Resolve the copied cleaned transcript FASTA within an update workspace."""
+    """Resolve the copied cleaned transcript FASTA in an update workspace."""
     transcripts_dir = require_path(workspace_dir / "transcripts", "PASA update transcripts directory")
     clean_candidates = sorted(transcripts_dir.glob("*.clean"))
     if len(clean_candidates) == 1:
@@ -710,7 +686,7 @@ def _pasa_update_cleaned_transcripts(workspace_dir: Path) -> Path:
 
 
 def _pasa_update_reference_genome(workspace_dir: Path) -> Path:
-    """Resolve the copied reference genome FASTA within an update workspace."""
+    """Resolve the copied reference genome FASTA in an update workspace."""
     return require_path(
         workspace_dir / "reference" / "genome.fa",
         "PASA update reference genome FASTA",
@@ -737,7 +713,7 @@ def _render_database_config(template_path: Path, destination: Path, database_pat
 
 
 def _prepare_pasa_update_bin(bin_dir: Path, fasta36_binary_path: str) -> Path | None:
-    """Create the note-described `bin/fasta` symlink when a fasta36 binary is supplied."""
+    """Create the note-described `bin/fasta` symlink when fasta36 is supplied."""
     bin_dir.mkdir(parents=True, exist_ok=True)
     if not fasta36_binary_path:
         return None
@@ -750,7 +726,7 @@ def _prepare_pasa_update_bin(bin_dir: Path, fasta36_binary_path: str) -> Path | 
 
 
 def _optional_fasta_symlink_target(workspace_dir: Path) -> Path | None:
-    """Resolve the external fasta36 target when the workspace preserves a bin/fasta symlink."""
+    """Resolve the external fasta36 target from a workspace symlink."""
     link_path = workspace_dir / "bin" / "fasta"
     if not link_path.is_symlink():
         return None
@@ -758,7 +734,7 @@ def _optional_fasta_symlink_target(workspace_dir: Path) -> Path | None:
 
 
 def _pasa_update_gff3_candidates(workspace_dir: Path) -> list[Path]:
-    """Resolve raw PASA post-update GFF3 candidates in deterministic relative-path order."""
+    """Return raw PASA post-update GFF3 candidates in deterministic order."""
     candidates = sorted(
         (
             path
@@ -771,7 +747,7 @@ def _pasa_update_gff3_candidates(workspace_dir: Path) -> list[Path]:
 
 
 def _pasa_update_bed_candidates(workspace_dir: Path) -> list[Path]:
-    """Resolve PASA post-update BED candidates in deterministic relative-path order."""
+    """Return PASA post-update BED candidates in deterministic order."""
     return sorted(
         workspace_dir.rglob("*gene_structures_post_PASA_updates*.bed"),
         key=lambda path: str(path.relative_to(workspace_dir)),
@@ -784,7 +760,7 @@ def _new_round_output(
     workspace_dir: Path,
     description: str,
 ) -> Path:
-    """Resolve the single new round output by comparing before and after path sets."""
+    """Pick the single new round output by comparing before and after paths."""
     new_paths = [
         path
         for path in after_paths
@@ -830,7 +806,7 @@ def prepare_pasa_update_inputs(
     evm_sorted_gff3 = _evm_sorted_gff3_from_results(evm_results_dir, evm_manifest)
     genome_fasta = _evm_reference_genome_from_results(evm_results_dir)
 
-    out_dir = Path(tempfile.mkdtemp(prefix="pasa_update_inputs_")) / "pasa_update_inputs"
+    out_dir = project_mkdtemp("pasa_update_inputs_") / "pasa_update_inputs"
     config_dir = out_dir / "config"
     transcripts_dir = out_dir / "transcripts"
     reference_dir = out_dir / "reference"
@@ -921,7 +897,7 @@ def prepare_pasa_update_inputs(
         },
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @pasa_update_env.task
@@ -931,12 +907,12 @@ def pasa_load_current_annotations(
     load_current_annotations_script: str = "Load_Current_Gene_Annotations.dbi",
     pasa_sif: str = "",
 ) -> Dir:
-    """Load the current annotation GFF3 into the staged PASA database for one round."""
+    """Load the current annotations into PASA for one update round."""
     input_dir = require_path(Path(pasa_update_inputs.download_sync()), "PASA update input directory")
     input_manifest = _read_json(_manifest_path(input_dir, "PASA update inputs"))
 
-    out_dir = Path(tempfile.mkdtemp(prefix=f"pasa_load_round_{round_index:02d}_")) / "pasa_load"
-    _copy_tree(input_dir, out_dir)
+    out_dir = project_mkdtemp(f"pasa_load_round_{round_index:02d}_") / "pasa_load"
+    _copy_tree(input_dir, out_dir, dirs_exist_ok=True)
 
     cmd = [
         "perl",
@@ -974,7 +950,7 @@ def pasa_load_current_annotations(
         },
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @pasa_update_env.task
@@ -985,12 +961,12 @@ def pasa_update_gene_models(
     pasa_sif: str = "",
     pasa_update_cpu: int = 8,
 ) -> Dir:
-    """Run one PASA annotation-update round and promote its new GFF3 as current annotations."""
+    """Run one PASA update round and promote the new annotations forward."""
     loaded_dir = require_path(Path(loaded_pasa_update.download_sync()), "Loaded PASA update directory")
     loaded_manifest = _read_json(_manifest_path(loaded_dir, "Loaded PASA update directory"))
 
-    out_dir = Path(tempfile.mkdtemp(prefix=f"pasa_update_round_{round_index:02d}_")) / "pasa_update"
-    _copy_tree(loaded_dir, out_dir)
+    out_dir = project_mkdtemp(f"pasa_update_round_{round_index:02d}_") / "pasa_update"
+    _copy_tree(loaded_dir, out_dir, dirs_exist_ok=True)
 
     annotations_dir = out_dir / "annotations"
     loaded_annotations_snapshot = _copy_file(
@@ -1094,7 +1070,7 @@ def pasa_update_gene_models(
         "assets": _as_json_compatible({"pasa_gene_model_update_round": asdict(round_asset)}),
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @pasa_update_env.task
@@ -1103,12 +1079,12 @@ def finalize_pasa_update_outputs(
     gff3sort_script: str = "gff3sort.pl",
     pasa_sif: str = "",
 ) -> Dir:
-    """Create stable blank-line-filtered and sorted final GFF3 files from the last update round."""
+    """Create the final blank-line-filtered and sorted PASA update GFF3 files."""
     round_dir = require_path(Path(pasa_update_round.download_sync()), "PASA update round directory")
     round_manifest = _read_json(_manifest_path(round_dir, "PASA update round directory"))
 
-    out_dir = Path(tempfile.mkdtemp(prefix="pasa_update_finalize_")) / "pasa_update_finalized"
-    _copy_tree(round_dir, out_dir)
+    out_dir = project_mkdtemp("pasa_update_finalize_") / "pasa_update_finalized"
+    _copy_tree(round_dir, out_dir, dirs_exist_ok=True)
 
     raw_final_gff3 = _copy_file(
         _pasa_update_workspace_annotations(out_dir),
@@ -1155,7 +1131,7 @@ def finalize_pasa_update_outputs(
         "sorting_applied": bool(gff3sort_script.strip()),
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @pasa_update_env.task
@@ -1167,7 +1143,7 @@ def collect_pasa_update_results(
     update_rounds: list[Dir],
     finalized_outputs: Dir,
 ) -> Dir:
-    """Collect staged PASA-update inputs, round outputs, and final files into one bundle."""
+    """Collect the staged PASA-update inputs, rounds, and final files into one bundle."""
     if not load_rounds:
         raise ValueError("collect_pasa_update_results requires at least one PASA load round.")
     if len(load_rounds) != len(update_rounds):
@@ -1190,7 +1166,11 @@ def collect_pasa_update_results(
     out_dir = Path.cwd() / RESULTS_ROOT / f"{PASA_UPDATE_RESULTS_PREFIX}_{run_id}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    copied_staged_inputs_dir = _copy_tree(staged_inputs_dir, out_dir / "staged_inputs")
+    copied_staged_inputs_dir = _copy_tree(
+        staged_inputs_dir,
+        out_dir / "staged_inputs",
+        dirs_exist_ok=True,
+    )
     copied_load_root = out_dir / "load_rounds"
     copied_update_root = out_dir / "update_rounds"
     copied_load_root.mkdir(parents=True, exist_ok=True)
@@ -1202,7 +1182,13 @@ def collect_pasa_update_results(
         key=lambda path: int(_read_json(_manifest_path(path, "PASA load round"))["round_index"]),
     ):
         round_index = int(_read_json(_manifest_path(load_dir, "PASA load round"))["round_index"])
-        copied_load_dirs.append(_copy_tree(load_dir, copied_load_root / f"round_{round_index:02d}"))
+        copied_load_dirs.append(
+            _copy_tree(
+                load_dir,
+                copied_load_root / f"round_{round_index:02d}",
+                dirs_exist_ok=True,
+            )
+        )
 
     copied_update_dirs: list[Path] = []
     for update_dir in sorted(
@@ -1210,9 +1196,15 @@ def collect_pasa_update_results(
         key=lambda path: int(_read_json(_manifest_path(path, "PASA update round"))["round_index"]),
     ):
         round_index = int(_read_json(_manifest_path(update_dir, "PASA update round"))["round_index"])
-        copied_update_dirs.append(_copy_tree(update_dir, copied_update_root / f"round_{round_index:02d}"))
+        copied_update_dirs.append(
+            _copy_tree(
+                update_dir,
+                copied_update_root / f"round_{round_index:02d}",
+                dirs_exist_ok=True,
+            )
+        )
 
-    copied_finalized_dir = _copy_tree(finalized_dir, out_dir / "finalized")
+    copied_finalized_dir = _copy_tree(finalized_dir, out_dir / "finalized", dirs_exist_ok=True)
     source_manifests_dir = out_dir / "source_manifests"
     source_manifests_dir.mkdir(parents=True, exist_ok=True)
     copied_pasa_manifest = _copy_file(
@@ -1345,7 +1337,7 @@ def collect_pasa_update_results(
         "finalized_manifest": _read_json(_manifest_path(copied_finalized_dir, "Copied PASA finalized outputs")),
     }
     _write_json(out_dir / "run_manifest.json", manifest)
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 __all__ = [

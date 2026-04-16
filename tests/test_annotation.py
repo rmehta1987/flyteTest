@@ -1,7 +1,7 @@
 """Tests for the BRAKER3 task boundary and normalization policy.
 
-These checks keep the Milestone 5 source-preserving BRAKER3 normalization
-reviewable without requiring a native BRAKER installation.
+    These checks keep the source-preserving BRAKER3 normalization reviewable
+    without requiring a native BRAKER installation.
 """
 
 from __future__ import annotations
@@ -29,40 +29,80 @@ from flytetest.tasks import annotation
 
 
 def _artifact_dir(path: Path) -> Dir:
-    """Create a stub Flyte directory artifact from a local path."""
-    return Dir.from_local_sync(str(path))
+    """Create a local Flyte directory wrapper from a filesystem path.
+
+    Args:
+        path: Directory path staged for the Flyte stub wrapper.
+
+    Returns:
+        Flyte directory stub pointing at the supplied path.
+    """
+    return Dir(path=str(path))
 
 
 def _artifact_file(path: Path) -> File:
-    """Create a stub Flyte file artifact from a local path."""
-    return File.from_local_sync(str(path))
+    """Create a local Flyte file wrapper from a filesystem path.
+
+    Args:
+        path: File path staged for the Flyte stub wrapper.
+
+    Returns:
+        Flyte file stub pointing at the supplied path.
+    """
+    return File(path=str(path))
 
 
 def _read_json(path: Path) -> dict[str, object]:
-    """Read a JSON payload for assertions."""
+    """Read a JSON payload for assertions.
+
+    Args:
+        path: Manifest or fixture file to parse.
+
+    Returns:
+        Parsed JSON payload used by the tests.
+    """
     return json.loads(path.read_text())
 
 
 def _fixed_datetime() -> type:
-    """Return a deterministic timestamp provider for result-directory naming."""
+    """Return a deterministic timestamp provider for result-directory naming.
 
+    This helper keeps the test fixture deterministic and explicit.
+
+    Returns:
+        The shim class used to monkeypatch `datetime`.
+    """
+
+    # Keep the synthetic result-directory name stable for manifest assertions.
     class _Stamp:
+        """Fake datetime stamp that always returns the same test timestamp."""
+
         def strftime(self, fmt: str) -> str:
+            """Return the fixed timestamp string expected by the assertions."""
             return "20260402_090000"
 
     class _FixedDatetime:
+        """Shim object that mimics the subset of `datetime` used by the code."""
+
         @classmethod
         def now(cls) -> _Stamp:
+            """Return the fixed timestamp stub used by the synthetic tests."""
             return _Stamp()
 
     return _FixedDatetime
 
 
 class AnnotationTaskTests(TestCase):
-    """Task-level coverage for the BRAKER3 source-preserving normalization policy."""
+    """Task-level coverage for the BRAKER3 source-preserving normalization policy.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
     def test_stage_braker3_inputs_requires_at_least_one_evidence_input(self) -> None:
-        """Reject empty BRAKER3 staging requests so runtime boundaries stay explicit."""
+        """Reject empty BRAKER3 staging requests so runtime boundaries stay explicit.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             genome_path = tmp_path / "genome.fa"
@@ -74,7 +114,10 @@ class AnnotationTaskTests(TestCase):
                 )
 
     def test_braker3_predict_records_tutorial_backed_command_boundary(self) -> None:
-        """Capture the BRAKER3 runtime command with explicit RNA-seq and protein inputs."""
+        """Capture the BRAKER3 runtime command with explicit RNA-seq and protein inputs.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             genome_path = tmp_path / "genome.fa"
@@ -98,6 +141,7 @@ class AnnotationTaskTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
+                """Stage a synthetic BRAKER3 GFF3 output for the predict-task test."""
                 captured["cmd"] = cmd
                 working_dir = Path(str(cmd[cmd.index("--workingdir") + 1]))
                 (working_dir / "braker.gff3").write_text(
@@ -120,11 +164,18 @@ class AnnotationTaskTests(TestCase):
             self.assertIn("--gff3", cmd)
             self.assertEqual(cmd[cmd.index("--species") + 1], "flytetest_species")
             self.assertTrue((run_dir / "braker.gff3").exists())
+            self.assertEqual(manifest["stage"], "braker3_predict")
+            self.assertIn("inputs", manifest)
+            self.assertIn("outputs", manifest)
+            self.assertIn("assumptions", manifest)
             self.assertIn("tutorial_backed_behavior", manifest)
             self.assertEqual(Path(str(manifest["outputs"]["braker_gff3"])).name, "braker.gff3")
 
     def test_normalize_braker3_for_evm_preserves_upstream_source_values(self) -> None:
-        """Keep native BRAKER source labels instead of rewriting them to BRAKER3."""
+        """Keep native BRAKER source labels instead of rewriting them to BRAKER3.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             run_dir = tmp_path / "braker_run"
@@ -165,7 +216,10 @@ class AnnotationTaskTests(TestCase):
             self.assertIn("repo_policy", manifest)
 
     def test_collect_braker3_results_manifest_records_policy_sections(self) -> None:
-        """Surface note-backed, tutorial-backed, and repo-policy language in the result bundle."""
+        """Surface the tool-contract, tutorial-backed, and repo-policy language in the result bundle.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             genome_path = tmp_path / "genome.fa"
@@ -234,3 +288,9 @@ class AnnotationTaskTests(TestCase):
             self.assertIn("tutorial_backed_behavior", manifest)
             self.assertIn("repo_policy", manifest)
             self.assertIn("preserves upstream BRAKER source-column values", " ".join(manifest["repo_policy"]))
+            self.assertIn("ab_initio_result_bundle", manifest["assets"])
+            self.assertIn("braker3_result_bundle", manifest["assets"])
+            self.assertEqual(
+                manifest["assets"]["ab_initio_result_bundle"]["provenance"]["source_manifest_key"],
+                "ab_initio_result_bundle",
+            )

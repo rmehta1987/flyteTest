@@ -4,6 +4,17 @@
 
 Generate ab initio gene predictions to provide a core evidence source for consensus annotation.
 
+## Input Data
+
+- reference genome
+- local user-provided RNA-seq BAM evidence and/or local user-provided protein FASTA evidence
+
+## Output Data
+
+- BRAKER3 prediction outputs
+- `braker.gff3` as the key downstream consensus input described in the design notes
+- a deterministic source-preserving normalized BRAKER3 GFF3 boundary for later EVM composition
+
 ## Key Inputs
 
 - reference genome
@@ -11,9 +22,9 @@ Generate ab initio gene predictions to provide a core evidence source for consen
 
 Lightweight local fixture examples for milestone-scoped testing:
 
-- `data/genome.fa`
-- `data/RNAseq.bam`
-- `data/proteins.fa`
+- `data/braker3/reference/genome.fa`
+- `data/braker3/rnaseq/RNAseq.bam`
+- `data/braker3/protein_data/fastas/proteins.fa`
 
 ## Key Outputs
 
@@ -30,11 +41,16 @@ Lightweight local fixture examples for milestone-scoped testing:
 - BRAKER User Guide and source repository: https://github.com/Gaius-Augustus/BRAKER
 - BRAKER output and mode notes in the user guide: `braker.pl`, `braker.gff3`, RNA-seq and protein-supported modes
 
-## Tutorial / Training References
+## Tutorial References
 
 - GTN Braker3 tutorial: https://training.galaxyproject.org/training-material/topics/genome-annotation/tutorials/braker3/tutorial.html
 - GTN Braker3 workflow: https://training.galaxyproject.org/training-material/topics/genome-annotation/tutorials/braker3/workflows/braker.html
 - GTN Braker3 topic tag: https://training.galaxyproject.org/training-material/tags/braker3/
+
+## Code Reference
+
+- [`src/flytetest/tasks/annotation.py`](src/flytetest/tasks/annotation.py)
+- that module stages the ab initio inputs, runs `braker.pl`, normalizes `braker.gff3`, and collects the reviewable BRAKER3 bundle
 
 ## Native Command Context
 
@@ -51,22 +67,13 @@ braker.pl --genome=genome.fa --bam=RNAseq.bam --prot_seq=proteins.fa --gff3
 
 - Use Apptainer when the BRAKER runtime is containerized, but keep the data flow local and explicit.
 - Bind the working directory and input directories into the container so `braker.pl` can read and write repo-local artifacts.
+- The repo-local smoke image is `data/images/braker3.sif`.
+- Image provenance from `apptainer inspect`:
+  - `org.label-schema.usage.singularity.deffile.from: teambraker/braker3:latest`
 - Apptainer bind-mount reference: https://apptainer.org/user-docs/3.7/bind_paths_and_mounts.html
 
 ```bash
-apptainer exec --bind "$PWD:$PWD" braker.sif braker.pl --genome=genome.fa --bam=RNAseq.bam --prot_seq=proteins.fa --gff3
-```
-
-## At A Glance
-
-```mermaid
-flowchart LR
-    G[Genome FASTA] --> S[BRAKER3 staging]
-    R[RNA-seq BAM] --> S
-    P[Protein FASTA] --> S
-    S --> B[BRAKER3 run]
-    B --> N[Normalize braker.gff3]
-    N --> E[EVM prep]
+apptainer exec --bind "$PWD:$PWD" data/images/braker3.sif braker.pl --genome=genome.fa --bam=RNAseq.bam --prot_seq=proteins.fa --gff3
 ```
 
 ## Prompt Template
@@ -78,9 +85,9 @@ Goal:
 Run or refine `braker3_predict` for ab initio evidence generation.
 
 Inputs:
-- genome FASTA such as `data/genome.fa`
-- RNA-seq BAM such as `data/RNAseq.bam`
-- protein FASTA such as `data/proteins.fa`
+- genome FASTA such as `data/braker3/reference/genome.fa`
+- RNA-seq BAM such as `data/braker3/rnaseq/RNAseq.bam`
+- protein FASTA such as `data/braker3/protein_data/fastas/proteins.fa`
 - optional `braker3_sif` container image
 
 Constraints:
@@ -95,6 +102,17 @@ Deliver:
 - any assumptions inferred from GTN or upstream docs
 ```
 
+## AUGUSTUS_CONFIG_PATH — Unconfirmed Known Issue
+
+A `.runtime/augustus_config/` directory exists at the repo root (gitignored) with
+171 species configs from prior runs. This was likely created to work around
+AUGUSTUS writing species parameter files into a read-only path inside the
+container, causing job failures.
+
+**To investigate on the next real run:** confirm whether `AUGUSTUS_CONFIG_PATH`
+must be set to `.runtime/augustus_config/` and bind-mounted explicitly, or whether
+the container handles this internally. Document the confirmed fix here once known.
+
 ## Notes And Caveats
 
 - BRAKER3 is implemented in FLyteTest as a local-input ab initio annotation milestone, not as a full manual reproduction of every upstream option.
@@ -104,4 +122,16 @@ Deliver:
 - Repo-local normalization policy preserves upstream BRAKER source-column values instead of rewriting them to `BRAKER3`, so later EVM weights can stay aligned with the staged sources.
 - The local fixture paths above are intended for lightweight smoke testing only, not for production-scale annotation benchmarks.
 - This BRAKER3-only workflow preserves raw BRAKER3 outputs and produces a deterministic later-EVM-ready normalized GFF3.
-- The repo now implements EVM and PASA post-EVM refinement downstream elsewhere, but repeat filtering and later post-PASA work remain out of scope for the current validation milestone.
+- The repo now implements EVM, PASA post-EVM refinement, repeat filtering, functional annotation, and submission-prep stages elsewhere; this reference stays focused on the BRAKER3 boundary rather than those later milestones.
+
+## At A Glance
+
+```mermaid
+flowchart LR
+    G[Genome FASTA] --> S[BRAKER3 staging]
+    R[RNA-seq BAM] --> S
+    P[Protein FASTA] --> S
+    S --> B[BRAKER3 run]
+    B --> N[Normalize braker.gff3]
+    N --> E[EVM prep]
+```

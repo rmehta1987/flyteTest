@@ -4,17 +4,17 @@
 
 Predict coding regions from transcript assemblies and produce coding-support features for downstream annotation.
 
-## Official Documentation
+## Input Data
 
-- project source and docs hub: https://github.com/TransDecoder/TransDecoder
-- the repo README points to the project wiki as the canonical documentation source
-- the source tree exposes `TransDecoder.LongOrfs` and `TransDecoder.Predict` as the phase-specific entrypoints
+- PASA assemblies FASTA
+- PASA assemblies GFF3 for lifting predicted ORFs onto genome coordinates
+- optional minimum protein-length threshold
 
-## Tutorial / Training References
+## Output Data
 
-- GTN tool page: https://training.galaxyproject.org/training-material/by-tool/iuc/transdecoder/transdecoder.html
-- GTN tutorial context: https://training.galaxyproject.org/training-material/topics/transcriptomics/tutorials/full-de-novo/tutorial.html
-- the GTN material is the clearest training reference for the common Trinity plus TransDecoder transcriptomics flow
+- transcript-level coding sequence predictions
+- protein translations
+- genome-coordinate GFF3 support files for downstream consensus steps
 
 ## Key Inputs
 
@@ -32,6 +32,23 @@ Predict coding regions from transcript assemblies and produce coding-support fea
 
 - coding prediction after PASA transcript assembly
 - design notes use TransDecoder output as one of the evidence sources feeding EVidenceModeler
+
+## Official Documentation
+
+- project source and docs hub: https://github.com/TransDecoder/TransDecoder
+- the repo README points to the project wiki as the canonical documentation source
+- the source tree exposes `TransDecoder.LongOrfs` and `TransDecoder.Predict` as the phase-specific entrypoints
+
+## Tutorial References
+
+- GTN tool page: https://training.galaxyproject.org/training-material/by-tool/iuc/transdecoder/transdecoder.html
+- GTN tutorial context: https://training.galaxyproject.org/training-material/topics/transcriptomics/tutorials/full-de-novo/tutorial.html
+- the GTN material is the clearest training reference for the common Trinity plus TransDecoder transcriptomics flow
+
+## Code Reference
+
+- [`src/flytetest/tasks/transdecoder.py`](src/flytetest/tasks/transdecoder.py)
+- that module implements the PASA-derived LongOrfs/Predict flow and the genome-coordinate ORF lift
 
 ## Native Command Context
 

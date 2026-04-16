@@ -4,6 +4,16 @@
 
 Extract protein FASTA files from the current annotation GFF3 during repeat-filtering cleanup.
 
+## Input Data
+
+- current annotation GFF3
+- reference genome FASTA
+
+## Output Data
+
+- protein FASTA emitted by `gffread -y`
+- period-stripped protein FASTA used by the later funannotate repeat blast step
+
 ## Key Inputs
 
 - current annotation GFF3
@@ -32,6 +42,11 @@ Typical repeat-filtering boundaries in this repo:
 ## Tutorial References
 
 - GTN Funannotate tutorial context is adjacent background, but the repo-local notes are the concrete source for this post-PASA gffread usage
+
+## Code Reference
+
+- [`src/flytetest/tasks/filtering.py`](src/flytetest/tasks/filtering.py)
+- that module implements the gffread protein extraction boundary and the period-stripped companion FASTA
 
 ## Native Command Context
 

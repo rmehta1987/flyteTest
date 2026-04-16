@@ -1,8 +1,9 @@
 """Synthetic tests for the BUSCO-based annotation-QC milestone.
 
-These checks keep the repeat-filter-to-BUSCO boundary, BUSCO command wiring,
-and QC result collection honest without requiring BUSCO binaries or lineage
-databases in the local environment.
+    These checks keep the repeat-filter-to-BUSCO boundary, command wiring, and QC
+    result collection honest without requiring BUSCO binaries or lineage
+    databases in the local environment. The tests document the current result
+    bundle shape as a stable contract rather than an implementation accident.
 """
 
 from __future__ import annotations
@@ -31,19 +32,42 @@ from flytetest.workflows.functional import annotation_qc_busco
 
 
 def _read_json(path: Path) -> dict[str, object]:
-    """Read one JSON manifest into a dictionary for assertions."""
+    """Read one JSON manifest into a dictionary for assertions.
+
+    Args:
+        path: Manifest file to parse for the QC test assertions.
+
+    Returns:
+        Parsed JSON payload used by the BUSCO tests.
+    """
     return json.loads(path.read_text())
 
 
 def _write_json(path: Path, payload: dict[str, object]) -> Path:
-    """Write one JSON payload with indentation for readable failures."""
+    """Write one JSON payload with indentation for readable failures.
+
+    Args:
+        path: Destination for the synthetic manifest file.
+        payload: Structured payload written into the manifest.
+
+    Returns:
+        The JSON file path, which is convenient for fixture chaining.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2))
     return path
 
 
 def _write_fasta(path: Path, records: list[tuple[str, str]]) -> Path:
-    """Write a minimal FASTA file from `(header, sequence)` pairs."""
+    """Write a minimal FASTA file from `(header, sequence)` pairs.
+
+    Args:
+        path: Destination for the synthetic FASTA file.
+        records: Header and sequence pairs staged for BUSCO.
+
+    Returns:
+        The FASTA file path, which the tests pass back into the task.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     lines: list[str] = []
     for header, sequence in records:
@@ -54,7 +78,14 @@ def _write_fasta(path: Path, records: list[tuple[str, str]]) -> Path:
 
 
 def _create_repeat_filter_results(tmp_path: Path) -> Path:
-    """Create a minimal repeat-filter bundle with the final proteins FASTA."""
+    """Create a minimal repeat-filter bundle with the final proteins FASTA.
+
+    Args:
+        tmp_path: Temporary root used to stage the bundle.
+
+    Returns:
+        The staged repeat-filter result directory.
+    """
     results_dir = tmp_path / "repeat_filter_results"
     proteins_fasta = _write_fasta(
         results_dir / "all_repeats_removed.proteins.fa",
@@ -73,32 +104,54 @@ def _create_repeat_filter_results(tmp_path: Path) -> Path:
 
 
 def _fixed_datetime() -> type:
-    """Return a deterministic timestamp provider for result-directory naming."""
+    """Return a deterministic timestamp provider for result-directory naming.
 
+    This helper keeps the test fixture deterministic and explicit.
+
+    Returns:
+        The shim class used to monkeypatch `datetime`.
+    """
+
+    # Keep the synthetic result-directory name stable for manifest assertions.
     class _Stamp:
+        """Fake datetime stamp that always returns the same test timestamp."""
+
         def strftime(self, fmt: str) -> str:
+            """Return the fixed timestamp string expected by the assertions."""
             return "20260404_140000"
 
     class _FixedDatetime:
+        """Shim object that mimics the subset of `datetime` used by the code."""
+
         @classmethod
         def now(cls) -> _Stamp:
+            """Return the fixed timestamp stub used by the synthetic tests."""
             return _Stamp()
 
     return _FixedDatetime
 
 
 class FunctionalTaskTests(TestCase):
-    """Task-level coverage for BUSCO QC."""
+    """Task-level coverage for the BUSCO-based QC boundary.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
     def test_lineages_from_text_strips_whitespace_and_empty_fields(self) -> None:
-        """Normalize comma-separated lineages into the exact ordered BUSCO inputs."""
+        """Normalize comma-separated lineages into the exact ordered BUSCO inputs.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         self.assertEqual(
             functional._lineages_from_text(" eukaryota_odb10 , , diptera_odb10 "),
             ["eukaryota_odb10", "diptera_odb10"],
         )
 
     def test_busco_assess_proteins_uses_note_backed_protein_mode_flags(self) -> None:
-        """Keep the BUSCO command aligned with the notes-backed protein assessment shape."""
+        """Keep the BUSCO command aligned with the tool reference and protein-mode flags.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             proteins = _write_fasta(tmp_path / "proteins.fa", [("prot1", "MAPP")])
@@ -111,6 +164,7 @@ class FunctionalTaskTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
+                """Stage the BUSCO protein-mode output files for the task test."""
                 captured["cmd"] = cmd
                 self.assertIsNotNone(cwd)
                 run_dir = cwd / "busco_output_eukaryota_odb10"
@@ -147,12 +201,71 @@ class FunctionalTaskTests(TestCase):
             manifest = _read_json(Path(results.download_sync()) / "run_manifest.json")
             self.assertEqual(manifest["outputs"]["summary_notation"], "C:98.0%[S:97.0%,D:1.0%],F:1.0%,M:1.0%,n:255")
 
+    def test_busco_assess_proteins_can_omit_lineage_for_fixture_genome_mode(self) -> None:
+        """Support the upstream BUSCO genome fixture command shape without a lineage flag.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            genome = _write_fasta(tmp_path / "genome.fna", [("seq1", "ACGTACGT")])
+            captured: dict[str, object] = {}
+
+            def fake_run_tool(
+                cmd: list[str],
+                sif: str,
+                bind_paths: list[Path],
+                cwd: Path | None = None,
+                stdout_path: Path | None = None,
+            ) -> None:
+                """Stage the BUSCO genome-mode output files for the task test."""
+                captured["cmd"] = cmd
+                self.assertIsNotNone(cwd)
+                run_dir = cwd / "busco_output_auto-lineage"
+                run_dir.mkdir(parents=True, exist_ok=True)
+                (run_dir / "short_summary.specific.eukaryota_odb10.txt").write_text(
+                    "C:75.0%[S:75.0%,D:0.0%],F:5.0%,M:20.0%,n:255\n"
+                )
+                (run_dir / "full_table.tsv").write_text("# BUSCO table\n")
+
+            with patch.object(functional, "run_tool", side_effect=fake_run_tool):
+                results = functional.busco_assess_proteins(
+                    proteins_fasta=File(path=str(genome)),
+                    lineage_dataset="auto-lineage",
+                    busco_cpu=2,
+                    busco_mode="geno",
+                )
+
+            cmd = captured["cmd"]
+            self.assertEqual(
+                cmd,
+                [
+                    "busco",
+                    "-i",
+                    str(genome),
+                    "-o",
+                    "busco_output_auto-lineage",
+                    "-m",
+                    "geno",
+                    "-c",
+                    "2",
+                ],
+            )
+            manifest = _read_json(Path(results.download_sync()) / "run_manifest.json")
+            self.assertEqual(manifest["inputs"]["lineage_dataset"], "auto-lineage")
+
 
 class FunctionalWorkflowTests(TestCase):
-    """Workflow-level coverage for BUSCO annotation QC."""
+    """Workflow-level coverage for BUSCO annotation QC.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
     def test_annotation_qc_busco_collects_lineage_runs_and_summary(self) -> None:
-        """Run the synthetic BUSCO workflow and collect stable lineage outputs."""
+        """Run the synthetic BUSCO workflow and collect stable lineage outputs.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             repeat_filter_results = _create_repeat_filter_results(tmp_path)
@@ -164,6 +277,7 @@ class FunctionalWorkflowTests(TestCase):
                 cwd: Path | None = None,
                 stdout_path: Path | None = None,
             ) -> None:
+                """Stage one BUSCO summary directory per lineage for the workflow test."""
                 self.assertIsNotNone(cwd)
                 output_name = cmd[cmd.index("-o") + 1]
                 lineage = cmd[cmd.index("-l") + 1]

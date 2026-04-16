@@ -1,27 +1,35 @@
 """Quantification tasks for the original FLyteTest RNA-seq workflow.
 
-This module keeps the current Salmon indexing, quantification, and result
-collection boundaries used by the compatibility entrypoint.
+This module keeps the Salmon index, quantification, and collection boundaries
+used by the compatibility entrypoint. Tool-level command and input/output
+expectations follow `docs/tool_refs/salmon.md`.
 """
 
 from __future__ import annotations
 
 import json
 import shutil
-import tempfile
 from datetime import datetime
 from pathlib import Path
 
 from flyte.io import Dir, File
 
-from flytetest.config import RESULTS_PREFIX, RESULTS_ROOT, WORKFLOW_NAME, env, require_path, run_tool
+from flytetest.config import (
+    RESULTS_PREFIX,
+    RESULTS_ROOT,
+    WORKFLOW_NAME,
+    project_mkdtemp,
+    require_path,
+    rnaseq_qc_quant_env,
+    run_tool,
+)
 
 
-@env.task
+@rnaseq_qc_quant_env.task
 def salmon_index(ref: File, salmon_sif: str = "") -> Dir:
-    """Build a Salmon index from a transcriptome FASTA."""
+    """Build the Salmon index directory from the reference transcriptome."""
     ref_path = require_path(Path(ref.download_sync()), "Reference transcriptome")
-    out_dir = Path(tempfile.mkdtemp(prefix="salmon_index_")) / "index"
+    out_dir = project_mkdtemp("salmon_index_") / "index"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     run_tool(
@@ -29,21 +37,21 @@ def salmon_index(ref: File, salmon_sif: str = "") -> Dir:
         salmon_sif,
         [ref_path.parent, out_dir.parent],
     )
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
-@env.task
+@rnaseq_qc_quant_env.task
 def salmon_quant(
     index: Dir,
     left: File,
     right: File,
     salmon_sif: str = "",
 ) -> Dir:
-    """Quantify one paired-end sample against a prebuilt Salmon index."""
+    """Quantify the paired-end reads against a prepared Salmon index."""
     index_path = require_path(Path(index.download_sync()), "Salmon index directory")
     left_path = require_path(Path(left.download_sync()), "Read 1 FASTQ")
     right_path = require_path(Path(right.download_sync()), "Read 2 FASTQ")
-    out_dir = Path(tempfile.mkdtemp(prefix="salmon_quant_")) / "quant"
+    out_dir = project_mkdtemp("salmon_quant_") / "quant"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     run_tool(
@@ -65,12 +73,12 @@ def salmon_quant(
         salmon_sif,
         [index_path.parent, left_path.parent, right_path.parent, out_dir.parent],
     )
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
-@env.task
+@rnaseq_qc_quant_env.task
 def collect_results(qc: Dir, quant: Dir) -> Dir:
-    """Copy QC and quantification outputs into a stable manifest-bearing bundle."""
+    """Collect FastQC and Salmon outputs into the compatibility result bundle."""
     qc_path = require_path(Path(qc.download_sync()), "FastQC output directory")
     quant_path = require_path(Path(quant.download_sync()), "Salmon quantification directory")
 
@@ -92,4 +100,4 @@ def collect_results(qc: Dir, quant: Dir) -> Dir:
         "quant_files": sorted(path.name for path in (out_dir / "quant").glob("*")),
     }
     (out_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2))
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))

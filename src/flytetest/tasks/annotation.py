@@ -1,15 +1,17 @@
 """BRAKER3 task implementations for the current FLyteTest annotation milestone.
 
 This module stages local ab initio inputs, runs the tutorial-backed BRAKER3
-boundary, preserves the note-backed `braker.gff3` handoff for EVM, and
-collects a stable downstream bundle with explicit repo-policy metadata.
+boundary, preserves the normalized `braker.gff3` handoff for EVM, and collects
+a stable downstream bundle with explicit repo-policy metadata.
+
+Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
+input/output expectations follow `docs/tool_refs/braker3.md`.
 """
 
 from __future__ import annotations
 
 import json
 import shutil
-import tempfile
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -22,20 +24,24 @@ from flytetest.config import (
     ANNOTATION_WORKFLOW_NAME,
     RESULTS_ROOT,
     annotation_env,
+    project_mkdtemp,
     require_path,
     run_tool,
 )
+from flytetest.manifest_envelope import build_manifest_envelope
+from flytetest.manifest_io import write_json as _write_json
 from flytetest.types import (
+    AbInitioResultBundle,
+    AssetToolProvenance,
     Braker3InputBundleAsset,
     Braker3NormalizedGff3Asset,
     Braker3RawRunResultAsset,
-    Braker3ResultBundle,
     ReferenceGenome,
 )
 
 
 def _as_json_compatible(value: Any) -> Any:
-    """Recursively convert manifest values into JSON-serializable primitives."""
+    """Convert manifest values into JSON-serializable primitives for provenance."""
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, dict):
@@ -48,17 +54,17 @@ def _as_json_compatible(value: Any) -> Any:
 
 
 def _read_json(path: Path) -> dict[str, Any]:
-    """Read a JSON manifest into a dictionary."""
+    """Load a run manifest or summary file into memory."""
     return json.loads(path.read_text())
 
 
 def _stage_manifest_path(staged_dir: Path) -> Path:
-    """Resolve the staged-input manifest written by `stage_braker3_inputs`."""
+    """Resolve the staged-input manifest that records the BRAKER3 inputs."""
     return require_path(staged_dir / "run_manifest.json", "BRAKER3 staged-input manifest")
 
 
 def _staged_genome_fasta(staged_dir: Path) -> Path:
-    """Resolve the single staged genome FASTA under a BRAKER3 input bundle."""
+    """Resolve the single staged genome FASTA that BRAKER3 consumes."""
     genome_dir = require_path(staged_dir / "genome", "Staged BRAKER3 genome directory")
     candidates = sorted(path for path in genome_dir.iterdir() if path.is_file())
     if len(candidates) == 1:
@@ -67,7 +73,7 @@ def _staged_genome_fasta(staged_dir: Path) -> Path:
 
 
 def _single_staged_file(staged_dir: Path, subdir_name: str, description: str) -> Path | None:
-    """Resolve one optional staged evidence file from a named subdirectory."""
+    """Resolve one optional evidence file from a named staged-input subdirectory."""
     candidate_dir = staged_dir / subdir_name
     if not candidate_dir.exists():
         return None
@@ -79,7 +85,7 @@ def _single_staged_file(staged_dir: Path, subdir_name: str, description: str) ->
 
 
 def _braker_gff3(run_dir: Path) -> Path:
-    """Resolve the single `braker.gff3` produced anywhere under a BRAKER3 run tree."""
+    """Resolve the single `braker.gff3` file produced by a BRAKER3 run."""
     candidates = sorted(run_dir.rglob("braker.gff3"))
     if len(candidates) == 1:
         return candidates[0]
@@ -87,12 +93,12 @@ def _braker_gff3(run_dir: Path) -> Path:
 
 
 def _raw_run_manifest_path(run_dir: Path) -> Path:
-    """Resolve the manifest written by the raw BRAKER3 execution task."""
+    """Resolve the manifest written by the BRAKER3 prediction stage."""
     return require_path(run_dir / "run_manifest.json", "BRAKER3 raw-run manifest")
 
 
-def _normalized_braker_gff3(normalized_dir: Path) -> Path:
-    """Resolve the normalized BRAKER3 GFF3 prepared for later EVM use."""
+def _normalized_braker3_gff3(normalized_dir: Path) -> Path:
+    """Resolve the normalized BRAKER3 GFF3 that is handed to EVM preparation."""
     candidates = sorted(normalized_dir.glob("*.gff3"))
     if len(candidates) == 1:
         return candidates[0]
@@ -100,12 +106,12 @@ def _normalized_braker_gff3(normalized_dir: Path) -> Path:
 
 
 def _normalized_manifest_path(normalized_dir: Path) -> Path:
-    """Resolve the manifest written by BRAKER3 normalization."""
+    """Resolve the manifest written by the BRAKER3 normalization stage."""
     return require_path(normalized_dir / "run_manifest.json", "Normalized BRAKER3 manifest")
 
 
 def _gff3_source_names(gff3_path: Path) -> tuple[str, ...]:
-    """Resolve unique GFF3 source-column values in first-appearance order."""
+    """Extract GFF3 source-column values in first-appearance order."""
     source_names: list[str] = []
     seen: set[str] = set()
     for raw_line in gff3_path.read_text().splitlines():
@@ -127,7 +133,7 @@ def stage_braker3_inputs(
     rnaseq_bam_path: str = "",
     protein_fasta_path: str = "",
 ) -> Dir:
-    """Stage the local genome and evidence inputs needed for a BRAKER3 run."""
+    """Stage the local genome and evidence inputs needed for BRAKER3."""
     genome_path = require_path(Path(genome.download_sync()), "Reference genome FASTA")
     rnaseq_bam = require_path(Path(rnaseq_bam_path), "RNA-seq BAM evidence") if rnaseq_bam_path else None
     protein_fasta = (
@@ -139,7 +145,7 @@ def stage_braker3_inputs(
             "stage_braker3_inputs requires at least one local BRAKER3 evidence input: rnaseq_bam_path or protein_fasta_path."
         )
 
-    out_dir = Path(tempfile.mkdtemp(prefix="braker3_stage_")) / "staged_inputs"
+    out_dir = project_mkdtemp("braker3_stage_") / "staged_inputs"
     genome_dir = out_dir / "genome"
     bam_dir = out_dir / "rnaseq_bam"
     protein_dir = out_dir / "protein_fasta"
@@ -162,32 +168,37 @@ def stage_braker3_inputs(
         staged_protein_path = protein_dir / protein_fasta.name
         shutil.copy2(protein_fasta, staged_protein_path)
 
-    manifest = {
-        "stage": "stage_braker3_inputs",
-        "notes_backed_behavior": [
-            "The source-of-truth notes place BRAKER3 upstream of EVM but do not define a fetch-or-stage contract for local input acquisition.",
-        ],
-        "tutorial_backed_behavior": [
-            "The Galaxy BRAKER3 tutorial is the runtime model for this repo milestone: masked genome plus RNA-seq BAM and/or protein FASTA evidence staged locally.",
-        ],
-        "repo_policy": [
-            "This milestone accepts only local user-provided BRAKER3 inputs and does not fetch remote evidence datasets automatically.",
-            "The staged input contract requires at least one local evidence input: RNA-seq BAM and/or protein FASTA.",
-            "No automatic RNA-seq BAM preparation, protein preprocessing, or cluster-specific BRAKER3 environment bootstrapping is performed in this milestone.",
-        ],
-        "outputs": {
-            "staged_genome_fasta": str(staged_genome_path),
-            "staged_rnaseq_bam": str(staged_bam_path) if staged_bam_path else None,
-            "staged_protein_fasta": str(staged_protein_path) if staged_protein_path else None,
-        },
-        "source_inputs": {
+    notes_backed_behavior = [
+        "The source-of-truth notes place BRAKER3 upstream of EVM but do not define a fetch-or-stage contract for local input acquisition.",
+    ]
+    tutorial_backed_behavior = [
+        "The Galaxy BRAKER3 tutorial is the runtime model for this repo milestone: masked genome plus RNA-seq BAM and/or protein FASTA evidence staged locally.",
+    ]
+    repo_policy = [
+        "This milestone accepts only local user-provided BRAKER3 inputs and does not fetch remote evidence datasets automatically.",
+        "The staged input contract requires at least one local evidence input: RNA-seq BAM and/or protein FASTA.",
+        "No automatic RNA-seq BAM preparation, protein preprocessing, or cluster-specific BRAKER3 environment bootstrapping is performed in this milestone.",
+    ]
+    manifest = build_manifest_envelope(
+        stage="stage_braker3_inputs",
+        assumptions=notes_backed_behavior + tutorial_backed_behavior + repo_policy,
+        inputs={
             "genome": str(Path(str(genome.path))),
             "rnaseq_bam_path": rnaseq_bam_path or None,
             "protein_fasta_path": protein_fasta_path or None,
         },
-    }
-    (out_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2))
-    return Dir.from_local_sync(str(out_dir))
+        outputs={
+            "staged_genome_fasta": str(staged_genome_path),
+            "staged_rnaseq_bam": str(staged_bam_path) if staged_bam_path else None,
+            "staged_protein_fasta": str(staged_protein_path) if staged_protein_path else None,
+        },
+    )
+    manifest["notes_backed_behavior"] = notes_backed_behavior
+    manifest["tutorial_backed_behavior"] = tutorial_backed_behavior
+    manifest["repo_policy"] = repo_policy
+    manifest["source_inputs"] = manifest["inputs"]
+    _write_json(out_dir / "run_manifest.json", manifest)
+    return Dir(path=str(out_dir))
 
 
 @annotation_env.task
@@ -196,13 +207,13 @@ def braker3_predict(
     braker_species: str = "flytetest_braker3",
     braker3_sif: str = "",
 ) -> Dir:
-    """Run the tutorial-backed BRAKER3 boundary against staged local inputs."""
+    """Run BRAKER3 on the staged inputs and preserve the raw prediction bundle."""
     staged_dir = require_path(Path(staged_inputs.download_sync()), "Staged BRAKER3 input directory")
     genome_path = _staged_genome_fasta(staged_dir)
     rnaseq_bam = _single_staged_file(staged_dir, "rnaseq_bam", "Staged RNA-seq BAM directory")
     protein_fasta = _single_staged_file(staged_dir, "protein_fasta", "Staged protein FASTA directory")
 
-    out_dir = Path(tempfile.mkdtemp(prefix="braker3_run_")) / "braker3"
+    out_dir = project_mkdtemp("braker3_run_") / "braker3"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     cmd = [
@@ -224,44 +235,48 @@ def braker3_predict(
     run_tool(cmd, braker3_sif, bind_paths)
     braker_gff3_path = _braker_gff3(out_dir)
 
-    manifest = {
-        "stage": "braker3_predict",
-        "notes_backed_behavior": [
-            "The notes require `braker.gff3` as the downstream ab initio input that later feeds EVM.",
-        ],
-        "tutorial_backed_behavior": [
-            "The Galaxy BRAKER3 tutorial provides the operational model for this milestone: a masked genome, RNA-seq BAM and/or protein FASTA evidence, GFF3 output, and tutorial-style BRAKER3 parameterization.",
-            "This milestone therefore follows the tutorial-backed braker.pl boundary with --gff3 plus optional --bam and --prot_seq inputs when those local staged evidence files are provided.",
-        ],
-        "repo_policy": [
-            "This task preserves the raw BRAKER3 output directory as the authoritative upstream record for later stages.",
-        ],
-        "inputs": {
+    notes_backed_behavior = [
+        "The notes require `braker.gff3` as the downstream ab initio input that later feeds EVM.",
+    ]
+    tutorial_backed_behavior = [
+        "The Galaxy BRAKER3 tutorial provides the operational model for this milestone: a masked genome, RNA-seq BAM and/or protein FASTA evidence, GFF3 output, and tutorial-style BRAKER3 parameterization.",
+        "This milestone therefore follows the tutorial-backed braker.pl boundary with --gff3 plus optional --bam and --prot_seq inputs when those local staged evidence files are provided.",
+    ]
+    repo_policy = [
+        "This task preserves the raw BRAKER3 output directory as the authoritative upstream record for later stages.",
+    ]
+    manifest = build_manifest_envelope(
+        stage="braker3_predict",
+        assumptions=notes_backed_behavior + tutorial_backed_behavior + repo_policy,
+        inputs={
             "staged_inputs": str(staged_dir),
             "genome": str(genome_path),
             "rnaseq_bam": str(rnaseq_bam) if rnaseq_bam else None,
             "protein_fasta": str(protein_fasta) if protein_fasta else None,
             "species": braker_species,
         },
-        "outputs": {
+        outputs={
             "raw_run_dir": str(out_dir),
             "braker_gff3": str(braker_gff3_path),
         },
-        "command_inference": cmd,
-    }
-    (out_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2))
-    return Dir.from_local_sync(str(out_dir))
+    )
+    manifest["notes_backed_behavior"] = notes_backed_behavior
+    manifest["tutorial_backed_behavior"] = tutorial_backed_behavior
+    manifest["repo_policy"] = repo_policy
+    manifest["command_inference"] = cmd
+    _write_json(out_dir / "run_manifest.json", manifest)
+    return Dir(path=str(out_dir))
 
 
 @annotation_env.task
 def normalize_braker3_for_evm(
     braker_run: Dir,
 ) -> Dir:
-    """Normalize resolved `braker.gff3` into a stable source-preserving directory."""
+    """Normalize the BRAKER3 output into the stable GFF3 handoff for EVM."""
     run_dir = require_path(Path(braker_run.download_sync()), "BRAKER3 run directory")
     source_gff3 = _braker_gff3(run_dir)
 
-    out_dir = Path(tempfile.mkdtemp(prefix="braker3_normalized_")) / "normalized"
+    out_dir = project_mkdtemp("braker3_normalized_") / "normalized"
     out_dir.mkdir(parents=True, exist_ok=True)
     normalized_gff3_path = out_dir / "braker3.evm.gff3"
     source_fields = _gff3_source_names(source_gff3)
@@ -314,7 +329,7 @@ def normalize_braker3_for_evm(
         },
     }
     (out_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2))
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @annotation_env.task
@@ -325,7 +340,7 @@ def collect_braker3_results(
     normalized_braker: Dir,
     braker_species: str = "flytetest_braker3",
 ) -> Dir:
-    """Collect BRAKER3 staging, raw outputs, and source-preserving normalization."""
+    """Collect the BRAKER3 raw and normalized outputs into the result bundle."""
     genome_input = Path(str(genome.path))
     staged_dir = require_path(Path(staged_inputs.download_sync()), "Staged BRAKER3 input directory")
     braker_run_dir = require_path(Path(braker_run.download_sync()), "BRAKER3 run directory")
@@ -371,13 +386,13 @@ def collect_braker3_results(
     )
     normalized_asset = Braker3NormalizedGff3Asset(
         output_dir=copied_normalized_dir,
-        normalized_gff3_path=_normalized_braker_gff3(copied_normalized_dir),
+        normalized_gff3_path=_normalized_braker3_gff3(copied_normalized_dir),
         source_run=raw_run_asset,
         notes=(
             "Normalization remains intentionally narrow and stops at a stable later-EVM-ready GFF3 boundary.",
         ),
     )
-    result_bundle = Braker3ResultBundle(
+    result_bundle = AbInitioResultBundle(
         result_dir=out_dir,
         staged_inputs_dir=copied_staged_dir,
         raw_run_dir=copied_raw_dir,
@@ -390,6 +405,12 @@ def collect_braker3_results(
         normalized_prediction=normalized_asset,
         notes=(
             "This milestone stops at BRAKER3 raw-output capture plus deterministic normalization for later EVM use.",
+        ),
+        provenance=AssetToolProvenance(
+            tool_name="BRAKER3",
+            tool_stage="ab initio annotation",
+            legacy_asset_name="Braker3ResultBundle",
+            source_manifest_key="ab_initio_result_bundle",
         ),
     )
 
@@ -426,11 +447,12 @@ def collect_braker3_results(
                 "braker3_input_bundle": asdict(input_bundle_asset),
                 "braker3_raw_run": asdict(raw_run_asset),
                 "braker3_normalized_gff3": asdict(normalized_asset),
-                "braker3_result_bundle": asdict(result_bundle),
+                "ab_initio_result_bundle": result_bundle.to_dict(),
+                "braker3_result_bundle": result_bundle.to_dict(),
             }
         ),
         "raw_run_manifest": raw_run_manifest,
         "normalized_manifest": normalized_manifest,
     }
     (out_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2))
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))

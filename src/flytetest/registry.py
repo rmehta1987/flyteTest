@@ -1,12 +1,14 @@
-"""Static registry entries for the current FLyteTest task and workflow surface.
+"""Planner-facing catalog of available workflows and tasks.
 
-This module is the repo's machine-readable catalog while the prompt-to-plan
-layer is still being built around pre-registered biological stages.
+This module lists the registered stages the planner can choose from. Each entry
+describes the public inputs, outputs, and biological role of a task or
+workflow, so user requests stay tied to known Flyte code instead of ad hoc
+runtime generation.
 """
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field, replace
 from typing import Literal
 
 
@@ -15,7 +17,11 @@ Category = Literal["task", "workflow"]
 
 @dataclass(frozen=True)
 class InterfaceField:
-    """One named input or output field exposed by a registry entry."""
+    """One named input or output listed in the catalog.
+
+    These fields keep the public shape readable without importing Flyte objects
+    or task functions.
+    """
 
     name: str
     type: str
@@ -23,8 +29,33 @@ class InterfaceField:
 
 
 @dataclass(frozen=True)
+class RegistryCompatibilityMetadata:
+    """Planner notes about where a stage fits in the biology pipeline.
+
+    The base catalog says that a task or workflow exists. This metadata says
+    which biology types the entry can accept, which types it can produce, and
+    when the planner may safely reuse it in a generated plan.
+    """
+
+    biological_stage: str = "unspecified"
+    accepted_planner_types: tuple[str, ...] = ()
+    produced_planner_types: tuple[str, ...] = ()
+    reusable_as_reference: bool = False
+    execution_defaults: dict[str, object] = field(default_factory=dict)
+    supported_execution_profiles: tuple[str, ...] = ("local",)
+    runtime_image_policy: str = "Optional local tool image paths remain user-supplied when supported."
+    synthesis_eligible: bool = False
+    composition_constraints: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class RegistryEntry:
-    """Metadata describing one supported FLyteTest task or workflow."""
+    """One registered task or workflow that the planner may choose.
+
+    Catalog entries keep the user-facing description separate from the runnable
+    Flyte definitions. That separation lets the planner inspect available
+    stages without importing every task module or editing workflow code.
+    """
 
     name: str
     category: Category
@@ -32,8 +63,17 @@ class RegistryEntry:
     inputs: tuple[InterfaceField, ...]
     outputs: tuple[InterfaceField, ...]
     tags: tuple[str, ...]
+    compatibility: RegistryCompatibilityMetadata = field(default_factory=RegistryCompatibilityMetadata)
 
     def to_dict(self) -> dict[str, object]:
+        """Serialize this catalog entry for callers that need plain dictionaries.
+
+        The method keeps `inputs` and `outputs` as lists of simple dictionaries
+        while still including the compatibility metadata.
+
+        Returns:
+            A `dict[str, object]` representation of the catalog entry.
+        """
         data = asdict(self)
         data["inputs"] = [asdict(field) for field in self.inputs]
         data["outputs"] = [asdict(field) for field in self.outputs]
@@ -137,7 +177,7 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
     RegistryEntry(
         name="stringtie_assemble",
         category="task",
-        description="Run StringTie transcript assembly from a merged RNA-seq BAM with the note-backed fixed flags `-l STRG -f 0.10 -c 3 -j 3`.",
+        description="Run StringTie transcript assembly from a merged RNA-seq BAM with the fixed flags `-l STRG -f 0.10 -c 3 -j 3`.",
         inputs=(
             InterfaceField("merged_bam", "File", "Merged BAM input for StringTie."),
             InterfaceField(
@@ -180,7 +220,7 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
     RegistryEntry(
         name="pasa_accession_extract",
         category="task",
-        description="Extract de novo Trinity transcript accessions for PASA TDN input.",
+        description="Extract PASA TDN accessions from the de novo Trinity FASTA for PASA align/assemble input.",
         inputs=(
             InterfaceField("denovo_trinity_fasta", "File", "De novo Trinity transcript FASTA."),
             InterfaceField("pasa_sif", "str", "Optional Apptainer/Singularity image path for PASA tools."),
@@ -193,7 +233,7 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
     RegistryEntry(
         name="combine_trinity_fastas",
         category="task",
-        description="Concatenate de novo and genome-guided Trinity transcript FASTAs for PASA transcript input in the notes-backed order.",
+        description="Concatenate de novo and genome-guided Trinity transcript FASTAs into the PASA input order.",
         inputs=(
             InterfaceField("genome_guided_trinity_fasta", "File", "Genome-guided Trinity transcript FASTA."),
             InterfaceField("denovo_trinity_fasta", "File", "De novo Trinity transcript FASTA."),
@@ -238,7 +278,7 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
     RegistryEntry(
         name="pasa_align_assemble",
         category="task",
-        description="Run PASA Launch_PASA_pipeline.pl for transcript alignment and assembly using de novo Trinity, Trinity-GG, and StringTie evidence.",
+        description="Run the PASA align/assemble command boundary with de novo Trinity, Trinity-GG, and StringTie evidence.",
         inputs=(
             InterfaceField("genome", "File", "Reference genome FASTA."),
             InterfaceField("cleaned_transcripts", "Dir", "seqclean output directory containing the cleaned Trinity transcript FASTA."),
@@ -247,7 +287,7 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
             InterfaceField("pasa_config", "Dir", "Directory containing the PASA config and SQLite database."),
             InterfaceField("tdn_accs", "File", "PASA de novo Trinity accession list."),
             InterfaceField("pasa_sif", "str", "Optional Apptainer/Singularity image path for PASA tools."),
-            InterfaceField("pasa_aligners", "str", "Comma-separated PASA aligner list, following the attached notes."),
+            InterfaceField("pasa_aligners", "str", "Comma-separated PASA aligner list, following the PASA tool reference."),
             InterfaceField("pasa_cpu", "int", "CPU count passed to Launch_PASA_pipeline.pl."),
             InterfaceField("pasa_max_intron_length", "int", "Maximum intron length passed to PASA."),
         ),
@@ -259,7 +299,7 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
     RegistryEntry(
         name="collect_pasa_results",
         category="task",
-        description="Collect PASA preparation and align/assemble outputs into a structured results directory with a manifest that records the internally produced Trinity inputs plus remaining upstream simplifications.",
+        description="Collect PASA preparation and align/assemble outputs into a structured results directory with a manifest.",
         inputs=(
             InterfaceField("genome", "File", "Reference genome FASTA."),
             InterfaceField("transcript_evidence_results", "Dir", "Transcript evidence results directory used as PASA source input."),
@@ -741,7 +781,7 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
             InterfaceField(
                 "lineage_dataset",
                 "str",
-                "BUSCO lineage dataset identifier or local lineage path passed with `-l`.",
+                "BUSCO lineage dataset identifier or local lineage path passed with `-l`; use `auto-lineage` to omit `-l` for fixture smoke runs.",
             ),
             InterfaceField(
                 "busco_sif",
@@ -787,9 +827,138 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
         tags=("busco", "annotation-qc", "results", "manifest"),
     ),
     RegistryEntry(
+        name="eggnog_map",
+        category="task",
+        description="Run EggNOG-mapper on the repeat-filtered protein FASTA boundary, preserve a deterministic tx2gene bridge, and propagate gene names into a reviewable annotated GFF3.",
+        inputs=(
+            InterfaceField(
+                "repeat_filter_results",
+                "Dir",
+                "Repeat-filtering results directory containing the final repeat-free proteins FASTA and GFF3.",
+            ),
+            InterfaceField(
+                "eggnog_data_dir",
+                "str",
+                "Local EggNOG database directory staged outside the repo milestone.",
+            ),
+            InterfaceField(
+                "eggnog_sif",
+                "str",
+                "Optional Apptainer/Singularity image path for EggNOG-mapper.",
+            ),
+            InterfaceField("eggnog_cpu", "int", "CPU count passed to EggNOG-mapper with `--cpu`."),
+            InterfaceField("eggnog_database", "str", "EggNOG taxonomic database or scope passed with `-d`."),
+            InterfaceField("eggnog_mode", "str", "EggNOG mode passed with `-m`; this milestone uses `hmmer`."),
+        ),
+        outputs=(
+            InterfaceField(
+                "eggnog_run_dir",
+                "Dir",
+                "Directory containing EggNOG-mapper outputs, tx2gene.tsv, annotated GFF3, and run_manifest.json.",
+            ),
+        ),
+        tags=("eggnog", "functional-annotation", "proteins", "gff3"),
+    ),
+    RegistryEntry(
+        name="collect_eggnog_results",
+        category="task",
+        description="Collect EggNOG functional-annotation outputs into a manifest-bearing results bundle rooted in the repeat-filtered protein FASTA boundary.",
+        inputs=(
+            InterfaceField(
+                "repeat_filter_results",
+                "Dir",
+                "Repeat-filtering results directory containing the final repeat-free proteins FASTA and GFF3.",
+            ),
+            InterfaceField("eggnog_run", "Dir", "EggNOG-mapper run directory to collect."),
+        ),
+        outputs=(
+            InterfaceField(
+                "results_dir",
+                "Dir",
+                "Timestamped EggNOG results directory containing copied source boundary files, EggNOG outputs, and run_manifest.json.",
+            ),
+        ),
+        tags=("eggnog", "functional-annotation", "results", "manifest"),
+    ),
+    RegistryEntry(
+        name="agat_statistics",
+        category="task",
+        description="Run AGAT statistics on the EggNOG-annotated GFF3 bundle and collect the resulting summary files in a manifest-bearing results directory.",
+        inputs=(
+            InterfaceField(
+                "eggnog_results",
+                "Dir",
+                "EggNOG results directory containing the annotated GFF3 boundary and run manifest.",
+            ),
+            InterfaceField(
+                "annotation_fasta_path",
+                "str",
+                "Optional companion FASTA path for the AGAT statistics command.",
+            ),
+            InterfaceField(
+                "agat_sif",
+                "str",
+                "Optional Apptainer/Singularity image path for AGAT.",
+            ),
+        ),
+        outputs=(
+            InterfaceField(
+                "results_dir",
+                "Dir",
+                "Timestamped AGAT results directory containing the EggNOG-annotated GFF3 boundary, AGAT statistics output, and run_manifest.json.",
+            ),
+        ),
+        tags=("agat", "post-processing", "statistics", "gff3"),
+    ),
+    RegistryEntry(
+        name="agat_convert_sp_gxf2gxf",
+        category="task",
+        description="Run AGAT conversion on the EggNOG-annotated GFF3 bundle with `agat_convert_sp_gxf2gxf.pl` and collect the normalized GFF3 into a manifest-bearing results directory.",
+        inputs=(
+            InterfaceField(
+                "eggnog_results",
+                "Dir",
+                "EggNOG results directory containing the annotated GFF3 boundary and run manifest.",
+            ),
+            InterfaceField(
+                "agat_sif",
+                "str",
+                "Optional Apptainer/Singularity image path for AGAT.",
+            ),
+        ),
+        outputs=(
+            InterfaceField(
+                "results_dir",
+                "Dir",
+                "Timestamped AGAT results directory containing the EggNOG-annotated GFF3 boundary, converted GFF3, and run_manifest.json.",
+            ),
+        ),
+        tags=("agat", "post-processing", "conversion", "gff3"),
+    ),
+    RegistryEntry(
+        name="agat_cleanup_gff3",
+        category="task",
+        description="Apply the deterministic post-AGAT GFF3 attribute cleanup to an AGAT conversion bundle and collect the cleaned GFF3 into a manifest-bearing results directory.",
+        inputs=(
+            InterfaceField(
+                "agat_conversion_results",
+                "Dir",
+                "AGAT conversion results directory containing the converted GFF3 boundary and run manifest.",
+            ),
+        ),
+        outputs=(
+            InterfaceField(
+                "results_dir",
+                "Dir",
+                "Timestamped AGAT cleanup results directory containing the converted source GFF3, cleaned GFF3, cleanup summary, and run_manifest.json.",
+            ),
+        ),
+        tags=("agat", "post-processing", "cleanup", "gff3"),
+    ),
+    RegistryEntry(
         name="transdecoder_train_from_pasa",
         category="task",
-        description="Run TransDecoder coding-region prediction from PASA assemblies and lift ORFs onto genome coordinates for downstream annotation.",
+        description="Run the TransDecoder LongOrfs/Predict phase sequence from PASA assemblies and lift ORFs onto genome coordinates.",
         inputs=(
             InterfaceField("pasa_assemblies_fasta", "File", "PASA assemblies FASTA generated from the PASA align/assemble stage."),
             InterfaceField("pasa_assemblies_gff3", "File", "PASA assemblies GFF3 used to project TransDecoder ORFs onto genome coordinates."),
@@ -1484,7 +1653,7 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
     RegistryEntry(
         name="transcript_evidence_generation",
         category="workflow",
-        description="Single-sample transcript-evidence workflow composed from de novo Trinity, STAR indexing/alignment, one-BAM merge, genome-guided Trinity, and note-aligned StringTie; it now produces both Trinity branches required upstream of PASA while keeping the notes-backed all-sample merge contract as a documented simplification.",
+        description="Single-sample transcript-evidence workflow composed from de novo Trinity, STAR indexing/alignment, one-BAM merge, genome-guided Trinity, and StringTie; it now produces both Trinity branches required upstream of PASA while keeping the all-sample merge contract as a documented simplification.",
         inputs=(
             InterfaceField("genome", "File", "Reference genome FASTA."),
             InterfaceField("left", "File", "Read 1 FASTQ input."),
@@ -1516,7 +1685,7 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
     RegistryEntry(
         name="pasa_transcript_alignment",
         category="workflow",
-        description="PASA transcript preparation and align/assemble workflow consuming the transcript-evidence bundle's internally produced de novo Trinity, Trinity-GG, and StringTie outputs.",
+        description="PASA transcript preparation and align/assemble workflow built from the PASA tool reference and the transcript-evidence bundle's de novo Trinity, Trinity-GG, and StringTie outputs.",
         inputs=(
             InterfaceField("genome", "File", "Reference genome FASTA."),
             InterfaceField(
@@ -1549,7 +1718,7 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
     RegistryEntry(
         name="annotation_refinement_pasa",
         category="workflow",
-        description="PASA post-EVM annotation-refinement workflow that consumes the existing PASA and EVM bundles, stages update inputs, runs explicit load-and-update rounds, finalizes the last-round GFF3, and collects a manifest-bearing results bundle.",
+        description="PASA post-EVM annotation-refinement workflow built from the PASA tool reference, explicit update rounds, and the existing PASA and EVM bundles.",
         inputs=(
             InterfaceField(
                 "pasa_results",
@@ -1589,7 +1758,7 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
             InterfaceField(
                 "pasa_update_rounds",
                 "int",
-                "Number of PASA post-EVM update rounds to run; must be at least 2 because the notes-backed milestone requires two or more update rounds.",
+                "Number of PASA post-EVM update rounds to run; must be at least 2 to match the current PASA refinement contract.",
             ),
             InterfaceField(
                 "pasa_sif",
@@ -1679,17 +1848,17 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
     RegistryEntry(
         name="annotation_qc_busco",
         category="workflow",
-        description="BUSCO-based annotation-QC workflow that consumes the repeat-filtered protein FASTA boundary, runs one BUSCO task per selected lineage, and collects a manifest-bearing QC bundle.",
+        description="BUSCO-based annotation quality-assessment workflow that consumes the repeat-filtered protein FASTA boundary, runs one BUSCO task per selected lineage, and collects a manifest-bearing quality-assessment bundle.",
         inputs=(
             InterfaceField(
                 "repeat_filter_results",
                 "Dir",
-                "Repeat-filtering results directory from annotation_repeat_filtering containing the final repeat-free proteins FASTA.",
+                "Repeat-filtering results directory from annotation_repeat_filtering containing the final repeat-free protein FASTA that BUSCO treats as the quality-assessment input.",
             ),
             InterfaceField(
                 "busco_lineages_text",
                 "str",
-                "Comma-separated BUSCO lineage list. The workflow defaults to the note-backed eukaryota, metazoa, insecta, arthropoda, and diptera lineages.",
+                "Comma-separated BUSCO lineage list. The workflow currently defaults to the eukaryota, metazoa, insecta, arthropoda, and diptera lineages.",
             ),
             InterfaceField(
                 "busco_sif",
@@ -1702,15 +1871,172 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
             InterfaceField(
                 "results_dir",
                 "Dir",
-                "Timestamped BUSCO QC results directory containing copied lineage runs, busco_summary.tsv, and run_manifest.json.",
+                "Timestamped BUSCO quality-assessment results directory containing copied lineage runs, busco_summary.tsv, and run_manifest.json.",
             ),
         ),
         tags=("workflow", "busco", "annotation-qc", "proteins"),
     ),
     RegistryEntry(
+        name="annotation_functional_eggnog",
+        category="workflow",
+        description="EggNOG functional-annotation workflow that consumes the repeat-filtered protein FASTA boundary after quality assessment, runs EggNOG-mapper with an explicit database directory, and collects a manifest-bearing annotated GFF3 bundle.",
+        inputs=(
+            InterfaceField(
+                "repeat_filter_results",
+                "Dir",
+                "Repeat-filtering results directory from annotation_repeat_filtering containing the final repeat-free proteins FASTA and GFF3 that the planner treats as the current quality-assessed source bundle.",
+            ),
+            InterfaceField(
+                "eggnog_data_dir",
+                "str",
+                "Local EggNOG database directory staged outside the repo milestone.",
+            ),
+            InterfaceField(
+                "eggnog_sif",
+                "str",
+                "Optional Apptainer/Singularity image path for EggNOG-mapper.",
+            ),
+            InterfaceField("eggnog_cpu", "int", "CPU count passed to EggNOG-mapper."),
+            InterfaceField("eggnog_database", "str", "EggNOG database or taxonomic scope passed with `-d`."),
+        ),
+        outputs=(
+            InterfaceField(
+                "results_dir",
+                "Dir",
+                "Timestamped EggNOG results directory containing copied source boundary files, EggNOG outputs, and run_manifest.json.",
+            ),
+        ),
+        tags=("workflow", "eggnog", "functional-annotation", "proteins"),
+    ),
+    RegistryEntry(
+        name="annotation_postprocess_agat",
+        category="workflow",
+        description="AGAT post-processing workflow that consumes the EggNOG-annotated GFF3 bundle after quality assessment and collects the statistics slice in a manifest-bearing results directory.",
+        inputs=(
+            InterfaceField(
+                "eggnog_results",
+                "Dir",
+                "EggNOG results directory from annotation_functional_eggnog containing the annotated GFF3 boundary that serves as the post-quality-assessment input for AGAT statistics.",
+            ),
+            InterfaceField(
+                "annotation_fasta_path",
+                "str",
+                "Optional companion FASTA path for the AGAT statistics command.",
+            ),
+            InterfaceField(
+                "agat_sif",
+                "str",
+                "Optional Apptainer/Singularity image path for AGAT.",
+            ),
+        ),
+        outputs=(
+            InterfaceField(
+                "results_dir",
+                "Dir",
+                "Timestamped AGAT results directory containing copied source files, AGAT statistics output, and run_manifest.json.",
+            ),
+        ),
+        tags=("workflow", "agat", "post-processing", "statistics"),
+    ),
+    RegistryEntry(
+        name="annotation_postprocess_agat_conversion",
+        category="workflow",
+        description="AGAT conversion workflow that consumes the EggNOG-annotated GFF3 bundle after quality assessment and collects the normalized GFF3 slice in a manifest-bearing results directory.",
+        inputs=(
+            InterfaceField(
+                "eggnog_results",
+                "Dir",
+                "EggNOG results directory from annotation_functional_eggnog containing the annotated GFF3 boundary that serves as the post-quality-assessment input for AGAT conversion.",
+            ),
+            InterfaceField(
+                "agat_sif",
+                "str",
+                "Optional Apptainer/Singularity image path for AGAT.",
+            ),
+        ),
+        outputs=(
+            InterfaceField(
+                "results_dir",
+                "Dir",
+                "Timestamped AGAT results directory containing copied source files, the converted GFF3, and run_manifest.json.",
+            ),
+        ),
+        tags=("workflow", "agat", "post-processing", "conversion"),
+    ),
+    RegistryEntry(
+        name="annotation_postprocess_agat_cleanup",
+        category="workflow",
+        description="AGAT cleanup workflow that consumes the AGAT conversion bundle after quality assessment and collects the deterministic cleaned GFF3 slice without running table2asn.",
+        inputs=(
+            InterfaceField(
+                "agat_conversion_results",
+                "Dir",
+                "AGAT conversion results directory from annotation_postprocess_agat_conversion containing the converted GFF3 boundary that serves as the cleanup input after quality assessment.",
+            ),
+        ),
+        outputs=(
+            InterfaceField(
+                "results_dir",
+                "Dir",
+                "Timestamped AGAT cleanup results directory containing copied source files, the cleaned GFF3, cleanup summary, and run_manifest.json.",
+            ),
+        ),
+        tags=("workflow", "agat", "post-processing", "cleanup"),
+    ),
+    RegistryEntry(
+        name="annotation_postprocess_table2asn",
+        category="workflow",
+        description="table2asn submission workflow that consumes the AGAT cleanup bundle and produces an NCBI .sqn submission file alongside validation artefacts.",
+        inputs=(
+            InterfaceField(
+                "agat_cleanup_results",
+                "Dir",
+                "AGAT cleanup results directory from annotation_postprocess_agat_cleanup containing the cleaned GFF3 that serves as the -f input to table2asn.",
+            ),
+            InterfaceField(
+                "genome_fasta",
+                "str",
+                "Path to the repeat-masked genome FASTA used as the -i input to table2asn.",
+            ),
+            InterfaceField(
+                "submission_template",
+                "str",
+                "Path to the NCBI .sbt template file generated on submit.ncbi.nlm.nih.gov (-t).",
+            ),
+            InterfaceField(
+                "locus_tag_prefix",
+                "str",
+                "BioProject locus-tag prefix assigned by NCBI (-locus-tag-prefix). Omitted from the command when empty.",
+            ),
+            InterfaceField(
+                "organism_annotation",
+                "str",
+                "NCBI organism annotation string such as [organism=Foo bar][isolate=X] (-j). Omitted when empty.",
+            ),
+            InterfaceField(
+                "table2asn_binary",
+                "str",
+                "Name or path of the table2asn executable. Defaults to 'table2asn'.",
+            ),
+            InterfaceField(
+                "table2asn_sif",
+                "str",
+                "Optional Apptainer/Singularity image path for table2asn.",
+            ),
+        ),
+        outputs=(
+            InterfaceField(
+                "results_dir",
+                "Dir",
+                "Timestamped table2asn results directory containing the .sqn submission file, validation artefacts, and run_manifest.json.",
+            ),
+        ),
+        tags=("workflow", "table2asn", "ncbi", "submission", "post-processing"),
+    ),
+    RegistryEntry(
         name="transdecoder_from_pasa",
         category="workflow",
-        description="TransDecoder coding-prediction workflow consuming the PASA results bundle and producing transcript-level and genome-level ORF evidence.",
+        description="TransDecoder coding-prediction workflow built from the PASA results bundle and the TransDecoder tool reference.",
         inputs=(
             InterfaceField(
                 "pasa_results",
@@ -1949,20 +2275,355 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
     ),
 )
 
+
+# Workflow compatibility is layered on after the base entries so the original
+# catalog list remains easy to scan and older callers still see the same entry
+# names, descriptions, inputs, and outputs. Most task entries keep the safe
+# default metadata; `busco_assess_proteins` has an explicit M18 fixture recipe
+# path because it is exposed through the MCP saved-recipe surface.
+_WORKFLOW_COMPATIBILITY_METADATA: dict[str, RegistryCompatibilityMetadata] = {
+    "busco_assess_proteins": RegistryCompatibilityMetadata(
+        biological_stage="BUSCO fixture and lineage assessment",
+        accepted_planner_types=(),
+        produced_planner_types=("Dir",),
+        reusable_as_reference=True,
+        execution_defaults={"profile": "local", "result_manifest": "run_manifest.json"},
+        composition_constraints=(
+            "The M18 fixture path uses genome mode against the upstream BUSCO eukaryota test FASTA while the annotation QC workflow still runs BUSCO on repeat-filtered proteins.",
+        ),
+    ),
+    "rnaseq_qc_quant": RegistryCompatibilityMetadata(
+        biological_stage="RNA-seq QC and transcript quantification",
+        accepted_planner_types=("ReadSet",),
+        produced_planner_types=(),
+        reusable_as_reference=True,
+        execution_defaults={"profile": "local", "result_manifest": "run_manifest.json"},
+        synthesis_eligible=True,
+        composition_constraints=(
+            "This workflow is a standalone RNA-seq QC/quantification branch and does not produce genome-annotation evidence.",
+        ),
+    ),
+    "transcript_evidence_generation": RegistryCompatibilityMetadata(
+        biological_stage="transcript evidence generation",
+        accepted_planner_types=("ReferenceGenome", "ReadSet"),
+        produced_planner_types=("TranscriptEvidenceSet",),
+        reusable_as_reference=True,
+        execution_defaults={"profile": "local", "result_manifest": "run_manifest.json"},
+        synthesis_eligible=True,
+        composition_constraints=(
+            "Current implementation is a one paired-end sample subset of the full all-sample branch.",
+            "Downstream PASA alignment should consume the manifest-bearing transcript evidence result bundle.",
+        ),
+    ),
+    "pasa_transcript_alignment": RegistryCompatibilityMetadata(
+        biological_stage="PASA transcript alignment and assembly",
+        accepted_planner_types=("ReferenceGenome", "TranscriptEvidenceSet"),
+        produced_planner_types=("TranscriptEvidenceSet",),
+        reusable_as_reference=True,
+        execution_defaults={"profile": "local", "result_manifest": "run_manifest.json"},
+        synthesis_eligible=True,
+        composition_constraints=(
+            "Consumes the existing transcript evidence result bundle directly.",
+            "Requires a user-supplied UniVec FASTA and PASA config template.",
+        ),
+    ),
+    "transdecoder_from_pasa": RegistryCompatibilityMetadata(
+        biological_stage="TransDecoder coding-region prediction from PASA assemblies",
+        accepted_planner_types=("TranscriptEvidenceSet",),
+        produced_planner_types=("AnnotationEvidenceSet",),
+        reusable_as_reference=True,
+        execution_defaults={"profile": "local", "result_manifest": "run_manifest.json"},
+        synthesis_eligible=True,
+        composition_constraints=(
+            "TransDecoder command sequence remains documented as inferred from the notes.",
+        ),
+    ),
+    "protein_evidence_alignment": RegistryCompatibilityMetadata(
+        biological_stage="protein evidence alignment",
+        accepted_planner_types=("ReferenceGenome", "ProteinEvidenceSet"),
+        produced_planner_types=("ProteinEvidenceSet",),
+        reusable_as_reference=True,
+        execution_defaults={"profile": "local", "result_manifest": "run_manifest.json"},
+        synthesis_eligible=True,
+        composition_constraints=(
+            "Protein FASTA inputs are local and explicit; the workflow does not fetch UniProt or RefSeq automatically.",
+        ),
+    ),
+    "ab_initio_annotation_braker3": RegistryCompatibilityMetadata(
+        biological_stage="BRAKER3 ab initio annotation",
+        accepted_planner_types=("ReferenceGenome", "TranscriptEvidenceSet", "ProteinEvidenceSet"),
+        produced_planner_types=("AnnotationEvidenceSet",),
+        reusable_as_reference=True,
+        execution_defaults={"profile": "local", "result_manifest": "run_manifest.json"},
+        synthesis_eligible=True,
+        composition_constraints=(
+            "Requires a genome plus at least one explicit evidence source across RNA-seq BAM or protein FASTA.",
+            "BRAKER3 invocation details remain Galaxy tutorial-backed where the notes are not explicit.",
+        ),
+    ),
+    "consensus_annotation_evm_prep": RegistryCompatibilityMetadata(
+        biological_stage="pre-EVM consensus input preparation",
+        accepted_planner_types=("TranscriptEvidenceSet", "ProteinEvidenceSet", "AnnotationEvidenceSet"),
+        produced_planner_types=("AnnotationEvidenceSet",),
+        reusable_as_reference=True,
+        execution_defaults={"profile": "local", "result_manifest": "run_manifest.json"},
+        synthesis_eligible=True,
+        composition_constraints=(
+            "Assembles transcripts.gff3, predictions.gff3, and proteins.gff3 but does not execute EVM.",
+        ),
+    ),
+    "consensus_annotation_evm": RegistryCompatibilityMetadata(
+        biological_stage="EVidenceModeler consensus annotation",
+        accepted_planner_types=("AnnotationEvidenceSet",),
+        produced_planner_types=("ConsensusAnnotation",),
+        reusable_as_reference=True,
+        execution_defaults={"profile": "local", "result_manifest": "run_manifest.json"},
+        synthesis_eligible=True,
+        composition_constraints=(
+            "Consumes an existing pre-EVM bundle and stops before PASA update rounds.",
+        ),
+    ),
+    "annotation_refinement_pasa": RegistryCompatibilityMetadata(
+        biological_stage="PASA-based gene model update",
+        accepted_planner_types=("TranscriptEvidenceSet", "ConsensusAnnotation"),
+        produced_planner_types=("ConsensusAnnotation",),
+        reusable_as_reference=True,
+        execution_defaults={"profile": "local", "result_manifest": "run_manifest.json"},
+        synthesis_eligible=True,
+        composition_constraints=(
+            "Consumes existing PASA and EVM result bundles without reopening upstream evidence generation.",
+        ),
+    ),
+    "annotation_repeat_filtering": RegistryCompatibilityMetadata(
+        biological_stage="repeat filtering and annotation cleanup",
+        accepted_planner_types=("ConsensusAnnotation",),
+        produced_planner_types=("ConsensusAnnotation", "QualityAssessmentTarget"),
+        reusable_as_reference=True,
+        execution_defaults={"profile": "local", "result_manifest": "run_manifest.json"},
+        synthesis_eligible=True,
+        composition_constraints=(
+            "Starts from the PASA-updated sorted GFF3 boundary plus a user-supplied RepeatMasker .out file.",
+        ),
+    ),
+    "annotation_qc_busco": RegistryCompatibilityMetadata(
+        biological_stage="BUSCO annotation quality assessment",
+        accepted_planner_types=("QualityAssessmentTarget",),
+        produced_planner_types=("QualityAssessmentTarget",),
+        reusable_as_reference=True,
+        execution_defaults={"profile": "local", "result_manifest": "run_manifest.json"},
+        synthesis_eligible=True,
+        composition_constraints=(
+            "Consumes the repeat-filtered protein FASTA boundary as the current QC target and does not run EggNOG, AGAT, or submission prep.",
+        ),
+    ),
+    "annotation_functional_eggnog": RegistryCompatibilityMetadata(
+        biological_stage="EggNOG functional annotation",
+        accepted_planner_types=("QualityAssessmentTarget",),
+        produced_planner_types=("QualityAssessmentTarget",),
+        reusable_as_reference=True,
+        execution_defaults={"profile": "local", "result_manifest": "run_manifest.json"},
+        synthesis_eligible=True,
+        composition_constraints=(
+            "Consumes the repeat-filtered protein FASTA boundary after BUSCO-style quality assessment and keeps AGAT and submission prep deferred.",
+        ),
+    ),
+    "annotation_postprocess_agat": RegistryCompatibilityMetadata(
+        biological_stage="AGAT post-processing",
+        accepted_planner_types=("QualityAssessmentTarget",),
+        produced_planner_types=("QualityAssessmentTarget",),
+        reusable_as_reference=True,
+        execution_defaults={"profile": "local", "result_manifest": "run_manifest.json"},
+        synthesis_eligible=True,
+        composition_constraints=(
+            "Consumes the EggNOG-annotated GFF3 boundary after quality assessment and keeps AGAT conversion, cleanup, and table2asn as separate follow-on slices.",
+        ),
+    ),
+    "annotation_postprocess_agat_conversion": RegistryCompatibilityMetadata(
+        biological_stage="AGAT post-processing",
+        accepted_planner_types=("QualityAssessmentTarget",),
+        produced_planner_types=("QualityAssessmentTarget",),
+        reusable_as_reference=True,
+        execution_defaults={"profile": "local", "result_manifest": "run_manifest.json"},
+        synthesis_eligible=True,
+        composition_constraints=(
+            "Consumes the EggNOG-annotated GFF3 boundary after quality assessment, uses the AGAT conversion command family explicitly, and keeps cleanup as a separate follow-on slice before table2asn.",
+        ),
+    ),
+    "annotation_postprocess_agat_cleanup": RegistryCompatibilityMetadata(
+        biological_stage="AGAT post-processing",
+        accepted_planner_types=("QualityAssessmentTarget",),
+        produced_planner_types=("QualityAssessmentTarget",),
+        reusable_as_reference=True,
+        execution_defaults={"profile": "local", "result_manifest": "run_manifest.json"},
+        synthesis_eligible=True,
+        composition_constraints=(
+            "Consumes the AGAT conversion GFF3 boundary after quality assessment, applies the deterministic cleanup rules, and keeps table2asn deferred.",
+        ),
+    ),
+    "annotation_postprocess_table2asn": RegistryCompatibilityMetadata(
+        biological_stage="NCBI submission preparation",
+        accepted_planner_types=("QualityAssessmentTarget",),
+        produced_planner_types=("QualityAssessmentTarget",),
+        reusable_as_reference=True,
+        execution_defaults={"profile": "local", "result_manifest": "run_manifest.json"},
+        synthesis_eligible=True,
+        composition_constraints=(
+            "Consumes the AGAT cleanup GFF3 boundary and runs table2asn to produce an NCBI .sqn submission file. Requires a valid NCBI .sbt submission template and a BioProject locus-tag prefix.",
+        ),
+    ),
+}
+
+
+_WORKFLOW_LOCAL_RESOURCE_DEFAULTS: dict[str, dict[str, str]] = {
+    "busco_assess_proteins": {"cpu": "2", "memory": "8Gi", "execution_class": "local"},
+    "rnaseq_qc_quant": {"cpu": "4", "memory": "16Gi", "execution_class": "local"},
+    "transcript_evidence_generation": {"cpu": "8", "memory": "32Gi", "execution_class": "local"},
+    "pasa_transcript_alignment": {"cpu": "8", "memory": "32Gi", "execution_class": "local"},
+    "transdecoder_from_pasa": {"cpu": "8", "memory": "32Gi", "execution_class": "local"},
+    "protein_evidence_alignment": {"cpu": "8", "memory": "32Gi", "execution_class": "local"},
+    "ab_initio_annotation_braker3": {"cpu": "16", "memory": "64Gi", "execution_class": "local"},
+    "consensus_annotation_evm_prep": {"cpu": "16", "memory": "64Gi", "execution_class": "local"},
+    "consensus_annotation_evm": {"cpu": "16", "memory": "64Gi", "execution_class": "local"},
+    "annotation_refinement_pasa": {"cpu": "8", "memory": "32Gi", "execution_class": "local"},
+    "annotation_repeat_filtering": {"cpu": "16", "memory": "64Gi", "execution_class": "local"},
+    "annotation_qc_busco": {"cpu": "16", "memory": "64Gi", "execution_class": "local"},
+    "annotation_functional_eggnog": {"cpu": "16", "memory": "64Gi", "execution_class": "local"},
+    "annotation_postprocess_agat": {"cpu": "8", "memory": "32Gi", "execution_class": "local"},
+    "annotation_postprocess_agat_conversion": {"cpu": "8", "memory": "32Gi", "execution_class": "local"},
+    "annotation_postprocess_agat_cleanup": {"cpu": "8", "memory": "32Gi", "execution_class": "local"},
+    "annotation_postprocess_table2asn": {"cpu": "4", "memory": "16Gi", "execution_class": "local"},
+}
+
+# Slurm resource hints per workflow.  These are starting-point suggestions for
+# HPC submission, not enforced limits.  cpu and memory match or slightly exceed
+# the local defaults to account for Slurm job overhead; walltime is a
+# conservative upper bound for a typical small-to-medium eukaryote genome.
+# queue and account are intentionally absent — those are cluster-specific and
+# must be supplied by the user via resource_request or the prompt.
+_WORKFLOW_SLURM_RESOURCE_HINTS: dict[str, dict[str, str]] = {
+    # Lightweight QC and quantification
+    "busco_assess_proteins": {"cpu": "4", "memory": "16Gi", "walltime": "01:00:00"},
+    "rnaseq_qc_quant": {"cpu": "4", "memory": "16Gi", "walltime": "01:00:00"},
+    # RNA-seq evidence — Trinity can be memory-intensive; STAR index needs ~30 Gi
+    "transcript_evidence_generation": {"cpu": "16", "memory": "64Gi", "walltime": "04:00:00"},
+    # PASA alignment and refinement
+    "pasa_transcript_alignment": {"cpu": "8", "memory": "32Gi", "walltime": "04:00:00"},
+    "annotation_refinement_pasa": {"cpu": "8", "memory": "32Gi", "walltime": "08:00:00"},
+    # TransDecoder is fast; conservative 1-hour ceiling covers large transcript sets
+    "transdecoder_from_pasa": {"cpu": "8", "memory": "32Gi", "walltime": "01:00:00"},
+    # Exonerate protein alignment — runtime scales with chunk count
+    "protein_evidence_alignment": {"cpu": "8", "memory": "32Gi", "walltime": "04:00:00"},
+    # BRAKER3 ab initio — heaviest stage; 24 hours covers most small eukaryotes
+    "ab_initio_annotation_braker3": {"cpu": "16", "memory": "64Gi", "walltime": "24:00:00"},
+    # EVM consensus steps
+    "consensus_annotation_evm_prep": {"cpu": "16", "memory": "64Gi", "walltime": "02:00:00"},
+    "consensus_annotation_evm": {"cpu": "16", "memory": "64Gi", "walltime": "04:00:00"},
+    # RepeatMasker — slow; 12-hour ceiling for genome-scale repeat masking
+    "annotation_repeat_filtering": {"cpu": "16", "memory": "64Gi", "walltime": "12:00:00"},
+    # Post-filtering QC and annotation
+    "annotation_qc_busco": {"cpu": "16", "memory": "64Gi", "walltime": "04:00:00"},
+    "annotation_functional_eggnog": {"cpu": "16", "memory": "64Gi", "walltime": "04:00:00"},
+    # AGAT post-processing — statistics and conversion are fast; cleanup is moderate
+    "annotation_postprocess_agat": {"cpu": "4", "memory": "16Gi", "walltime": "00:30:00"},
+    "annotation_postprocess_agat_conversion": {"cpu": "4", "memory": "16Gi", "walltime": "00:30:00"},
+    "annotation_postprocess_agat_cleanup": {"cpu": "8", "memory": "32Gi", "walltime": "01:00:00"},
+    "annotation_postprocess_table2asn": {"cpu": "4", "memory": "16Gi", "walltime": "02:00:00"},
+}
+
+
+def _with_resource_defaults(name: str, metadata: RegistryCompatibilityMetadata) -> RegistryCompatibilityMetadata:
+    """Attach local resource defaults and Slurm resource hints to workflow compatibility metadata.
+
+    Local defaults are placed under ``execution_defaults["resources"]`` and are
+    used when no ``resource_request`` is supplied for a local run.  Slurm hints
+    are placed under ``execution_defaults["slurm_resource_hints"]`` and serve as
+    starting-point suggestions when the user requests Slurm execution without
+    specifying explicit resources.  Both are advisory; any explicit
+    ``resource_request`` from the caller takes precedence.
+
+    Args:
+        name: Workflow name to look up in the resource tables.
+        metadata: The compatibility metadata to augment with resource guidance.
+
+    Returns:
+        Compatibility metadata with ``resources`` and ``slurm_resource_hints``
+        populated where table entries exist, and ``slurm`` added to
+        ``supported_execution_profiles`` when local defaults are present.
+    """
+    local_resources = _WORKFLOW_LOCAL_RESOURCE_DEFAULTS.get(name)
+    slurm_hints = _WORKFLOW_SLURM_RESOURCE_HINTS.get(name)
+    if local_resources is None and slurm_hints is None:
+        return metadata
+    execution_defaults = dict(metadata.execution_defaults)
+    if local_resources is not None:
+        execution_defaults.setdefault("resources", local_resources)
+    if slurm_hints is not None:
+        execution_defaults.setdefault("slurm_resource_hints", slurm_hints)
+    supported_profiles = (
+        tuple(dict.fromkeys((*metadata.supported_execution_profiles, "slurm")))
+        if local_resources is not None
+        else metadata.supported_execution_profiles
+    )
+    return replace(
+        metadata,
+        execution_defaults=execution_defaults,
+        supported_execution_profiles=supported_profiles,
+    )
+
+
+def _backfill_workflow_compatibility_metadata(
+    entries: tuple[RegistryEntry, ...],
+) -> tuple[RegistryEntry, ...]:
+    """Attach workflow planning notes while preserving the public catalog list.
+
+    Args:
+        entries: Catalog entries or workflow stages being combined for planning.
+
+    Returns:
+        The catalog entries with workflow planning notes attached where available.
+    """
+    return tuple(
+        # `replace` keeps the existing name, category, description, inputs,
+        # outputs, and tags intact while swapping in planner-facing notes.
+        replace(
+            entry,
+            compatibility=_with_resource_defaults(entry.name, _WORKFLOW_COMPATIBILITY_METADATA[entry.name]),
+        )
+        if entry.name in _WORKFLOW_COMPATIBILITY_METADATA
+        else entry
+        for entry in entries
+    )
+
+
+REGISTRY_ENTRIES = _backfill_workflow_compatibility_metadata(REGISTRY_ENTRIES)
 _REGISTRY = {entry.name: entry for entry in REGISTRY_ENTRIES}
 
 
 def list_entries(category: Category | None = None) -> tuple[RegistryEntry, ...]:
-    """List registry entries, optionally restricted to one category."""
+    """List supported catalog entries, optionally restricted to tasks or workflows.
+
+    Args:
+        category: Optional category filter for tasks or workflows.
+
+    Returns:
+        The supported catalog entries in the requested category, if any.
+    """
     if category is None:
         return REGISTRY_ENTRIES
     return tuple(entry for entry in REGISTRY_ENTRIES if entry.category == category)
 
 
 def get_entry(name: str) -> RegistryEntry:
-    """Resolve one registry entry by name or raise with supported alternatives."""
+    """Return one catalog entry by name with a helpful error for unknown names.
+
+    Args:
+        name: The supported entry name being looked up.
+
+    Returns:
+        The catalog entry for the requested name.
+    """
     try:
         return _REGISTRY[name]
     except KeyError as exc:
         supported = ", ".join(sorted(_REGISTRY))
-        raise KeyError(f"Unknown registry entry '{name}'. Supported entries: {supported}") from exc
+        raise KeyError(f"Unknown catalog entry '{name}'. Supported entries: {supported}") from exc

@@ -4,6 +4,20 @@
 
 Create NCBI GenBank submission records from genome sequence plus annotation inputs.
 
+## Input Data
+
+- template `.sbt` submit-block file
+- genome FASTA `.fsa`
+- optional feature table `.tbl` or GenBank-specific GFF input
+- optional `.src`, `.pep`, or `.qvl` inputs when the submission requires them
+
+## Output Data
+
+- submission ASN.1 `.sqn`
+- optional validation `.val` and `.stats`
+- optional discrepancy report `.dr`
+- optional GenBank flatfile `.gbf`
+
 ## Key Inputs
 
 - template `.sbt` submit-block file
@@ -29,10 +43,15 @@ Create NCBI GenBank submission records from genome sequence plus annotation inpu
 - [NCBI Eukaryotic Annotated Genome Submission Guide](https://www.ncbi.nlm.nih.gov/genbank/eukaryotic_genome_submission/)
 - [NCBI Genome Submission Portal](https://submit.ncbi.nlm.nih.gov/about/genome/)
 
-## Tutorial / Training References
+## Tutorial References
 
 - GTN coverage appears weak or absent for `table2asn`; I did not find a direct table2asn tutorial in current GTN search results.
 - For broader submission context, the GTN genome-annotation material points users back to NCBI submission documentation rather than a detailed table2asn walkthrough.
+
+## Code Reference
+
+- [`src/flytetest/workflows/functional.py`](src/flytetest/workflows/functional.py)
+- that workflow entrypoint is the closest live code boundary today; it stops before submission-prep and keeps `table2asn` deferred
 
 ## Native Command Context
 

@@ -1,8 +1,8 @@
 """Tests for the Exonerate protein-evidence task chain.
 
-The suite uses the tutorial-derived fixtures staged directly under `data/` for
-lightweight real-data smoke coverage, while keeping collector and manifest
-checks synthetic when a real tool run is unnecessary.
+    The suite uses the tutorial-derived fixtures staged directly under `data/` for
+    lightweight real-data smoke coverage, while keeping collector and manifest
+    checks synthetic when a real tool run is unnecessary.
 """
 
 from __future__ import annotations
@@ -19,8 +19,8 @@ import shutil
 TESTS_DIR = Path(__file__).resolve().parent
 SRC_DIR = TESTS_DIR.parent / "src"
 DATA_DIR = TESTS_DIR.parent / "data"
-PROTEIN_FASTA = DATA_DIR / "proteins.fa"
-GENOME_FASTA = DATA_DIR / "genome.fa"
+PROTEIN_FASTA = DATA_DIR / "braker3" / "protein_data" / "fastas" / "proteins.fa"
+GENOME_FASTA = DATA_DIR / "braker3" / "reference" / "genome.fa"
 sys.path.insert(0, str(TESTS_DIR))
 sys.path.insert(0, str(SRC_DIR))
 
@@ -39,7 +39,16 @@ EXONERATE_AVAILABLE = shutil.which("exonerate") is not None
 
 
 def _copy_fasta_subset(source: Path, destination: Path, record_limit: int) -> Path:
-    """Copy the first `record_limit` FASTA records from a real downloaded file."""
+    """Copy the first `record_limit` FASTA records from a real downloaded file.
+
+    Args:
+        source: Real FASTA input used as the source of the subset.
+        destination: Destination for the truncated FASTA fixture.
+        record_limit: Number of FASTA records to copy into the subset.
+
+    Returns:
+        The subset FASTA path, which the tests feed into Exonerate.
+    """
     if record_limit < 1:
         raise ValueError("record_limit must be at least 1")
 
@@ -58,37 +67,79 @@ def _copy_fasta_subset(source: Path, destination: Path, record_limit: int) -> Pa
 
 
 def _read_json(path: Path) -> dict[str, object]:
-    """Read a manifest file into a dictionary for assertions."""
+    """Read a manifest file into a dictionary for assertions.
+
+    Args:
+        path: Manifest file to parse for the Exonerate tests.
+
+    Returns:
+        Parsed JSON payload used by the protein-evidence tests.
+    """
     return json.loads(path.read_text())
 
 
 def _artifact_dir(path: Path) -> Dir:
-    """Create a stub Flyte directory artifact from a local path."""
-    return Dir.from_local_sync(str(path))
+    """Create a local Flyte directory wrapper from a filesystem path.
+
+    Args:
+        path: Directory path staged for the Flyte stub wrapper.
+
+    Returns:
+        Flyte directory stub pointing at the supplied path.
+    """
+    return Dir(path=str(path))
 
 
 def _artifact_file(path: Path) -> File:
-    """Create a stub Flyte file artifact from a local path."""
-    return File.from_local_sync(str(path))
+    """Create a local Flyte file wrapper from a filesystem path.
+
+    Args:
+        path: File path staged for the Flyte stub wrapper.
+
+    Returns:
+        Flyte file stub pointing at the supplied path.
+    """
+    return File(path=str(path))
 
 
 def _fixed_datetime() -> type:
-    """Return a deterministic timestamp provider for result-directory naming."""
+    """Return a deterministic timestamp provider for result-directory naming.
 
+    This helper keeps the test fixture deterministic and explicit.
+
+    Returns:
+        The shim class used to monkeypatch `datetime`.
+    """
+
+    # Keep the synthetic result-directory name stable for manifest assertions.
     class _Stamp:
+        """Fake datetime stamp that always returns the same test timestamp."""
+
         def strftime(self, fmt: str) -> str:
+            """Return the fixed timestamp string expected by the assertions."""
             return "20260401_120000"
 
     class _FixedDatetime:
+        """Shim object that mimics the subset of `datetime` used by the code."""
+
         @classmethod
         def now(cls) -> _Stamp:
+            """Return the fixed timestamp stub used by the synthetic tests."""
             return _Stamp()
 
     return _FixedDatetime
 
 
 def _real_alignment_dir(tmp_path: Path, record_limit: int = 5) -> Path:
-    """Run Exonerate on a small real subset derived from the downloaded tutorial data."""
+    """Run Exonerate on a small real subset derived from the downloaded tutorial data.
+
+    Args:
+        tmp_path: Temporary root used to stage the real-data smoke test.
+        record_limit: Number of FASTA records copied into the subset.
+
+    Returns:
+        Path to the Exonerate alignment result directory.
+    """
     subset = _copy_fasta_subset(PROTEIN_FASTA, tmp_path / f"protein_subset_{record_limit}.fa", record_limit)
     alignment = protein_evidence.exonerate_align_chunk(
         genome=_artifact_file(GENOME_FASTA),
@@ -100,10 +151,16 @@ def _real_alignment_dir(tmp_path: Path, record_limit: int = 5) -> Path:
 
 
 class ProteinEvidenceTaskTests(TestCase):
-    """Task-level coverage for the Exonerate staging and conversion boundary."""
+    """Task-level coverage for the Exonerate staging and conversion boundary.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
     def test_stage_and_chunk_protein_fastas_preserve_input_order(self) -> None:
-        """Stage and chunk small subsets copied from the local tutorial protein fixture."""
+        """Stage and chunk small subsets copied from the local tutorial protein fixture.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             first_subset = _copy_fasta_subset(PROTEIN_FASTA, tmp_path / "proteins_a.fa", 2)
@@ -146,7 +203,10 @@ class ProteinEvidenceTaskTests(TestCase):
             )
 
     def test_exonerate_align_chunk_records_command_and_manifest(self) -> None:
-        """Capture the Exonerate command contract while using local fixture-derived inputs."""
+        """Capture the Exonerate command contract while using local fixture-derived inputs.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             subset = _copy_fasta_subset(PROTEIN_FASTA, tmp_path / "protein_subset.fa", 2)
@@ -154,6 +214,7 @@ class ProteinEvidenceTaskTests(TestCase):
             seen: dict[str, object] = {}
 
             def fake_run_tool(cmd: list[str], sif: str, bind_paths: list[Path], cwd=None, stdout_path=None) -> None:
+                """Capture the Exonerate command and stage synthetic alignment output."""
                 seen["cmd"] = cmd
                 seen["sif"] = sif
                 seen["bind_paths"] = [Path(path) for path in bind_paths]
@@ -191,7 +252,10 @@ class ProteinEvidenceTaskTests(TestCase):
 
     @unittest.skipUnless(EXONERATE_AVAILABLE, "exonerate is required for the real-data smoke test")
     def test_exonerate_align_chunk_real_data_smoke(self) -> None:
-        """Run Exonerate on a tiny tutorial-derived subset and confirm real GFF output."""
+        """Run Exonerate on a tiny tutorial-derived subset and confirm real GFF output.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             alignment_dir = _real_alignment_dir(tmp_path, record_limit=2)
@@ -203,7 +267,10 @@ class ProteinEvidenceTaskTests(TestCase):
             self.assertGreater(raw_output.stat().st_size, 0)
 
     def test_exonerate_to_evm_gff3_converts_only_gff_records(self) -> None:
-        """Keep 9-column Exonerate target-GFF lines and normalize the source column."""
+        """Keep 9-column Exonerate target-GFF lines and normalize the source column.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             alignment_dir = tmp_path / "alignment"
@@ -233,7 +300,10 @@ class ProteinEvidenceTaskTests(TestCase):
             )
 
     def test_exonerate_to_evm_gff3_rejects_non_gff_output(self) -> None:
-        """Fail fast when the raw Exonerate stdout contains no 9-column GFF records."""
+        """Fail fast when the raw Exonerate stdout contains no 9-column GFF records.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             alignment_dir = tmp_path / "alignment"
@@ -246,7 +316,10 @@ class ProteinEvidenceTaskTests(TestCase):
                 )
 
     def test_exonerate_concat_results_builds_sorted_bundle(self) -> None:
-        """Collect raw and converted chunk results into a stable, ordered bundle."""
+        """Collect raw and converted chunk results into a stable, ordered bundle.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             first_subset = _copy_fasta_subset(PROTEIN_FASTA, tmp_path / "proteins_a.fa", 1)
@@ -314,10 +387,16 @@ class ProteinEvidenceTaskTests(TestCase):
 
 
 class ProteinEvidenceWorkflowTests(TestCase):
-    """Workflow-level coverage for the Exonerate fan-out and collection order."""
+    """Workflow-level coverage for the Exonerate fan-out and collection order.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
     def test_protein_evidence_alignment_runs_expected_stage_order(self) -> None:
-        """Confirm the workflow stages, fans out by chunk, and collects once at the end."""
+        """Confirm the workflow stages, fans out by chunk, and collects once at the end.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             calls: list[str] = []
@@ -337,17 +416,20 @@ class ProteinEvidenceWorkflowTests(TestCase):
             original_chunk = protein_evidence_workflow.chunk_protein_fastas
 
             def wrapped_stage(*, protein_fastas: list[File]) -> Dir:
+                """Wrap the stage step so the workflow call order can be asserted."""
                 calls.append("stage")
                 self.assertEqual([artifact.path for artifact in protein_fastas], [str(PROTEIN_FASTA)])
                 return staged
 
             def wrapped_chunk(*, staged_proteins: Dir, proteins_per_chunk: int) -> Dir:
+                """Wrap the chunk step so the workflow call order can be asserted."""
                 calls.append("chunk")
                 self.assertEqual(staged_proteins.download_sync(), staged.download_sync())
                 self.assertEqual(proteins_per_chunk, 20)
                 return chunked
 
             def wrapped_align(*, genome: File, protein_chunk: File, exonerate_sif: str = "", exonerate_model: str = "protein2genome") -> Dir:
+                """Wrap the alignment step and stage chunk-specific synthetic outputs."""
                 chunk_name = Path(protein_chunk.download_sync()).stem
                 calls.append(f"align:{chunk_name}")
                 raw_dir = tmp_path / f"raw_{chunk_name}"
@@ -359,6 +441,7 @@ class ProteinEvidenceWorkflowTests(TestCase):
                 return _artifact_dir(raw_dir)
 
             def wrapped_convert(*, exonerate_alignment: Dir) -> Dir:
+                """Wrap the conversion step and stage chunk-specific synthetic outputs."""
                 raw_dir = Path(exonerate_alignment.download_sync())
                 chunk_name = next(raw_dir.glob("*.exonerate.out")).stem.removesuffix(".exonerate")
                 calls.append(f"convert:{chunk_name}")
@@ -379,6 +462,7 @@ class ProteinEvidenceWorkflowTests(TestCase):
                 raw_chunk_results: list[Dir],
                 evm_chunk_results: list[Dir],
             ) -> Dir:
+                """Wrap the final collection step and stage a synthetic bundle directory."""
                 calls.append("collect")
                 output_dir = tmp_path / "workflow_result"
                 output_dir.mkdir(exist_ok=True)

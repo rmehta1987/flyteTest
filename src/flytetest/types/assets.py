@@ -1,8 +1,8 @@
 """Local-first typed bioinformatics assets for FLyteTest.
 
-This is a staged adoption layer inspired by richer asset systems, but it is not
-a full Stargazer-style implementation. These dataclasses intentionally model
-local filesystem paths plus lightweight biological metadata only.
+This is a staged adoption layer inspired by richer asset systems, but it is
+not a full Stargazer-style implementation. These dataclasses intentionally
+model local filesystem paths plus lightweight biological metadata only.
 
 Current scope:
 - no remote fetch/query/update behavior
@@ -20,8 +20,141 @@ Planned Flyte mapping:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import types
+from dataclasses import dataclass, field, fields, is_dataclass
 from pathlib import Path
+from typing import Any, Mapping, TypeVar, Union, get_args, get_origin, get_type_hints
+
+
+_ManifestSerializableT = TypeVar("_ManifestSerializableT", bound="ManifestSerializable")
+
+
+def _serialize_manifest_value(value: Any) -> Any:
+    """Convert asset values into JSON-compatible manifest payloads.
+
+    Args:
+        value: Asset value to serialize.
+
+    Returns:
+        JSON-compatible representation of the asset value.
+    """
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, tuple):
+        return [_serialize_manifest_value(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _serialize_manifest_value(item) for key, item in value.items()}
+    if is_dataclass(value):
+        if hasattr(value, "to_dict"):
+            return value.to_dict()
+        return {field_info.name: _serialize_manifest_value(getattr(value, field_info.name)) for field_info in fields(value)}
+    return value
+
+
+def _is_optional_manifest_type(annotation: Any) -> bool:
+    """Return whether one type hint is an optional union.
+
+    Args:
+        annotation: Type hint being inspected during deserialization.
+
+    Returns:
+        ``True`` when the annotation is an optional union.
+    """
+    origin = get_origin(annotation)
+    return origin in (Union, types.UnionType) and type(None) in get_args(annotation)
+
+
+def _deserialize_manifest_value(annotation: Any, value: Any) -> Any:
+    """Rehydrate one serialized asset value using a dataclass type hint.
+
+    Args:
+        annotation: Declared field type for the asset member being restored.
+        value: Serialized asset value to convert back into a typed object.
+
+    Returns:
+        Typed asset value reconstructed from the manifest payload.
+    """
+    if value is None:
+        return None
+    if annotation is Any:
+        return value
+    if annotation is Path:
+        return Path(str(value))
+    if annotation is str:
+        return str(value)
+    if annotation is int:
+        return int(value)
+    if annotation is bool:
+        return bool(value)
+
+    origin = get_origin(annotation)
+    if origin is tuple:
+        item_type = get_args(annotation)[0]
+        return tuple(_deserialize_manifest_value(item_type, item) for item in value)
+    if origin is dict:
+        key_type, value_type = get_args(annotation)
+        return {
+            _deserialize_manifest_value(key_type, key): _deserialize_manifest_value(value_type, item)
+            for key, item in value.items()
+        }
+    if _is_optional_manifest_type(annotation):
+        inner = [item for item in get_args(annotation) if item is not type(None)]
+        if len(inner) == 1:
+            return _deserialize_manifest_value(inner[0], value)
+    if isinstance(annotation, type) and is_dataclass(annotation):
+        if hasattr(annotation, "from_dict"):
+            return annotation.from_dict(value)
+        hints = get_type_hints(annotation)
+        return annotation(
+            **{
+                field_info.name: _deserialize_manifest_value(hints[field_info.name], value[field_info.name])
+                for field_info in fields(annotation)
+                if isinstance(value, Mapping) and field_info.name in value
+            }
+        )
+    return value
+
+
+class ManifestSerializable:
+    """Mixin for asset dataclasses that need stable manifest round-trips."""
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize one asset dataclass into JSON-compatible data.
+
+        Returns:
+            Field-ordered JSON-compatible payload for the dataclass.
+        """
+        return {field_info.name: _serialize_manifest_value(getattr(self, field_info.name)) for field_info in fields(self)}
+
+    @classmethod
+    def from_dict(cls: type[_ManifestSerializableT], payload: Mapping[str, Any]) -> _ManifestSerializableT:
+        """Deserialize one asset dataclass from JSON-compatible data.
+
+        Args:
+            payload: Structured payload to restore into the dataclass.
+
+        Returns:
+            Dataclass instance reconstructed from the supplied payload.
+        """
+        hints = get_type_hints(cls)
+        kwargs = {}
+        for field_info in fields(cls):
+            if field_info.name not in payload:
+                continue
+            kwargs[field_info.name] = _deserialize_manifest_value(hints[field_info.name], payload[field_info.name])
+        return cls(**kwargs)
+
+
+@dataclass(frozen=True, slots=True)
+class AssetToolProvenance(ManifestSerializable):
+    """Typed provenance for generic asset names that preserve tool lineage."""
+
+    tool_name: str
+    tool_stage: str
+    tool_version: str | None = None
+    legacy_asset_name: str | None = None
+    source_manifest_key: str | None = None
+    notes: tuple[str, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,7 +165,7 @@ class ReferenceGenome:
     - `fasta_path` -> `flyte.io.File`
     - `softmasked_fasta_path` -> optional `flyte.io.File`
     - `annotation_gff3_path` -> optional `flyte.io.File`
-    """
+"""
 
     fasta_path: Path
     organism_name: str | None = None
@@ -49,7 +182,7 @@ class TranscriptomeReference:
     Future Flyte mapping:
     - `fasta_path` -> `flyte.io.File`
     - `derived_from_genome` remains a planning-time typed relation
-    """
+"""
 
     fasta_path: Path
     organism_name: str | None = None
@@ -66,7 +199,7 @@ class ReadPair:
     - `left_reads_path` -> `flyte.io.File`
     - `right_reads_path` -> `flyte.io.File`
     - sample and library fields remain scalar task inputs
-    """
+"""
 
     sample_id: str
     left_reads_path: Path
@@ -84,7 +217,7 @@ class QcReport:
     Future Flyte mapping:
     - `report_dir` -> `flyte.io.Dir`
     - report members can remain derived metadata instead of separate task outputs
-    """
+"""
 
     sample_id: str
     report_dir: Path
@@ -102,7 +235,7 @@ class SalmonIndexAsset:
     Future Flyte mapping:
     - `index_dir` -> `flyte.io.Dir`
     - `transcriptome` stays as a typed upstream asset reference
-    """
+"""
 
     index_dir: Path
     transcriptome: TranscriptomeReference
@@ -119,7 +252,7 @@ class SalmonQuantResult:
     - `quant_dir` -> `flyte.io.Dir`
     - `quant_sf_path` -> `flyte.io.File`
     - related assets stay explicit instead of being inferred from filenames
-    """
+"""
 
     sample_id: str
     quant_dir: Path
@@ -140,7 +273,7 @@ class StarGenomeIndexAsset:
     Future Flyte mapping:
     - `index_dir` -> `flyte.io.Dir`
     - `reference_genome` stays as a typed upstream asset reference
-    """
+"""
 
     index_dir: Path
     reference_genome: ReferenceGenome
@@ -148,13 +281,13 @@ class StarGenomeIndexAsset:
 
 
 @dataclass(frozen=True, slots=True)
-class StarAlignmentResult:
+class StarAlignmentResult(ManifestSerializable):
     """Local STAR alignment result for one paired-end sample.
 
     Future Flyte mapping:
     - `output_dir` -> `flyte.io.Dir`
     - `sorted_bam_path` -> `flyte.io.File`
-    """
+"""
 
     sample_id: str
     output_dir: Path
@@ -164,6 +297,12 @@ class StarAlignmentResult:
     source_reads: ReadPair | None = None
     star_index: StarGenomeIndexAsset | None = None
     notes: tuple[str, ...] = field(default_factory=tuple)
+    provenance: AssetToolProvenance | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RnaSeqAlignmentResult(StarAlignmentResult):
+    """STAR-shaped RNA-seq alignment result alias used by downstream workflows."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -173,7 +312,7 @@ class MergedBamAsset:
     Future Flyte mapping:
     - `bam_path` -> `flyte.io.File`
     - optional `bai_path` -> `flyte.io.File`
-    """
+"""
 
     bam_path: Path
     source_bams: tuple[Path, ...] = field(default_factory=tuple)
@@ -189,7 +328,7 @@ class TrinityGenomeGuidedAssemblyResult:
     Future Flyte mapping:
     - `output_dir` -> `flyte.io.Dir`
     - `assembly_fasta_path` -> `flyte.io.File`
-    """
+"""
 
     output_dir: Path
     assembly_fasta_path: Path
@@ -205,7 +344,7 @@ class StringTieAssemblyResult:
     Future Flyte mapping:
     - `output_dir` -> `flyte.io.Dir`
     - `transcript_gtf_path` -> `flyte.io.File`
-    """
+"""
 
     output_dir: Path
     transcript_gtf_path: Path
@@ -221,7 +360,7 @@ class TrinityDeNovoTranscriptAsset:
     Future Flyte mapping:
     - `fasta_path` -> `flyte.io.File`
     - optional provenance stays as planning-time metadata
-    """
+"""
 
     fasta_path: Path
     notes: tuple[str, ...] = field(default_factory=tuple)
@@ -233,7 +372,7 @@ class CombinedTrinityTranscriptAsset:
 
     Future Flyte mapping:
     - `fasta_path` -> `flyte.io.File`
-    """
+"""
 
     fasta_path: Path
     genome_guided_transcripts: TrinityGenomeGuidedAssemblyResult
@@ -242,19 +381,25 @@ class CombinedTrinityTranscriptAsset:
 
 
 @dataclass(frozen=True, slots=True)
-class PasaCleanedTranscriptAsset:
+class PasaCleanedTranscriptAsset(ManifestSerializable):
     """seqclean output used by PASA align/assemble.
 
     Future Flyte mapping:
     - `output_dir` -> `flyte.io.Dir`
     - `clean_fasta_path` -> `flyte.io.File`
-    """
+"""
 
     output_dir: Path
     clean_fasta_path: Path
     input_transcripts: CombinedTrinityTranscriptAsset
     univec_fasta_path: Path | None = None
     notes: tuple[str, ...] = field(default_factory=tuple)
+    provenance: AssetToolProvenance | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class CleanedTranscriptDataset(PasaCleanedTranscriptAsset):
+    """PASA seqclean output alias used by transcript-evidence and PASA stages."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -265,7 +410,7 @@ class PasaSqliteConfigAsset:
     - `config_dir` -> `flyte.io.Dir`
     - `config_path` -> `flyte.io.File`
     - `database_path` -> `flyte.io.File`
-    """
+"""
 
     config_dir: Path
     config_path: Path
@@ -282,7 +427,7 @@ class PasaAlignmentAssemblyResult:
     Future Flyte mapping:
     - `output_dir` -> `flyte.io.Dir`
     - key member paths remain explicit file outputs
-    """
+"""
 
     output_dir: Path
     database_name: str
@@ -304,7 +449,7 @@ class PasaGeneModelUpdateInputBundleAsset:
     Future Flyte mapping:
     - `workspace_dir` -> `flyte.io.Dir`
     - key config, genome, transcript, and annotation members remain explicit files
-    """
+"""
 
     workspace_dir: Path
     reference_genome_fasta_path: Path
@@ -325,7 +470,7 @@ class PasaGeneModelUpdateRoundResult:
     Future Flyte mapping:
     - `workspace_dir` -> `flyte.io.Dir`
     - updated GFF3 and BED members remain explicit file outputs
-    """
+"""
 
     workspace_dir: Path
     round_index: int
@@ -344,7 +489,7 @@ class PasaGeneModelUpdateResultBundle:
     Future Flyte mapping:
     - `result_dir` -> `flyte.io.Dir`
     - final updated GFF3 members remain explicit file outputs
-    """
+"""
 
     result_dir: Path
     staged_inputs_dir: Path
@@ -367,7 +512,7 @@ class TransDecoderPredictionResult:
     Future Flyte mapping:
     - `output_dir` -> `flyte.io.Dir`
     - key member paths remain explicit file outputs
-    """
+"""
 
     output_dir: Path
     input_transcripts_fasta_path: Path
@@ -390,7 +535,7 @@ class ProteinReferenceDatasetAsset:
     - `staged_dir` -> `flyte.io.Dir`
     - `combined_fasta_path` -> `flyte.io.File`
     - `source_fasta_paths` -> tuple of `flyte.io.File` at workflow boundaries
-    """
+"""
 
     staged_dir: Path
     combined_fasta_path: Path
@@ -406,7 +551,7 @@ class ChunkedProteinFastaAsset:
     Future Flyte mapping:
     - `chunk_fasta_path` -> `flyte.io.File`
     - `chunk_dir` -> `flyte.io.Dir` when chunks are grouped as one artifact set
-    """
+"""
 
     chunk_dir: Path
     chunk_fasta_path: Path
@@ -423,7 +568,7 @@ class ExonerateChunkAlignmentResult:
     Future Flyte mapping:
     - `output_dir` -> `flyte.io.Dir`
     - `raw_output_path` -> `flyte.io.File`
-    """
+"""
 
     chunk_label: str
     output_dir: Path
@@ -440,7 +585,7 @@ class EvmProteinEvidenceGff3Asset:
 
     Future Flyte mapping:
     - `gff3_path` -> `flyte.io.File`
-    """
+"""
 
     chunk_label: str
     gff3_path: Path
@@ -455,7 +600,7 @@ class ProteinEvidenceResultBundle:
     Future Flyte mapping:
     - `result_dir` -> `flyte.io.Dir`
     - final combined files remain explicit file members
-    """
+"""
 
     result_dir: Path
     combined_protein_fasta_path: Path
@@ -480,7 +625,7 @@ class Braker3InputBundleAsset:
     - `staged_dir` -> `flyte.io.Dir`
     - `genome_fasta_path` -> `flyte.io.File`
     - optional evidence members map to optional `flyte.io.File`
-    """
+"""
 
     staged_dir: Path
     genome_fasta_path: Path
@@ -496,7 +641,7 @@ class Braker3RawRunResultAsset:
     Future Flyte mapping:
     - `output_dir` -> `flyte.io.Dir`
     - `braker_gff3_path` -> `flyte.io.File`
-    """
+"""
 
     output_dir: Path
     braker_gff3_path: Path
@@ -512,7 +657,7 @@ class Braker3NormalizedGff3Asset:
     Future Flyte mapping:
     - `output_dir` -> `flyte.io.Dir`
     - `normalized_gff3_path` -> `flyte.io.File`
-    """
+"""
 
     output_dir: Path
     normalized_gff3_path: Path
@@ -521,13 +666,13 @@ class Braker3NormalizedGff3Asset:
 
 
 @dataclass(frozen=True, slots=True)
-class Braker3ResultBundle:
+class Braker3ResultBundle(ManifestSerializable):
     """Collected BRAKER3 outputs spanning staging, raw run, and normalization.
 
     Future Flyte mapping:
     - `result_dir` -> `flyte.io.Dir`
     - stable GFF3 members remain explicit file paths
-    """
+"""
 
     result_dir: Path
     staged_inputs_dir: Path
@@ -540,6 +685,12 @@ class Braker3ResultBundle:
     raw_run: Braker3RawRunResultAsset | None = None
     normalized_prediction: Braker3NormalizedGff3Asset | None = None
     notes: tuple[str, ...] = field(default_factory=tuple)
+    provenance: AssetToolProvenance | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class AbInitioResultBundle(Braker3ResultBundle):
+    """BRAKER3-derived ab initio annotation bundle alias for planner-facing use."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -549,7 +700,7 @@ class EvmTranscriptInputBundleAsset:
     Future Flyte mapping:
     - `staged_dir` -> `flyte.io.Dir`
     - `transcripts_gff3_path` -> `flyte.io.File`
-    """
+"""
 
     staged_dir: Path
     transcripts_gff3_path: Path
@@ -564,7 +715,7 @@ class EvmProteinInputBundleAsset:
     Future Flyte mapping:
     - `staged_dir` -> `flyte.io.Dir`
     - `proteins_gff3_path` -> `flyte.io.File`
-    """
+"""
 
     staged_dir: Path
     proteins_gff3_path: Path
@@ -580,7 +731,7 @@ class EvmPredictionInputBundleAsset:
     - `staged_dir` -> `flyte.io.Dir`
     - `predictions_gff3_path` -> `flyte.io.File`
     - component GFF3 and reference members remain explicit file outputs
-    """
+"""
 
     staged_dir: Path
     predictions_gff3_path: Path
@@ -599,7 +750,7 @@ class EvmInputPreparationBundle:
     Future Flyte mapping:
     - `result_dir` -> `flyte.io.Dir`
     - final contract files remain explicit file outputs for downstream EVM execution
-    """
+"""
 
     result_dir: Path
     reference_genome_fasta_path: Path
@@ -620,7 +771,7 @@ class EvmExecutionInputBundleAsset:
     Future Flyte mapping:
     - `workspace_dir` -> `flyte.io.Dir`
     - stable evidence and weights members remain explicit file outputs
-    """
+"""
 
     workspace_dir: Path
     reference_genome_fasta_path: Path
@@ -640,7 +791,7 @@ class EvmPartitionBundleAsset:
     - `workspace_dir` -> `flyte.io.Dir`
     - `partitions_dir` -> `flyte.io.Dir`
     - `partition_listing_path` -> `flyte.io.File`
-    """
+"""
 
     workspace_dir: Path
     partitions_dir: Path
@@ -658,7 +809,7 @@ class EvmCommandSetAsset:
     Future Flyte mapping:
     - `workspace_dir` -> `flyte.io.Dir`
     - `commands_path` -> `flyte.io.File`
-    """
+"""
 
     workspace_dir: Path
     commands_path: Path
@@ -675,7 +826,7 @@ class EvmConsensusResultBundle:
     Future Flyte mapping:
     - `result_dir` -> `flyte.io.Dir`
     - stable final GFF3 and manifest members remain explicit file outputs
-    """
+"""
 
     result_dir: Path
     pre_evm_bundle_dir: Path

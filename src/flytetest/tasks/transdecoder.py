@@ -1,14 +1,16 @@
 """TransDecoder task implementations for FLyteTest.
 
-This module covers the current PASA-derived coding-prediction boundary and the
-stable result collection used before later annotation stages.
+The stage order follows `docs/braker3_evm_notes.md`, while the TransDecoder
+command shapes and input/output expectations follow
+`docs/tool_refs/transdecoder.md`. This module covers the PASA-derived
+coding-prediction boundary: training/predicting on PASA assemblies, lifting ORFs
+back to genome coordinates, and collecting the stable downstream-ready bundle.
 """
 
 from __future__ import annotations
 
 import json
 import shutil
-import tempfile
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
@@ -20,16 +22,19 @@ from flytetest.config import (
     RESULTS_ROOT,
     TRANSDECODER_RESULTS_PREFIX,
     TRANSDECODER_WORKFLOW_NAME,
+    project_mkdtemp,
     require_path,
     run_tool,
     transdecoder_env,
 )
+from flytetest.manifest_envelope import build_manifest_envelope
+from flytetest.manifest_io import write_json as _write_json
 from flytetest.tasks.pasa import _pasa_assemblies_fasta, _pasa_assemblies_gff3, _sqlite_db_path
 from flytetest.types import PasaAlignmentAssemblyResult, TransDecoderPredictionResult
 
 
 def _as_json_compatible(value: Any) -> Any:
-    """Recursively convert manifest values into JSON-serializable primitives."""
+    """Convert nested manifest values into JSON-friendly primitives."""
     if isinstance(value, Path):
         return str(value)
     if isinstance(value, dict):
@@ -42,7 +47,7 @@ def _as_json_compatible(value: Any) -> Any:
 
 
 def _sample_id_from_pasa_results(results_dir: Path) -> str:
-    """Extract the sample identifier from a PASA results manifest when present."""
+    """Read the sample identifier from a PASA results manifest when present."""
     manifest_path = results_dir / "run_manifest.json"
     if not manifest_path.exists():
         return "sample"
@@ -59,37 +64,37 @@ def _transdecoder_output(run_dir: Path, transcript_fasta_name: str, suffix: str)
 
 
 def _transdecoder_dir(run_dir: Path, transcript_fasta_name: str) -> Path | None:
-    """Resolve the TransDecoder intermediate directory when it is present."""
+    """Return the TransDecoder intermediate directory when the stage wrote one."""
     return _transdecoder_output(run_dir, transcript_fasta_name, ".transdecoder_dir")
 
 
 def _transdecoder_gff3(run_dir: Path, transcript_fasta_name: str) -> Path | None:
-    """Resolve the transcript-coordinate ORF GFF3 when it is present."""
+    """Return the transcript-coordinate ORF GFF3 when the stage wrote one."""
     return _transdecoder_output(run_dir, transcript_fasta_name, ".transdecoder.gff3")
 
 
 def _transdecoder_genome_gff3(run_dir: Path, transcript_fasta_name: str) -> Path | None:
-    """Resolve the genome-coordinate ORF GFF3 when it is present."""
+    """Return the genome-coordinate ORF GFF3 when the stage wrote one."""
     return _transdecoder_output(run_dir, transcript_fasta_name, ".transdecoder.genome.gff3")
 
 
 def _transdecoder_bed(run_dir: Path, transcript_fasta_name: str) -> Path | None:
-    """Resolve the TransDecoder BED output when it is present."""
+    """Return the TransDecoder BED output when the stage wrote one."""
     return _transdecoder_output(run_dir, transcript_fasta_name, ".transdecoder.bed")
 
 
 def _transdecoder_cds(run_dir: Path, transcript_fasta_name: str) -> Path | None:
-    """Resolve the predicted CDS FASTA when it is present."""
+    """Return the predicted CDS FASTA when the stage wrote one."""
     return _transdecoder_output(run_dir, transcript_fasta_name, ".transdecoder.cds")
 
 
 def _transdecoder_pep(run_dir: Path, transcript_fasta_name: str) -> Path | None:
-    """Resolve the predicted peptide FASTA when it is present."""
+    """Return the predicted peptide FASTA when the stage wrote one."""
     return _transdecoder_output(run_dir, transcript_fasta_name, ".transdecoder.pep")
 
 
 def _transdecoder_mrna(run_dir: Path, transcript_fasta_name: str) -> Path | None:
-    """Resolve the predicted mRNA FASTA when it is present."""
+    """Return the predicted mRNA FASTA when the stage wrote one."""
     return _transdecoder_output(run_dir, transcript_fasta_name, ".transdecoder.mRNA")
 
 
@@ -101,11 +106,25 @@ def transdecoder_train_from_pasa(
     transdecoder_min_protein_length: int = 100,
     transdecoder_genome_orf_script: str = "cdna_alignment_orf_to_genome_orf.pl",
 ) -> Dir:
-    """Run the current TransDecoder training and prediction boundary from PASA outputs."""
+    """Run TransDecoder on PASA assemblies and lift ORFs back to genome coordinates.
+
+    Args:
+        pasa_assemblies_fasta: PASA assemblies FASTA produced at the transcript
+            evidence to PASA boundary.
+        pasa_assemblies_gff3: PASA assemblies GFF3 paired with the FASTA above.
+        transdecoder_sif: Optional container image for the TransDecoder runtime.
+        transdecoder_min_protein_length: Minimum ORF length passed to
+            `TransDecoder.LongOrfs`.
+        transdecoder_genome_orf_script: Genome-coordinate lift-over script used
+            after TransDecoder prediction.
+
+    Returns:
+        Directory containing the staged TransDecoder run for the PASA assembly.
+    """
     fasta_path = require_path(Path(pasa_assemblies_fasta.download_sync()), "PASA assemblies FASTA")
     gff3_path = require_path(Path(pasa_assemblies_gff3.download_sync()), "PASA assemblies GFF3")
 
-    out_dir = Path(tempfile.mkdtemp(prefix="transdecoder_")) / "transdecoder"
+    out_dir = project_mkdtemp("transdecoder_") / "transdecoder"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     staged_fasta = out_dir / fasta_path.name
@@ -155,7 +174,7 @@ def transdecoder_train_from_pasa(
         stdout_path=genome_gff3_path,
     )
 
-    return Dir.from_local_sync(str(out_dir))
+    return Dir(path=str(out_dir))
 
 
 @transdecoder_env.task
@@ -164,7 +183,17 @@ def collect_transdecoder_results(
     transdecoder_run: Dir,
     sample_id: str = "sample",
 ) -> Dir:
-    """Collect a TransDecoder run into a stable manifest-bearing results bundle."""
+    """Collect PASA-derived TransDecoder outputs into a stable results bundle.
+
+    Args:
+        pasa_results: PASA results directory that supplies the source assemblies
+            and config metadata.
+        transdecoder_run: TransDecoder run directory to archive into the bundle.
+        sample_id: Sample label written into the manifest and asset metadata.
+
+    Returns:
+        Manifest-bearing bundle for the PASA-derived TransDecoder predictions.
+    """
     pasa_results_path = require_path(Path(pasa_results.download_sync()), "PASA results directory")
     transdecoder_run_path = require_path(Path(transdecoder_run.download_sync()), "TransDecoder output directory")
 
@@ -218,17 +247,20 @@ def collect_transdecoder_results(
         ),
     )
 
-    manifest = {
-        "workflow": TRANSDECODER_WORKFLOW_NAME,
-        "sample_id": sample_id,
-        "source_pasa_results": str(pasa_results_path),
-        "assumptions": [
-            "This stage consumes the pasa_transcript_alignment results bundle and resolves the PASA assemblies FASTA and PASA assemblies GFF3 from its pasa/ directory.",
-            "The design notes specify a PASA-derived TransDecoder genome GFF3 for later EVM input, but they do not spell out the exact TransDecoder commands. This implementation therefore infers a standard TransDecoder.LongOrfs followed by TransDecoder.Predict sequence.",
-            "Genome-coordinate ORF lifting is performed with the configurable TransDecoder utility script, which defaults to cdna_alignment_orf_to_genome_orf.pl and must be available in the local environment or container image.",
-            "This milestone stops at TransDecoder coding-region prediction and does not yet implement Exonerate, BRAKER3 normalization, EVM, PASA update rounds, repeat filtering, BUSCO, EggNOG, AGAT, or submission preparation.",
-        ],
-        "outputs": {
+    assumptions = [
+        "This stage consumes the pasa_transcript_alignment results bundle and resolves the PASA assemblies FASTA and PASA assemblies GFF3 from its pasa/ directory.",
+        "The design notes specify a PASA-derived TransDecoder genome GFF3 for later EVM input, but they do not spell out the exact TransDecoder commands. This implementation therefore infers a standard TransDecoder.LongOrfs followed by TransDecoder.Predict sequence.",
+        "Genome-coordinate ORF lifting is performed with the configurable TransDecoder utility script, which defaults to cdna_alignment_orf_to_genome_orf.pl and must be available in the local environment or container image.",
+        "This milestone stops at TransDecoder coding-region prediction and does not yet implement Exonerate, BRAKER3 normalization, EVM, PASA update rounds, repeat filtering, BUSCO, EggNOG, AGAT, or submission preparation.",
+    ]
+    manifest = build_manifest_envelope(
+        stage=TRANSDECODER_WORKFLOW_NAME,
+        assumptions=assumptions,
+        inputs={
+            "sample_id": sample_id,
+            "source_pasa_results": str(pasa_results_path),
+        },
+        outputs={
             "transdecoder_dir": str(copied_transdecoder_dir),
             "input_transcripts_fasta": str(transdecoder_asset.input_transcripts_fasta_path),
             "transdecoder_intermediate_dir": str(transdecoder_asset.transdecoder_dir_path)
@@ -259,13 +291,16 @@ def collect_transdecoder_results(
             if source_pasa_asset.pasa_assemblies_gff3_path
             else None,
         },
-        "assets": _as_json_compatible(
-            {
-                "source_pasa_alignment_assembly": asdict(source_pasa_asset),
-                "transdecoder_prediction": asdict(transdecoder_asset),
-            }
-        ),
-        "transdecoder_files": sorted(path.name for path in copied_transdecoder_dir.glob("*")),
-    }
-    (out_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2))
-    return Dir.from_local_sync(str(out_dir))
+    )
+    manifest["workflow"] = TRANSDECODER_WORKFLOW_NAME
+    manifest["sample_id"] = sample_id
+    manifest["source_pasa_results"] = str(pasa_results_path)
+    manifest["assets"] = _as_json_compatible(
+        {
+            "source_pasa_alignment_assembly": asdict(source_pasa_asset),
+            "transdecoder_prediction": asdict(transdecoder_asset),
+        }
+    )
+    manifest["transdecoder_files"] = sorted(path.name for path in copied_transdecoder_dir.glob("*"))
+    _write_json(out_dir / "run_manifest.json", manifest)
+    return Dir(path=str(out_dir))

@@ -9,6 +9,7 @@ Use this guide when adding or modifying individual task functions in `src/flytet
 
 In FLyteTest, tasks should model one meaningful biological tool invocation or one deterministic transformation.
 They should be narrow, inspectable, and faithful to the pipeline notes.
+When a task represents a real biological object or stage boundary, give it a typed dataclass input or output when that improves clarity.
 
 ## Read First
 
@@ -31,6 +32,8 @@ Follow the repo as it exists today, not a generic Flyte template:
 - use helpers from `src/flytetest/config.py`, especially `require_path` and `run_tool`
 - keep the typed asset layer in `src/flytetest/types/assets.py` as a clarity/provenance layer, not a mandatory direct task-signature layer
 - return deterministic output directories or files and write manifests when the task is a stage boundary or collection step
+- prefer reusing an existing typed dataclass when it already matches the same biological meaning
+- add a new typed dataclass only when the workflow family needs a genuinely new biological concept
 
 ## Default Hardware Choices
 
@@ -53,14 +56,16 @@ Current repo-friendly starting points:
   default to `cpu=8`, `memory="32Gi"`
 - protein evidence and Exonerate tasks:
   default to `cpu=8`, `memory="32Gi"`
-- future BRAKER3, EVM, BUSCO, and EggNOG families:
-  start with `cpu=16`, `memory="64Gi"` unless the concrete tool notes justify something else
+- compute-intensive families (BRAKER3, EVM, BUSCO, EggNOG, and equivalent stages
+  in future pipeline families): start with `cpu=16`, `memory="64Gi"` unless the
+  concrete tool notes justify something else
 
 When in doubt:
 
 - prefer conservative defaults that are likely to run locally or on a standard cluster queue
 - expose tool-level controls like `star_threads`, `pasa_cpu`, or `proteins_per_chunk` as normal workflow inputs
 - use named execution profiles later if the repo needs multiple hardware classes, rather than making resources completely free-form at runtime
+- keep room for future workflow families by making task boundaries reusable instead of overly specialized
 
 ## What A Good Task Looks Like
 
@@ -234,17 +239,9 @@ Avoid:
 
 ## Validation Expectations
 
-Task authors should do feasible validation before handoff.
-
-That usually includes:
-
-- `python3 -m py_compile` on touched Python files
-- path-handling checks
-- manifest-shaping checks
-- synthetic local tests when the external tool is unavailable
-- shell syntax checks if helper scripts were touched
-
-Do not stop at “the testing guide will handle it” if you can cheaply validate your own work.
+Follow `.codex/testing.md`. Validate what you can locally before handoff —
+compile checks, path/manifest shaping, synthetic tests. Don't defer cheap
+checks to the testing guide.
 
 ## Don’t
 

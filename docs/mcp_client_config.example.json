@@ -1,13 +1,13 @@
 {
   "mcpServers": {
     "flytetest": {
-      "command": "/home/rmeht/Projects/flyteTest/.venv/bin/python",
+      "command": "/path/to/flyteTest/.venv/bin/python",
       "args": [
         "-m",
         "flytetest.server"
       ],
       "env": {
-        "PYTHONPATH": "/home/rmeht/Projects/flyteTest/src"
+        "PYTHONPATH": "/path/to/flyteTest/src"
       }
     }
   }

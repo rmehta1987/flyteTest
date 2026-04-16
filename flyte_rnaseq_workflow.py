@@ -1,7 +1,7 @@
 """Compatibility exports for `flyte run` against the FLyteTest package layout.
 
-This module preserves the original single-file entry surface while the real
-task and workflow implementations now live under `src/flytetest/`.
+    This module preserves the original single-file entry surface while the real
+    task and workflow implementations now live under `src/flytetest/`.
 """
 
 from __future__ import annotations
@@ -78,6 +78,19 @@ else:
     busco_assess_proteins = None
     collect_busco_results = None
 
+if find_spec("flytetest.tasks.eggnog") is not None:
+    from flytetest.tasks.eggnog import collect_eggnog_results, eggnog_map
+else:
+    collect_eggnog_results = None
+    eggnog_map = None
+
+if find_spec("flytetest.tasks.agat") is not None:
+    from flytetest.tasks.agat import agat_cleanup_gff3, agat_convert_sp_gxf2gxf, agat_statistics
+else:
+    agat_cleanup_gff3 = None
+    agat_convert_sp_gxf2gxf = None
+    agat_statistics = None
+
 from flytetest.tasks.qc import fastqc
 from flytetest.tasks.quant import collect_results, salmon_index, salmon_quant
 from flytetest.tasks.pasa import (
@@ -124,6 +137,22 @@ if find_spec("flytetest.workflows.functional") is not None:
 else:
     annotation_qc_busco = None
 
+if find_spec("flytetest.workflows.eggnog") is not None:
+    from flytetest.workflows.eggnog import annotation_functional_eggnog
+else:
+    annotation_functional_eggnog = None
+
+if find_spec("flytetest.workflows.agat") is not None:
+    from flytetest.workflows.agat import (
+        annotation_postprocess_agat,
+        annotation_postprocess_agat_cleanup,
+        annotation_postprocess_agat_conversion,
+    )
+else:
+    annotation_postprocess_agat = None
+    annotation_postprocess_agat_cleanup = None
+    annotation_postprocess_agat_conversion = None
+
 from flytetest.workflows.pasa import annotation_refinement_pasa, pasa_transcript_alignment
 from flytetest.workflows.rnaseq_qc_quant import rnaseq_qc_quant
 from flytetest.workflows.transdecoder import transdecoder_from_pasa
@@ -151,8 +180,11 @@ else:
 
 __all__ = [
     "ab_initio_annotation_braker3",
+    "agat_cleanup_gff3",
+    "agat_convert_sp_gxf2gxf",
     "braker3_predict",
     "busco_assess_proteins",
+    "collect_eggnog_results",
     "collect_busco_results",
     "collect_braker3_results",
     "collect_evm_results",
@@ -167,6 +199,10 @@ __all__ = [
     "fastqc",
     "finalize_pasa_update_outputs",
     "annotation_refinement_pasa",
+    "annotation_functional_eggnog",
+    "annotation_postprocess_agat",
+    "annotation_postprocess_agat_cleanup",
+    "annotation_postprocess_agat_conversion",
     "annotation_repeat_filtering",
     "annotation_qc_busco",
     "funannotate_remove_bad_models",
@@ -186,6 +222,8 @@ __all__ = [
     "salmon_index",
     "salmon_quant",
     "repeatmasker_out_to_bed",
+    "eggnog_map",
+    "agat_statistics",
     "chunk_protein_fastas",
     "exonerate_align_chunk",
     "exonerate_concat_results",

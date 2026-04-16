@@ -8,6 +8,7 @@ Use this guide when updating:
 
 - `README.md`
 - `DESIGN.md`
+- `AGENTS.md`
 - `docs/tool_refs/*.md`
 - milestone or architecture notes
 
@@ -20,6 +21,8 @@ Documentation in FLyteTest should:
 - explain pipeline position and stage boundaries
 - document assumptions honestly
 - keep local, container, and HPC expectations visible
+- describe deterministic execution as reproducible and reviewable, not as a
+  ban on dynamic workflow generation from prompts
 
 ## Read First
 
@@ -36,8 +39,11 @@ Before writing docs, read:
 For a new milestone, docs are usually incomplete unless all of these are considered:
 
 - `README.md` for user-facing usage and current scope
+- `CHANGELOG.md` for a visible history note when the change is worth keeping
 - `docs/tool_refs/...` for concise tool-stage notes
 - `DESIGN.md` only if the architecture or stated roadmap meaningfully changed
+- `docs/realtime_refactor_plans/archive/` only when a completed or superseded
+  plan needs to remain available as historical context
 - registry descriptions if they act as machine-readable docs
 
 ## README Expectations
@@ -51,6 +57,12 @@ When documenting a workflow in `README.md`, include:
 - simplifications and assumptions
 - what this milestone does not yet include
 - runtime/tooling notes
+
+## Code Documentation Expectations
+
+For code docstring standards, style rules, and examples, see `.codex/comments.md`.
+That guide is the single source of truth for docstring depth, Args/Returns rules,
+inline comment guidance, and anti-patterns to avoid.
 
 ## Tool Reference Expectations
 
@@ -80,6 +92,14 @@ Always separate:
 - intentionally deferred
 - inferred from notes
 - environment-specific requirements
+
+When documenting prompt-driven workflow generation, also separate:
+
+- dynamic workflow planning that produces typed, saved, replayable
+  `WorkflowSpec` / `BindingPlan` artifacts
+- opaque one-off code generation, which is not the default project direction
+
+If working rules changed, make sure `AGENTS.md` is updated too.
 
 This is especially important for:
 

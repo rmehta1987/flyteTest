@@ -2,6 +2,9 @@
 
 This module stages local inputs, runs the tutorial-backed BRAKER3 boundary, and
 collects source-preserving normalized outputs for later EVM preparation.
+
+Stage ordering follows `docs/braker3_evm_notes.md`. Tool-level command and
+input/output expectations follow `docs/tool_refs/braker3.md`.
 """
 
 from __future__ import annotations
@@ -27,7 +30,7 @@ def ab_initio_annotation_braker3(
     braker_species: str = "flytetest_braker3",
     braker3_sif: str = "",
 ) -> Dir:
-    """Run the current BRAKER3-only workflow and collect normalized results."""
+    """Run the BRAKER3 ab initio boundary and its normalization handoff."""
     staged_inputs = stage_braker3_inputs(
         genome=genome,
         rnaseq_bam_path=rnaseq_bam_path,

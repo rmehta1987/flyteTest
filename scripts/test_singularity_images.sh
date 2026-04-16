@@ -19,7 +19,7 @@ if ! RUNTIME="$(detect_runtime)"; then
   exit 1
 fi
 
-if [[ -z "${FASTQC_SIF:-}${SALMON_SIF:-}${STAR_SIF:-}${TRINITY_SIF:-}${STRINGTIE_SIF:-}${PASA_SIF:-}${TRANSDECODER_SIF:-}${EXONERATE_SIF:-}${BRAKER3_SIF:-}" ]]; then
+if [[ -z "${FASTQC_SIF:-}${SALMON_SIF:-}${STAR_SIF:-}${TRINITY_SIF:-}${STRINGTIE_SIF:-}${PASA_SIF:-}${TRANSDECODER_SIF:-}${EXONERATE_SIF:-}${BRAKER3_SIF:-}${BUSCO_SIF:-}" ]]; then
   cat <<'EOF'
 Set one or more image paths before running this script.
 
@@ -36,7 +36,10 @@ Examples:
   EXONERATE_SIF=/path/exonerate.sif \
     bash scripts/test_singularity_images.sh
 
-  BRAKER3_SIF=/path/braker3.sif \
+  BRAKER3_SIF=/path/to/data/images/braker3.sif \
+    bash scripts/test_singularity_images.sh
+
+  BUSCO_SIF=/path/to/data/images/busco_v6.0.0_cv1.sif \
     bash scripts/test_singularity_images.sh
 EOF
   exit 1
@@ -95,12 +98,17 @@ if [[ -n "${BRAKER3_SIF:-}" ]]; then
     'command -v braker.pl'
 fi
 
+if [[ -n "${BUSCO_SIF:-}" ]]; then
+  run_check "BUSCO image" run_shell_in_image "$BUSCO_SIF" \
+    'command -v busco'
+fi
+
 if [[ -n "${FASTQC_SIF:-}" && -n "${SALMON_SIF:-}" ]]; then
   echo "==> Running rnaseq_qc_quant smoke test against bundled example data"
   "$FLYTE_BIN" run --local "${ROOT_DIR}/flyte_rnaseq_workflow.py" rnaseq_qc_quant \
-    --ref "${ROOT_DIR}/data/transcriptome.fa" \
-    --left "${ROOT_DIR}/data/reads_1.fq.gz" \
-    --right "${ROOT_DIR}/data/reads_2.fq.gz" \
+    --ref "${ROOT_DIR}/data/transcriptomics/ref-based/transcriptome.fa" \
+    --left "${ROOT_DIR}/data/transcriptomics/ref-based/reads_1.fq.gz" \
+    --right "${ROOT_DIR}/data/transcriptomics/ref-based/reads_2.fq.gz" \
     --fastqc-sif "$FASTQC_SIF" \
     --salmon-sif "$SALMON_SIF"
 else

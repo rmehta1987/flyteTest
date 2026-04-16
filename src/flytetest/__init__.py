@@ -1,15 +1,18 @@
 """Public package exports for FLyteTest.
 
-This module re-exports registry helpers and typed assets so callers can inspect
-the supported pipeline surface from the package root.
+    This module re-exports registry helpers and typed assets so callers can inspect
+    the supported pipeline surface from the package root.
 """
 
 from flytetest.registry import REGISTRY_ENTRIES, get_entry, list_entries
 from flytetest.types import (
+    AbInitioResultBundle,
+    AssetToolProvenance,
     Braker3InputBundleAsset,
     Braker3NormalizedGff3Asset,
     Braker3RawRunResultAsset,
     Braker3ResultBundle,
+    CleanedTranscriptDataset,
     CombinedTrinityTranscriptAsset,
     ChunkedProteinFastaAsset,
     EvmInputPreparationBundle,
@@ -18,6 +21,7 @@ from flytetest.types import (
     EvmTranscriptInputBundleAsset,
     EvmProteinEvidenceGff3Asset,
     ExonerateChunkAlignmentResult,
+    ManifestSerializable,
     MergedBamAsset,
     PasaAlignmentAssemblyResult,
     PasaCleanedTranscriptAsset,
@@ -32,6 +36,7 @@ from flytetest.types import (
     ReferenceGenome,
     SalmonIndexAsset,
     SalmonQuantResult,
+    RnaSeqAlignmentResult,
     StarAlignmentResult,
     StarGenomeIndexAsset,
     StringTieAssemblyResult,
@@ -42,10 +47,13 @@ from flytetest.types import (
 )
 
 __all__ = [
+    "AbInitioResultBundle",
+    "AssetToolProvenance",
     "Braker3InputBundleAsset",
     "Braker3NormalizedGff3Asset",
     "Braker3RawRunResultAsset",
     "Braker3ResultBundle",
+    "CleanedTranscriptDataset",
     "CombinedTrinityTranscriptAsset",
     "ChunkedProteinFastaAsset",
     "EvmInputPreparationBundle",
@@ -54,6 +62,7 @@ __all__ = [
     "EvmTranscriptInputBundleAsset",
     "EvmProteinEvidenceGff3Asset",
     "ExonerateChunkAlignmentResult",
+    "ManifestSerializable",
     "MergedBamAsset",
     "PasaAlignmentAssemblyResult",
     "PasaCleanedTranscriptAsset",
@@ -69,6 +78,7 @@ __all__ = [
     "REGISTRY_ENTRIES",
     "SalmonIndexAsset",
     "SalmonQuantResult",
+    "RnaSeqAlignmentResult",
     "StarAlignmentResult",
     "StarGenomeIndexAsset",
     "StringTieAssemblyResult",

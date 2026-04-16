@@ -4,6 +4,18 @@
 
 Combine ab initio predictions, transcript evidence, and protein evidence into consensus gene models.
 
+## Input Data
+
+- ab initio predictions such as BRAKER3 GFF3
+- transcript-alignment-derived evidence GFF3
+- protein evidence GFF3
+- evidence weights and partition settings
+
+## Output Data
+
+- partitioned EVM work products
+- recombined consensus annotation GFF3
+
 ## Key Inputs
 
 - ab initio predictions such as BRAKER3 GFF3
@@ -13,9 +25,9 @@ Combine ab initio predictions, transcript evidence, and protein evidence into co
 
 Current local fixture roots for upstream smoke-test generation:
 
-- `data/genome.fa`
-- `data/RNAseq.bam`
-- `data/proteins.fa`
+- `data/braker3/reference/genome.fa`
+- `data/braker3/rnaseq/RNAseq.bam`
+- `data/braker3/protein_data/fastas/proteins.fa`
 
 ## Key Outputs
 
@@ -32,11 +44,16 @@ Current local fixture roots for upstream smoke-test generation:
 - [EVM_docker_and_singularity](https://github.com/EVidenceModeler/EVidenceModeler/wiki/EVM_docker_and_singularity) is the upstream container-oriented run page and includes the small example command shape.
 - The upstream README says to build ParaFly with `make` and points readers to the wiki for documentation.
 
-## Tutorial / Training References
+## Tutorial References
 
 - The upstream README says `make large_sample_data` downloads `EVM_sample_data/` with `runMe.sh` examples.
 - The wiki's container page includes a small test invocation and a link to small sample data for that example.
 - Tutorial coverage is still thin: the primary sources are wiki pages plus sample data, not a maintained step-by-step training guide.
+
+## Code Reference
+
+- [`src/flytetest/tasks/consensus.py`](src/flytetest/tasks/consensus.py)
+- that module stages the prepared evidence bundle, generates EVM commands, executes partitions, and recombines the consensus result
 
 ## Native Command Context
 
@@ -49,17 +66,6 @@ Current local fixture roots for upstream smoke-test generation:
 - Apptainer uses the same `exec <container> <command>` style as the upstream Singularity example and supports `.sif` images and bind mounts.
 - A repo-local wrapper would therefore be an inferred `apptainer exec <image.sif> EVidenceModeler ...` call with the same input contract as the native command.
 - Exact image naming, bind paths, and environment modules are deployment-specific and are not defined by the EVM docs.
-
-## At A Glance
-
-```mermaid
-flowchart LR
-    T[Transcript evidence] --> E[EVM input prep]
-    P[Protein evidence] --> E
-    B[BRAKER3 / braker.gff3] --> E
-    E --> M[[EVidenceModeler]]
-    M --> C[Consensus gene models]
-```
 
 ## Prompt Template
 
@@ -96,4 +102,15 @@ Deliver:
 - Fixture-backed validation for this milestone focuses on exact pre-EVM contract assembly plus synthetic partitioning, command generation, execution-order, and final GFF3 collection checks.
 - That validation is synthetic and fixture-backed; it checks the execution boundary and file contract, not biological correctness of the consensus models.
 - The design notes describe weighting categories such as `ABINITIO_PREDICTION`, `PROTEIN`, `TRANSCRIPT`, and `OTHER_PREDICTION`.
-- The figure and notes place PASA updates, repeat filtering, eggNOG-mapper, and AGAT after EVM, so those stages remain out of scope for this milestone.
+- The figure and notes place PASA updates, repeat filtering, eggNOG-mapper, and AGAT after EVM, and this repo now implements those stages as separate downstream task families.
+
+## At A Glance
+
+```mermaid
+flowchart LR
+    T[Transcript evidence] --> E[EVM input prep]
+    P[Protein evidence] --> E
+    B[BRAKER3 / braker.gff3] --> E
+    E --> M[[EVidenceModeler]]
+    M --> C[Consensus gene models]
+```

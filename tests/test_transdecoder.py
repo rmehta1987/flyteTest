@@ -1,8 +1,8 @@
 """Tests for PASA-to-TransDecoder discovery and collection boundaries.
 
-The suite keeps PASA-result discovery and TransDecoder output discovery
-synthetic so Milestone 6 can validate these contracts without external
-TransDecoder or PASA binaries.
+    The suite keeps PASA-result discovery and TransDecoder output discovery
+    synthetic so these contracts can be validated without external TransDecoder or
+    PASA binaries.
 """
 
 from __future__ import annotations
@@ -32,25 +32,32 @@ from flytetest.workflows.transdecoder import transdecoder_from_pasa
 
 
 def _artifact_dir(path: Path) -> Dir:
-    """Create a stub Flyte directory artifact from a local path."""
-    return Dir.from_local_sync(str(path))
+    """Wrap a filesystem path in Flyte's `Dir` type for synthetic fixtures."""
+    return Dir(path=str(path))
 
 
 def _read_json(path: Path) -> dict[str, object]:
-    """Read a JSON payload for assertions."""
+    """Load a JSON payload for assertions."""
     return json.loads(path.read_text())
 
 
 def _fixed_datetime() -> type:
     """Return a deterministic timestamp provider for result-directory naming."""
 
+    # Keep the synthetic result-directory name stable for manifest assertions.
     class _Stamp:
+        """Datetime stub that always returns the same synthetic timestamp."""
+
         def strftime(self, fmt: str) -> str:
+            """Return the fixed timestamp string expected by the assertions."""
             return "20260402_150000"
 
     class _FixedDatetime:
+        """Shim that exposes the `datetime.now()` call used by the code."""
+
         @classmethod
         def now(cls) -> _Stamp:
+            """Return the fixed timestamp stub used by the synthetic tests."""
             return _Stamp()
 
     return _FixedDatetime
@@ -96,16 +103,23 @@ def _create_sparse_pasa_results(tmp_path: Path) -> Path:
 
 
 class TransdecoderWorkflowDiscoveryTests(TestCase):
-    """Workflow-level coverage for PASA result discovery before TransDecoder runs."""
+    """Workflow-level coverage for PASA result discovery before TransDecoder runs.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
     def test_transdecoder_from_pasa_discovers_pasa_outputs_by_database_stem(self) -> None:
-        """Resolve PASA assemblies even when the bundle relies on filename conventions."""
+        """Resolve PASA assemblies even when the bundle relies on filename conventions.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             pasa_results = _create_sparse_pasa_results(tmp_path)
             calls: list[tuple[str, tuple[str, ...]]] = []
 
             def fake_train(**kwargs: object) -> Dir:
+                """Capture the TransDecoder training inputs and stage a synthetic run directory."""
                 calls.append(("train", tuple(sorted(kwargs.keys()))))
                 self.assertTrue(str(kwargs["pasa_assemblies_fasta"].path).endswith("test.assemblies.fasta"))
                 self.assertTrue(str(kwargs["pasa_assemblies_gff3"].path).endswith("test.pasa_assemblies.gff3"))
@@ -114,6 +128,7 @@ class TransdecoderWorkflowDiscoveryTests(TestCase):
                 return _artifact_dir(run_dir)
 
             def fake_collect(**kwargs: object) -> Dir:
+                """Capture the TransDecoder collection inputs and stage a synthetic result directory."""
                 calls.append(("collect", tuple(sorted(kwargs.keys()))))
                 self.assertEqual(kwargs["sample_id"], "sampleA")
                 results_dir = tmp_path / "transdecoder_results"
@@ -133,10 +148,16 @@ class TransdecoderWorkflowDiscoveryTests(TestCase):
 
 
 class TransdecoderCollectionTests(TestCase):
-    """Task-level coverage for TransDecoder output discovery and manifest shaping."""
+    """Task-level coverage for TransDecoder output discovery and manifest shaping.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
 
     def test_collect_transdecoder_results_discovers_standard_outputs(self) -> None:
-        """Collect the standard TransDecoder files when they exist with canonical suffixes."""
+        """Collect the standard TransDecoder files when they exist with canonical suffixes.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             pasa_results = _create_sparse_pasa_results(tmp_path)
@@ -169,6 +190,10 @@ class TransdecoderCollectionTests(TestCase):
             manifest = _read_json(results_dir / "run_manifest.json")
 
             self.assertTrue((results_dir / "transdecoder" / f"{transcript_name}.transdecoder.genome.gff3").exists())
+            self.assertEqual(manifest["stage"], "transdecoder_from_pasa")
+            self.assertIn("inputs", manifest)
+            self.assertIn("outputs", manifest)
+            self.assertIn("assumptions", manifest)
             self.assertEqual(Path(str(manifest["outputs"]["input_transcripts_fasta"])).name, transcript_name)
             self.assertEqual(
                 Path(str(manifest["outputs"]["transdecoder_genome_gff3"])).name,

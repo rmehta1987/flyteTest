@@ -1,8 +1,9 @@
 """PASA workflow entrypoints for FLyteTest.
 
-This module runs PASA align/assemble from the internally collected transcript
-bundle and adds post-EVM PASA annotation refinement with explicit update
-rounds.
+The workflow composition follows `docs/braker3_evm_notes.md`, while the PASA
+task boundaries and command expectations follow `docs/tool_refs/pasa.md`. This
+module runs PASA align/assemble from the internally collected transcript bundle
+and adds post-EVM PASA annotation refinement with explicit update rounds.
 """
 
 from __future__ import annotations
@@ -46,7 +47,12 @@ def pasa_transcript_alignment(
     pasa_aligners: str = "blat,gmap,minimap2",
     pasa_db_name: str = "pasa.sqlite",
 ) -> Dir:
-    """Run PASA align/assemble from the collected transcript-evidence bundle."""
+    """Run PASA align/assemble from transcript-evidence outputs.
+
+    The workflow stages Trinity de novo and genome-guided inputs, cleans the
+    combined FASTA, creates a SQLite-backed PASA config, and then runs PASA's
+    transcript-to-genome alignment and assembly step.
+    """
     transcript_evidence_path = require_path(
         Path(transcript_evidence_results.download_sync()),
         "Transcript evidence results directory",
@@ -129,10 +135,15 @@ def annotation_refinement_pasa(
     pasa_sif: str = "",
     pasa_update_cpu: int = 8,
 ) -> Dir:
-    """Run the note-backed PASA post-EVM annotation-refinement rounds."""
+    """Run the post-EVM PASA gene-model refinement rounds.
+
+    The workflow stages the PASA and EVM bundles, loads current annotations
+    into PASA for each update round, promotes each round's new gene models, and
+    finalizes the sorted annotation outputs from the last round.
+    """
     if pasa_update_rounds < 2:
         raise ValueError(
-            "annotation_refinement_pasa requires at least two PASA update rounds to match the notes-backed milestone contract."
+            "annotation_refinement_pasa requires at least two PASA update rounds to match the current PASA refinement contract."
         )
 
     staged_inputs = prepare_pasa_update_inputs(
