@@ -5,9 +5,15 @@
 **Branch:** Create a new branch from `main` (e.g. `refactor/serialization-registry`)
 **Prerequisite:** M23-26 complete (generic asset subclasses landed)
 
+> Assessment: Revise.
+> The direction is strong, but I would not call this final or implementation-ready yet. The draft still overstates how much becomes automatic after the registry split and does not fully account for serializer behavior differences across layers.
+
 ---
 
 ## Context
+
+> Assessment: Agree.
+> This section correctly identifies the two real scaling problems: duplicated serializer logic and registry metadata sprawl. That framing is practical and well aligned with the current codebase.
 
 Two problems block easy GATK pipeline expansion:
 
@@ -21,6 +27,9 @@ Two problems block easy GATK pipeline expansion:
    this doesn't scale.
 
 ### Design Rationale
+
+> Assessment: Agree.
+> Rejecting decorators and metaclasses is the right decision for this repository. The registry is a metadata catalog, not a name-to-callable dispatch table, so the plain-data package approach fits the architecture much better.
 
 Patterns evaluated and why we chose what we did:
 
@@ -50,6 +59,9 @@ no import-order tricks. Composition via type-graph metadata matching.
 
 ### Key Files (current state, read before implementing)
 
+> Assessment: Mostly agree.
+> This is a useful map of the impacted surface. I would add `planning.py` explicitly, because prompt classification and target-specific policy still limit how automatic new workflow support actually becomes.
+
 | File | Role | Lines |
 |---|---|---|
 | `src/flytetest/registry.py` | Monolith: 73 entries + 3 parallel dicts + query functions | 2679 |
@@ -64,7 +76,13 @@ no import-order tricks. Composition via type-graph metadata matching.
 
 ## Track A: Serialization Consolidation
 
+> Assessment: Revise.
+> Consolidation is worthwhile, but this section should state that behavioral preservation matters more than deduplication. The three serializers are similar, not identical, and the plan should treat that as a compatibility constraint.
+
 ### Step A1 — Create `src/flytetest/serialization.py`
+
+> Assessment: Revise.
+> A shared module makes sense, but the current wording implies one universal deserialize behavior. The safer design is shared helpers with layer-specific wrappers so only the asset layer keeps scalar coercion while specs and planner types preserve current pass-through semantics.
 
 New file with the superset behavior (modeled from `ManifestSerializable`
 in `types/assets.py` lines 32-145):
@@ -86,6 +104,9 @@ nested dataclass, Optional, tuple, dict, scalar coercion, None).
 
 ### Step A2 — Rewire `specs.py`
 
+> Assessment: Revise.
+> This is not a clean swap unless tests first lock current spec behavior. I would explicitly say that `SpecSerializable` delegates to shared helpers while preserving its current deserialize semantics.
+
 Remove `_serialize()`, `_deserialize()`, `_is_optional()` (lines 22-103).
 `SpecSerializable` becomes a thin subclass of `SerializableMixin`.
 No subclass overrides `to_dict`/`from_dict` — this is a clean swap.
@@ -94,12 +115,18 @@ No subclass overrides `to_dict`/`from_dict` — this is a clean swap.
 
 ### Step A3 — Rewire `planner_types.py`
 
+> Assessment: Revise.
+> The same caution applies here. `PlannerSerializable` should move to shared helpers only if planner-facing round-trips remain behaviorally unchanged.
+
 Remove `_serialize_value()`, `_deserialize_value()`, `_is_optional()` (lines 38-109).
 `PlannerSerializable` becomes a thin subclass of `SerializableMixin`.
 
 **Validation:** `python3 -m unittest tests.test_planner_types tests.test_planning`
 
 ### Step A4 — Rewire `types/assets.py`
+
+> Assessment: Mostly agree.
+> Migrating assets last is the right order, and the golden-output fixture requirement is important. I would strengthen this by requiring representative manifest reload tests, not only freshly serialized in-memory objects.
 
 Remove `_serialize_manifest_value()`, `_deserialize_manifest_value()`,
 `_is_optional_manifest_type()` (lines 32-115). `ManifestSerializable` becomes
@@ -114,7 +141,13 @@ stability — serialize a representative asset, assert exact JSON output.
 
 ## Track B: Registry Package (Fold Dicts + Split By Pipeline Family)
 
+> Assessment: Agree.
+> This is the strongest part of the proposal. Folding the parallel dicts into self-contained entries and splitting the monolith by pipeline family is the right structural change for scaling into additional workflow families.
+
 ### Design
+
+> Assessment: Mostly agree.
+> The family-package split is good, but showcase exposure metadata should not live inside compatibility metadata. Compatibility should remain about planner/type-graph behavior, while MCP exposure should be modeled separately.
 
 Two changes working together:
 
@@ -150,6 +183,9 @@ concatenates them and provides the query functions.
 
 ### Step B1 — Create `src/flytetest/registry/` package structure
 
+> Assessment: Mostly agree.
+> Preserving the public `flytetest.registry` import surface is the right compatibility choice. I would avoid adding `showcase_module` to `RegistryCompatibilityMetadata` at this stage and keep the package split independent from MCP concerns.
+
 Create the package with two files first:
 
 **`_types.py`** — move the pure dataclass definitions from `registry.py`:
@@ -171,6 +207,9 @@ temporarily, import from it in the new `__init__.py`.
 All existing `from flytetest.registry import ...` must still work.
 
 ### Step B2 — Fold parallel dicts into entries and split by family
+
+> Assessment: Agree with one revision.
+> Moving compatibility and resource defaults inline with each entry is exactly the maintainability improvement the codebase needs. I would keep runtime and exposure metadata distinct so each entry becomes self-contained without mixing unrelated concerns into the compatibility object.
 
 One family at a time, create the family file with self-contained entries.
 Each entry gets its compatibility metadata + resources inline.
@@ -274,6 +313,9 @@ def get_pipeline_stages(family: str) -> list[tuple[str, str]]:
 
 ### Step B3 — Derive `mcp_contract.py` showcase targets from registry
 
+> Assessment: Revise.
+> Deriving showcase target lists from registry data is a good cleanup, but this step currently over-couples MCP exposure to compatibility metadata and assumes source paths can be reconstructed safely from module names. It would be better to use explicit exposure metadata or one tested helper that resolves both `module_name` and `source_path` consistently.
+
 The `showcase_module` field on `RegistryCompatibilityMetadata` (added in
 B1) replaces the 12 hardcoded `ShowcaseTarget` entries:
 
@@ -314,6 +356,9 @@ prompts, tool names, resource URIs, runtime binding rules.
 
 ### Step B4 — Derive `server.py` handler dispatch from the registry
 
+> Assessment: Mostly agree.
+> Deriving the handler map from supported workflow and task names is a good simplification. This section should also say clearly that target-specific validation and stage policy elsewhere in `server.py` still remain manual after this step.
+
 `_local_node_handlers()` (line 1249) currently lists 8 workflow name
 constants mapped to `workflow_handler` plus `SUPPORTED_TASK_NAMES` mapped
 to `task_handler`. After B3, both `SUPPORTED_WORKFLOW_NAMES` and
@@ -335,6 +380,9 @@ schemas, not biological metadata.
 **Validation:** `python3 -m unittest tests.test_server`
 
 ### Step B5 — GATK proof of concept
+
+> Assessment: Revise.
+> As a metadata-only proof of concept, this is a strong validation step. I would remove the implication that setting `showcase_module` later is enough for safe MCP exposure, because planning and execution still contain named target policies that are not generalized yet.
 
 Create `src/flytetest/registry/_gatk.py`:
 
@@ -375,6 +423,9 @@ to the MCP surface.
 
 ## What Stays Manual
 
+> Assessment: Mostly agree.
+> This list is directionally correct, but incomplete. I would also call out prompt-classification heuristics, target-specific assumptions, stage-to-input translation logic, and other workflow-specific execution guards that still live outside the registry.
+
 | Item | Why |
 |---|---|
 | `TaskEnvironmentConfig` entries in `config.py` | Flyte runtime config, not registry metadata |
@@ -388,6 +439,9 @@ to the MCP surface.
 
 ## What Does NOT Change
 
+> Assessment: Mostly agree.
+> These non-goals are useful and should stay. I would add one more explicit non-change: this refactor does not automatically broaden the prompt planning surface or make newly registered workflows runnable through MCP.
+
 - `run_manifest.json` wire format
 - Flyte `@task`/`@workflow` signatures
 - `spec_artifacts._json_ready()` and `_write_json_atomically()`
@@ -396,6 +450,9 @@ to the MCP surface.
 ---
 
 ## Sequencing
+
+> Assessment: Revise.
+> The high-level order is reasonable, but Track A should not proceed past helper design until regression fixtures are in place. I would also soften the claim that B1 and B2 are purely mechanical, because moving metadata affects public payloads, tests, and downstream assumptions.
 
 ```
 Track A:  A1 -> A2 -> A3 -> A4   (serialization, each step testable)
@@ -416,6 +473,9 @@ reduction from 6 insertion points to 1 per workflow.
 
 ## Before vs After: Adding a New Workflow
 
+> Assessment: Revise.
+> The "one insertion point" claim is accurate only for catalog registration. It is not yet true for fully supported prompt-plannable or MCP-runnable workflows, so the section should distinguish catalog expansion from runtime exposure.
+
 **Before (6 insertion points across 2 files):**
 1. `registry.py` — `RegistryEntry(...)` block (~30 lines)
 2. `registry.py` — `_WORKFLOW_COMPATIBILITY_METADATA[name]` (~15 lines)
@@ -432,9 +492,15 @@ reduction from 6 insertion points to 1 per workflow.
 
 ## Post-Refactor: Documentation Updates
 
+> Assessment: Mostly agree.
+> The documentation follow-up is thoughtful and necessary. I would explicitly add `DESIGN.md` and `CHANGELOG.md` here so the plan matches the repository rules for architecture and behavior changes.
+
 After Track B lands, update project documentation:
 
 ### New files
+
+> Assessment: Agree.
+> A dedicated registry guide and agent-specific registry instructions fit the existing repository pattern well. This is a good way to preserve the intent of the refactor after the monolith is split.
 
 **`.codex/registry.md`** — deep guide for the registry package structure,
 conventions, and field semantics.
@@ -460,6 +526,9 @@ new pipelines or entries:
   whether MCP surface was extended
 
 ### Updates to existing files
+
+> Assessment: Mostly agree.
+> Updating existing `.codex` references from the monolith path to the package path is necessary. I would also review any user-facing supported-target documentation so the new derived registry surface does not drift from how the MCP showcase is actually described.
 
 **`AGENTS.md`** — add a **Project Structure** quick-map section (~30 lines).
 Two-tier design: AGENTS.md = orientation layer (loaded every conversation),
@@ -488,6 +557,9 @@ path — update all to `src/flytetest/registry/` (package):
 ---
 
 ## Verification
+
+> Assessment: Mostly agree.
+> The compile, test, and grep checks are good baseline gates. I would add explicit assertions that the current supported runnable targets remain unchanged after the MCP derivation steps, and serializer regression fixtures that prove specs, planner types, and assets still preserve their current behavior.
 
 After each step:
 1. `python3 -m compileall src/flytetest/` — no import errors
