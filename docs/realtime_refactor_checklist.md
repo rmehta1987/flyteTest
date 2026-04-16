@@ -1753,50 +1753,43 @@ Status: Complete (2026-04-15)
 Goal: close out the existing NCBI annotation submission pipeline by adding the
 `table2asn` step that follows `agat_cleanup_gff3`. Completes TODO 1.
 
-Status: Not started
+Status: Complete (2026-04-15)
 
 ### Still required
 
 **Part 1 — Constants:**
-- [ ] Add `TABLE2ASN_RESULTS_PREFIX = "table2asn_results"` and
+- [x] Add `TABLE2ASN_RESULTS_PREFIX = "table2asn_results"` and
       `TABLE2ASN_WORKFLOW_NAME = "annotation_postprocess_table2asn"` to
       `src/flytetest/config.py`.
-- [ ] Add `SUPPORTED_TABLE2ASN_WORKFLOW_NAME` constant and a new
+- [x] Add `SUPPORTED_TABLE2ASN_WORKFLOW_NAME` constant and a new
       `ShowcaseTarget(category="workflow")` entry to `mcp_contract.py`;
       update `SHOWCASE_LIMITATIONS` and `LIST_ENTRIES_LIMITATIONS` strings.
 
 **Part 2 — Task and Workflow:**
-- [ ] Implement `table2asn_submission` task in `src/flytetest/tasks/agat.py`
+- [x] Implement `table2asn_submission` task in `src/flytetest/tasks/agat.py`
       accepting `agat_cleanup_results: Dir`, `genome_fasta: File`,
       `submission_template: File`, plus optional string overrides; write
       `run_manifest.json` with standard shape.
-- [ ] Add `annotation_postprocess_table2asn` workflow in
+- [x] Add `annotation_postprocess_table2asn` workflow in
       `src/flytetest/workflows/agat.py`; register in the workflow registry.
 
 **Part 3 — MCP surface:**
-- [ ] Add local node handler for `annotation_postprocess_table2asn` in
+- [x] Add local node handler for `annotation_postprocess_table2asn` in
       `server.py`; confirm it appears in `list_entries()` output.
 
 **Part 4 — Tests:**
-- [ ] Add 2 server tests: `run_task` declines `table2asn_submission`,
+- [x] Add 2 server tests: `run_task` declines `table2asn_submission`,
       `list_entries` includes the new workflow.
-- [ ] Add 3 task tests: correct command flags, `run_manifest.json` written,
+- [x] Add 3 task tests: correct command flags, `run_manifest.json` written,
       graceful decline when GFF3 not found in cleanup results dir.
 
 **Docs:**
-- [ ] Add `annotation_postprocess_table2asn` to `docs/mcp_showcase.md`
+- [x] Add `annotation_postprocess_table2asn` to `docs/mcp_showcase.md`
       Runnable Targets section.
-- [ ] Add "table2asn / NCBI submission" row to `docs/capability_maturity.md`
+- [x] Add "table2asn / NCBI submission" row to `docs/capability_maturity.md`
       as `Current (M21c)`.
-- [ ] Update `README.md` supported-targets list.
-- [ ] Update `CHANGELOG.md` with M21c dated entries.
-
-### Acceptance evidence
-
-- `docs/realtime_refactor_plans/2026-04-15-milestone-21c-table2asn-biology-closure.md`
-- `docs/realtime_refactor_milestone_21c_submission_prompt.md`
-- Tests in `tests/test_server.py` and `tests/test_agat.py` (or
-  `tests/test_table2asn.py`)
+- [x] Update `README.md` supported-targets list.
+- [x] Update `CHANGELOG.md` with M21c dated entries.
 
 ## Asset Cleanup Follow-On Lane
 

@@ -37,6 +37,7 @@ from flytetest.mcp_contract import (
     RUN_RECIPE_RESOURCE_URI_PREFIX,
     SHOWCASE_SERVER_NAME,
     SUPPORTED_AGAT_CLEANUP_WORKFLOW_NAME,
+    SUPPORTED_TABLE2ASN_WORKFLOW_NAME,
     SUPPORTED_AGAT_CONVERSION_WORKFLOW_NAME,
     SUPPORTED_AGAT_WORKFLOW_NAME,
     SUPPORTED_BUSCO_FIXTURE_TASK_NAME,
@@ -3258,3 +3259,28 @@ class ServerTests(TestCase):
             )
 
         self.assertTrue(result.get("timed_out"))
+
+    # ------------------------------------------------------------------
+    # M21c — table2asn surface tests
+    # ------------------------------------------------------------------
+
+    def test_run_task_does_not_expose_table2asn_as_ad_hoc_task(self) -> None:
+        """run_task declines table2asn_submission — it is workflow-surface only.
+
+        T19: Validates that the ad hoc task surface does not expose the
+        table2asn step.
+        """
+        result = run_task("table2asn_submission", {})
+        self.assertFalse(result.get("supported"))
+
+    def test_list_entries_includes_table2asn_workflow(self) -> None:
+        """list_entries includes annotation_postprocess_table2asn with category=workflow.
+
+        T20: Validates the new ShowcaseTarget entry is present.
+        """
+        result = list_entries()
+        entries = result.get("entries", [])
+        names = [e.get("name") for e in entries]
+        self.assertIn(SUPPORTED_TABLE2ASN_WORKFLOW_NAME, names)
+        table2asn_entry = next(e for e in entries if e.get("name") == SUPPORTED_TABLE2ASN_WORKFLOW_NAME)
+        self.assertEqual(table2asn_entry.get("category"), "workflow")

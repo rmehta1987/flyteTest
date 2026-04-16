@@ -153,7 +153,8 @@ now lives under [src/flytetest/](src/flytetest).
 | `annotation_functional_eggnog` | EggNOG functional annotation on repeat-filtered proteins | Consumes BUSCO-ready protein boundary and a local EggNOG data directory |
 | `annotation_postprocess_agat` | AGAT statistics on the EggNOG-annotated GFF3 bundle | Consumes the EggNOG-annotated GFF3 boundary |
 | `annotation_postprocess_agat_conversion` | AGAT conversion on the EggNOG-annotated GFF3 bundle | Consumes the EggNOG-annotated GFF3 boundary |
-| `annotation_postprocess_agat_cleanup` | Notes-backed AGAT cleanup on the converted GFF3 bundle | Consumes the AGAT conversion results; `table2asn` stays deferred |
+| `annotation_postprocess_agat_cleanup` | Notes-backed AGAT cleanup on the converted GFF3 bundle | Consumes the AGAT conversion results |
+| `annotation_postprocess_table2asn` | NCBI .sqn submission via table2asn | Consumes the AGAT cleanup results bundle |
 
 ## Quick Start
 
@@ -303,6 +304,7 @@ targets:
 - workflow: `annotation_postprocess_agat`
 - workflow: `annotation_postprocess_agat_conversion`
 - workflow: `annotation_postprocess_agat_cleanup`
+- workflow: `annotation_postprocess_table2asn`
 
 Supported tools:
 

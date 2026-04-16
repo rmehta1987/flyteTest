@@ -27,10 +27,12 @@ install_flyte_stub()
 from flyte.io import Dir
 
 import flytetest.tasks.agat as agat
+from flytetest.tasks.agat import table2asn_submission
 from flytetest.workflows.agat import (
     annotation_postprocess_agat,
     annotation_postprocess_agat_cleanup,
     annotation_postprocess_agat_conversion,
+    annotation_postprocess_table2asn,
 )
 
 
@@ -461,3 +463,156 @@ class AgatWorkflowTests(TestCase):
                 manifest["outputs"]["agat_cleaned_gff3"],
                 str(results_dir / "all_repeats_removed.agat.cleaned.gff3"),
             )
+
+# ---------------------------------------------------------------------------
+# Helper for M21c table2asn tests
+# ---------------------------------------------------------------------------
+
+def _create_agat_cleanup_results(tmp_path: Path) -> Path:
+    """Create a minimal AGAT cleanup results bundle with a cleaned GFF3.
+
+    Args:
+        tmp_path: Temporary root used to stage the bundle.
+
+    Returns:
+        The staged AGAT cleanup result directory.
+    """
+    results_dir = tmp_path / "agat_cleanup_results"
+    gff3_path = _write_gff3(results_dir / "agat_output" / "all_repeats_removed.agat.cleaned.gff3")
+    _write_json(
+        results_dir / "run_manifest.json",
+        {
+            "workflow": "annotation_postprocess_agat_cleanup",
+            "outputs": {
+                "agat_cleaned_gff3": str(gff3_path),
+            },
+        },
+    )
+    return results_dir
+
+
+# Add M21c tests to the existing AgatTaskTests class by patching at module level.
+
+class Table2AsnTaskTests(TestCase):
+    """Task-level coverage for the table2asn submission slice (M21c)."""
+
+    def test_table2asn_submission_builds_correct_command(self) -> None:
+        """table2asn_submission builds the command matching the braker3_evm_notes.md shape.
+
+        Validates all required flags (-M n, -J, -c w, -euk, -gaps-min 10,
+        -l proximity-ligation, -Z, -V b) and the optional -locus-tag-prefix
+        and -j flags.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            cleanup_results = _create_agat_cleanup_results(tmp_path)
+            genome_fa = _write_text(tmp_path / "genome.fa", ">chr1\nACGT\n")
+            template_sbt = _write_text(tmp_path / "template.sbt", "Submit-block ::= {}\n")
+            captured: dict[str, object] = {}
+
+            def fake_run_tool(
+                cmd: list[str],
+                sif: str,
+                bind_paths: list[Path],
+                cwd: Path | None = None,
+                stdout_path: Path | None = None,
+            ) -> None:
+                """Capture the table2asn command and stage a synthetic .sqn output."""
+                captured["cmd"] = cmd
+                if cwd is not None:
+                    out = Path(cwd) / "annotation_submission.sqn"
+                    out.parent.mkdir(parents=True, exist_ok=True)
+                    out.write_text("stub sqn\n")
+
+            with (
+                patch.object(agat, "run_tool", side_effect=fake_run_tool),
+                patch.object(agat, "datetime", _fixed_datetime("20260415_120000")),
+            ):
+                table2asn_submission(
+                    agat_cleanup_results=Dir(path=str(cleanup_results)),
+                    genome_fasta=str(genome_fa),
+                    submission_template=str(template_sbt),
+                    locus_tag_prefix="ACFI09",
+                    organism_annotation="[organism=Foo bar][isolate=X]",
+                )
+
+            cmd = list(captured["cmd"])
+            self.assertEqual(cmd[0], "table2asn")
+            self.assertIn("-M", cmd); self.assertEqual(cmd[cmd.index("-M") + 1], "n")
+            self.assertIn("-J", cmd)
+            self.assertIn("-c", cmd); self.assertEqual(cmd[cmd.index("-c") + 1], "w")
+            self.assertIn("-euk", cmd)
+            self.assertIn("-gaps-min", cmd); self.assertEqual(cmd[cmd.index("-gaps-min") + 1], "10")
+            self.assertIn("-l", cmd); self.assertEqual(cmd[cmd.index("-l") + 1], "proximity-ligation")
+            self.assertIn("-locus-tag-prefix", cmd)
+            self.assertEqual(cmd[cmd.index("-locus-tag-prefix") + 1], "ACFI09")
+            self.assertIn("-j", cmd)
+            self.assertEqual(cmd[cmd.index("-j") + 1], "[organism=Foo bar][isolate=X]")
+            self.assertIn("-Z", cmd)
+            self.assertIn("-V", cmd); self.assertEqual(cmd[cmd.index("-V") + 1], "b")
+            self.assertIn("-t", cmd); self.assertEqual(cmd[cmd.index("-t") + 1], str(template_sbt))
+            self.assertIn("-i", cmd); self.assertEqual(cmd[cmd.index("-i") + 1], str(genome_fa))
+
+    def test_table2asn_submission_writes_run_manifest(self) -> None:
+        """table2asn_submission writes run_manifest.json with expected keys and workflow name."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            cleanup_results = _create_agat_cleanup_results(tmp_path)
+            genome_fa = _write_text(tmp_path / "genome.fa", ">chr1\nACGT\n")
+            template_sbt = _write_text(tmp_path / "template.sbt", "Submit-block ::= {}\n")
+
+            def fake_run_tool(
+                cmd: list[str],
+                sif: str,
+                bind_paths: list[Path],
+                cwd: Path | None = None,
+                stdout_path: Path | None = None,
+            ) -> None:
+                """Stage a synthetic .sqn output without running table2asn."""
+                if cwd is not None:
+                    out = Path(cwd) / "annotation_submission.sqn"
+                    out.parent.mkdir(parents=True, exist_ok=True)
+                    out.write_text("stub sqn\n")
+
+            with (
+                patch.object(agat, "run_tool", side_effect=fake_run_tool),
+                patch.object(agat, "datetime", _fixed_datetime("20260415_121000")),
+            ):
+                result = table2asn_submission(
+                    agat_cleanup_results=Dir(path=str(cleanup_results)),
+                    genome_fasta=str(genome_fa),
+                    submission_template=str(template_sbt),
+                )
+
+            results_dir = Path(result.download_sync())
+            manifest = _read_json(results_dir / "run_manifest.json")
+
+            self.assertEqual(manifest["workflow"], "annotation_postprocess_table2asn")
+            self.assertIn("assumptions", manifest)
+            self.assertIn("source_bundle", manifest)
+            self.assertIn("inputs", manifest)
+            self.assertIn("outputs", manifest)
+            self.assertIn("genome_fasta", manifest["inputs"])
+            self.assertIn("submission_template", manifest["inputs"])
+            self.assertIn("table2asn_output_dir", manifest["outputs"])
+
+    def test_table2asn_submission_raises_when_no_gff3_found(self) -> None:
+        """table2asn_submission raises FileNotFoundError when no cleaned GFF3 exists.
+
+        Exercises the fallback in _agat_cleaned_gff3 when neither a manifest
+        record nor any agat_output/*.gff3 files are present.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            # Empty cleanup dir — no manifest, no agat_output subdirectory.
+            empty_cleanup = tmp_path / "empty_cleanup"
+            empty_cleanup.mkdir(parents=True)
+            genome_fa = _write_text(tmp_path / "genome.fa", ">chr1\nACGT\n")
+            template_sbt = _write_text(tmp_path / "template.sbt", "Submit-block ::= {}\n")
+
+            with self.assertRaises(FileNotFoundError):
+                table2asn_submission(
+                    agat_cleanup_results=Dir(path=str(empty_cleanup)),
+                    genome_fasta=str(genome_fa),
+                    submission_template=str(template_sbt),
+                )

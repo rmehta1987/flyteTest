@@ -25,6 +25,8 @@ from flytetest.config import (
     AGAT_RESULTS_PREFIX,
     AGAT_WORKFLOW_NAME,
     RESULTS_ROOT,
+    TABLE2ASN_RESULTS_PREFIX,
+    TABLE2ASN_WORKFLOW_NAME,
     agat_cleanup_env,
     agat_conversion_env,
     agat_env,
@@ -39,6 +41,7 @@ _AGAT_OUTPUT_FILENAME = "agat_statistics.tsv"
 _AGAT_CONVERT_OUTPUT_FILENAME = "all_repeats_removed.agat.gff3"
 _AGAT_CLEANED_OUTPUT_FILENAME = "all_repeats_removed.agat.cleaned.gff3"
 _AGAT_CLEANUP_SUMMARY_FILENAME = "agat_cleanup_summary.json"
+TABLE2ASN_OUTPUT_DIRNAME = "table2asn_output"
 
 
 def _as_json_compatible(value: Any) -> Any:
@@ -483,4 +486,146 @@ def agat_statistics(
     return Dir(path=str(out_dir))
 
 
-__all__ = ["agat_cleanup_gff3", "agat_convert_sp_gxf2gxf", "agat_statistics"]
+def _agat_cleaned_gff3(results_dir: Path) -> Path:
+    """Resolve the AGAT-cleaned GFF3 boundary from one cleanup results bundle."""
+    manifest_path = results_dir / "run_manifest.json"
+    if manifest_path.exists():
+        manifest = _read_json(manifest_path)
+        manifest_output = _manifest_output_path(manifest, "agat_cleaned_gff3")
+        if manifest_output is not None:
+            return manifest_output
+    # Fall back to scanning the agat_output subdirectory for any .gff3 file.
+    agat_output = results_dir / _AGAT_OUTPUT_DIRNAME
+    for candidate in sorted(agat_output.glob("*.gff3")):
+        return candidate
+    raise FileNotFoundError(f"Unable to resolve a cleaned GFF3 under {results_dir}")
+
+
+# ---------------------------------------------------------------------------
+# table2asn submission (M21c)
+# ---------------------------------------------------------------------------
+
+from flytetest.config import table2asn_env  # noqa: E402  (local import to avoid circular at module level)
+
+
+@table2asn_env.task
+def table2asn_submission(
+    agat_cleanup_results: Dir,
+    genome_fasta: str,
+    submission_template: str,
+    locus_tag_prefix: str = "",
+    organism_annotation: str = "",
+    table2asn_binary: str = "table2asn",
+    table2asn_sif: str = "",
+) -> Dir:
+    """Run table2asn to produce an NCBI .sqn submission file.
+
+    Consumes the AGAT cleanup results bundle and produces a ``table2asn_output``
+    directory containing the ``.sqn`` and validation artefacts alongside a
+    ``run_manifest.json``.
+
+    Args:
+        agat_cleanup_results: The Dir output of ``agat_cleanup_gff3``.
+        genome_fasta: Path to the repeat-masked genome FASTA used as the
+            ``-i`` input to table2asn.
+        submission_template: Path to the NCBI ``.sbt`` template file (``-t``).
+        locus_tag_prefix: BioProject locus-tag prefix (``-locus-tag-prefix``).
+            Omitted from the command when empty.
+        organism_annotation: NCBI organism annotation string such as
+            ``[organism=Foo bar][isolate=X]`` (``-j``).  Omitted when empty.
+        table2asn_binary: Name or path of the table2asn executable.
+        table2asn_sif: Optional Apptainer/Singularity image for table2asn.
+    """
+    cleanup_dir = require_path(
+        Path(agat_cleanup_results.download_sync()),
+        "AGAT cleanup results directory",
+    )
+    cleaned_gff3 = _agat_cleaned_gff3(cleanup_dir)
+    fasta = require_path(Path(genome_fasta), "Genome FASTA")
+    template = require_path(Path(submission_template), "Submission template (.sbt)")
+
+    work_dir = project_mkdtemp("table2asn_") / TABLE2ASN_OUTPUT_DIRNAME
+    work_dir.mkdir(parents=True, exist_ok=True)
+    output_sqn = work_dir / "annotation_submission.sqn"
+
+    command = [
+        table2asn_binary,
+        "-M", "n",
+        "-J",
+        "-c", "w",
+        "-euk",
+        "-t", str(template),
+        "-gaps-min", "10",
+        "-l", "proximity-ligation",
+    ]
+    if locus_tag_prefix:
+        command.extend(["-locus-tag-prefix", locus_tag_prefix])
+    if organism_annotation:
+        command.extend(["-j", organism_annotation])
+    command.extend([
+        "-i", str(fasta),
+        "-f", str(cleaned_gff3),
+        "-o", str(output_sqn),
+        "-Z",
+        "-V", "b",
+    ])
+
+    bind_paths = [cleanup_dir, fasta.parent, template.parent, work_dir]
+    run_tool(command, table2asn_sif, bind_paths, cwd=work_dir)
+
+    run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out_dir = Path.cwd() / RESULTS_ROOT / f"{TABLE2ASN_RESULTS_PREFIX}_{run_id}"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    source_boundary_dir = out_dir / "source_boundary"
+    source_boundary_dir.mkdir(parents=True, exist_ok=True)
+    copied_gff3 = _copy_file(cleaned_gff3, source_boundary_dir / cleaned_gff3.name)
+    copied_fasta = _copy_file(fasta, source_boundary_dir / fasta.name)
+
+    source_manifests_dir = out_dir / "source_manifests"
+    source_manifests_dir.mkdir(parents=True, exist_ok=True)
+    copied_cleanup_manifest = _copy_file(
+        _manifest_path(cleanup_dir, "AGAT cleanup results"),
+        source_manifests_dir / "agat_cleanup.run_manifest.json",
+    )
+
+    table2asn_output_dir = _copy_tree(work_dir, out_dir / TABLE2ASN_OUTPUT_DIRNAME)
+    copied_sqn = out_dir / "annotation_submission.sqn"
+    if (table2asn_output_dir / "annotation_submission.sqn").exists():
+        _copy_file(table2asn_output_dir / "annotation_submission.sqn", copied_sqn)
+
+    manifest = {
+        "workflow": TABLE2ASN_WORKFLOW_NAME,
+        "assumptions": [
+            "This slice consumes the AGAT cleanup GFF3 bundle and runs table2asn to produce an NCBI .sqn submission file.",
+            "The command shape follows docs/braker3_evm_notes.md line ~920: -M n -J -c w -euk -gaps-min 10 -l proximity-ligation.",
+            "The proximity-ligation gap evidence is correct for chromatin-capture scaffolded genomes; update the -l flag for other sequencing strategies.",
+            "locus-tag-prefix must have been assigned in the NCBI BioProject; submission_template (.sbt) is generated on NCBI and downloaded locally.",
+        ],
+        "source_bundle": {
+            "agat_cleanup_results": str(cleanup_dir),
+        },
+        "copied_source_manifests": {
+            "agat_cleanup": str(copied_cleanup_manifest),
+        },
+        "inputs": {
+            "agat_cleanup_results": str(cleanup_dir),
+            "genome_fasta": str(fasta),
+            "submission_template": str(template),
+            "locus_tag_prefix": locus_tag_prefix,
+            "organism_annotation": organism_annotation,
+            "table2asn_binary": table2asn_binary,
+            "table2asn_sif": table2asn_sif,
+        },
+        "outputs": {
+            "cleaned_gff3": str(copied_gff3),
+            "genome_fasta": str(copied_fasta),
+            "table2asn_output_dir": str(table2asn_output_dir),
+            "submission_sqn": str(copied_sqn) if copied_sqn.exists() else "",
+        },
+    }
+    _write_json(out_dir / "run_manifest.json", manifest)
+    return Dir(path=str(out_dir))
+
+
+__all__ = ["agat_cleanup_gff3", "agat_convert_sp_gxf2gxf", "agat_statistics", "table2asn_submission"]

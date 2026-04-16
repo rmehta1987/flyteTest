@@ -63,6 +63,7 @@ The local recipe runner can currently handle:
 - workflow: `annotation_postprocess_agat`
 - workflow: `annotation_postprocess_agat_conversion`
 - workflow: `annotation_postprocess_agat_cleanup`
+- workflow: `annotation_postprocess_table2asn`
 
 Other registered workflows may still show up in the registry and typed planner,
 but they need explicit local node handlers before they can be run through this

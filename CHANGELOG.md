@@ -25,6 +25,46 @@ Entry template:
 ```markdown
 ## Unreleased
 
+### Milestone 21c — Biology Closure: table2asn NCBI Submission (2026-04-15)
+
+- [x] 2026-04-15 added `TABLE2ASN_WORKFLOW_NAME = "annotation_postprocess_table2asn"`,
+      `TABLE2ASN_RESULTS_PREFIX = "table2asn_results"`, `TaskEnvironmentConfig` entry,
+      and `table2asn_env` handle to `src/flytetest/config.py`. *(config.py)*
+
+- [x] 2026-04-15 added `SUPPORTED_TABLE2ASN_WORKFLOW_NAME` constant and new
+      `ShowcaseTarget(category="workflow", module_name="flytetest.workflows.agat")`
+      entry to `mcp_contract.py`; updated `SHOWCASE_LIMITATIONS` and
+      `LIST_ENTRIES_LIMITATIONS` strings. *(mcp_contract.py)*
+
+- [x] 2026-04-15 implemented `_agat_cleaned_gff3(results_dir)` helper (manifest
+      lookup with `agat_output/*.gff3` fallback) and `table2asn_submission` task in
+      `src/flytetest/tasks/agat.py`. Command shape follows `docs/braker3_evm_notes.md`
+      line ~920: `-M n -J -c w -euk -gaps-min 10 -l proximity-ligation -Z -V b`
+      plus conditional `-locus-tag-prefix` and `-j` flags. Writes `run_manifest.json`
+      with `workflow`, `assumptions`, `source_bundle`, `copied_source_manifests`,
+      `inputs`, `outputs`. *(tasks/agat.py)*
+
+- [x] 2026-04-15 added `annotation_postprocess_table2asn` workflow to
+      `src/flytetest/workflows/agat.py`; updated `__all__`. *(workflows/agat.py)*
+
+- [x] 2026-04-15 wired `SUPPORTED_TABLE2ASN_WORKFLOW_NAME` handler in `server.py`
+      `_local_node_handlers()` dict and added QualityAssessmentTarget `input_name`
+      mapping entry. *(server.py)*
+
+- [x] 2026-04-15 added `annotation_postprocess_table2asn` to all three spots in
+      `src/flytetest/registry.py`: `RegistryEntry`, `RegistryCompatibilityMetadata`,
+      `_WORKFLOW_LOCAL_RESOURCE_DEFAULTS`, and `_WORKFLOW_SLURM_RESOURCE_HINTS`.
+      *(registry.py)*
+
+- [x] 2026-04-15 added T19–T23: 2 server tests (`run_task` declines
+      `table2asn_submission`, `list_entries` includes the workflow entry) in
+      `tests/test_server.py` and 3 task tests (correct command flags, manifest
+      written, FileNotFoundError when no GFF3) in `tests/test_agat.py`; full suite
+      now 393 tests passing, 1 skipped.
+
+- [x] 2026-04-15 updated `docs/mcp_showcase.md`, `docs/capability_maturity.md`,
+      `README.md`, and `docs/realtime_refactor_checklist.md` (M21c marked Complete).
+
 ### Milestone 21b — HPC Observability (2026-04-15)
 
 - [x] 2026-04-15 added `FETCH_JOB_LOG_TOOL_NAME`, `WAIT_FOR_SLURM_JOB_TOOL_NAME`,

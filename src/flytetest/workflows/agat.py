@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from flyte.io import Dir
 
-from flytetest.config import agat_cleanup_env, agat_conversion_env, agat_env
-from flytetest.tasks.agat import agat_cleanup_gff3, agat_convert_sp_gxf2gxf, agat_statistics
+from flytetest.config import agat_cleanup_env, agat_conversion_env, agat_env, table2asn_env
+from flytetest.tasks.agat import agat_cleanup_gff3, agat_convert_sp_gxf2gxf, agat_statistics, table2asn_submission
 
 
 @agat_env.task
@@ -50,8 +50,31 @@ def annotation_postprocess_agat_cleanup(
     )
 
 
+@table2asn_env.task
+def annotation_postprocess_table2asn(
+    agat_cleanup_results: Dir,
+    genome_fasta: str,
+    submission_template: str,
+    locus_tag_prefix: str = "",
+    organism_annotation: str = "",
+    table2asn_binary: str = "table2asn",
+    table2asn_sif: str = "",
+) -> Dir:
+    """Run table2asn on the AGAT-cleaned GFF3 to produce an NCBI .sqn file."""
+    return table2asn_submission(
+        agat_cleanup_results=agat_cleanup_results,
+        genome_fasta=genome_fasta,
+        submission_template=submission_template,
+        locus_tag_prefix=locus_tag_prefix,
+        organism_annotation=organism_annotation,
+        table2asn_binary=table2asn_binary,
+        table2asn_sif=table2asn_sif,
+    )
+
+
 __all__ = [
     "annotation_postprocess_agat",
     "annotation_postprocess_agat_cleanup",
     "annotation_postprocess_agat_conversion",
+    "annotation_postprocess_table2asn",
 ]

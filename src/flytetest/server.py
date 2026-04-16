@@ -61,6 +61,7 @@ from flytetest.mcp_contract import (
     REASON_CODE_UNSUPPORTED_OR_AMBIGUOUS_REQUEST,
     SHOWCASE_SERVER_NAME,
     SUPPORTED_AGAT_CLEANUP_WORKFLOW_NAME,
+    SUPPORTED_TABLE2ASN_WORKFLOW_NAME,
     SUPPORTED_AGAT_CONVERSION_WORKFLOW_NAME,
     SUPPORTED_AGAT_WORKFLOW_NAME,
     SUPPORTED_BUSCO_WORKFLOW_NAME,
@@ -1259,6 +1260,7 @@ def _local_node_handlers(
         SUPPORTED_AGAT_WORKFLOW_NAME: workflow_handler,
         SUPPORTED_AGAT_CONVERSION_WORKFLOW_NAME: workflow_handler,
         SUPPORTED_AGAT_CLEANUP_WORKFLOW_NAME: workflow_handler,
+        SUPPORTED_TABLE2ASN_WORKFLOW_NAME: workflow_handler,
         **{name: task_handler for name in SUPPORTED_TASK_NAMES},
     }
 
@@ -2005,6 +2007,7 @@ def _summary_used_inputs(plan: dict[str, object]) -> dict[str, object]:
                 SUPPORTED_AGAT_WORKFLOW_NAME: "eggnog_results",
                 SUPPORTED_AGAT_CONVERSION_WORKFLOW_NAME: "eggnog_results",
                 SUPPORTED_AGAT_CLEANUP_WORKFLOW_NAME: "agat_conversion_results",
+                SUPPORTED_TABLE2ASN_WORKFLOW_NAME: "agat_cleanup_results",
             }.get(str(target_name), "repeat_filter_results")
             source_dir = target_value.get("source_result_dir")
             if not source_dir and isinstance(target_value.get("source_manifest_path"), str):

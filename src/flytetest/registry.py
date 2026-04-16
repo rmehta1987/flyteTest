@@ -1984,6 +1984,56 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
         tags=("workflow", "agat", "post-processing", "cleanup"),
     ),
     RegistryEntry(
+        name="annotation_postprocess_table2asn",
+        category="workflow",
+        description="table2asn submission workflow that consumes the AGAT cleanup bundle and produces an NCBI .sqn submission file alongside validation artefacts.",
+        inputs=(
+            InterfaceField(
+                "agat_cleanup_results",
+                "Dir",
+                "AGAT cleanup results directory from annotation_postprocess_agat_cleanup containing the cleaned GFF3 that serves as the -f input to table2asn.",
+            ),
+            InterfaceField(
+                "genome_fasta",
+                "str",
+                "Path to the repeat-masked genome FASTA used as the -i input to table2asn.",
+            ),
+            InterfaceField(
+                "submission_template",
+                "str",
+                "Path to the NCBI .sbt template file generated on submit.ncbi.nlm.nih.gov (-t).",
+            ),
+            InterfaceField(
+                "locus_tag_prefix",
+                "str",
+                "BioProject locus-tag prefix assigned by NCBI (-locus-tag-prefix). Omitted from the command when empty.",
+            ),
+            InterfaceField(
+                "organism_annotation",
+                "str",
+                "NCBI organism annotation string such as [organism=Foo bar][isolate=X] (-j). Omitted when empty.",
+            ),
+            InterfaceField(
+                "table2asn_binary",
+                "str",
+                "Name or path of the table2asn executable. Defaults to 'table2asn'.",
+            ),
+            InterfaceField(
+                "table2asn_sif",
+                "str",
+                "Optional Apptainer/Singularity image path for table2asn.",
+            ),
+        ),
+        outputs=(
+            InterfaceField(
+                "results_dir",
+                "Dir",
+                "Timestamped table2asn results directory containing the .sqn submission file, validation artefacts, and run_manifest.json.",
+            ),
+        ),
+        tags=("workflow", "table2asn", "ncbi", "submission", "post-processing"),
+    ),
+    RegistryEntry(
         name="transdecoder_from_pasa",
         category="workflow",
         description="TransDecoder coding-prediction workflow built from the PASA results bundle and the TransDecoder tool reference.",
@@ -2410,6 +2460,17 @@ _WORKFLOW_COMPATIBILITY_METADATA: dict[str, RegistryCompatibilityMetadata] = {
             "Consumes the AGAT conversion GFF3 boundary after quality assessment, applies the deterministic cleanup rules, and keeps table2asn deferred.",
         ),
     ),
+    "annotation_postprocess_table2asn": RegistryCompatibilityMetadata(
+        biological_stage="NCBI submission preparation",
+        accepted_planner_types=("QualityAssessmentTarget",),
+        produced_planner_types=("QualityAssessmentTarget",),
+        reusable_as_reference=True,
+        execution_defaults={"profile": "local", "result_manifest": "run_manifest.json"},
+        synthesis_eligible=True,
+        composition_constraints=(
+            "Consumes the AGAT cleanup GFF3 boundary and runs table2asn to produce an NCBI .sqn submission file. Requires a valid NCBI .sbt submission template and a BioProject locus-tag prefix.",
+        ),
+    ),
 }
 
 
@@ -2430,6 +2491,7 @@ _WORKFLOW_LOCAL_RESOURCE_DEFAULTS: dict[str, dict[str, str]] = {
     "annotation_postprocess_agat": {"cpu": "8", "memory": "32Gi", "execution_class": "local"},
     "annotation_postprocess_agat_conversion": {"cpu": "8", "memory": "32Gi", "execution_class": "local"},
     "annotation_postprocess_agat_cleanup": {"cpu": "8", "memory": "32Gi", "execution_class": "local"},
+    "annotation_postprocess_table2asn": {"cpu": "4", "memory": "16Gi", "execution_class": "local"},
 }
 
 # Slurm resource hints per workflow.  These are starting-point suggestions for
@@ -2465,6 +2527,7 @@ _WORKFLOW_SLURM_RESOURCE_HINTS: dict[str, dict[str, str]] = {
     "annotation_postprocess_agat": {"cpu": "4", "memory": "16Gi", "walltime": "00:30:00"},
     "annotation_postprocess_agat_conversion": {"cpu": "4", "memory": "16Gi", "walltime": "00:30:00"},
     "annotation_postprocess_agat_cleanup": {"cpu": "8", "memory": "32Gi", "walltime": "01:00:00"},
+    "annotation_postprocess_table2asn": {"cpu": "4", "memory": "16Gi", "walltime": "02:00:00"},
 }
 
 
