@@ -19,11 +19,9 @@ The repo models a biologically ordered pipeline with real tool assumptions, so c
 
 Before making readability edits, read:
 
-1. `AGENTS.md`
-2. `DESIGN.md`
-3. the touched module
-4. the relevant `.codex` guide for the area being edited, such as `.codex/tasks.md` or `.codex/workflows.md`
-5. the relevant `docs/tool_refs/...` file when the code wraps a biological tool
+1. the touched module
+2. the relevant `.codex` guide for the area being edited, such as `.codex/tasks.md` or `.codex/workflows.md`
+3. the relevant `docs/tool_refs/...` file when the code wraps a biological tool
 
 ## Repo Standard
 

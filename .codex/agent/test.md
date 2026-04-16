@@ -17,11 +17,10 @@ Use this role when adding or tightening:
 Before testing work, read:
 
 1. `AGENTS.md`
-2. `README.md`
-3. `.codex/testing.md`
-4. the touched modules
-5. `src/flytetest/registry.py` if the public contract changed
-6. `docs/realtime_refactor_checklist.md` if the work is tied to a checklist
+2. `.codex/testing.md`
+3. the touched modules
+4. `src/flytetest/registry.py` if the public contract changed
+5. `docs/realtime_refactor_checklist.md` if the work is tied to a checklist
    item
 
 ## Your Role

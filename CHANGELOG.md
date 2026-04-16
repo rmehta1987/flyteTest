@@ -25,6 +25,26 @@ Entry template:
 ```markdown
 ## Unreleased
 
+### Open TODOs
+
+- [ ] **Confirm AUGUSTUS_CONFIG_PATH fix for BRAKER3 container runs** — `.runtime/augustus_config/`
+      exists at repo root (gitignored, 171 species configs from prior runs) and was likely
+      created to work around AUGUSTUS writing species configs into a read-only container path.
+      On the next real BRAKER3 run: confirm whether `AUGUSTUS_CONFIG_PATH` must be set and
+      bind-mounted explicitly. Document the confirmed fix in `docs/tool_refs/braker3.md`.
+
+- [ ] **Confirm RepeatMasker library path on RCC** — `repeatmasker_4.2.3.sif` requires a
+      Dfam/RepBase repeat library bind-mounted at runtime. Confirm the shared library path
+      on RCC before the first real annotation run. Document in `docs/annotation_pipeline_setup.md`.
+
+- [ ] **Confirm eggNOG database path on RCC** — `eggnog_mapper_2.1.13.sif` requires the
+      eggNOG database (~50 GB) staged and bind-mounted. Confirm whether it is already on a
+      shared project path or needs to be downloaded. Document in `docs/annotation_pipeline_setup.md`.
+
+- [ ] **Verify EVM 2.x command flags** — `evidencemodeler_2.1.0.sif` uses the Python 2.x
+      CLI, not the Perl 1.x scripts. Confirm that EVM task wrappers use the correct 2.x
+      flags before the first real run.
+
 ### Milestone 21c — Biology Closure: table2asn NCBI Submission (2026-04-15)
 
 - [x] 2026-04-15 added `TABLE2ASN_WORKFLOW_NAME = "annotation_postprocess_table2asn"`,

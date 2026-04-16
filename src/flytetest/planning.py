@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import ast
 import argparse
+import difflib
 import inspect
 import json
 import re
@@ -35,6 +36,7 @@ from flytetest.mcp_contract import (
     SHOWCASE_TARGETS_BY_NAME,
     SUPPORTED_BUSCO_FIXTURE_TASK_NAME,
     SUPPORTED_PROTEIN_WORKFLOW_NAME,
+    SUPPORTED_TARGET_NAMES,
     SUPPORTED_TASK_NAME,
     SUPPORTED_WORKFLOW_NAME,
 )
@@ -1618,6 +1620,32 @@ def _binding_plan_for_typed_goal(
     )
 
 
+def _find_close_target_matches(request: str) -> list[str]:
+    """Return supported target names that are close matches to any token in *request*.
+
+    Uses :func:`difflib.get_close_matches` with a cutoff of 0.6 against each
+    whitespace-delimited token so callers receive actionable suggestions when a
+    near-miss target name appears in the prompt.
+
+    Args:
+        request: The natural-language prompt to scan for near-miss tokens.
+
+    Returns:
+        A deduplicated list of close-matching target names, at most 3 entries.
+    """
+    seen: dict[str, None] = {}
+    for token in request.split():
+        # Strip punctuation that commonly trails a word in natural language
+        cleaned = token.strip(".,;:!?\"'()[]{}")
+        if not cleaned:
+            continue
+        for match in difflib.get_close_matches(cleaned, SUPPORTED_TARGET_NAMES, n=3, cutoff=0.6):
+            seen[match] = None
+        if len(seen) >= 3:
+            break
+    return list(seen.keys())[:3]
+
+
 def _unsupported_typed_plan(request: str, reason: str, rationale: tuple[str, ...]) -> dict[str, object]:
     """Build an honest typed-planning decline without falling back to guessing.
 
@@ -1629,6 +1657,12 @@ def _unsupported_typed_plan(request: str, reason: str, rationale: tuple[str, ...
     Returns:
         A metadata-only decline payload for the typed planner path.
 """
+    close_matches = _find_close_target_matches(request)
+    suggestions = (
+        [f"Did you mean one of: {', '.join(f'`{m}`' for m in close_matches)}?"]
+        if close_matches
+        else []
+    )
     return {
         "supported": False,
         "original_request": request,
@@ -1638,7 +1672,7 @@ def _unsupported_typed_plan(request: str, reason: str, rationale: tuple[str, ...
         "required_planner_types": [],
         "produced_planner_types": [],
         "resolved_inputs": {},
-        "missing_requirements": [reason],
+        "missing_requirements": [reason, *suggestions],
         "runtime_requirements": [],
         "assumptions": [
             "Typed planning is additive in Milestone 5 and does not replace the narrow showcase planner yet.",

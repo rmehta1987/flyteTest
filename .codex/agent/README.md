@@ -37,13 +37,15 @@ These guides complement, but do not override:
 - Prefer disjoint write scopes to avoid merge conflicts.
 - Keep compatibility-critical surfaces explicit:
   `flyte_rnaseq_workflow.py`, `src/flytetest/server.py`,
-  `src/flytetest/planning.py`, `src/flytetest/registry.py`, and current
-  manifest contracts.
+  `src/flytetest/planning.py`, `src/flytetest/registry.py`,
+  `src/flytetest/specs.py`, `src/flytetest/spec_executor.py`,
+  `src/flytetest/slurm_monitor.py`, and current manifest contracts.
 - When architecture refactor work is active, use
   `docs/realtime_refactor_checklist.md` as the shared tracker.
-- Keep the checklist as the quick reference, and store detailed per-slice plan
-  history under `docs/realtime_refactor_plans/`, archiving superseded or
-  completed plan revisions under `docs/realtime_refactor_plans/archive/`.
+- Store active detailed per-slice plans under `docs/realtime_refactor_plans/`.
+- Move completed or superseded plans to `docs/realtime_refactor_plans/archive/`;
+  consult archived plans only when checking prior decisions or historical
+  scope.
 - For checklist-driven refactors, continue through multiple small sequential
   items in one session when it is safe, and stop only when blocked, when
   compatibility risk rises, or when the next step should be split into a fresh

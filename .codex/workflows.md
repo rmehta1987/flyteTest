@@ -187,13 +187,8 @@ Do not present inferred BRAKER3, EVM, or protein preprocessing details as if the
 
 ## Validation Expectations
 
-Workflow authors should verify:
-
-- the module compiles
-- registry wiring matches the code
-- exports are intact
-- docs reflect the actual workflow parameters and outputs
-- synthetic path/result handling works if real tool execution is not available
+Follow `.codex/testing.md`. Verify imports, registry wiring, compatibility
+exports, and any touched README claims. Report what remains unverified.
 
 ## Don’t
 

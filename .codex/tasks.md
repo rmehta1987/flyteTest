@@ -56,8 +56,9 @@ Current repo-friendly starting points:
   default to `cpu=8`, `memory="32Gi"`
 - protein evidence and Exonerate tasks:
   default to `cpu=8`, `memory="32Gi"`
-- future BRAKER3, EVM, BUSCO, and EggNOG families:
-  start with `cpu=16`, `memory="64Gi"` unless the concrete tool notes justify something else
+- compute-intensive families (BRAKER3, EVM, BUSCO, EggNOG, and equivalent stages
+  in future pipeline families): start with `cpu=16`, `memory="64Gi"` unless the
+  concrete tool notes justify something else
 
 When in doubt:
 
@@ -238,17 +239,9 @@ Avoid:
 
 ## Validation Expectations
 
-Task authors should do feasible validation before handoff.
-
-That usually includes:
-
-- `python3 -m py_compile` on touched Python files
-- path-handling checks
-- manifest-shaping checks
-- synthetic local tests when the external tool is unavailable
-- shell syntax checks if helper scripts were touched
-
-Do not stop at “the testing guide will handle it” if you can cheaply validate your own work.
+Follow `.codex/testing.md`. Validate what you can locally before handoff —
+compile checks, path/manifest shaping, synthetic tests. Don't defer cheap
+checks to the testing guide.
 
 ## Don’t
 

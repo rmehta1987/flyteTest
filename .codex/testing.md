@@ -14,11 +14,12 @@ When a new bioinformatics tool is introduced, look first for a small tutorial-ba
 
 Before testing, read:
 
-1. `AGENTS.md`
-2. `README.md` for the documented contract
-3. the touched task/workflow modules
-4. `src/flytetest/registry.py` if the public interface changed
-5. any helper scripts that were modified
+1. the touched task/workflow modules
+2. `src/flytetest/registry.py` if the public interface changed
+3. any helper scripts that were modified
+
+If parameter names or example commands were changed, spot-check the relevant
+Quick Start section in `README.md` — no need to read the full file.
 
 ## Testing Priorities
 
@@ -59,9 +60,9 @@ When writing or updating tests, keep them readable:
 
 This repo now includes a lightweight real-data fixture set derived from the Galaxy Training Network Braker3 tutorial:
 
-- `data/genome.fa`
-- `data/RNAseq.bam`
-- `data/proteins.fa`
+- `data/braker3/reference/genome.fa`
+- `data/braker3/rnaseq/RNAseq.bam`
+- `data/braker3/protein_data/fastas/proteins.fa`
 
 Before defaulting to synthetic-only validation for a new pipeline milestone,
 check whether that stage already has a documented tutorial-backed dataset or

@@ -46,8 +46,8 @@ Task:
 7. Update docs and the checklist so the new state is honest, reviewable, and
    aligned with the milestone plan.
 8. If you materially revise the detailed milestone plan, save the revision
-   under `docs/realtime_refactor_plans/` and archive superseded versions under
-   `docs/realtime_refactor_plans/archive/`.
+   under `docs/realtime_refactor_plans/` and follow that directory's README
+   for plan lifecycle rules.
 9. Stop when the right outcome is clearly “not yet”; documenting that boundary
    cleanly is an acceptable milestone result.
 

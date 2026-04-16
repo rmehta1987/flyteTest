@@ -19,7 +19,7 @@ Before doing architecture work, read:
 
 1. `AGENTS.md`
 2. `DESIGN.md`
-3. `README.md`
+3. `README.md` current scope section if the change affects user-facing behavior
 4. `docs/capability_maturity.md`
 5. the active tracker, especially `docs/realtime_refactor_checklist.md` when
    the `realtime` refactor is in progress
@@ -69,9 +69,33 @@ Pay special attention to:
 - `src/flytetest/server.py` MCP tool names and resource URIs
 - `src/flytetest/planning.py` output shape
 - `src/flytetest/registry.py` public listing behavior
+- `src/flytetest/specs.py` `WorkflowSpec` and `BindingPlan` contract
+- `src/flytetest/spec_executor.py` local handler registration and execution contract
+- `src/flytetest/slurm_monitor.py` polling loop lifecycle and run-record schema
 - `run_manifest.json` truthfulness and downstream usability
 - README language that might accidentally imply target-state behavior already
   exists
+
+## MCP / Server Work
+
+When planning or reviewing changes to the MCP surface, treat these as a unit:
+
+- `src/flytetest/server.py` — tool names, argument shapes, and response fields
+- `src/flytetest/mcp_contract.py` — machine-readable server contract
+- `src/flytetest/planning.py` — typed plan output consumed by recipe preparation
+- `src/flytetest/specs.py` — `WorkflowSpec` and `BindingPlan` frozen before execution
+- `src/flytetest/spec_executor.py` — local handler dispatch
+- `src/flytetest/slurm_monitor.py` — Slurm polling loop and run-record lifecycle
+
+Key rules for MCP changes:
+- tool names and argument names in `server.py` are a public contract; rename only
+  with an explicit versioning decision
+- any new tool must return `supported`, `limitations`, and a structured payload —
+  never bare strings
+- Slurm tools must remain no-ops (returning an explicit limitation) when `sbatch`
+  is not on `PATH`; never silently fall back to local execution
+- run-record schema changes must remain backward-compatible with existing
+  `.runtime/runs/` records or include an explicit migration plan
 
 ## Deliverables
 

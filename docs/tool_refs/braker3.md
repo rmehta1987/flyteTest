@@ -102,6 +102,17 @@ Deliver:
 - any assumptions inferred from GTN or upstream docs
 ```
 
+## AUGUSTUS_CONFIG_PATH — Unconfirmed Known Issue
+
+A `.runtime/augustus_config/` directory exists at the repo root (gitignored) with
+171 species configs from prior runs. This was likely created to work around
+AUGUSTUS writing species parameter files into a read-only path inside the
+container, causing job failures.
+
+**To investigate on the next real run:** confirm whether `AUGUSTUS_CONFIG_PATH`
+must be set to `.runtime/augustus_config/` and bind-mounted explicitly, or whether
+the container handles this internally. Document the confirmed fix here once known.
+
 ## Notes And Caveats
 
 - BRAKER3 is implemented in FLyteTest as a local-input ab initio annotation milestone, not as a full manual reproduction of every upstream option.

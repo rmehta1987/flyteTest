@@ -23,6 +23,8 @@ Use this plan workspace when:
 
 - Keep active plan documents in this directory.
 - Move superseded or completed plans into `archive/`.
+- Do not list archived plans as default required context for new milestone work
+  unless the milestone explicitly depends on prior decisions recorded there.
 - Prefer one markdown file per meaningful slice or plan revision.
 - Keep filenames short, sortable, and descriptive.
 
