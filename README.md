@@ -48,9 +48,9 @@ artifact upload semantics.
   the local-to-Slurm resume smoke, and a real protein-evidence Slurm workflow
   probe
 - Active biological milestone: `AGAT post-processing after EggNOG`
-- Active architecture milestone: `realtime` refactor Milestones 0 through 19
-  are complete; the next planned architecture slice is Milestone 20
-  storage-native durable asset return
+- Active architecture milestone: `realtime` refactor Milestones 0 through 26
+  are complete; the generic biology-facing asset surface is now complete for
+  all current stage boundaries (M23–M26)
 
 ### Deferred
 

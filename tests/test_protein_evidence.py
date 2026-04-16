@@ -492,3 +492,149 @@ class ProteinEvidenceWorkflowTests(TestCase):
                 expected_calls.append(f"convert:{chunk_label}")
             expected_calls.append("collect")
             self.assertEqual(calls, expected_calls)
+
+
+class ProteinAlignmentChunkResultTests(TestCase):
+    """Tests for the biology-facing ProteinAlignmentChunkResult generic sibling type."""
+
+    def test_protein_alignment_chunk_result_is_subtype_of_exonerate_chunk_alignment_result(self):
+        """ProteinAlignmentChunkResult must satisfy isinstance checks against the tool-branded type."""
+        from flytetest.types import ExonerateChunkAlignmentResult, ProteinAlignmentChunkResult
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            asset = ProteinAlignmentChunkResult(
+                chunk_label="chunk_0001",
+                output_dir=tmp_path,
+                protein_chunk_fasta_path=tmp_path / "chunk_0001.fa",
+                raw_output_path=tmp_path / "chunk_0001.exonerate.out",
+            )
+            self.assertIsInstance(asset, ExonerateChunkAlignmentResult)
+
+    def test_collect_results_emits_generic_raw_alignment_chunks_dir_key(self):
+        """New manifests must include the generic 'raw_alignment_chunks_dir' output key."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            first_subset = _copy_fasta_subset(PROTEIN_FASTA, tmp_path / "proteins_a.fa", 1)
+            staged = protein_evidence.stage_protein_fastas(
+                protein_fastas=[_artifact_file(first_subset)]
+            )
+            chunked = protein_evidence.chunk_protein_fastas(
+                staged_proteins=staged,
+                proteins_per_chunk=2,
+            )
+            chunk_name = "chunk_0001"
+            raw_dir = tmp_path / f"raw_{chunk_name}"
+            raw_dir.mkdir()
+            (raw_dir / f"{chunk_name}.exonerate.out").write_text(
+                f"chr1\texonerate\tgene\t1\t9\t.\t+\t.\tID={chunk_name}\n"
+            )
+            (raw_dir / "run_manifest.json").write_text(
+                json.dumps({"inputs": {"model": "protein2genome"}})
+            )
+            converted_dir = tmp_path / f"converted_{chunk_name}"
+            converted_dir.mkdir()
+            (converted_dir / f"{chunk_name}.evm.gff3").write_text(
+                "##gff-version 3\n"
+                f"chr1\texonerate_protein\tgene\t1\t9\t.\t+\t.\tID={chunk_name}\n"
+            )
+            (converted_dir / "run_manifest.json").write_text(
+                json.dumps({"assumptions": ["Converted for downstream EVM input."]})
+            )
+            with patch.object(protein_evidence, "RESULTS_ROOT", str(tmp_path / "results")):
+                with patch.object(protein_evidence, "datetime", _fixed_datetime()):
+                    bundle = protein_evidence.exonerate_concat_results(
+                        genome=_artifact_file(GENOME_FASTA),
+                        staged_proteins=staged,
+                        protein_chunks=chunked,
+                        raw_chunk_results=[_artifact_dir(raw_dir)],
+                        evm_chunk_results=[_artifact_dir(converted_dir)],
+                    )
+            manifest = _read_json(Path(bundle.download_sync()) / "run_manifest.json")
+            self.assertIn("raw_alignment_chunks_dir", manifest["outputs"])
+            self.assertIn("concatenated_raw_alignments", manifest["outputs"])
+
+    def test_collect_results_still_emits_legacy_raw_exonerate_keys(self):
+        """Legacy 'raw_exonerate_chunks_dir' and 'concatenated_raw_exonerate' keys must remain for historical replay."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            first_subset = _copy_fasta_subset(PROTEIN_FASTA, tmp_path / "proteins_a.fa", 1)
+            staged = protein_evidence.stage_protein_fastas(
+                protein_fastas=[_artifact_file(first_subset)]
+            )
+            chunked = protein_evidence.chunk_protein_fastas(
+                staged_proteins=staged,
+                proteins_per_chunk=2,
+            )
+            chunk_name = "chunk_0001"
+            raw_dir = tmp_path / f"raw_{chunk_name}"
+            raw_dir.mkdir()
+            (raw_dir / f"{chunk_name}.exonerate.out").write_text(
+                f"chr1\texonerate\tgene\t1\t9\t.\t+\t.\tID={chunk_name}\n"
+            )
+            (raw_dir / "run_manifest.json").write_text(
+                json.dumps({"inputs": {"model": "protein2genome"}})
+            )
+            converted_dir = tmp_path / f"converted_{chunk_name}"
+            converted_dir.mkdir()
+            (converted_dir / f"{chunk_name}.evm.gff3").write_text(
+                "##gff-version 3\n"
+                f"chr1\texonerate_protein\tgene\t1\t9\t.\t+\t.\tID={chunk_name}\n"
+            )
+            (converted_dir / "run_manifest.json").write_text(
+                json.dumps({"assumptions": ["Converted for downstream EVM input."]})
+            )
+            with patch.object(protein_evidence, "RESULTS_ROOT", str(tmp_path / "results")):
+                with patch.object(protein_evidence, "datetime", _fixed_datetime()):
+                    bundle = protein_evidence.exonerate_concat_results(
+                        genome=_artifact_file(GENOME_FASTA),
+                        staged_proteins=staged,
+                        protein_chunks=chunked,
+                        raw_chunk_results=[_artifact_dir(raw_dir)],
+                        evm_chunk_results=[_artifact_dir(converted_dir)],
+                    )
+            manifest = _read_json(Path(bundle.download_sync()) / "run_manifest.json")
+            self.assertIn("raw_exonerate_chunks_dir", manifest["outputs"])
+            self.assertIn("concatenated_raw_exonerate", manifest["outputs"])
+
+    def test_collect_results_emits_generic_and_legacy_asset_keys(self):
+        """New manifests must include both 'raw_alignment_chunk_results' and legacy 'raw_exonerate_chunk_results' under assets."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            first_subset = _copy_fasta_subset(PROTEIN_FASTA, tmp_path / "proteins_a.fa", 1)
+            staged = protein_evidence.stage_protein_fastas(
+                protein_fastas=[_artifact_file(first_subset)]
+            )
+            chunked = protein_evidence.chunk_protein_fastas(
+                staged_proteins=staged,
+                proteins_per_chunk=2,
+            )
+            chunk_name = "chunk_0001"
+            raw_dir = tmp_path / f"raw_{chunk_name}"
+            raw_dir.mkdir()
+            (raw_dir / f"{chunk_name}.exonerate.out").write_text(
+                f"chr1\texonerate\tgene\t1\t9\t.\t+\t.\tID={chunk_name}\n"
+            )
+            (raw_dir / "run_manifest.json").write_text(
+                json.dumps({"inputs": {"model": "protein2genome"}})
+            )
+            converted_dir = tmp_path / f"converted_{chunk_name}"
+            converted_dir.mkdir()
+            (converted_dir / f"{chunk_name}.evm.gff3").write_text(
+                "##gff-version 3\n"
+                f"chr1\texonerate_protein\tgene\t1\t9\t.\t+\t.\tID={chunk_name}\n"
+            )
+            (converted_dir / "run_manifest.json").write_text(
+                json.dumps({"assumptions": ["Converted for downstream EVM input."]})
+            )
+            with patch.object(protein_evidence, "RESULTS_ROOT", str(tmp_path / "results")):
+                with patch.object(protein_evidence, "datetime", _fixed_datetime()):
+                    bundle = protein_evidence.exonerate_concat_results(
+                        genome=_artifact_file(GENOME_FASTA),
+                        staged_proteins=staged,
+                        protein_chunks=chunked,
+                        raw_chunk_results=[_artifact_dir(raw_dir)],
+                        evm_chunk_results=[_artifact_dir(converted_dir)],
+                    )
+            manifest = _read_json(Path(bundle.download_sync()) / "run_manifest.json")
+            self.assertIn("raw_alignment_chunk_results", manifest["assets"])
+            self.assertIn("raw_exonerate_chunk_results", manifest["assets"])

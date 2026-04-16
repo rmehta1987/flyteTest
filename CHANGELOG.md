@@ -45,6 +45,109 @@ Entry template:
       CLI, not the Perl 1.x scripts. Confirm that EVM task wrappers use the correct 2.x
       flags before the first real run.
 
+### Milestone 26 — Consensus Annotation Generic Asset Surface (2026-04-16)
+
+- [x] 2026-04-16 introduced `ConsensusAnnotationResultBundle` as a biology-
+  facing generic sibling dataclass that inherits all fields from
+  `EvmConsensusResultBundle` unchanged. The 7 internal EVM computation types
+  (execution input bundle, partition bundle, command set, etc.) remain
+  EVM-named because they are internal implementation details. *(types/assets.py)*
+
+- [x] 2026-04-16 updated `consensus.py` `collect_evm_results()` to construct
+  `ConsensusAnnotationResultBundle` and emit both the generic manifest asset key
+  `consensus_annotation_result_bundle` and the legacy key
+  `evm_consensus_result_bundle` for backward replay compatibility. *(tasks/consensus.py)*
+
+- [x] 2026-04-16 exported `ConsensusAnnotationResultBundle` from
+  `flytetest.types` and `flytetest` package top-level. *(types/__init__.py,
+  __init__.py)*
+
+- [x] 2026-04-16 added 3 tests to `tests/test_consensus.py` in new
+  `ConsensusAnnotationResultBundleTests` class: subtype isinstance check, generic
+  manifest key present, legacy manifest key present. Full suite: 421 tests,
+  1 skipped.
+
+- [x] 2026-04-16 updated checklist, `capability_maturity.md`, `README.md`, and
+  plan doc to reflect Milestone 26 Complete. Generic biology-facing asset
+  surface is now complete for all current stage boundaries (M23\u2013M26).
+
+### Milestone 25 — PASA Refinement Generic Asset Surface (2026-04-16)
+
+- [x] 2026-04-16 introduced `AnnotationRefinementResultBundle` as a biology-
+  facing generic sibling dataclass that inherits all fields from
+  `PasaGeneModelUpdateResultBundle` unchanged. The nested input bundle
+  (`PasaGeneModelUpdateInputBundleAsset`) and round result
+  (`PasaGeneModelUpdateRoundResult`) remain PASA-named because their fields
+  reference PASA-specific paths (database, align/annotCompare config files).
+  *(types/assets.py)*
+
+- [x] 2026-04-16 updated `pasa.py` `collect_pasa_update_results()` to construct
+  `AnnotationRefinementResultBundle` and emit both the generic manifest asset key
+  `annotation_refinement_bundle` and the legacy key `pasa_gene_model_update_bundle`
+  for backward replay compatibility. *(tasks/pasa.py)*
+
+- [x] 2026-04-16 exported `AnnotationRefinementResultBundle` from
+  `flytetest.types` and `flytetest` package top-level. *(types/__init__.py,
+  __init__.py)*
+
+- [x] 2026-04-16 added 3 tests to `tests/test_pasa_update.py` in new
+  `AnnotationRefinementResultBundleTests` class: subtype isinstance check, generic
+  manifest key present, legacy manifest key present. Full suite: 418 tests,
+  1 skipped.
+
+- [x] 2026-04-16 updated checklist, `capability_maturity.md`, `README.md`, and
+  plan doc to reflect Milestone 25 Complete.
+
+### Milestone 24 — Protein Evidence Generic Alignment Asset Surface (2026-04-16)
+
+- [x] 2026-04-16 added `ProteinAlignmentChunkResult` as a biology-facing
+  generic sibling dataclass that inherits all fields from
+  `ExonerateChunkAlignmentResult` unchanged; `ExonerateChunkAlignmentResult`
+  remains readable for legacy replay. *(types/assets.py)*
+
+- [x] 2026-04-16 updated `protein_evidence.py` `exonerate_concat_results()` to
+  construct raw chunk assets as `ProteinAlignmentChunkResult` and emit generic
+  keys alongside legacy keys in new manifests:
+  `raw_alignment_chunks_dir` (alongside `raw_exonerate_chunks_dir`),
+  `concatenated_raw_alignments` (alongside `concatenated_raw_exonerate`), and
+  `raw_alignment_chunk_results` (alongside `raw_exonerate_chunk_results`).
+  Historical manifests remain replayable unchanged. *(tasks/protein_evidence.py)*
+
+- [x] 2026-04-16 exported `ProteinAlignmentChunkResult` from `flytetest.types`
+  and `flytetest` public namespaces. *(types/__init__.py, __init__.py)*
+
+- [x] 2026-04-16 added 4 tests to `tests/test_protein_evidence.py` in new
+  `ProteinAlignmentChunkResultTests` class: subtype check, generic output keys
+  present, legacy output keys still present, both generic and legacy asset
+  keys present in manifest. All 415 tests pass. *(tests/test_protein_evidence.py)*
+
+- [x] 2026-04-16 updated `docs/capability_maturity.md`, `README.md`,
+  `CHANGELOG.md`, checklist, and plan doc to reflect landed state.
+
+### Milestone 23 — TransDecoder Generic Asset Surface (2026-04-16)
+
+- [x] 2026-04-16 added `CodingPredictionResult` as a biology-facing generic
+  sibling dataclass that inherits all fields from `TransDecoderPredictionResult`
+  unchanged; `TransDecoderPredictionResult` remains readable for legacy replay.
+  *(types/assets.py)*
+
+- [x] 2026-04-16 updated `transdecoder.py` `collect_transdecoder_results()` to
+  construct the result as `CodingPredictionResult` and emit both
+  `"coding_prediction"` (preferred generic key) and `"transdecoder_prediction"`
+  (legacy compatibility key) in new manifests. Historical manifests that only
+  carry `transdecoder_prediction` load and replay unchanged. *(tasks/transdecoder.py)*
+
+- [x] 2026-04-16 exported `CodingPredictionResult` from `flytetest.types` and
+  `flytetest` public namespaces. *(types/__init__.py, __init__.py)*
+
+- [x] 2026-04-16 added 3 tests to `tests/test_transdecoder.py`: subtype check
+  (`CodingPredictionResult` satisfies `isinstance` against tool-branded type),
+  new manifest includes `coding_prediction` key, new manifest still includes
+  legacy `transdecoder_prediction` key. *(tests/test_transdecoder.py)*
+
+- [x] 2026-04-16 updated `docs/capability_maturity.md`, `README.md`,
+  `CHANGELOG.md`, checklist, and plan doc to reflect landed state.
+
 ### Milestone 22 — Registry-Driven Pipeline Tracker (2026-04-16)
 
 - [x] 2026-04-16 added `pipeline_family: str = ""` and `pipeline_stage_order: int = 0`

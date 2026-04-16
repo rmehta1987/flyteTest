@@ -1856,21 +1856,21 @@ Status: Not started
 Goal: define and adopt a biology-facing generic asset surface for the current
 TransDecoder-backed coding-prediction boundary while retaining legacy replay.
 
-Status: Not started
+Status: Complete
 
 ### Still required
 
-- [ ] Define the biology-facing concept that should replace the current
+- [x] Define the biology-facing concept that should replace the current
       TransDecoder-only naming at this stage boundary.
-- [ ] Introduce generic sibling asset names or types for the TransDecoder
+- [x] Introduce generic sibling asset names or types for the TransDecoder
       output family while keeping the current tool-branded names readable.
-- [ ] Update manifest-producing helpers and adapters to prefer the generic
+- [x] Update manifest-producing helpers and adapters to prefer the generic
       naming where the biological meaning is already known.
-- [ ] Preserve replay of historical manifests that only use the current
+- [x] Preserve replay of historical manifests that only use the current
       TransDecoder-branded asset names.
-- [ ] Add tests for generic-name round-tripping, legacy manifest loading, and
+- [x] Add tests for generic-name round-tripping, legacy manifest loading, and
       current manifest emission.
-- [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
+- [x] Update README, `docs/capability_maturity.md`, and the handoff prompt
       after the behavior lands.
 
 ### Milestone 23 implementation note
@@ -1904,21 +1904,21 @@ Status: Not started
 Goal: make the nested protein-evidence alignment assets less Exonerate-specific
 while preserving the current top-level protein-evidence bundle contract.
 
-Status: Not started
+Status: Complete
 
 ### Still required
 
-- [ ] Audit which nested protein-evidence assets are too Exonerate-branded for
+- [x] Audit which nested protein-evidence assets are too Exonerate-branded for
       future planner or manifest reuse.
-- [ ] Define generic sibling names for the nested raw-alignment and converted
+- [x] Define generic sibling names for the nested raw-alignment and converted
       evidence assets where a stable biology-facing meaning exists.
-- [ ] Keep the current top-level `protein_evidence_result_bundle` contract
+- [x] Keep the current top-level `protein_evidence_result_bundle` contract
       intact while adding generic nested names.
-- [ ] Preserve replay of manifests that still carry the current
+- [x] Preserve replay of manifests that still carry the current
       Exonerate-specific nested asset names.
-- [ ] Add tests for nested generic-name round-tripping, legacy manifest
+- [x] Add tests for nested generic-name round-tripping, legacy manifest
       loading, and current manifest emission.
-- [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
+- [x] Update README, `docs/capability_maturity.md`, and the handoff prompt
       after the behavior lands.
 
 ### Milestone 24 implementation note
@@ -1952,30 +1952,31 @@ Goal: define whether PASA post-EVM refinement should grow a generic annotation-
 refinement asset layer, and adopt it only if that abstraction is genuinely
 useful.
 
-Status: Not started
+Status: Complete
 
 ### Still required
 
-- [ ] Decide whether the PASA post-EVM refinement boundary needs a generic
+- [x] Decide whether the PASA post-EVM refinement boundary needs a generic
       annotation-refinement asset layer at all.
-- [ ] If yes, define generic sibling names for the PASA refinement input,
+- [x] If yes, define generic sibling names for the PASA refinement input,
       round, and result-bundle assets while keeping current PASA names
       available.
-- [ ] Update manifest emitters and adapters to prefer the generic names only
+- [x] Update manifest emitters and adapters to prefer the generic names only
       if the biological boundary is now explicit enough.
-- [ ] Preserve replay of historical PASA refinement manifests.
-- [ ] Add tests for generic-name round-tripping, legacy manifest loading, and
+- [x] Preserve replay of historical PASA refinement manifests.
+- [x] Add tests for generic-name round-tripping, legacy manifest loading, and
       current manifest emission when the generic layer is adopted.
-- [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
+- [x] Update README, `docs/capability_maturity.md`, and the handoff prompt
       after the behavior lands.
 
 ### Milestone 25 implementation note
 
-- This slice may legitimately decide not to introduce a generic sibling layer
-  yet if PASA remains the only clear truthful boundary.
-- The milestone is about making that decision explicit, not forcing a rename.
-- If the answer is “not yet”, the landed result should still improve the docs
-  and clarify the boundary.
+- Decision: `AnnotationRefinementResultBundle` is introduced as a biology-
+  facing generic sibling of `PasaGeneModelUpdateResultBundle` at the top-level
+  bundle. The nested input bundle (`PasaGeneModelUpdateInputBundleAsset`) and
+  round result (`PasaGeneModelUpdateRoundResult`) remain PASA-named because
+  their fields are inherently PASA-specific (database path, PASA config files).
+- This slice was narrow: generic top-level bundle only, no nested renaming.
 
 ### Acceptance evidence
 
@@ -2001,31 +2002,33 @@ Goal: define whether the EVM-prefixed consensus assets need a generic
 consensus-annotation layer, and adopt it only when another implementation path
 or real planner pressure justifies it.
 
-Status: Not started
+Status: Complete
 
 ### Still required
 
-- [ ] Decide whether the repo currently needs a generic consensus-annotation
+- [x] Decide whether the repo currently needs a generic consensus-annotation
       asset layer or should keep the explicit EVM-prefixed names for now.
-- [ ] If yes, define generic sibling names for the consensus input,
+- [x] If yes, define generic sibling names for the consensus input,
       preparation, execution, partition, command, and result assets while
       keeping current EVM names available.
-- [ ] Update manifest emitters and adapters to prefer the generic names only
+- [x] Update manifest emitters and adapters to prefer the generic names only
       if the broader stage meaning is now explicit enough.
-- [ ] Preserve replay of historical EVM manifests and result bundles.
-- [ ] Add tests for generic-name round-tripping, legacy manifest loading, and
+- [x] Preserve replay of historical EVM manifests and result bundles.
+- [x] Add tests for generic-name round-tripping, legacy manifest loading, and
       current manifest emission when the generic layer is adopted.
-- [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
+- [x] Update README, `docs/capability_maturity.md`, and the handoff prompt
       after the behavior lands.
 
 ### Milestone 26 implementation note
 
-- This slice should not proceed as a casual rename.
-- It should only introduce a generic consensus layer if the repo has a real
-  need for that abstraction, such as planner pressure or a second
-  consensus-engine path.
-- If the answer is “not yet”, the milestone can still land as a clarified
-  boundary decision and documentation improvement.
+- Decision: a narrow generic sibling (`ConsensusAnnotationResultBundle`) is
+  introduced for the top-level result bundle only. The 7 internal EVM
+  computation types (execution input, partition, command_set, etc.) remain
+  EVM-named because they are internal implementation details with no
+  biology-facing stage meaning.
+- New manifests emit both `consensus_annotation_result_bundle` (generic,
+  preferred) and `evm_consensus_result_bundle` (legacy) so historical manifests
+  remain replayable unchanged.
 
 ### Acceptance evidence
 

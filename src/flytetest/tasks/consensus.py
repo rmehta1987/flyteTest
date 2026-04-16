@@ -37,6 +37,7 @@ from flytetest.tasks.annotation import _staged_genome_fasta
 from flytetest.tasks.pasa import _pasa_assemblies_gff3, _sqlite_db_path
 from flytetest.tasks.transdecoder import _transdecoder_genome_gff3
 from flytetest.types import (
+    ConsensusAnnotationResultBundle,
     EvmCommandSetAsset,
     EvmConsensusResultBundle,
     EvmExecutionInputBundleAsset,
@@ -1293,7 +1294,7 @@ def collect_evm_results(
             "The recorded commands are the exact sequential shell commands executed in this local-first milestone.",
         ),
     )
-    result_bundle = EvmConsensusResultBundle(
+    result_bundle = ConsensusAnnotationResultBundle(
         result_dir=out_dir,
         pre_evm_bundle_dir=copied_prep_dir,
         execution_input_dir=copied_execution_dir,
@@ -1350,7 +1351,7 @@ def collect_evm_results(
             "blank_lines_removed_gff3": str(blank_lines_removed_gff3),
             "sorted_gff3": str(sorted_gff3),
         },
-        "assets": _as_json_compatible({"evm_consensus_result_bundle": asdict(result_bundle)}),
+        "assets": _as_json_compatible({"consensus_annotation_result_bundle": asdict(result_bundle), "evm_consensus_result_bundle": asdict(result_bundle)}),
     }
     _write_json(out_dir / "run_manifest.json", manifest)
     return Dir(path=str(out_dir))

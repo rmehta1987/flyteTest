@@ -842,3 +842,98 @@ class ConsensusEvmWorkflowTests(TestCase):
             self.assertEqual(calls[-1][0], "collect")
             self.assertNotIn("pasa_results", {key for _, keys in calls for key in keys})
             self.assertNotIn("transdecoder_results", {key for _, keys in calls for key in keys})
+
+
+class ConsensusAnnotationResultBundleTests(TestCase):
+    """Tests for the biology-facing ConsensusAnnotationResultBundle generic sibling type."""
+
+    def test_consensus_annotation_result_bundle_is_subtype_of_evm_consensus_result_bundle(self):
+        """ConsensusAnnotationResultBundle must satisfy isinstance checks against the tool-branded type."""
+        from flytetest.types import ConsensusAnnotationResultBundle, EvmConsensusResultBundle
+
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp)
+            asset = ConsensusAnnotationResultBundle(
+                result_dir=p,
+                pre_evm_bundle_dir=p,
+                execution_input_dir=p,
+                partition_dir=p,
+                command_dir=p,
+                execution_dir=p,
+                recombined_dir=p,
+                weights_path=p / "evm.weights",
+                partition_listing_path=p / "partition_list.txt",
+                commands_path=p / "commands.list",
+                concatenated_gff3_path=p / "EVM.all.gff3",
+                blank_lines_removed_gff3_path=p / "EVM.all.removed.gff3",
+                sorted_gff3_path=p / "EVM.all.sort.gff3",
+            )
+            self.assertIsInstance(asset, EvmConsensusResultBundle)
+
+    def test_collect_evm_results_emits_generic_consensus_annotation_result_bundle_key(self):
+        """New manifests must include the generic 'consensus_annotation_result_bundle' asset key."""
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest = self._run_collect(Path(tmp))
+            self.assertIn("consensus_annotation_result_bundle", manifest["assets"])
+
+    def test_collect_evm_results_still_emits_legacy_evm_consensus_result_bundle_key(self):
+        """Legacy 'evm_consensus_result_bundle' asset key must remain for historical replay."""
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest = self._run_collect(Path(tmp))
+            self.assertIn("evm_consensus_result_bundle", manifest["assets"])
+
+    def _run_collect(self, tmp_path: Path) -> dict:
+        """Run collect_evm_results with a minimal synthetic fixture and return the manifest."""
+        prep_results = _create_pre_evm_results(tmp_path)
+        execution_inputs = consensus.prepare_evm_execution_inputs(
+            evm_prep_results=_artifact_dir(prep_results),
+        )
+        partitioned_workspace = _create_partitioned_workspace(tmp_path / "partitioned_case")
+        commands_workspace = _create_commands_workspace(tmp_path / "commands_case", ["perl do_first"])
+
+        executed_workspace = tmp_path / "executed_workspace"
+        shutil.copytree(commands_workspace, executed_workspace)
+        (executed_workspace / "execution_logs").mkdir(parents=True, exist_ok=True)
+        (executed_workspace / "execution_logs" / "command_0001.stdout.txt").write_text("ran perl do_first\n")
+        _write_json(
+            executed_workspace / "run_manifest.json",
+            {
+                "stage": "evm_execute_commands",
+                "executed_commands": [{"index": 1, "command": "perl do_first"}],
+                "outputs": {
+                    "execution_logs_dir": str(executed_workspace / "execution_logs"),
+                    "commands_path": str(executed_workspace / "commands.list"),
+                },
+            },
+        )
+
+        recombined_workspace = tmp_path / "recombined_workspace"
+        shutil.copytree(executed_workspace, recombined_workspace)
+        _write_gff3(recombined_workspace / "EVM.all.gff3", ["chr1\tEVM\tgene\t10\t20\t.\t+\t.\tID=evm_gene1"])
+        _write_gff3(recombined_workspace / "EVM.all.removed.gff3", ["chr1\tEVM\tgene\t10\t20\t.\t+\t.\tID=evm_gene1"])
+        _write_gff3(recombined_workspace / "EVM.all.sort.gff3", ["chr1\tEVM\tgene\t10\t20\t.\t+\t.\tID=evm_gene1"])
+        _write_json(
+            recombined_workspace / "run_manifest.json",
+            {
+                "stage": "evm_recombine_outputs",
+                "converted_partition_gff3s": [],
+                "outputs": {
+                    "concatenated_gff3": str(recombined_workspace / "EVM.all.gff3"),
+                    "blank_lines_removed_gff3": str(recombined_workspace / "EVM.all.removed.gff3"),
+                    "sorted_gff3": str(recombined_workspace / "EVM.all.sort.gff3"),
+                },
+            },
+        )
+
+        with patch.object(consensus, "datetime", _fixed_datetime()):
+            results = consensus.collect_evm_results(
+                evm_prep_results=_artifact_dir(prep_results),
+                evm_execution_inputs=execution_inputs,
+                partitioned_evm_inputs=_artifact_dir(partitioned_workspace),
+                evm_commands=_artifact_dir(commands_workspace),
+                executed_evm_commands=_artifact_dir(executed_workspace),
+                recombined_evm_outputs=_artifact_dir(recombined_workspace),
+            )
+
+        results_dir = Path(results.download_sync())
+        return _read_json(results_dir / "run_manifest.json")

@@ -39,6 +39,7 @@ from flytetest.manifest_io import (
     write_json as _write_json,
 )
 from flytetest.types import (
+    AnnotationRefinementResultBundle,
     AssetToolProvenance,
     CleanedTranscriptDataset,
     CombinedTrinityTranscriptAsset,
@@ -1281,7 +1282,7 @@ def collect_pasa_update_results(
             )
         )
 
-    result_bundle = PasaGeneModelUpdateResultBundle(
+    result_bundle = AnnotationRefinementResultBundle(
         result_dir=out_dir,
         staged_inputs_dir=copied_staged_inputs_dir,
         load_round_root=copied_load_root,
@@ -1325,7 +1326,10 @@ def collect_pasa_update_results(
             "final_removed_gff3": str(final_removed_gff3),
             "final_sorted_gff3": str(final_sorted_gff3),
         },
-        "assets": _as_json_compatible({"pasa_gene_model_update_bundle": asdict(result_bundle)}),
+        "assets": _as_json_compatible({
+            "annotation_refinement_bundle": asdict(result_bundle),
+            "pasa_gene_model_update_bundle": asdict(result_bundle),
+        }),
         "load_round_manifests": [
             _read_json(_manifest_path(path, f"Copied PASA load round {index + 1}"))
             for index, path in enumerate(copied_load_dirs)

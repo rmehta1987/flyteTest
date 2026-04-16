@@ -30,7 +30,7 @@ from flytetest.config import (
 from flytetest.manifest_envelope import build_manifest_envelope
 from flytetest.manifest_io import write_json as _write_json
 from flytetest.tasks.pasa import _pasa_assemblies_fasta, _pasa_assemblies_gff3, _sqlite_db_path
-from flytetest.types import PasaAlignmentAssemblyResult, TransDecoderPredictionResult
+from flytetest.types import CodingPredictionResult, PasaAlignmentAssemblyResult, TransDecoderPredictionResult
 
 
 def _as_json_compatible(value: Any) -> Any:
@@ -227,7 +227,7 @@ def collect_transdecoder_results(
             "TransDecoder input comes from the pasa_transcript_alignment results bundle.",
         ),
     )
-    transdecoder_asset = TransDecoderPredictionResult(
+    transdecoder_asset = CodingPredictionResult(
         output_dir=copied_transdecoder_dir,
         input_transcripts_fasta_path=require_path(
             copied_transdecoder_dir / pasa_assemblies_fasta.name,
@@ -298,6 +298,7 @@ def collect_transdecoder_results(
     manifest["assets"] = _as_json_compatible(
         {
             "source_pasa_alignment_assembly": asdict(source_pasa_asset),
+            "coding_prediction": asdict(transdecoder_asset),
             "transdecoder_prediction": asdict(transdecoder_asset),
         }
     )

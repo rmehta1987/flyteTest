@@ -401,3 +401,110 @@ class PasaUpdateWorkflowTests(TestCase):
             self.assertIn("evm_results", all_keys)
             self.assertNotIn("transcript_evidence_results", all_keys)
             self.assertNotIn("protein_evidence_results", all_keys)
+
+
+class AnnotationRefinementResultBundleTests(TestCase):
+    """Tests for the biology-facing AnnotationRefinementResultBundle generic sibling type."""
+
+    def test_annotation_refinement_result_bundle_is_subtype_of_pasa_gene_model_update_result_bundle(self):
+        """AnnotationRefinementResultBundle must satisfy isinstance checks against the tool-branded type."""
+        from flytetest.types import AnnotationRefinementResultBundle, PasaGeneModelUpdateResultBundle
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            gff = tmp_path / "out.gff3"
+            gff.write_text("##gff-version 3\n")
+            asset = AnnotationRefinementResultBundle(
+                result_dir=tmp_path,
+                staged_inputs_dir=tmp_path / "staged",
+                load_round_root=tmp_path / "load",
+                update_round_root=tmp_path / "update",
+                finalized_dir=tmp_path / "finalized",
+                final_updated_gff3_path=gff,
+                final_removed_gff3_path=gff,
+                final_sorted_gff3_path=gff,
+            )
+            self.assertIsInstance(asset, PasaGeneModelUpdateResultBundle)
+
+    def test_collect_pasa_update_results_emits_generic_annotation_refinement_bundle_key(self):
+        """New manifests must include the generic 'annotation_refinement_bundle' asset key."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            manifest = self._run_collect(tmp_path)
+            self.assertIn("annotation_refinement_bundle", manifest["assets"])
+
+    def test_collect_pasa_update_results_still_emits_legacy_pasa_gene_model_update_bundle_key(self):
+        """Legacy 'pasa_gene_model_update_bundle' asset key must remain for historical replay."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            manifest = self._run_collect(tmp_path)
+            self.assertIn("pasa_gene_model_update_bundle", manifest["assets"])
+
+    def _run_collect(self, tmp_path: Path) -> dict:
+        """Run collect_pasa_update_results with a minimal synthetic fixture and return the manifest."""
+        pasa_results = _create_pasa_results(tmp_path)
+        evm_results = _create_evm_results(tmp_path)
+
+        staged_inputs_dir = tmp_path / "staged_inputs"
+        staged_inputs_dir.mkdir(parents=True, exist_ok=True)
+        (staged_inputs_dir / "reference").mkdir()
+        (staged_inputs_dir / "reference" / "genome.fa").write_text(">chr1\nACGT\n")
+        (staged_inputs_dir / "transcripts").mkdir()
+        (staged_inputs_dir / "transcripts" / "transcripts.fa.clean").write_text(">tx1\nATGGCC\n")
+        (staged_inputs_dir / "config").mkdir()
+        (staged_inputs_dir / "config" / "pasa.alignAssembly.config").write_text(
+            "DATABASE=/tmp/test.sqlite\n"
+        )
+        (staged_inputs_dir / "config" / "pasa.annotCompare.config").write_text(
+            "DATABASE=/tmp/test.sqlite\n"
+        )
+        (staged_inputs_dir / "config" / "test.sqlite").write_text("")
+        (staged_inputs_dir / "annotations").mkdir()
+        (staged_inputs_dir / "annotations" / "current_annotations.gff3").write_text("##gff-version 3\n")
+        _write_json(staged_inputs_dir / "run_manifest.json", {"stage": "pasa_update_inputs"})
+
+        load_dir = tmp_path / "load_round_01"
+        load_dir.mkdir(parents=True, exist_ok=True)
+        _write_json(load_dir / "run_manifest.json", {"stage": "load", "round_index": 1})
+
+        update_dir = tmp_path / "update_round_01"
+        update_dir.mkdir(parents=True, exist_ok=True)
+        updated_gff = update_dir / "updated.gff3"
+        updated_gff.write_text("##gff-version 3\n")
+        loaded_snap = update_dir / "loaded_annotations_snapshot.gff3"
+        loaded_snap.write_text("##gff-version 3\n")
+        current_annot = update_dir / "current_annotations.gff3"
+        current_annot.write_text("##gff-version 3\n")
+        _write_json(
+            update_dir / "run_manifest.json",
+            {
+                "stage": "pasa_update_gene_models",
+                "round_index": 1,
+                "relative_outputs": {
+                    "loaded_annotations_snapshot": "loaded_annotations_snapshot.gff3",
+                    "updated_gff3": "updated.gff3",
+                    "current_annotations_gff3": "current_annotations.gff3",
+                },
+            },
+        )
+
+        finalized_dir = tmp_path / "finalized"
+        finalized_dir.mkdir(parents=True, exist_ok=True)
+        for name in (
+            "post_pasa_updates.gff3",
+            "post_pasa_updates.removed.gff3",
+            "post_pasa_updates.sort.gff3",
+        ):
+            (finalized_dir / name).write_text("##gff-version 3\n")
+        _write_json(finalized_dir / "run_manifest.json", {"stage": "finalize_pasa_update_outputs"})
+
+        with patch.object(pasa, "RESULTS_ROOT", str(tmp_path / "results")):
+            with patch.object(pasa, "datetime", _fixed_datetime()):
+                bundle = pasa.collect_pasa_update_results(
+                    pasa_results=_artifact_dir(pasa_results),
+                    evm_results=_artifact_dir(evm_results),
+                    pasa_update_inputs=_artifact_dir(staged_inputs_dir),
+                    load_rounds=[_artifact_dir(load_dir)],
+                    update_rounds=[_artifact_dir(update_dir)],
+                    finalized_outputs=_artifact_dir(finalized_dir),
+                )
+        return _read_json(Path(bundle.download_sync()) / "run_manifest.json")

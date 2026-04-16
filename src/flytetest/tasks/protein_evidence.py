@@ -33,6 +33,7 @@ from flytetest.types import (
     ChunkedProteinFastaAsset,
     EvmProteinEvidenceGff3Asset,
     ExonerateChunkAlignmentResult,
+    ProteinAlignmentChunkResult,
     ProteinEvidenceResultBundle,
     ProteinReferenceDatasetAsset,
     ReferenceGenome,
@@ -657,7 +658,7 @@ def exonerate_concat_results(
         raw_output_path = _raw_exonerate_output(copied_raw_dir)
         chunk_label = raw_output_path.name.removesuffix(".exonerate.out")
         raw_chunk_assets.append(
-            ExonerateChunkAlignmentResult(
+            ProteinAlignmentChunkResult(
                 chunk_label=chunk_label,
                 output_dir=copied_raw_dir,
                 protein_chunk_fasta_path=chunk_assets_by_label[chunk_label].chunk_fasta_path,
@@ -720,8 +721,10 @@ def exonerate_concat_results(
             "combined_protein_fasta": str(combined_protein_fasta_path),
             "protein_chunks_dir": str(copied_chunk_dir),
             "raw_exonerate_chunks_dir": str(copied_raw_root),
+            "raw_alignment_chunks_dir": str(copied_raw_root),
             "evm_protein_gff3_chunks_dir": str(copied_evm_root),
             "concatenated_raw_exonerate": str(concatenated_raw_output_path),
+            "concatenated_raw_alignments": str(concatenated_raw_output_path),
             "concatenated_evm_protein_gff3": str(concatenated_evm_gff3_path),
         },
         "chunking": {
@@ -735,6 +738,7 @@ def exonerate_concat_results(
                 "protein_reference_dataset": asdict(staged_dataset_asset),
                 "chunked_proteins": [asdict(asset) for asset in result_bundle.chunk_assets],
                 "raw_exonerate_chunk_results": [asdict(asset) for asset in result_bundle.raw_chunk_results],
+                "raw_alignment_chunk_results": [asdict(asset) for asset in result_bundle.raw_chunk_results],
                 "evm_ready_protein_gff3_chunks": [asdict(asset) for asset in result_bundle.converted_chunk_results],
                 "protein_evidence_result_bundle": asdict(result_bundle),
             }

@@ -204,3 +204,80 @@ class TransdecoderCollectionTests(TestCase):
                 "test.pasa_assemblies.gff3",
             )
             self.assertIn("standard TransDecoder.LongOrfs followed by TransDecoder.Predict", " ".join(manifest["assumptions"]))
+
+
+class CodingPredictionGenericTypeTests(TestCase):
+    """Tests for the biology-facing CodingPredictionResult generic sibling type."""
+
+    def test_coding_prediction_result_is_subtype_of_transdecoder_prediction_result(self):
+        """CodingPredictionResult must satisfy isinstance checks against the tool-branded type."""
+        from flytetest.types import CodingPredictionResult, TransDecoderPredictionResult
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            asset = CodingPredictionResult(
+                output_dir=Path(tmp),
+                input_transcripts_fasta_path=Path(tmp) / "tx.fasta",
+            )
+        self.assertIsInstance(asset, TransDecoderPredictionResult)
+
+    def test_collect_transdecoder_results_emits_coding_prediction_asset_key(self):
+        """New manifests must include the generic 'coding_prediction' asset key."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            pasa_results = _create_sparse_pasa_results(tmp_path)
+            transcript_name = "test.assemblies.fasta"
+
+            run_dir = tmp_path / "td_run_b"
+            run_dir.mkdir()
+            (run_dir / transcript_name).write_text(">t1\nATGGCC\n")
+            (run_dir / f"{transcript_name}.transdecoder.genome.gff3").write_text("")
+            (run_dir / f"{transcript_name}.transdecoder.gff3").write_text("")
+            (run_dir / f"{transcript_name}.transdecoder.bed").write_text("chr1\t0\t6\torf1\n")
+            (run_dir / f"{transcript_name}.transdecoder.cds").write_text(">orf1\nATGGCC\n")
+            (run_dir / f"{transcript_name}.transdecoder.pep").write_text(">orf1\nMA\n")
+            (run_dir / f"{transcript_name}.transdecoder.mRNA").write_text(">orf1\nAUGGCC\n")
+            (run_dir / f"{transcript_name}.transdecoder_dir").mkdir()
+
+            with patch.object(transdecoder_tasks, "datetime", _fixed_datetime()):
+                results = transdecoder_tasks.collect_transdecoder_results(
+                    pasa_results=_artifact_dir(pasa_results),
+                    transdecoder_run=_artifact_dir(run_dir),
+                    sample_id="sampleB",
+                )
+
+            results_dir = Path(results.download_sync())
+            manifest = _read_json(results_dir / "run_manifest.json")
+
+            self.assertIn("coding_prediction", manifest["assets"])
+
+    def test_collect_transdecoder_results_still_emits_legacy_transdecoder_prediction_key(self):
+        """Legacy 'transdecoder_prediction' asset key must be present for historical replay."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            pasa_results = _create_sparse_pasa_results(tmp_path)
+            transcript_name = "test.assemblies.fasta"
+
+            run_dir = tmp_path / "td_run_c"
+            run_dir.mkdir()
+            (run_dir / transcript_name).write_text(">t1\nATGGCC\n")
+            (run_dir / f"{transcript_name}.transdecoder.genome.gff3").write_text("")
+            (run_dir / f"{transcript_name}.transdecoder.gff3").write_text("")
+            (run_dir / f"{transcript_name}.transdecoder.bed").write_text("chr1\t0\t6\torf1\n")
+            (run_dir / f"{transcript_name}.transdecoder.cds").write_text(">orf1\nATGGCC\n")
+            (run_dir / f"{transcript_name}.transdecoder.pep").write_text(">orf1\nMA\n")
+            (run_dir / f"{transcript_name}.transdecoder.mRNA").write_text(">orf1\nAUGGCC\n")
+            (run_dir / f"{transcript_name}.transdecoder_dir").mkdir()
+
+            with patch.object(transdecoder_tasks, "datetime", _fixed_datetime()):
+                results = transdecoder_tasks.collect_transdecoder_results(
+                    pasa_results=_artifact_dir(pasa_results),
+                    transdecoder_run=_artifact_dir(run_dir),
+                    sample_id="sampleC",
+                )
+
+            results_dir = Path(results.download_sync())
+            manifest = _read_json(results_dir / "run_manifest.json")
+
+            self.assertIn("transdecoder_prediction", manifest["assets"])

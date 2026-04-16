@@ -8,7 +8,7 @@ You are continuing the FLyteTest `realtime` architecture refactor under the rule
 - /home/rmeht/Projects/flyteTest/AGENTS.md
 - /home/rmeht/Projects/flyteTest/DESIGN.md
 - /home/rmeht/Projects/flyteTest/docs/realtime_refactor_checklist.md
-- /home/rmeht/Projects/flyteTest/docs/realtime_refactor_plans/2026-04-10-milestone-25-consensus-asset-generalization-boundary.md
+- /home/rmeht/Projects/flyteTest/docs/realtime_refactor_plans/2026-04-10-milestone-26-consensus-asset-generalization-boundary.md
 - /home/rmeht/Projects/flyteTest/docs/realtime_refactor_plans/2026-04-10-post-m17-asset-surface-follow-up-audit.md
 - /home/rmeht/Projects/flyteTest/docs/realtime_refactor_plans/README.md
 - /home/rmeht/Projects/flyteTest/README.md
@@ -35,7 +35,7 @@ Context:
 
 Task:
 
-1. Read `docs/realtime_refactor_plans/2026-04-10-milestone-25-consensus-asset-generalization-boundary.md`.
+1. Read `docs/realtime_refactor_plans/2026-04-10-milestone-26-consensus-asset-generalization-boundary.md`.
 2. Investigate the current implementation state in `tasks/consensus.py`,
    `types/assets.py`, planner adapters, resolver code, and the relevant tests.
 3. Decide whether the repo currently needs a generic consensus-annotation

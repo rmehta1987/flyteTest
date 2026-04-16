@@ -506,6 +506,20 @@ class PasaGeneModelUpdateResultBundle:
 
 
 @dataclass(frozen=True, slots=True)
+class AnnotationRefinementResultBundle(PasaGeneModelUpdateResultBundle):
+    """Biology-facing generic alias for a post-EVM annotation-refinement result bundle.
+
+    This generic sibling keeps the planner surface stable if a future
+    implementation replaces PASA with a different transcript-evidence-backed
+    annotation-refinement tool. The nested input bundle and round types remain
+    PASA-named because their fields are inherently PASA-specific (database
+    path, PASA config files). All existing `PasaGeneModelUpdateResultBundle`
+    construction sites remain valid — this class inherits every field
+    unchanged.
+"""
+
+
+@dataclass(frozen=True, slots=True)
 class TransDecoderPredictionResult:
     """TransDecoder coding-region prediction outputs derived from PASA assemblies.
 
@@ -525,6 +539,17 @@ class TransDecoderPredictionResult:
     mrna_fasta_path: Path | None = None
     source_pasa: PasaAlignmentAssemblyResult | None = None
     notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class CodingPredictionResult(TransDecoderPredictionResult):
+    """Biology-facing alias for a PASA-derived coding-prediction bundle.
+
+    This generic sibling keeps the planner surface stable if a future
+    implementation replaces TransDecoder with a different ORF predictor.
+    All existing `TransDecoderPredictionResult` construction sites remain
+    valid — this class inherits every field unchanged.
+"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -577,6 +602,17 @@ class ExonerateChunkAlignmentResult:
     model: str = "protein2genome"
     source_chunk: ChunkedProteinFastaAsset | None = None
     notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class ProteinAlignmentChunkResult(ExonerateChunkAlignmentResult):
+    """Biology-facing generic alias for a single protein-to-genome alignment chunk result.
+
+    This generic sibling keeps the planner surface stable if a future
+    implementation replaces Exonerate with a different protein-to-genome
+    aligner. All existing `ExonerateChunkAlignmentResult` construction sites
+    remain valid — this class inherits every field unchanged.
+"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -854,3 +890,14 @@ EvmProteinInputBundle = EvmProteinInputBundleAsset
 EvmAbInitioInputBundleAsset = EvmPredictionInputBundleAsset
 EvmBraker3InputBundle = EvmPredictionInputBundleAsset
 EvmPrepBundle = EvmInputPreparationBundle
+
+
+@dataclass(frozen=True, slots=True)
+class ConsensusAnnotationResultBundle(EvmConsensusResultBundle):
+    """Biology-facing generic alias for a consensus annotation result bundle.
+
+    This is an empty frozen subclass of EvmConsensusResultBundle that exposes
+    the collected consensus execution outputs under a tool-agnostic biology name.
+    The EVM-prefixed type remains the construction default for all new code and
+    the readable legacy name for historical manifest replay.
+    """
