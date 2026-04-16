@@ -7,10 +7,12 @@ through explicit node handlers.
 
 from __future__ import annotations
 
+import difflib
 import hashlib
 import inspect
 from importlib import import_module
 import os
+import time
 import shlex
 import shutil
 import subprocess
@@ -27,6 +29,10 @@ from typing import Any, get_args, get_origin, get_type_hints
 from flytetest.mcp_contract import (
     DECLINE_CATEGORY_CODES,
     EXAMPLE_PROMPT_REQUIREMENTS,
+    FETCH_JOB_LOG_TOOL_NAME,
+    GET_RUN_SUMMARY_TOOL_NAME,
+    INSPECT_RUN_RESULT_TOOL_NAME,
+    LIST_AVAILABLE_BINDINGS_TOOL_NAME,
     LIST_ENTRIES_LIMITATIONS,
     MCP_RESOURCE_URIS,
     MCP_TOOL_NAMES,
@@ -37,8 +43,11 @@ from flytetest.mcp_contract import (
     PRIMARY_TOOL_NAME,
     PROMPT_REQUIREMENTS,
     PROTEIN_WORKFLOW_EXAMPLE_PROMPT,
+    RESULT_MANIFEST_RESOURCE_URI_PREFIX,
     RETRY_SLURM_JOB_TOOL_NAME,
+    RUN_RECIPE_RESOURCE_URI_PREFIX,
     RUN_SLURM_RECIPE_TOOL_NAME,
+    WAIT_FOR_SLURM_JOB_TOOL_NAME,
     RESULT_CODE_DECLINED_MISSING_INPUTS,
     RESULT_CODE_DECLINED_UNSUPPORTED_REQUEST,
     RESULT_CODE_DEFINITIONS,
@@ -59,6 +68,7 @@ from flytetest.mcp_contract import (
     SUPPORTED_PROTEIN_WORKFLOW_NAME,
     SUPPORTED_TARGET_NAMES,
     SUPPORTED_TASK_NAME,
+    SUPPORTED_TASK_NAMES,
     SUPPORTED_WORKFLOW_NAMES,
     SUPPORTED_WORKFLOW_NAME,
     TASK_EXAMPLE_PROMPT,
@@ -82,8 +92,10 @@ from flytetest.spec_artifacts import (
     save_workflow_spec_artifact,
 )
 from flytetest.spec_executor import (
+    DEFAULT_LOCAL_RUN_RECORD_FILENAME,
     DEFAULT_SLURM_RUN_RECORD_FILENAME,
     LocalNodeExecutionRequest,
+    LocalRunRecord,
     LocalSpecExecutionResult,
     SlurmRunRecord,
     SlurmRetryResult,
@@ -93,6 +105,7 @@ from flytetest.spec_executor import (
     SlurmWorkflowSpecExecutor,
     _TERMINAL_SLURM_STATES,
     _command_is_available,
+    load_local_run_record,
     load_slurm_run_record,
 )
 from flytetest.specs import ResourceSpec, RuntimeImageSpec
@@ -107,6 +120,35 @@ DEFAULT_LATEST_SLURM_ARTIFACT_POINTER = "latest_slurm_artifact.txt"
 SERVER_TOOL_NAMES = MCP_TOOL_NAMES
 SERVER_RESOURCE_URIS = MCP_RESOURCE_URIS
 BUSCO_FIXTURE_TASK_NAME = "busco_assess_proteins"
+
+# Per-task parameter definitions: (name, required) tuples for validation.
+TASK_PARAMETERS: dict[str, tuple[tuple[str, bool], ...]] = {
+    "exonerate_align_chunk": (
+        ("genome", True),
+        ("protein_chunk", True),
+        ("exonerate_sif", False),
+        ("exonerate_model", False),
+    ),
+    "busco_assess_proteins": (
+        ("proteins_fasta", True),
+        ("lineage_dataset", True),
+        ("busco_sif", False),
+        ("busco_cpu", False),
+        ("busco_mode", False),
+    ),
+    "fastqc": (
+        ("left", True),
+        ("right", True),
+        ("fastqc_sif", False),
+    ),
+    "gffread_proteins": (
+        ("annotation_gff3", True),
+        ("genome_fasta", True),
+        ("protein_output_stem", False),
+        ("gffread_binary", False),
+        ("repeat_filter_sif", False),
+    ),
+}
 
 
 def _resolve_flyte_cli() -> str:
@@ -916,35 +958,27 @@ def run_workflow(
 def run_task(task_name: str, inputs: dict[str, object]) -> dict[str, object]:
     """Execute one supported direct task through a Python call.
 
+    Supported task names: ``exonerate_align_chunk``, ``busco_assess_proteins``,
+    ``fastqc``, and ``gffread_proteins``.
+
     Args:
         task_name: Registered task name selected by the caller.
         inputs: Task inputs forwarded from the MCP request.
 """
-    if task_name not in {SUPPORTED_TASK_NAME, BUSCO_FIXTURE_TASK_NAME}:
+    if task_name not in set(SUPPORTED_TASK_NAMES):
         return {
             "supported": False,
             "task_name": task_name,
             "exit_status": None,
             "output_paths": [],
             "limitations": [
-                (
-                    "Only "
-                    f"`{SUPPORTED_TASK_NAME}` and `{BUSCO_FIXTURE_TASK_NAME}` "
-                    "are executable through this showcase task runner."
-                ),
+                "Only "
+                + ", ".join(f"`{n}`" for n in SUPPORTED_TASK_NAMES)
+                + " are executable through this showcase task runner."
             ],
         }
 
-    if task_name == BUSCO_FIXTURE_TASK_NAME:
-        parameters = (
-            ("proteins_fasta", True),
-            ("lineage_dataset", True),
-            ("busco_sif", False),
-            ("busco_cpu", False),
-            ("busco_mode", False),
-        )
-    else:
-        parameters = tuple((parameter.name, parameter.required) for parameter in supported_entry_parameters(task_name))
+    parameters = TASK_PARAMETERS[task_name]
     allowed_inputs = tuple(parameter_name for parameter_name, _ in parameters)
     unknown_inputs = sorted(set(inputs) - set(allowed_inputs))
     if unknown_inputs:
@@ -970,7 +1004,7 @@ def run_task(task_name: str, inputs: dict[str, object]) -> dict[str, object]:
             "limitations": [f"Missing required task inputs: {', '.join(missing_required)}."],
         }
 
-    if task_name == BUSCO_FIXTURE_TASK_NAME:
+    if task_name == "busco_assess_proteins":
         try:
             from flyte.io import File
             from flytetest.tasks.functional import busco_assess_proteins
@@ -1013,6 +1047,91 @@ def run_task(task_name: str, inputs: dict[str, object]) -> dict[str, object]:
                 ],
             }
 
+    if task_name == "fastqc":
+        try:
+            from flyte.io import File
+            from flytetest.tasks.qc import fastqc
+
+            result = fastqc(
+                left=File(path=str(inputs["left"])),
+                right=File(path=str(inputs["right"])),
+                fastqc_sif=str(inputs.get("fastqc_sif") or ""),
+            )
+            result_path = result.download_sync() if hasattr(result, "download_sync") else getattr(result, "path", "")
+            output_paths = [result_path] if result_path else []
+            return {
+                "supported": True,
+                "entry_name": task_name,
+                "entry_category": "task",
+                "execution_mode": "direct-python-call",
+                "exit_status": 0,
+                "stdout": "",
+                "stderr": "",
+                "output_paths": output_paths,
+                "limitations": [
+                    "This task execution runs FastQC on paired-end FASTQ files as an ad hoc quality check.",
+                ],
+            }
+        except Exception as exc:
+            return {
+                "supported": True,
+                "entry_name": task_name,
+                "entry_category": "task",
+                "execution_mode": "direct-python-call",
+                "exit_status": 1,
+                "stdout": "",
+                "stderr": str(exc),
+                "output_paths": [],
+                "error_type": type(exc).__name__,
+                "limitations": [
+                    "The server attempted the fastqc task call, but runtime dependencies or the FastQC binary may be missing.",
+                ],
+            }
+
+    if task_name == "gffread_proteins":
+        try:
+            from flyte.io import File
+            from flytetest.tasks.filtering import gffread_proteins
+
+            result = gffread_proteins(
+                annotation_gff3=File(path=str(inputs["annotation_gff3"])),
+                genome_fasta=File(path=str(inputs["genome_fasta"])),
+                protein_output_stem=str(inputs.get("protein_output_stem") or "annotation"),
+                gffread_binary=str(inputs.get("gffread_binary") or "gffread"),
+                repeat_filter_sif=str(inputs.get("repeat_filter_sif") or ""),
+            )
+            result_path = result.download_sync() if hasattr(result, "download_sync") else getattr(result, "path", "")
+            output_paths = [result_path] if result_path else []
+            return {
+                "supported": True,
+                "entry_name": task_name,
+                "entry_category": "task",
+                "execution_mode": "direct-python-call",
+                "exit_status": 0,
+                "stdout": "",
+                "stderr": "",
+                "output_paths": output_paths,
+                "limitations": [
+                    "This task extracts protein sequences from a GFF3 annotation and reference genome for ad hoc use.",
+                ],
+            }
+        except Exception as exc:
+            return {
+                "supported": True,
+                "entry_name": task_name,
+                "entry_category": "task",
+                "execution_mode": "direct-python-call",
+                "exit_status": 1,
+                "stdout": "",
+                "stderr": str(exc),
+                "output_paths": [],
+                "error_type": type(exc).__name__,
+                "limitations": [
+                    "The server attempted the gffread_proteins task call, but runtime dependencies or gffread may be missing.",
+                ],
+            }
+
+    # exonerate_align_chunk
     try:
         from flyte.io import File
         from flytetest.tasks.protein_evidence import exonerate_align_chunk
@@ -1140,8 +1259,7 @@ def _local_node_handlers(
         SUPPORTED_AGAT_WORKFLOW_NAME: workflow_handler,
         SUPPORTED_AGAT_CONVERSION_WORKFLOW_NAME: workflow_handler,
         SUPPORTED_AGAT_CLEANUP_WORKFLOW_NAME: workflow_handler,
-        SUPPORTED_TASK_NAME: task_handler,
-        BUSCO_FIXTURE_TASK_NAME: task_handler,
+        **{name: task_handler for name in SUPPORTED_TASK_NAMES},
     }
 
 
@@ -2213,6 +2331,612 @@ def prompt_and_run(
     )
 
 
+# ---------------------------------------------------------------------------
+# Phase 2 — Binding discovery (TODO 16)
+# ---------------------------------------------------------------------------
+
+# Mapping from parameter name suffix patterns to the file extensions that
+# indicate a file binding candidate for that parameter.
+_FASTA_EXTENSIONS = ("*.fasta", "*.fa", "*.fna", "*.faa")
+_GFF_EXTENSIONS = ("*.gff3", "*.gff")
+_FASTQ_EXTENSIONS = ("*.fastq.gz", "*.fq.gz", "*.fastq", "*.fq")
+
+_PARAM_EXTENSION_MAP: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+    # (name_suffixes, file_extensions)
+    (("_fasta", "_fa", "genome_fasta", "proteins_fasta", "genome"), _FASTA_EXTENSIONS),
+    (("_gff3", "gff3", "annotation_gff3"), _GFF_EXTENSIONS),
+    (("_bam",), ("*.bam",)),
+    (("_sif",), ("*.sif",)),
+    (("left", "right"), _FASTQ_EXTENSIONS),
+    (("_dir", "_results"), ()),  # Dir params — special handling below
+)
+
+_SCALAR_HINT_TYPES = {
+    "str": "provide a string value",
+    "int": "provide an integer",
+    "float": "provide a float",
+    "bool": "provide true or false",
+}
+
+
+def _task_parameter_scan_patterns(task_name: str) -> dict[str, tuple[str, ...]]:
+    """Return per-parameter scan extension lists for one supported task.
+
+    The returned mapping keys are parameter names; values are tuples of glob
+    patterns to scan for, or an empty tuple when the parameter is scalar-only.
+
+    Args:
+        task_name: A supported task name from ``SUPPORTED_TASK_NAMES``.
+"""
+    parameters = TASK_PARAMETERS.get(task_name, ())
+    result: dict[str, tuple[str, ...]] = {}
+    for param_name, required in parameters:
+        matched: tuple[str, ...] = ()
+        for suffixes, exts in _PARAM_EXTENSION_MAP:
+            if any(param_name == s or param_name.endswith(s) for s in suffixes):
+                matched = exts
+                break
+        result[param_name] = matched
+    return result
+
+
+def _scan_for_files(
+    root: Path,
+    patterns: tuple[str, ...],
+    *,
+    max_depth: int = 3,
+) -> list[str]:
+    """Recursively scan *root* for files matching any of *patterns* up to *max_depth*.
+
+    Args:
+        root: Directory to scan.
+        patterns: Glob patterns to match against file names (e.g. ``"*.fasta"``).
+        max_depth: Maximum directory depth relative to *root*.
+"""
+    found: list[str] = []
+    if not root.is_dir():
+        return found
+    _scan_dir_for_files(root, root, patterns, max_depth=max_depth, current_depth=0, found=found)
+    return found
+
+
+def _scan_dir_for_files(
+    base: Path,
+    current: Path,
+    patterns: tuple[str, ...],
+    *,
+    max_depth: int,
+    current_depth: int,
+    found: list[str],
+) -> None:
+    """Recursive helper for :func:`_scan_for_files`.
+
+    Args:
+        base: Top-level search root used for relative path computation.
+        current: Directory currently being scanned.
+        patterns: Glob patterns matched against each file.
+        max_depth: Maximum traversal depth from *base*.
+        current_depth: Depth of *current* relative to *base*.
+        found: List accumulator for matched file paths.
+"""
+    try:
+        entries = list(current.iterdir())
+    except PermissionError:
+        return
+    for entry in entries:
+        if entry.is_file():
+            for pattern in patterns:
+                if entry.match(pattern):
+                    found.append(str(entry))
+                    break
+        elif entry.is_dir() and current_depth < max_depth:
+            _scan_dir_for_files(
+                base, entry, patterns, max_depth=max_depth, current_depth=current_depth + 1, found=found
+            )
+
+
+def _scan_for_run_dirs(root: Path, *, max_depth: int = 3) -> list[str]:
+    """Return subdirectories under *root* that contain a ``run_manifest.json``.
+
+    Args:
+        root: Directory to scan for result bundles.
+        max_depth: Maximum traversal depth.
+"""
+    found: list[str] = []
+    _scan_for_run_dirs_impl(root, max_depth=max_depth, current_depth=0, found=found)
+    return found
+
+
+def _scan_for_run_dirs_impl(
+    current: Path,
+    *,
+    max_depth: int,
+    current_depth: int,
+    found: list[str],
+) -> None:
+    """Recursive helper for :func:`_scan_for_run_dirs`.
+
+    Args:
+        current: Directory currently being scanned.
+        max_depth: Maximum traversal depth.
+        current_depth: Depth of *current* relative to the search root.
+        found: List accumulator for matching directory paths.
+"""
+    if not current.is_dir():
+        return
+    if (current / "run_manifest.json").is_file():
+        found.append(str(current))
+        return  # don't descend further into result dirs
+    if current_depth >= max_depth:
+        return
+    try:
+        entries = list(current.iterdir())
+    except PermissionError:
+        return
+    for entry in entries:
+        if entry.is_dir():
+            _scan_for_run_dirs_impl(entry, max_depth=max_depth, current_depth=current_depth + 1, found=found)
+
+
+def _list_available_bindings_impl(
+    task_name: str,
+    search_root: str | None = None,
+) -> dict[str, object]:
+    """Scan *search_root* for files that could satisfy each parameter of *task_name*.
+
+    Args:
+        task_name: Supported task whose parameters should be bound.
+        search_root: Root directory to scan (defaults to ``Path.cwd()``).
+"""
+    if task_name not in set(SUPPORTED_TASK_NAMES):
+        return {
+            "supported": False,
+            "task_name": task_name,
+            "bindings": {},
+            "limitations": [
+                "Only "
+                + ", ".join(f"`{n}`" for n in SUPPORTED_TASK_NAMES)
+                + " are supported for binding discovery."
+            ],
+        }
+
+    root = Path(search_root) if search_root else Path.cwd()
+    scan_patterns = _task_parameter_scan_patterns(task_name)
+    bindings: dict[str, object] = {}
+    for param_name, exts in scan_patterns.items():
+        if not exts:
+            # Scalar or Dir param
+            param_lower = param_name.lower()
+            if any(param_lower.endswith(s) for s in ("_dir", "_results")):
+                bindings[param_name] = _scan_for_run_dirs(root)
+            else:
+                # Pure scalar: find its type hint from TASK_PARAMETERS
+                params_dict = dict(TASK_PARAMETERS.get(task_name, ()))
+                required = params_dict.get(param_name, False)
+                hint = f"(scalar — provide a string value{', required' if required else ', optional'})"
+                bindings[param_name] = hint
+        else:
+            bindings[param_name] = _scan_for_files(root, exts)
+
+    return {
+        "supported": True,
+        "task_name": task_name,
+        "search_root": str(root),
+        "bindings": bindings,
+        "limitations": [
+            "Search depth capped at 3; pass search_root for a narrower scope.",
+            "V1 is best-effort: coverage depends on parameter naming conventions.",
+        ],
+    }
+
+
+def list_available_bindings(
+    task_name: str,
+    search_root: str | None = None,
+) -> dict[str, object]:
+    """Discover files in the workspace that could satisfy each parameter of a task.
+
+    Scans ``search_root`` (default: current working directory) up to depth 3
+    for files whose extensions match per-parameter heuristics for the named
+    task.  Scalar parameters return a hint string instead of a file list.
+
+    Supported tasks: ``exonerate_align_chunk``, ``busco_assess_proteins``,
+    ``fastqc``, ``gffread_proteins``.
+
+    Args:
+        task_name: Supported task name to discover bindings for.
+        search_root: Optional root directory to scan (defaults to cwd).
+"""
+    return _list_available_bindings_impl(task_name, search_root=search_root)
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 — Run dashboard (TODO 12)
+# ---------------------------------------------------------------------------
+
+
+def _get_run_summary_impl(
+    limit: int = 20,
+    *,
+    run_dir: Path | None = None,
+) -> dict[str, object]:
+    """Scan *run_dir* for durable run records and group them by state.
+
+    Reads persisted ``slurm_run_record.json`` and ``local_run_record.json``
+    from run subdirectories without querying the scheduler.
+
+    Args:
+        limit: Maximum number of entries to return in ``recent``.
+        run_dir: Root directory that stores per-run record directories.
+"""
+    history_root = run_dir or DEFAULT_RUN_DIR
+    if not history_root.is_dir():
+        return {
+            "supported": True,
+            "total_scanned": 0,
+            "by_state": {},
+            "recent": [],
+            "limitations": [],
+        }
+
+    # Collect candidate subdirs sorted by modification time descending.
+    candidates: list[tuple[float, Path]] = []
+    for entry in history_root.iterdir():
+        if not entry.is_dir():
+            continue
+        slurm_rec = entry / DEFAULT_SLURM_RUN_RECORD_FILENAME
+        local_rec = entry / DEFAULT_LOCAL_RUN_RECORD_FILENAME
+        if slurm_rec.is_file() or local_rec.is_file():
+            candidates.append((entry.stat().st_mtime, entry))
+    candidates.sort(key=lambda t: t[0], reverse=True)
+
+    max_inspect = limit * 5
+    by_state: dict[str, int] = {}
+    recent: list[dict[str, object]] = []
+    total_scanned = 0
+
+    for _, entry in candidates[:max_inspect]:
+        total_scanned += 1
+        slurm_rec_path = entry / DEFAULT_SLURM_RUN_RECORD_FILENAME
+        local_rec_path = entry / DEFAULT_LOCAL_RUN_RECORD_FILENAME
+
+        if slurm_rec_path.is_file():
+            try:
+                record = load_slurm_run_record(entry)
+            except Exception:
+                continue
+            state = (record.final_scheduler_state or record.scheduler_state or "UNKNOWN").upper()
+            by_state[state] = by_state.get(state, 0) + 1
+            if len(recent) < limit:
+                recent.append({
+                    "kind": "slurm",
+                    "job_id": record.job_id,
+                    "workflow_name": record.workflow_name,
+                    "state": state,
+                    "created_at": record.submitted_at,
+                    "run_record_path": str(slurm_rec_path),
+                })
+        elif local_rec_path.is_file():
+            try:
+                record_local: LocalRunRecord = load_local_run_record(entry)
+            except Exception:
+                continue
+            state = "COMPLETED" if record_local.completed_at is not None else "IN_PROGRESS"
+            by_state[state] = by_state.get(state, 0) + 1
+            if len(recent) < limit:
+                recent.append({
+                    "kind": "local",
+                    "job_id": None,
+                    "workflow_name": record_local.workflow_name,
+                    "state": state,
+                    "created_at": record_local.created_at,
+                    "run_record_path": str(local_rec_path),
+                })
+
+    return {
+        "supported": True,
+        "total_scanned": total_scanned,
+        "by_state": by_state,
+        "recent": recent,
+        "limitations": [],
+    }
+
+
+def get_run_summary(limit: int = 20) -> dict[str, object]:
+    """Return a state-grouped summary of recent local and Slurm run records.
+
+    Reads persisted ``.runtime/runs/`` records only — no scheduler calls.
+    Groups entries by state and returns the most recent ``limit`` entries.
+
+    Args:
+        limit: Maximum number of entries to return in ``recent``.
+"""
+    return _get_run_summary_impl(limit)
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — Result inspection (TODO 17)
+# ---------------------------------------------------------------------------
+
+
+def inspect_run_result(run_record_path: str) -> dict[str, object]:
+    """Load one run record and return a structured human-readable summary.
+
+    Detects whether *run_record_path* is a Slurm or local run record by
+    filename.  Returns workflow name, run ID, state, node results, output
+    paths, and the durable asset index path when present.  No scheduler
+    calls are made.
+
+    Args:
+        run_record_path: Path to a ``slurm_run_record.json`` or
+            ``local_run_record.json``, or the directory containing one.
+"""
+    path = Path(run_record_path)
+    # Resolve to the record file if a directory was given.
+    slurm_file = path / DEFAULT_SLURM_RUN_RECORD_FILENAME if path.is_dir() else path
+    local_file = path / DEFAULT_LOCAL_RUN_RECORD_FILENAME if path.is_dir() else path
+
+    # Detect kind by filename.
+    if path.is_dir():
+        if (path / DEFAULT_SLURM_RUN_RECORD_FILENAME).is_file():
+            slurm_file = path / DEFAULT_SLURM_RUN_RECORD_FILENAME
+            kind = "slurm"
+        elif (path / DEFAULT_LOCAL_RUN_RECORD_FILENAME).is_file():
+            local_file = path / DEFAULT_LOCAL_RUN_RECORD_FILENAME
+            kind = "local"
+        else:
+            return {
+                "supported": False,
+                "run_record_path": run_record_path,
+                "limitations": ["No run record file found in the specified directory."],
+            }
+    elif path.name == DEFAULT_SLURM_RUN_RECORD_FILENAME:
+        kind = "slurm"
+    elif path.name == DEFAULT_LOCAL_RUN_RECORD_FILENAME:
+        kind = "local"
+    else:
+        return {
+            "supported": False,
+            "run_record_path": run_record_path,
+            "limitations": [
+                f"Cannot determine record type from path '{path.name}'. "
+                f"Expected '{DEFAULT_SLURM_RUN_RECORD_FILENAME}' or '{DEFAULT_LOCAL_RUN_RECORD_FILENAME}'."
+            ],
+        }
+
+    if kind == "slurm":
+        try:
+            record = load_slurm_run_record(slurm_file.parent if slurm_file != path else path)
+        except Exception as exc:
+            return {
+                "supported": False,
+                "run_record_path": run_record_path,
+                "limitations": [f"Failed to load Slurm run record: {exc}"],
+            }
+        state = (record.final_scheduler_state or record.scheduler_state or "UNKNOWN").upper()
+        durable_index = slurm_file.parent / "durable_asset_index.json"
+        return {
+            "supported": True,
+            "kind": "slurm",
+            "workflow_name": record.workflow_name,
+            "run_id": record.run_id,
+            "job_id": record.job_id,
+            "state": state,
+            "submitted_at": record.submitted_at,
+            "node_results": [],
+            "output_paths": [],
+            "durable_asset_index_path": str(durable_index) if durable_index.is_file() else None,
+            "run_record_path": str(slurm_file),
+        }
+    else:
+        try:
+            record_local: LocalRunRecord = load_local_run_record(
+                local_file.parent if local_file != path else path
+            )
+        except Exception as exc:
+            return {
+                "supported": False,
+                "run_record_path": run_record_path,
+                "limitations": [f"Failed to load local run record: {exc}"],
+            }
+        state = "COMPLETED" if record_local.completed_at is not None else "IN_PROGRESS"
+        node_results = [
+            {
+                "node_name": node_result.node_name,
+                "reference_name": node_result.reference_name,
+                "outputs": _jsonable(dict(node_result.outputs)),
+            }
+            for node_result in record_local.node_results
+        ]
+        output_paths = [
+            str(v) for v in record_local.final_outputs.values()
+            if v is not None
+        ]
+        local_rec_file = local_file if not path.is_dir() else path / DEFAULT_LOCAL_RUN_RECORD_FILENAME
+        durable_index = local_rec_file.parent / "durable_asset_index.json"
+        return {
+            "supported": True,
+            "kind": "local",
+            "workflow_name": record_local.workflow_name,
+            "run_id": record_local.run_id,
+            "job_id": None,
+            "state": state,
+            "created_at": record_local.created_at,
+            "completed_at": record_local.completed_at,
+            "node_results": node_results,
+            "output_paths": output_paths,
+            "durable_asset_index_path": str(durable_index) if durable_index.is_file() else None,
+            "run_record_path": str(local_rec_file),
+        }
+
+
+# ---------------------------------------------------------------------------
+# Phase 5 — HPC Observability (M21b): resources, fetch_job_log, wait_for_slurm_job
+# ---------------------------------------------------------------------------
+
+
+def resource_run_recipe(path: str) -> str:
+    """Return the raw JSON of a saved run recipe file.
+
+    The *path* argument is resolved and validated against ``REPO_ROOT`` before
+    any file I/O.  Returns an error JSON string if the path is outside
+    ``REPO_ROOT`` or the file does not exist.
+
+    Args:
+        path: Absolute or relative path to a ``*.json`` run-recipe file.
+    """
+    try:
+        resolved = Path(path).resolve()
+        root = REPO_ROOT.resolve()
+        if not resolved.is_relative_to(root) or not resolved.is_file():
+            return '{"error": "path not found or outside allowed root"}'
+        return resolved.read_text(encoding="utf-8")
+    except OSError:
+        return '{"error": "could not read file"}'
+
+
+def resource_result_manifest(path: str) -> str:
+    """Return the raw JSON of a ``run_manifest.json`` inside a result directory.
+
+    The *path* argument is resolved and validated against ``REPO_ROOT`` before
+    any file I/O.  Returns an error JSON string if the path is outside
+    ``REPO_ROOT`` or the manifest does not exist.
+
+    Args:
+        path: Absolute or relative path to a result directory (or directly to
+            a ``run_manifest.json`` file).
+    """
+    try:
+        resolved = Path(path).resolve()
+        root = REPO_ROOT.resolve()
+        if not resolved.is_relative_to(root):
+            return '{"error": "path not found or outside allowed root"}'
+        if resolved.is_dir():
+            manifest = resolved / "run_manifest.json"
+        else:
+            manifest = resolved
+        if not manifest.is_file():
+            return '{"error": "run_manifest.json not found"}'
+        return manifest.read_text(encoding="utf-8")
+    except OSError:
+        return '{"error": "could not read file"}'
+
+
+def _fetch_job_log_impl(
+    log_path: str,
+    tail_lines: int,
+    *,
+    run_dir: Path,
+) -> dict[str, object]:
+    """Return a bounded tail of a Slurm scheduler log file.
+
+    Args:
+        log_path: Path to the log file (stdout or stderr) written by Slurm.
+        tail_lines: Number of lines to return from the end of the file.
+            Clamped to ``MAX_MONITOR_TAIL_LINES``.
+        run_dir: Directory that the resolved *log_path* must be under.
+    """
+    raw = _read_text_tail(
+        Path(log_path),
+        tail_lines=tail_lines,
+        allowed_root=run_dir,
+    )
+    supported = raw is not None
+    return {
+        "supported": supported,
+        "log_path": log_path,
+        "content": raw,
+        "tail_lines": min(tail_lines, MAX_MONITOR_TAIL_LINES),
+        "limitations": [] if supported else [
+            "Log file not found, unreadable, or outside the allowed run directory."
+        ],
+    }
+
+
+def fetch_job_log(log_path: str, tail_lines: int = 100) -> dict[str, object]:
+    """Return the tail of a Slurm job log (stdout or stderr).
+
+    Reads the last *tail_lines* lines from the scheduler log identified by
+    *log_path*.  The path must resolve inside the default run directory
+    to prevent path-traversal reads.
+
+    Args:
+        log_path: Absolute path to a Slurm stdout or stderr log file.
+        tail_lines: Lines to return from the end of the file.  Clamped to
+            ``MAX_MONITOR_TAIL_LINES`` (500).
+    """
+    return _fetch_job_log_impl(log_path, tail_lines, run_dir=DEFAULT_RUN_DIR)
+
+
+def _wait_for_slurm_job_impl(
+    run_record_path: str | Path,
+    timeout_s: int,
+    poll_interval_s: int,
+    *,
+    run_dir: Path | None = None,
+    scheduler_runner: Any = subprocess.run,
+    command_available: Any = None,
+    sleep_fn: Any = None,
+) -> dict[str, object]:
+    """Poll a Slurm job until it reaches a terminal state or the timeout expires.
+
+    Args:
+        run_record_path: Path to the durable Slurm run record.
+        timeout_s: Maximum seconds to wait before returning ``timed_out=True``.
+        poll_interval_s: Seconds between monitor polls.  Floored at 5.
+        run_dir: Directory that stores run records (defaults to
+            ``DEFAULT_RUN_DIR``).
+        scheduler_runner: Injected scheduler command runner.
+        command_available: Injected command probe.
+        sleep_fn: Callable used between polls (``time.sleep`` by default).
+            Inject a no-op in tests to avoid real delays.
+    """
+    if sleep_fn is None:
+        sleep_fn = time.sleep
+    interval = max(5, poll_interval_s)
+    deadline = time.monotonic() + timeout_s
+    last_result: dict[str, object] = {}
+    while True:
+        last_result = _monitor_slurm_job_impl(
+            run_record_path,
+            run_dir=run_dir,
+            scheduler_runner=scheduler_runner,
+            command_available=command_available,
+        )
+        lifecycle = last_result.get("lifecycle_result", {})
+        if isinstance(lifecycle, dict) and lifecycle.get("final_scheduler_state") is not None:
+            last_result["timed_out"] = False
+            return last_result
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            last_result["timed_out"] = True
+            return last_result
+        sleep_fn(min(interval, remaining))
+
+
+def wait_for_slurm_job(
+    run_record_path: str,
+    timeout_s: int = 300,
+    poll_interval_s: int = 15,
+) -> dict[str, object]:
+    """Block until a Slurm job reaches a terminal state or the timeout expires.
+
+    Polls ``monitor_slurm_job`` at *poll_interval_s* second intervals.  Returns
+    the final ``monitor_slurm_job`` payload augmented with a ``timed_out`` key.
+
+    Args:
+        run_record_path: Path to the durable Slurm run record.
+        timeout_s: Maximum seconds to wait.  Defaults to 300.
+        poll_interval_s: Seconds between polls.  Floored at 5 seconds.
+            Defaults to 15.
+    """
+    return _wait_for_slurm_job_impl(
+        run_record_path,
+        timeout_s=timeout_s,
+        poll_interval_s=poll_interval_s,
+    )
+
+
 def _load_fastmcp() -> Any:
     """Import `FastMCP` lazily so unit tests can run without the SDK installed."""
     try:
@@ -2306,10 +3030,17 @@ def create_mcp_server(fastmcp_cls: Any | None = None) -> Any:
     mcp.tool()(cancel_slurm_job)
     mcp.tool()(approve_composed_recipe)
     mcp.tool()(prompt_and_run)
+    mcp.tool()(list_available_bindings)
+    mcp.tool()(get_run_summary)
+    mcp.tool()(inspect_run_result)
+    mcp.tool()(fetch_job_log)
+    mcp.tool()(wait_for_slurm_job)
     mcp.resource(SERVER_RESOURCE_URIS[0])(resource_scope)
     mcp.resource(SERVER_RESOURCE_URIS[1])(resource_supported_targets)
     mcp.resource(SERVER_RESOURCE_URIS[2])(resource_example_prompts)
     mcp.resource(SERVER_RESOURCE_URIS[3])(resource_prompt_and_run_contract)
+    mcp.resource(SERVER_RESOURCE_URIS[4])(resource_run_recipe)
+    mcp.resource(SERVER_RESOURCE_URIS[5])(resource_result_manifest)
     return mcp
 
 

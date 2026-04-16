@@ -25,18 +25,100 @@ Entry template:
 ```markdown
 ## Unreleased
 
-### Milestone name or date
+### Milestone 21b — HPC Observability (2026-04-15)
 
-- [ ] short factual change
-- [x] completed factual change (2026-04-11)
-- [ ] blocked follow-up or discovered task
-- [ ] failed approach to avoid retrying without a new reason
-- ~~removed or superseded item~~
-  - replaced by: short explanation
-  - reason: refactor, scope correction, renamed contract, or other concise note
-```
+- [x] 2026-04-15 added `FETCH_JOB_LOG_TOOL_NAME`, `WAIT_FOR_SLURM_JOB_TOOL_NAME`,
+      `RUN_RECIPE_RESOURCE_URI_PREFIX`, `RESULT_MANIFEST_RESOURCE_URI_PREFIX`
+      constants to `mcp_contract.py`; updated `MCP_TOOL_NAMES` (now 16 entries)
+      and `MCP_RESOURCE_URIS` (now 6 entries, indices 4–5 for run-recipe and
+      result-manifest resources). *(mcp_contract.py)*
+
+- [x] 2026-04-15 added `import time` to `server.py`; implemented
+      `_fetch_job_log_impl` and `fetch_job_log(log_path, tail_lines=100)` reusing
+      the existing `_read_text_tail` path-traversal guard with `DEFAULT_RUN_DIR`
+      as `allowed_root`. *(server.py)*
+
+- [x] 2026-04-15 implemented `_wait_for_slurm_job_impl` (injected `sleep_fn` for
+      test isolation) and `wait_for_slurm_job(run_record_path, timeout_s=300,
+      poll_interval_s=15)`: polls `_monitor_slurm_job_impl` until `final_scheduler_state`
+      is non-None or the timeout expires; returns standard monitor payload plus
+      `timed_out: bool`. Poll interval floored at 5 seconds. *(server.py)*
+
+- [x] 2026-04-15 implemented `resource_run_recipe(path)` and
+      `resource_result_manifest(path)` with `REPO_ROOT`-scoped path validation;
+      `resource_result_manifest` resolves `run_manifest.json` from a directory
+      argument. Registered all new tools and resources in `create_mcp_server()`.
+      *(server.py)*
+
+- [x] 2026-04-15 added 8 new tests T11–T18 in `tests/test_server.py`; full suite
+      now 388 tests passing, 1 skipped.
+
+- [x] 2026-04-15 updated `docs/mcp_showcase.md` with "HPC Observability (M21b)"
+      section covering `fetch_job_log`, `wait_for_slurm_job`, and both new
+      resource URIs; updated `docs/capability_maturity.md` with "Job log fetching"
+      and "Job polling / wait-for-completion" rows; added new tools to `README.md`.
+
+### Milestone 21 — Ad Hoc Task Execution Surface (2026-04-15)
+
+- [x] 2026-04-15 added `SUPPORTED_FASTQC_TASK_NAME`, `SUPPORTED_GFFREAD_PROTEINS_TASK_NAME`,
+      `LIST_AVAILABLE_BINDINGS_TOOL_NAME`, `GET_RUN_SUMMARY_TOOL_NAME`,
+      `INSPECT_RUN_RESULT_TOOL_NAME` constants to `mcp_contract.py`; added `fastqc`
+      and `gffread_proteins` `ShowcaseTarget(category="task")` entries to `SHOWCASE_TARGETS`;
+      updated `SUPPORTED_TARGET_NAMES`, `MCP_TOOL_NAMES`, `SHOWCASE_LIMITATIONS`, and
+      `LIST_ENTRIES_LIMITATIONS` accordingly. *(mcp_contract.py)*
+
+- [x] 2026-04-15 refactored `run_task()` to use `SUPPORTED_TASK_NAMES` (derived from
+      showcase) and a new `TASK_PARAMETERS` dispatch dict instead of hardcoded
+      per-task if-blocks; added `fastqc` and `gffread_proteins` dispatch branches;
+      updated `_local_node_handlers()` to use `SUPPORTED_TASK_NAMES`.
+      *(server.py)*
+
+- [x] 2026-04-15 implemented TODO 16 `list_available_bindings(task_name, search_root=None)`:
+      depth-3 heuristic file scan with per-parameter FASTA/GFF/FASTQ extension
+      patterns; scalar parameters return a hint string; unknown tasks return
+      `supported=False`. *(server.py)*
+
+- [x] 2026-04-15 implemented TODO 12 `get_run_summary(run_dir, limit=20)`: offline
+      scan of `slurm_run_record.json` and `local_run_record.json` files; groups by
+      state; caps at `limit * 5` directories; returns `total_scanned`, `by_state`,
+      and `recent` list. *(server.py)*
+
+- [x] 2026-04-15 implemented TODO 17 `inspect_run_result(run_record_path)`: loads one
+      run record (Slurm or local), returns structured summary with scheduler state,
+      node results, and output paths; no scheduler calls. *(server.py)*
+
+- [x] 2026-04-15 implemented TODO 15: added `difflib.get_close_matches()` in
+      `_find_close_target_matches()` helper and wired into `_unsupported_typed_plan()`
+      so near-miss target names in the prompt surface actionable suggestions.
+      *(planning.py)*
+
+- [x] 2026-04-15 registered `list_available_bindings`, `get_run_summary`,
+      `inspect_run_result` in `create_mcp_server()`; MCP tool count now 14. *(server.py)*
+
+- [x] 2026-04-15 added 10 new tests T1–T10 in `tests/test_server.py`; full suite now
+      381 tests, all pass (1 skipped).
 
 ## Unreleased
+
+### Archive Migration and Policy Cleanup (2026-04-15)
+
+- [x] 2026-04-15 moved 17 completed milestone plan files (M12–M21) from
+  `docs/realtime_refactor_plans/` to `docs/realtime_refactor_plans/archive/`
+  using `git mv`; milestones covered: 12, 13, 14, 15, 15-part-b, 16,
+  16-part-2, 17, 18, 18a, 18b, 18c, 19, 19-part-b, 19-phase-a-audit, 20b,
+  21; active plan files (22–25, 21b, 21c, dataclass-serialization,
+  documentation-sweep, post-m17-audit) remain in the active plans directory
+- [x] 2026-04-15 updated `AGENTS.md`, `.codex/documentation.md`,
+  `.codex/agent/README.md`, `docs/realtime_refactor_plans/README.md`, and
+  `docs/realtime_refactor_checklist.md` to make explicit that archived plans
+  are historical references, not default required context for new milestone
+  work; adds "consult archived plans only when checking prior decisions or
+  historical scope" to all policy locations
+- [x] 2026-04-15 updated M22–M25 submission prompts to replace explicit
+  archive-path instruction in item 8 with "follow that directory's README for
+  plan lifecycle rules", removing archive boilerplate from active agent context
+- [x] 2026-04-15 deleted `move_artificat.md` from repo root after applying all
+  its prescribed changes
 
 ### Milestone 20a — HPC Failure Recovery (in progress)
 

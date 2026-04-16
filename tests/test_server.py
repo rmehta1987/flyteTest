@@ -27,11 +27,14 @@ install_flyte_stub()
 
 from flytetest.mcp_contract import (
     DECLINE_CATEGORY_CODES,
+    FETCH_JOB_LOG_TOOL_NAME,
     MCP_RESOURCE_URIS,
     MCP_TOOL_NAMES,
     PRIMARY_TOOL_NAME,
     PROTEIN_WORKFLOW_EXAMPLE_PROMPT,
     RESULT_CODE_DEFINITIONS,
+    RESULT_MANIFEST_RESOURCE_URI_PREFIX,
+    RUN_RECIPE_RESOURCE_URI_PREFIX,
     SHOWCASE_SERVER_NAME,
     SUPPORTED_AGAT_CLEANUP_WORKFLOW_NAME,
     SUPPORTED_AGAT_CONVERSION_WORKFLOW_NAME,
@@ -42,14 +45,19 @@ from flytetest.mcp_contract import (
     SUPPORTED_PROTEIN_WORKFLOW_NAME,
     SUPPORTED_TARGET_NAMES,
     SUPPORTED_TASK_NAME,
+    SUPPORTED_TASK_NAMES,
     SUPPORTED_WORKFLOW_NAME,
     TASK_EXAMPLE_PROMPT,
+    WAIT_FOR_SLURM_JOB_TOOL_NAME,
     WORKFLOW_EXAMPLE_PROMPT,
     supported_runnable_targets_payload,
 )
 from flytetest.server import (
     SERVER_RESOURCE_URIS,
     MAX_MONITOR_TAIL_LINES,
+    _fetch_job_log_impl,
+    _get_run_summary_impl,
+    _list_available_bindings_impl,
     _prepare_direct_workflow_inputs,
     _prompt_and_run_impl,
     _read_text_tail,
@@ -62,22 +70,30 @@ from flytetest.server import (
     _retry_slurm_job_impl,
     _run_local_recipe_impl,
     _run_slurm_recipe_impl,
+    _wait_for_slurm_job_impl,
     create_mcp_server,
+    fetch_job_log,
+    get_run_summary,
+    inspect_run_result,
+    list_available_bindings,
     list_entries,
     plan_request,
     prompt_and_run,
     prepare_run_recipe,
     monitor_slurm_job,
-    retry_slurm_job,
-    cancel_slurm_job,
     resource_example_prompts,
     resource_prompt_and_run_contract,
+    resource_result_manifest,
+    resource_run_recipe,
     resource_scope,
     resource_supported_targets,
+    retry_slurm_job,
+    cancel_slurm_job,
     run_local_recipe,
     run_slurm_recipe,
     run_task,
     run_workflow,
+    wait_for_slurm_job,
 )
 from flytetest.spec_artifacts import load_workflow_spec_artifact
 from flytetest.spec_executor import (
@@ -2816,3 +2832,429 @@ class ServerTests(TestCase):
 
         self.assertTrue(status["supported"])
         self.assertIsNone(status["lifecycle_result"].get("stdout_tail"))
+
+    # ------------------------------------------------------------------
+    # M21 Phase 1 — ad hoc task surface (T1–T4)
+    # ------------------------------------------------------------------
+
+    def test_run_task_declines_unknown_task_name(self) -> None:
+        """Unknown task name returns supported=False from run_task.
+
+        T1: Guards the eligibility gate so only explicit ShowcaseTarget entries
+        can be dispatched through the ad hoc execution surface.
+        """
+        payload = run_task("nonexistent_task", {})
+        self.assertFalse(payload["supported"])
+        self.assertEqual(payload["task_name"], "nonexistent_task")
+        limitation = payload["limitations"][0]
+        self.assertIn("Only", limitation)
+        for name in SUPPORTED_TASK_NAMES:
+            self.assertIn(f"`{name}`", limitation)
+
+    def test_run_task_declines_missing_required_inputs(self) -> None:
+        """Missing required input for a known task returns supported=False.
+
+        T2: Validates that parameter validation fires before any handler is
+        reached when a required input is absent.
+        """
+        payload = run_task("fastqc", {})
+        self.assertFalse(payload["supported"])
+        self.assertIn("Missing required task inputs", payload["limitations"][0])
+
+    def test_run_task_declines_unknown_input_keys(self) -> None:
+        """Extra input key for a known task returns supported=False.
+
+        T3: Prevents callers from silently passing unrecognised keys that would
+        be ignored and cause unexpected behaviour.
+        """
+        payload = run_task(
+            "gffread_proteins",
+            {
+                "annotation_gff3": "a.gff3",
+                "genome_fasta": "g.fa",
+                "bogus_extra_key": "should_not_be_here",
+            },
+        )
+        self.assertFalse(payload["supported"])
+        self.assertIn("Unknown task inputs", payload["limitations"][0])
+        self.assertIn("bogus_extra_key", payload["limitations"][0])
+
+    def test_run_task_routes_all_supported_tasks_with_synthetic_handler(self) -> None:
+        """Each SUPPORTED_TASK_NAMES entry reaches the handler when inputs are valid.
+
+        T4: Demonstrates that run_task passes validation and dispatches every
+        supported task name; uses module-level patches so no real tools run.
+        """
+        valid_inputs: dict[str, dict[str, object]] = {
+            "exonerate_align_chunk": {
+                "genome": "g.fa",
+                "protein_chunk": "p.fa",
+            },
+            "busco_assess_proteins": {
+                "proteins_fasta": "p.fa",
+                "lineage_dataset": "auto-lineage",
+            },
+            "fastqc": {
+                "left": "R1.fastq.gz",
+                "right": "R2.fastq.gz",
+            },
+            "gffread_proteins": {
+                "annotation_gff3": "ann.gff3",
+                "genome_fasta": "g.fa",
+            },
+        }
+
+        class _FakeResult:
+            """Minimal Flyte result stub that satisfies download_sync."""
+
+            def download_sync(self) -> str:
+                """Return a synthetic output path."""
+                return "/tmp/fake_result"
+
+        module_map = {
+            "exonerate_align_chunk": ("flytetest.tasks.protein_evidence", "exonerate_align_chunk"),
+            "busco_assess_proteins": ("flytetest.tasks.functional", "busco_assess_proteins"),
+            "fastqc": ("flytetest.tasks.qc", "fastqc"),
+            "gffread_proteins": ("flytetest.tasks.filtering", "gffread_proteins"),
+        }
+
+        for task_name in SUPPORTED_TASK_NAMES:
+            reached: list[str] = []
+
+            def _make_fake(captured_name: str) -> object:
+                def _fake(**_kw: object) -> _FakeResult:
+                    reached.append(captured_name)
+                    return _FakeResult()
+                return _fake
+
+            module_path, fn_name = module_map[task_name]
+            with patch(f"{module_path}.{fn_name}", side_effect=_make_fake(task_name)):
+                payload = run_task(task_name, valid_inputs[task_name])
+
+            self.assertTrue(payload.get("supported"), f"run_task({task_name!r}) should be supported")
+            self.assertEqual(len(reached), 1, f"Handler not reached for task {task_name!r}")
+
+    # ------------------------------------------------------------------
+    # M21 Phase 2 — binding discovery (T5–T7)
+    # ------------------------------------------------------------------
+
+    def test_list_available_bindings_declines_unknown_task(self) -> None:
+        """Unknown task name returns supported=False from list_available_bindings.
+
+        T5: Mirrors the run_task eligibility gate for the binding discovery tool.
+        """
+        payload = list_available_bindings("not_a_real_task")
+        self.assertFalse(payload["supported"])
+        self.assertEqual(payload["task_name"], "not_a_real_task")
+
+    def test_list_available_bindings_finds_files_matching_fasta_pattern(self) -> None:
+        """FASTA files planted under search_root appear in the binding list.
+
+        T6: Validates that the depth-3 heuristic scan returns real files for
+        parameters whose suffix maps to FASTA extensions.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            fasta_file = tmp_path / "genome.fasta"
+            fasta_file.write_text(">seq1\nACGT\n")
+            payload = _list_available_bindings_impl("gffread_proteins", search_root=str(tmp_path))
+
+        self.assertTrue(payload["supported"])
+        bindings = payload["bindings"]
+        self.assertIn("genome_fasta", bindings)
+        genome_candidates = bindings["genome_fasta"]
+        self.assertIsInstance(genome_candidates, list)
+        self.assertEqual(len(genome_candidates), 1)
+        self.assertIn("genome.fasta", genome_candidates[0])
+
+    def test_list_available_bindings_returns_scalar_hints_for_non_path_params(self) -> None:
+        """Scalar parameters return a hint string, not a file list.
+
+        T7: Ensures callers are told to enter a value manually instead of
+        receiving an empty file list for string/int parameters.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = _list_available_bindings_impl("gffread_proteins", search_root=tmp)
+
+        bindings = payload["bindings"]
+        scalar_hint = bindings.get("protein_output_stem")
+        self.assertIsInstance(scalar_hint, str)
+        self.assertIn("scalar", scalar_hint)
+
+    # ------------------------------------------------------------------
+    # M21 Phase 3 — run dashboard (T8–T10)
+    # ------------------------------------------------------------------
+
+    def test_get_run_summary_returns_empty_for_missing_run_dir(self) -> None:
+        """Missing run directory returns supported=True with empty results.
+
+        T8: A fresh install or a clean test environment must not cause an error.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            missing = Path(tmp) / "does_not_exist"
+            payload = _get_run_summary_impl(run_dir=missing)
+
+        self.assertTrue(payload["supported"])
+        self.assertEqual(payload["total_scanned"], 0)
+        self.assertEqual(payload["recent"], [])
+        self.assertEqual(payload["by_state"], {})
+
+    def test_get_run_summary_groups_slurm_records_by_state(self) -> None:
+        """Slurm records are counted in by_state and appear in recent.
+
+        T9: Validates state grouping logic for COMPLETED and FAILED records.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+
+            def _write_slurm_record(subdir: str, state: str, final: str | None) -> None:
+                run_dir = tmp_path / subdir
+                run_dir.mkdir()
+                record_path = run_dir / DEFAULT_SLURM_RUN_RECORD_FILENAME
+                data = {
+                    "schema_version": SLURM_RUN_RECORD_SCHEMA_VERSION,
+                    "run_id": subdir,
+                    "recipe_id": "test-recipe",
+                    "workflow_name": "annotation_qc_busco",
+                    "artifact_path": str(tmp_path / "artifact.json"),
+                    "script_path": str(tmp_path / "script.sh"),
+                    "stdout_path": str(tmp_path / "out.txt"),
+                    "stderr_path": str(tmp_path / "err.txt"),
+                    "run_record_path": str(record_path),
+                    "job_id": "99001",
+                    "execution_profile": "slurm",
+                    "scheduler_state": state,
+                    "final_scheduler_state": final,
+                }
+                record_path.write_text(json.dumps(data))
+
+            _write_slurm_record("run_completed", "COMPLETED", "COMPLETED")
+            _write_slurm_record("run_failed", "FAILED", "FAILED")
+
+            result = _get_run_summary_impl(run_dir=tmp_path)
+
+        self.assertTrue(result["supported"])
+        self.assertEqual(result["total_scanned"], 2)
+        self.assertEqual(result["by_state"].get("COMPLETED"), 1)
+        self.assertEqual(result["by_state"].get("FAILED"), 1)
+        kinds = {entry["kind"] for entry in result["recent"]}
+        self.assertEqual(kinds, {"slurm"})
+
+    def test_get_run_summary_includes_local_run_records(self) -> None:
+        """Local run records appear in recent with kind='local'.
+
+        T10: Validates that local (non-Slurm) records are discovered and
+        reported with correct state inference from completed_at.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            run_dir = tmp_path / "run_local_001"
+            run_dir.mkdir()
+            record_path = run_dir / DEFAULT_LOCAL_RUN_RECORD_FILENAME
+            data = {
+                "schema_version": LOCAL_RUN_RECORD_SCHEMA_VERSION,
+                "run_id": "local-001",
+                "workflow_name": "annotation_qc_busco",
+                "run_record_path": str(record_path),
+                "created_at": "2026-04-14T10:00:00Z",
+                "execution_profile": "local",
+                "resolved_planner_inputs": {},
+                "binding_plan_target": "annotation_qc_busco",
+                "node_completion_state": {},
+                "node_results": [],
+                "completed_at": "2026-04-14T10:05:00Z",
+            }
+            record_path.write_text(json.dumps(data))
+
+            result = _get_run_summary_impl(run_dir=tmp_path)
+
+        self.assertTrue(result["supported"])
+        self.assertEqual(result["total_scanned"], 1)
+        self.assertEqual(result["by_state"].get("COMPLETED"), 1)
+        self.assertEqual(len(result["recent"]), 1)
+        entry = result["recent"][0]
+        self.assertEqual(entry["kind"], "local")
+        self.assertEqual(entry["state"], "COMPLETED")
+        self.assertEqual(entry["workflow_name"], "annotation_qc_busco")
+
+    # ------------------------------------------------------------------
+    # M21b — HPC Observability
+    # ------------------------------------------------------------------
+
+    def test_resource_run_recipe_returns_json_of_valid_file(self) -> None:
+        """resource_run_recipe reads a JSON file inside REPO_ROOT.
+
+        T11: Validates that a file within the allowed root is returned verbatim.
+        """
+        import json as _json
+        from flytetest.server import REPO_ROOT
+
+        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as tmp:
+            recipe_path = Path(tmp) / "recipe.json"
+            payload = {"recipe_id": "test-recipe", "workflow_name": "braker3_annotation"}
+            recipe_path.write_text(_json.dumps(payload))
+
+            result = resource_run_recipe(str(recipe_path))
+
+        loaded = _json.loads(result)
+        self.assertEqual(loaded["recipe_id"], "test-recipe")
+
+    def test_resource_result_manifest_returns_run_manifest_json(self) -> None:
+        """resource_result_manifest reads run_manifest.json inside REPO_ROOT.
+
+        T12: Validates manifest look-up when a directory is supplied.
+        """
+        import json as _json
+        from flytetest.server import REPO_ROOT
+
+        with tempfile.TemporaryDirectory(dir=REPO_ROOT) as tmp:
+            manifest = {"status": "COMPLETED", "workflow": "braker3_annotation"}
+            (Path(tmp) / "run_manifest.json").write_text(_json.dumps(manifest))
+
+            result = resource_result_manifest(tmp)
+
+        loaded = _json.loads(result)
+        self.assertEqual(loaded["status"], "COMPLETED")
+
+    def test_fetch_job_log_returns_tail_of_existing_log(self) -> None:
+        """fetch_job_log returns file content when the log exists inside run dir.
+
+        T13: Validates content is returned and supported=True for a valid log.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            log = tmp_path / "slurm-12345.out"
+            log.write_text("line1\nline2\nline3\n")
+
+            result = _fetch_job_log_impl(str(log), 10, run_dir=tmp_path)
+
+        self.assertTrue(result["supported"])
+        self.assertIn("line1", result["content"])
+        self.assertEqual(result["log_path"], str(log))
+
+    def test_fetch_job_log_returns_not_supported_for_absent_file(self) -> None:
+        """fetch_job_log returns supported=False when the log file does not exist.
+
+        T14: Validates graceful handling of missing log files.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            missing = Path(tmp) / "nothere.out"
+            result = _fetch_job_log_impl(str(missing), 10, run_dir=Path(tmp))
+
+        self.assertFalse(result["supported"])
+        self.assertIsNone(result["content"])
+        self.assertTrue(len(result["limitations"]) > 0)
+
+    def test_fetch_job_log_returns_not_supported_outside_run_dir(self) -> None:
+        """fetch_job_log refuses to read files outside the run directory.
+
+        T15: Validates path-traversal protection.
+        """
+        with tempfile.TemporaryDirectory() as run_tmp:
+            with tempfile.TemporaryDirectory() as outside_tmp:
+                log = Path(outside_tmp) / "escape.out"
+                log.write_text("secret\n")
+                result = _fetch_job_log_impl(str(log), 10, run_dir=Path(run_tmp))
+
+        self.assertFalse(result["supported"])
+        self.assertIsNone(result["content"])
+
+    def test_wait_for_slurm_job_returns_immediately_when_terminal_on_first_poll(
+        self,
+    ) -> None:
+        """wait_for_slurm_job returns timed_out=False with no sleep when already terminal.
+
+        T16: Validates that a job already in a terminal state resolves in one poll.
+        """
+        terminal_result = {
+            "supported": True,
+            "run_record_path": "/fake/record.json",
+            "lifecycle_result": {"final_scheduler_state": "COMPLETED"},
+            "limitations": [],
+        }
+        sleep_calls: list[float] = []
+
+        with patch("flytetest.server._monitor_slurm_job_impl", return_value=terminal_result):
+            result = _wait_for_slurm_job_impl(
+                "/fake/record.json",
+                timeout_s=60,
+                poll_interval_s=10,
+                sleep_fn=sleep_calls.append,
+            )
+
+        self.assertFalse(result.get("timed_out"))
+        self.assertEqual(sleep_calls, [])
+
+    def test_wait_for_slurm_job_sleeps_when_terminal_on_second_poll(self) -> None:
+        """wait_for_slurm_job sleeps once when the job turns terminal on the second poll.
+
+        T17: Validates one sleep cycle before the terminal poll completes.
+        """
+        call_count = 0
+
+        terminal_result = {
+            "supported": True,
+            "run_record_path": "/fake/record.json",
+            "lifecycle_result": {"final_scheduler_state": "COMPLETED"},
+            "limitations": [],
+        }
+        running_result = {
+            "supported": True,
+            "run_record_path": "/fake/record.json",
+            "lifecycle_result": {"final_scheduler_state": None},
+            "limitations": [],
+        }
+
+        def fake_monitor(*_a: object, **_kw: object) -> dict:
+            nonlocal call_count
+            call_count += 1
+            return running_result if call_count == 1 else terminal_result
+
+        sleep_calls: list[float] = []
+
+        with patch("flytetest.server._monitor_slurm_job_impl", side_effect=fake_monitor):
+            result = _wait_for_slurm_job_impl(
+                "/fake/record.json",
+                timeout_s=60,
+                poll_interval_s=10,
+                sleep_fn=sleep_calls.append,
+            )
+
+        self.assertFalse(result.get("timed_out"))
+        self.assertEqual(len(sleep_calls), 1)
+
+    def test_wait_for_slurm_job_times_out_when_never_terminal(self) -> None:
+        """wait_for_slurm_job sets timed_out=True when the job never reaches terminal state.
+
+        T18: Validates timeout path with timed_out=True in the returned payload.
+        """
+        running_result = {
+            "supported": True,
+            "run_record_path": "/fake/record.json",
+            "lifecycle_result": {"final_scheduler_state": None},
+            "limitations": [],
+        }
+
+        import time as _time
+
+        original_monotonic = _time.monotonic
+        calls: list[int] = [0]
+
+        def fake_sleep(_: float) -> None:
+            calls[0] += 1
+
+        def fast_deadline() -> float:
+            # Return a time that expires after 2 real seconds of monotonic
+            # elapsed.  We use a counter approach with patch instead.
+            return original_monotonic()
+
+        with patch("flytetest.server._monitor_slurm_job_impl", return_value=running_result):
+            # Use a 0-second timeout so it expires immediately after the first poll.
+            result = _wait_for_slurm_job_impl(
+                "/fake/record.json",
+                timeout_s=0,
+                poll_interval_s=5,
+                sleep_fn=fake_sleep,
+            )
+
+        self.assertTrue(result.get("timed_out"))

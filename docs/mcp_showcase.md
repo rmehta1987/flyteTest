@@ -864,8 +864,151 @@ For the exact machine-readable contract, see
 
 The MCP server only executes targets that have explicit local node handlers.
 The handler map covers the original three runnable targets, BUSCO QC, EggNOG,
-and the three individual AGAT post-processing slices.
+the three individual AGAT post-processing slices, `fastqc`, and `gffread_proteins`.
 Broader registered stages such as EVM, PASA refinement, repeat filtering,
 `table2asn`, Slurm retry/resubmission, and composed downstream pipelines should be
 enabled only after their recipe inputs, runtime bindings, and local handlers
 are made explicit.
+
+## Ad Hoc Task Execution (M21)
+
+### run_task for fastqc and gffread_proteins
+
+`run_task` now supports four tasks: `exonerate_align_chunk`, `busco_assess_proteins`,
+`fastqc`, and `gffread_proteins`.  Eligibility is controlled by explicit
+`ShowcaseTarget(category="task")` entries in `mcp_contract.py` — not by
+`synthesis_eligible`.  Unknown task names, missing required inputs, and extra
+input keys all return structured `supported=False` declines.
+
+Example — run FastQC on paired-end reads:
+
+```
+run_task(
+  task_name="fastqc",
+  task_inputs={
+    "left": "data/transcriptomics/sample_R1.fastq.gz",
+    "right": "data/transcriptomics/sample_R2.fastq.gz",
+  }
+)
+```
+
+Example — extract proteins with gffread:
+
+```
+run_task(
+  task_name="gffread_proteins",
+  task_inputs={
+    "annotation_gff3": "results/braker3_results_20260331/braker.gff3",
+    "genome_fasta": "data/reference/genome.fa",
+  }
+)
+```
+
+### list_available_bindings
+
+Discover candidate input files for a task without running it.
+
+```
+list_available_bindings(
+  task_name="gffread_proteins",
+  search_root="results/"
+)
+```
+
+Response structure:
+
+- `supported` — `true` when the task name is recognized
+- `task_name` — echoed back
+- `bindings` — dict mapping each parameter to either a list of matching file
+  paths (for File/Dir parameters) or a scalar hint string (for string/int parameters)
+
+The scan walks up to 3 directory levels under `search_root` and uses extension
+heuristics (`.fasta`/`.fa`/`.fna` for genome/protein parameters, `.gff`/`.gff3`
+for annotation parameters, `.fastq`/`.fastq.gz` for read parameters).
+
+### get_run_summary
+
+Scan persisted run records and return a dashboard view without hitting the scheduler.
+
+```
+get_run_summary(run_dir="results/", limit=20)
+```
+
+Response fields:
+
+- `supported` — always `true`
+- `total_scanned` — number of run directories examined
+- `by_state` — dict mapping scheduler/lifecycle state to count (e.g. `{"COMPLETED": 3, "FAILED": 1}`)
+- `recent` — list of up to `limit` summaries, each with `kind` (`"slurm"` or `"local"`),
+  `state`, `workflow_name`, `run_id`, and `run_record_path`
+
+### inspect_run_result
+
+Load a single run record and return its full structured summary.
+
+```
+inspect_run_result(run_record_path="results/busco_qc_results_20260405/slurm_run_record.json")
+```
+
+The response includes scheduler state (for Slurm records), node completion
+state, output paths, and the original recipe inputs.  No scheduler calls are
+made — the response is derived entirely from the persisted record.
+
+## HPC Observability (M21b)
+
+### fetch_job_log
+
+Retrieve the tail of a Slurm scheduler log (stdout or stderr) for a submitted
+job.  The path must resolve inside the default run directory to prevent
+path-traversal reads.
+
+```
+fetch_job_log(
+    log_path="results/.runtime/runs/run_abc123/slurm-99001.out",
+    tail_lines=100
+)
+```
+
+Response fields:
+
+- `supported` — `true` when the log file was found inside the run directory
+- `log_path` — echoed back for reference
+- `content` — last `tail_lines` lines joined into a single string, or `null`
+- `tail_lines` — effective cap applied (min of request and `MAX_MONITOR_TAIL_LINES`)
+- `limitations` — non-empty list if the file was not found or is outside the run directory
+
+### wait_for_slurm_job
+
+Block (poll) until a Slurm job reaches a terminal scheduler state or a timeout
+expires.  Calls `monitor_slurm_job` at *poll_interval_s* second intervals.
+
+```
+wait_for_slurm_job(
+    run_record_path=".runtime/runs/run_abc123/slurm_run_record.json",
+    timeout_s=300,
+    poll_interval_s=15
+)
+```
+
+Response shape is identical to `monitor_slurm_job` with one additional key:
+
+- `timed_out` — `true` if the timeout expired before a terminal state was reached
+
+### Resource: flytetest://run-recipes/{path}
+
+Retrieve the raw JSON of a saved run-recipe file.  The *path* must resolve
+inside the repository root.
+
+```
+flytetest://run-recipes/.runtime/runs/run_abc123/recipe.json
+```
+
+### Resource: flytetest://result-manifests/{path}
+
+Retrieve the `run_manifest.json` from a result directory.  Supply either a
+directory path (the manifest is looked up automatically) or a direct path to
+the `run_manifest.json` file.
+
+```
+flytetest://result-manifests/results/braker3_results_20260402_090000
+```

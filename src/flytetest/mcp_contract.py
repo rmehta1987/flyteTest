@@ -48,6 +48,13 @@ MONITOR_SLURM_JOB_TOOL_NAME = "monitor_slurm_job"
 RETRY_SLURM_JOB_TOOL_NAME = "retry_slurm_job"
 CANCEL_SLURM_JOB_TOOL_NAME = "cancel_slurm_job"
 APPROVE_COMPOSED_RECIPE_TOOL_NAME = "approve_composed_recipe"
+LIST_AVAILABLE_BINDINGS_TOOL_NAME = "list_available_bindings"
+GET_RUN_SUMMARY_TOOL_NAME = "get_run_summary"
+INSPECT_RUN_RESULT_TOOL_NAME = "inspect_run_result"
+FETCH_JOB_LOG_TOOL_NAME = "fetch_job_log"
+WAIT_FOR_SLURM_JOB_TOOL_NAME = "wait_for_slurm_job"
+RUN_RECIPE_RESOURCE_URI_PREFIX = "flytetest://run-recipes/"
+RESULT_MANIFEST_RESOURCE_URI_PREFIX = "flytetest://result-manifests/"
 MCP_TOOL_NAMES = (
     "list_entries",
     "plan_request",
@@ -60,18 +67,27 @@ MCP_TOOL_NAMES = (
     CANCEL_SLURM_JOB_TOOL_NAME,
     APPROVE_COMPOSED_RECIPE_TOOL_NAME,
     PRIMARY_TOOL_NAME,
+    LIST_AVAILABLE_BINDINGS_TOOL_NAME,
+    GET_RUN_SUMMARY_TOOL_NAME,
+    INSPECT_RUN_RESULT_TOOL_NAME,
+    FETCH_JOB_LOG_TOOL_NAME,
+    WAIT_FOR_SLURM_JOB_TOOL_NAME,
 )
 MCP_RESOURCE_URIS = (
     "flytetest://scope",
     "flytetest://supported-targets",
     "flytetest://example-prompts",
     "flytetest://prompt-and-run-contract",
+    RUN_RECIPE_RESOURCE_URI_PREFIX + "{path}",
+    RESULT_MANIFEST_RESOURCE_URI_PREFIX + "{path}",
 )
 
 SUPPORTED_WORKFLOW_NAME = ANNOTATION_WORKFLOW_NAME
 SUPPORTED_PROTEIN_WORKFLOW_NAME = PROTEIN_EVIDENCE_WORKFLOW_NAME
 SUPPORTED_TASK_NAME = "exonerate_align_chunk"
 SUPPORTED_BUSCO_FIXTURE_TASK_NAME = "busco_assess_proteins"
+SUPPORTED_FASTQC_TASK_NAME = "fastqc"
+SUPPORTED_GFFREAD_PROTEINS_TASK_NAME = "gffread_proteins"
 SUPPORTED_BUSCO_WORKFLOW_NAME = FUNCTIONAL_QC_WORKFLOW_NAME
 SUPPORTED_EGGNOG_WORKFLOW_NAME = EGGNOG_WORKFLOW_NAME
 SUPPORTED_AGAT_WORKFLOW_NAME = AGAT_WORKFLOW_NAME
@@ -135,6 +151,18 @@ SHOWCASE_TARGETS = (
         module_name="flytetest.workflows.agat",
         source_path=_PACKAGE_ROOT / "workflows" / "agat.py",
     ),
+    ShowcaseTarget(
+        name=SUPPORTED_FASTQC_TASK_NAME,
+        category="task",
+        module_name="flytetest.tasks.qc",
+        source_path=_PACKAGE_ROOT / "tasks" / "qc.py",
+    ),
+    ShowcaseTarget(
+        name=SUPPORTED_GFFREAD_PROTEINS_TASK_NAME,
+        category="task",
+        module_name="flytetest.tasks.filtering",
+        source_path=_PACKAGE_ROOT / "tasks" / "filtering.py",
+    ),
 )
 SHOWCASE_TARGETS_BY_NAME = {target.name: target for target in SHOWCASE_TARGETS}
 SUPPORTED_TARGET_NAMES = tuple(target.name for target in SHOWCASE_TARGETS)
@@ -191,12 +219,12 @@ TASK_EXAMPLE_PROMPT = (
     "data/braker3/reference/genome.fa and protein chunk data/braker3/protein_data/fastas/proteins.fa"
 )
 SHOWCASE_LIMITATIONS = (
-    "The MCP recipe surface executes `ab_initio_annotation_braker3`, `protein_evidence_alignment`, `exonerate_align_chunk`, `busco_assess_proteins`, `annotation_qc_busco`, `annotation_functional_eggnog`, `annotation_postprocess_agat`, `annotation_postprocess_agat_conversion`, and `annotation_postprocess_agat_cleanup` through explicit local handlers.",
+    "The MCP recipe surface executes `ab_initio_annotation_braker3`, `protein_evidence_alignment`, `exonerate_align_chunk`, `busco_assess_proteins`, `fastqc`, `gffread_proteins`, `annotation_qc_busco`, `annotation_functional_eggnog`, `annotation_postprocess_agat`, `annotation_postprocess_agat_conversion`, and `annotation_postprocess_agat_cleanup` through explicit local handlers.",
     "Prompt-contained local file paths and explicit recipe inputs are frozen into saved WorkflowSpec artifacts before execution.",
     "Additional registered workflows require explicit local handlers before they are exposed as runnable MCP targets.",
 )
 LIST_ENTRIES_LIMITATIONS = (
-    "The MCP recipe surface exposes only `ab_initio_annotation_braker3`, `protein_evidence_alignment`, `exonerate_align_chunk`, `busco_assess_proteins`, `annotation_qc_busco`, `annotation_functional_eggnog`, `annotation_postprocess_agat`, `annotation_postprocess_agat_conversion`, and `annotation_postprocess_agat_cleanup` as runnable targets.",
+    "The MCP recipe surface exposes only `ab_initio_annotation_braker3`, `protein_evidence_alignment`, `exonerate_align_chunk`, `busco_assess_proteins`, `fastqc`, `gffread_proteins`, `annotation_qc_busco`, `annotation_functional_eggnog`, `annotation_postprocess_agat`, `annotation_postprocess_agat_conversion`, and `annotation_postprocess_agat_cleanup` as runnable targets.",
     "The primary MCP flow is `prompt_and_run(prompt)`, which prepares and executes a saved WorkflowSpec artifact.",
 )
 PROMPT_REQUIREMENTS = (

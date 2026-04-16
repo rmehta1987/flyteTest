@@ -296,6 +296,8 @@ targets:
 - workflow: `protein_evidence_alignment`
 - task: `exonerate_align_chunk`
 - task: `busco_assess_proteins`
+- task: `fastqc`
+- task: `gffread_proteins`
 - workflow: `annotation_qc_busco`
 - workflow: `annotation_functional_eggnog`
 - workflow: `annotation_postprocess_agat`
@@ -313,6 +315,12 @@ Supported tools:
 - `retry_slurm_job`
 - `cancel_slurm_job`
 - `prompt_and_run`
+- `run_task`
+- `list_available_bindings`
+- `get_run_summary`
+- `inspect_run_result`
+- `fetch_job_log`
+- `wait_for_slurm_job`
 
 The Slurm tools are supported only when the MCP server is running inside an
 already-authenticated scheduler-capable environment with `sbatch`, `squeue`,

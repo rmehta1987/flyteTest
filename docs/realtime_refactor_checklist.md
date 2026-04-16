@@ -133,6 +133,10 @@ one slice or lane:
 This keeps the checklist easy to scan while preserving a visible history of how
 the refactor plan evolved over time.
 
+Archived plans are historical references; do not treat them as default required
+context for current implementation unless a task explicitly depends on prior
+milestone decisions.
+
 ## Critical Path
 
 ## Milestone 0
@@ -1624,43 +1628,43 @@ without weakening the recipe-first workflow model. Also bundles TODO 12
 (run dashboard) and TODO 16 (binding discovery) from the Phase 2 HPC roadmap,
 plus low-hanging fruit TODO 15 and TODO 17.
 
-Status: Not started
+Status: Complete (2026-04-15)
 
 ### Still required
 
 **Part 1 — Ad hoc task surface (M21 core):**
-- [ ] Gate eligibility via explicit `ShowcaseTarget(category="task")` opt-in
+- [x] Gate eligibility via explicit `ShowcaseTarget(category="task")` opt-in
       in `mcp_contract.py`; do NOT auto-expose `synthesis_eligible` tasks.
-- [ ] Add `fastqc` and `gffread_proteins` to `SHOWCASE_TARGETS`.
-- [ ] Update `run_task()` to use `SUPPORTED_TASK_NAMES` (derived from
+- [x] Add `fastqc` and `gffread_proteins` to `SHOWCASE_TARGETS`.
+- [x] Update `run_task()` to use `SUPPORTED_TASK_NAMES` (derived from
       showcase) instead of the hardcoded 2-task set.
-- [ ] Add per-task parameter blocks for `fastqc` and `gffread_proteins`
+- [x] Add per-task parameter blocks for `fastqc` and `gffread_proteins`
       following the existing `busco_assess_proteins` pattern; refactor to a
       dispatch dict if there are 4+ tasks.
-- [ ] Add 4 tests (T1–T4): unknown name, missing required input, unknown
+- [x] Add 4 tests (T1–T4): unknown name, missing required input, unknown
       key, route for all supported tasks with synthetic handler.
 
 **Part 2 — TODO 16: Binding discovery:**
-- [ ] Implement `list_available_bindings(task_name, search_root=None)`
+- [x] Implement `list_available_bindings(task_name, search_root=None)`
       with heuristic file extension scan (depth 3 cap, per-param patterns).
-- [ ] Add tool description to `mcp_contract.py`.
-- [ ] Add 3 tests (T5–T7): unknown task, FASTA discovery, scalar hints.
+- [x] Add tool description to `mcp_contract.py`.
+- [x] Add 3 tests (T5–T7): unknown task, FASTA discovery, scalar hints.
 
 **Part 3 — TODO 12: Run dashboard:**
-- [ ] Implement `get_run_summary(limit=20)` — offline, reads persisted
+- [x] Implement `get_run_summary(limit=20)` — offline, reads persisted
       `slurm_run_record.json` / `local_run_record.json` only; groups by state;
       caps scan at `limit * 5` directories.
-- [ ] Add tool description to `mcp_contract.py`.
-- [ ] Add 3 tests (T8–T10): missing run dir, state grouping, local records.
+- [x] Add tool description to `mcp_contract.py`.
+- [x] Add 3 tests (T8–T10): missing run dir, state grouping, local records.
 
 **Part 4 — Low-hanging fruit:**
-- [ ] TODO 15: Actionable errors in `prepare_run_recipe` via
+- [x] TODO 15: Actionable errors in `prepare_run_recipe` via
       `difflib.get_close_matches()` against `SUPPORTED_TARGET_NAMES`.
-- [ ] TODO 17: `inspect_run_result(run_record_path)` — load one run record,
+- [x] TODO 17: `inspect_run_result(run_record_path)` — load one run record,
       return structured summary; no scheduler calls.
 
 **Docs:**
-- [ ] Update `docs/mcp_showcase.md`, `docs/capability_maturity.md`,
+- [x] Update `docs/mcp_showcase.md`, `docs/capability_maturity.md`,
       `README.md`, and the handoff prompt after the behavior lands.
 
 ### Milestone 21 implementation note
@@ -1694,6 +1698,105 @@ Status: Not started
   collection-shaped Flyte I/O inputs
 - Reintroducing hidden ad hoc shell behavior instead of explicit direct task
   execution policy
+
+## Milestone 21b
+
+Goal: improve HPC observability without changing submission or retry semantics.
+Bundles TODO 19 (MCP resources for recipes and manifests), TODO 8 (job log
+content fetching), and TODO 11 (synchronous job polling/wait-for-completion).
+
+Status: Complete (2026-04-15)
+
+### Still required
+
+**Part 1 — TODO 19: MCP resources for recipes and manifests:**
+- [x] Add `RUN_RECIPE_RESOURCE_URI_PREFIX` and `RESULT_MANIFEST_RESOURCE_URI_PREFIX`
+      constants to `mcp_contract.py`; append both to `SERVER_RESOURCE_URIS` at
+      indices 4 and 5 (do not shift existing indices 0–3).
+- [x] Implement `resource_run_recipe(path: str)` and
+      `resource_result_manifest(path: str)` in `server.py` with path validation
+      against `REPO_ROOT`; register both with `mcp.resource()`.
+- [x] Add 2 tests: `test_resource_run_recipe_returns_artifact_json`,
+      `test_resource_result_manifest_returns_manifest_json`.
+
+**Part 2 — TODO 8: fetch_job_log:**
+- [x] Add `FETCH_JOB_LOG_TOOL_NAME = "fetch_job_log"` to `mcp_contract.py`
+      and add to `MCP_TOOL_NAMES`.
+- [x] Implement `_fetch_job_log_impl` and `fetch_job_log(log_path, tail_lines=100)`
+      in `server.py`; reuse `_read_text_tail` with `DEFAULT_RUN_DIR` as
+      `allowed_root`; register in `create_mcp_server()`.
+- [x] Add 3 tests: file exists, file absent, path outside run dir.
+
+**Part 3 — TODO 11: wait_for_slurm_job:**
+- [x] Add `WAIT_FOR_SLURM_JOB_TOOL_NAME = "wait_for_slurm_job"` to
+      `mcp_contract.py` and add to `MCP_TOOL_NAMES`.
+- [x] Implement `_wait_for_slurm_job_impl` (injected `sleep_fn`) and
+      `wait_for_slurm_job(run_record_path, timeout_s=300, poll_interval_s=15)`
+      in `server.py`; register in `create_mcp_server()`.
+- [x] Add 3 tests: immediate terminal, polls until terminal, timeout.
+
+**Docs:**
+- [x] Document `fetch_job_log` and `wait_for_slurm_job` in `docs/mcp_showcase.md`.
+- [x] Update `docs/capability_maturity.md` with "Job log fetching" and
+      "Job polling / wait-for-completion" rows as `Current (M21b)`.
+- [x] Update `README.md`: add new tools and resource URI prefixes.
+- [x] Update `CHANGELOG.md` with M21b dated entries.
+
+### Acceptance evidence
+
+- `docs/realtime_refactor_plans/2026-04-15-milestone-21b-hpc-observability.md`
+- `docs/realtime_refactor_milestone_21b_submission_prompt.md`
+- Tests in `tests/test_server.py`
+
+## Milestone 21c
+
+Goal: close out the existing NCBI annotation submission pipeline by adding the
+`table2asn` step that follows `agat_cleanup_gff3`. Completes TODO 1.
+
+Status: Not started
+
+### Still required
+
+**Part 1 — Constants:**
+- [ ] Add `TABLE2ASN_RESULTS_PREFIX = "table2asn_results"` and
+      `TABLE2ASN_WORKFLOW_NAME = "annotation_postprocess_table2asn"` to
+      `src/flytetest/config.py`.
+- [ ] Add `SUPPORTED_TABLE2ASN_WORKFLOW_NAME` constant and a new
+      `ShowcaseTarget(category="workflow")` entry to `mcp_contract.py`;
+      update `SHOWCASE_LIMITATIONS` and `LIST_ENTRIES_LIMITATIONS` strings.
+
+**Part 2 — Task and Workflow:**
+- [ ] Implement `table2asn_submission` task in `src/flytetest/tasks/agat.py`
+      accepting `agat_cleanup_results: Dir`, `genome_fasta: File`,
+      `submission_template: File`, plus optional string overrides; write
+      `run_manifest.json` with standard shape.
+- [ ] Add `annotation_postprocess_table2asn` workflow in
+      `src/flytetest/workflows/agat.py`; register in the workflow registry.
+
+**Part 3 — MCP surface:**
+- [ ] Add local node handler for `annotation_postprocess_table2asn` in
+      `server.py`; confirm it appears in `list_entries()` output.
+
+**Part 4 — Tests:**
+- [ ] Add 2 server tests: `run_task` declines `table2asn_submission`,
+      `list_entries` includes the new workflow.
+- [ ] Add 3 task tests: correct command flags, `run_manifest.json` written,
+      graceful decline when GFF3 not found in cleanup results dir.
+
+**Docs:**
+- [ ] Add `annotation_postprocess_table2asn` to `docs/mcp_showcase.md`
+      Runnable Targets section.
+- [ ] Add "table2asn / NCBI submission" row to `docs/capability_maturity.md`
+      as `Current (M21c)`.
+- [ ] Update `README.md` supported-targets list.
+- [ ] Update `CHANGELOG.md` with M21c dated entries.
+
+### Acceptance evidence
+
+- `docs/realtime_refactor_plans/2026-04-15-milestone-21c-table2asn-biology-closure.md`
+- `docs/realtime_refactor_milestone_21c_submission_prompt.md`
+- Tests in `tests/test_server.py` and `tests/test_agat.py` (or
+  `tests/test_table2asn.py`)
 
 ## Asset Cleanup Follow-On Lane
 
