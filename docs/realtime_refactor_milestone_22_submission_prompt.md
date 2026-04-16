@@ -1,73 +1,37 @@
-Use this prompt when handing the Milestone 22 TransDecoder asset-cleanup slice
-off to another Codex session or when starting the next implementation pass.
+Use this prompt when handing the Milestone 22 registry-driven pipeline tracker
+slice off to another session or when starting the next implementation pass.
 
 ```text
-You are continuing the FLyteTest `realtime` architecture refactor under the rules in:
+You are continuing the FLyteTest realtime architecture refactor.
 
-- /home/rmeht/Projects/flyteTest/AGENTS.md
-- /home/rmeht/Projects/flyteTest/DESIGN.md
-- /home/rmeht/Projects/flyteTest/docs/realtime_refactor_checklist.md
-- /home/rmeht/Projects/flyteTest/docs/realtime_refactor_plans/2026-04-10-milestone-22-transdecoder-generic-asset-follow-up.md
-- /home/rmeht/Projects/flyteTest/docs/realtime_refactor_plans/2026-04-10-post-m17-asset-surface-follow-up-audit.md
-- /home/rmeht/Projects/flyteTest/docs/realtime_refactor_plans/README.md
-- /home/rmeht/Projects/flyteTest/README.md
-- /home/rmeht/Projects/flyteTest/docs/capability_maturity.md
+Milestone 22 goal: make the pipeline status tracker registry-driven by adding
+`pipeline_family` and `pipeline_stage_order` fields to `RegistryCompatibilityMetadata`
+in `src/flytetest/registry.py`, so the tracker derives stage lists from the
+registry instead of maintaining a hardcoded list.
 
-Read the relevant repo-local guides under `.codex/` for the area you touch,
-especially:
+Full plan: docs/realtime_refactor_plans/2026-04-16-milestone-22-registry-driven-pipeline-tracker.md
 
-- /home/rmeht/Projects/flyteTest/.codex/documentation.md
-- /home/rmeht/Projects/flyteTest/.codex/testing.md
-- /home/rmeht/Projects/flyteTest/.codex/tasks.md
-- /home/rmeht/Projects/flyteTest/.codex/workflows.md
+Key changes (code only — documentation renames are already done):
+1. Add `pipeline_family: str = ""` and `pipeline_stage_order: int = 0` to
+   `RegistryCompatibilityMetadata` (frozen dataclass, safe defaults).
+2. Populate all 17 entries in `_WORKFLOW_COMPATIBILITY_METADATA` with
+   `pipeline_family="annotation"` and `pipeline_stage_order=1..15` for the 15
+   annotation pipeline workflows; leave `busco_assess_proteins` and
+   `rnaseq_qc_quant` with defaults.
+3. Add `get_pipeline_stages(family: str) -> list[tuple[str, str]]` to
+   `registry.py` — pure function, no I/O, safe at import time.
+4. Replace the hardcoded `ANNOTATION_PIPELINE_STAGES` literal in
+   `pipeline_tracker.py` with `get_pipeline_stages("annotation")`. Keep the
+   public name; remove the now-unused config.py workflow name imports.
+5. Add 3 tests to `tests/test_pipeline_tracker.py` (see plan doc for details).
+6. Update `CHANGELOG.md`.
 
-If you were assigned a specialist role, also read the matching guide under
-`.codex/agent/`.
-
-Context:
-
-- Milestone 17 already introduced generic-first adoption for the first three
-  concrete generic/legacy asset pairs.
-- The next family-scoped cleanup candidate is the current TransDecoder-backed
-  coding-prediction boundary.
-- This slice should stay narrow and compatibility-safe.
-
-Task:
-
-1. Read `docs/realtime_refactor_plans/2026-04-10-milestone-22-transdecoder-generic-asset-follow-up.md`.
-2. Investigate the current implementation state in `tasks/transdecoder.py`,
-   `types/assets.py`, planner adapters, resolver code, and the relevant tests.
-3. Decide what biology-facing concept should represent the current
-   TransDecoder-backed boundary.
-4. If justified, add generic sibling names or types while keeping the
-   TransDecoder-branded names readable.
-5. Preserve replay of historical manifests that only use the current
-   TransDecoder-branded keys.
-6. Add tests for generic-name round-tripping, legacy manifest loading, and
-   current manifest emission.
-7. Update docs and the checklist so the new state is honest, reviewable, and
-   aligned with the milestone plan.
-8. If you materially revise the detailed milestone plan, save the revision
-   under `docs/realtime_refactor_plans/` and follow that directory's README
-   for plan lifecycle rules.
-9. Stop when blocked, when the biology-facing boundary is still too vague to
-   genericize safely, or when the next step should be split further.
-
-Important constraints:
-
-- Keep the slice limited to the TransDecoder family.
-- Do not rewrite historical manifests in place.
-- Do not force a generic rename if the biology-facing concept is not stable
-  enough yet.
-- Keep README, DESIGN, checklist docs, capability docs, planner behavior, and
-  tests aligned.
-
-Report back with:
-
-- checklist item(s) completed
-- files changed
-- validation run
-- current checklist status
-- new or archived plan documents created
-- remaining blockers or assumptions
+Constraints:
+- Do not make any further documentation renames — those are complete.
+- `RegistryCompatibilityMetadata` is a compatibility-critical surface; read
+  AGENTS.md before editing it.
+- `ANNOTATION_PIPELINE_STAGES` must remain a public module-level name in
+  `pipeline_tracker.py` — tests import it directly.
+- Run `python -m pytest tests/test_pipeline_tracker.py tests/test_server.py -v`
+  before committing.
 ```

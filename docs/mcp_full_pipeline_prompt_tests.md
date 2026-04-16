@@ -8,6 +8,9 @@ These scenarios follow the biological order defined in
 `docs/braker3_evm_notes.md` and exercise each stage sequentially.  Run them
 in order — each stage consumes the result bundle of the previous one.
 
+At any point, call `get_pipeline_status` (Stage 0) to see a live progress
+checklist of all 15 stages without querying Slurm.
+
 ---
 
 ## Prerequisites
@@ -34,6 +37,27 @@ Use the flytetest MCP server and call list_entries.
 
 Print the name and supported_execution_profiles for every entry.
 ```
+
+---
+
+## Stage 0 — Check pipeline status
+
+Call `get_pipeline_status` at any time to see which of the 15 annotation
+pipeline stages have completed.  Run it before starting Stage 1 and after each
+stage to confirm progress before moving to the next one.
+
+```text
+Use the flytetest MCP server and call get_pipeline_status.
+
+Print the summary (total, completed, failed, running, pending, percent_complete,
+next_pending_stage) and the status of every stage.
+```
+
+**Pass criteria:**
+- Returns a `stages` list with 15 entries.
+- `summary.completed` reflects the number of completed stages.
+- `summary.next_pending_stage` names the next stage to submit.
+- `summary.has_failures` is `false` before proceeding to the next stage.
 
 ---
 

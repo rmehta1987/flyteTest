@@ -1,6 +1,6 @@
-Use this prompt when handing the Milestone 25 consensus asset-generalization
-slice off to another Codex session or when starting the next implementation
-pass.
+Use this prompt when handing the Milestone 25 PASA refinement asset-
+generalization slice off to another Codex session or when starting the next
+implementation pass.
 
 ```text
 You are continuing the FLyteTest `realtime` architecture refactor under the rules in:
@@ -8,7 +8,7 @@ You are continuing the FLyteTest `realtime` architecture refactor under the rule
 - /home/rmeht/Projects/flyteTest/AGENTS.md
 - /home/rmeht/Projects/flyteTest/DESIGN.md
 - /home/rmeht/Projects/flyteTest/docs/realtime_refactor_checklist.md
-- /home/rmeht/Projects/flyteTest/docs/realtime_refactor_plans/2026-04-10-milestone-25-consensus-asset-generalization-boundary.md
+- /home/rmeht/Projects/flyteTest/docs/realtime_refactor_plans/2026-04-10-milestone-24-pasa-refinement-asset-generalization-boundary.md
 - /home/rmeht/Projects/flyteTest/docs/realtime_refactor_plans/2026-04-10-post-m17-asset-surface-follow-up-audit.md
 - /home/rmeht/Projects/flyteTest/docs/realtime_refactor_plans/README.md
 - /home/rmeht/Projects/flyteTest/README.md
@@ -27,21 +27,20 @@ If you were assigned a specialist role, also read the matching guide under
 
 Context:
 
-- The current consensus asset family is explicitly EVM-backed and truthful.
-- A generic consensus layer may be useful later, but only if planner pressure
-  or a second implementation path justifies it.
+- The PASA post-EVM refinement family is a candidate for future genericization,
+  but it may still be most truthful to keep it explicitly PASA-backed.
 - This slice is partly a boundary-decision milestone, not necessarily a forced
   rename.
 
 Task:
 
-1. Read `docs/realtime_refactor_plans/2026-04-10-milestone-25-consensus-asset-generalization-boundary.md`.
-2. Investigate the current implementation state in `tasks/consensus.py`,
+1. Read `docs/realtime_refactor_plans/2026-04-10-milestone-24-pasa-refinement-asset-generalization-boundary.md`.
+2. Investigate the current implementation state in `tasks/pasa.py`,
    `types/assets.py`, planner adapters, resolver code, and the relevant tests.
-3. Decide whether the repo currently needs a generic consensus-annotation
-   asset layer.
-4. If justified, add generic sibling names while keeping EVM names readable.
-5. Preserve replay of historical EVM manifests and result bundles.
+3. Decide whether a stable biology-facing annotation-refinement asset layer is
+   justified now.
+4. If justified, add generic sibling names while keeping PASA names readable.
+5. Preserve replay of historical PASA refinement manifests.
 6. Add tests for generic-name round-tripping, legacy manifest loading, and
    current manifest emission when the generic layer is adopted.
 7. Update docs and the checklist so the new state is honest, reviewable, and
@@ -54,10 +53,9 @@ Task:
 
 Important constraints:
 
-- Do not force a generic consensus rename without real planner or execution
-  pressure.
+- Do not force a rename if PASA remains the clearest truthful boundary.
 - Do not rewrite historical manifests in place.
-- Keep the current EVM-backed implementation truth visible.
+- Keep the current PASA-backed implementation truth visible.
 - Keep README, DESIGN, checklist docs, capability docs, planner behavior, and
   tests aligned.
 

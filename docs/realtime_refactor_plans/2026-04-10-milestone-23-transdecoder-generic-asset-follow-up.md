@@ -1,4 +1,4 @@
-# Milestone 22 TransDecoder Generic Asset Follow-Up
+# Milestone 23 TransDecoder Generic Asset Follow-Up
 
 Date: 2026-04-10
 Status: Proposed

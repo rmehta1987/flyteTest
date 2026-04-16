@@ -1791,6 +1791,22 @@ Status: Complete (2026-04-15)
 - [x] Update `README.md` supported-targets list.
 - [x] Update `CHANGELOG.md` with M21c dated entries.
 
+## Milestone 21d — Pipeline Status Tracker
+
+**Goal:** Replace manual per-stage progress checking with a `get_pipeline_status`
+MCP tool that reads durable SlurmRunRecords and returns a 15-stage checklist.
+
+- [x] Create `src/flytetest/pipeline_tracker.py` with `ANNOTATION_PIPELINE_STAGES`,
+  `StageStatus`, `get_annotation_pipeline_status`, `get_pipeline_summary`.
+- [x] Add `GET_PIPELINE_STATUS_TOOL_NAME` to `mcp_contract.py` and `MCP_TOOL_NAMES`.
+- [x] Add `_get_pipeline_status_impl` and `get_pipeline_status` wrapper to `server.py`;
+  register in `create_mcp_server`.
+- [x] Create `tests/test_pipeline_tracker.py` with 11 synthetic tests; all pass.
+- [x] Add Stage 0 status-check section to `docs/mcp_full_pipeline_prompt_tests.md`.
+- [x] Create milestone plan doc
+  `docs/realtime_refactor_plans/2026-04-15-milestone-21d-pipeline-status-tracker.md`.
+- [x] Update `CHANGELOG.md` with M21d dated entries.
+
 ## Asset Cleanup Follow-On Lane
 
 These milestones are the narrow follow-up cleanup lane after Milestone 17.
@@ -1802,6 +1818,40 @@ They exist so tool-branded asset cleanup can continue in bounded slices when it
 materially helps planner clarity, manifest reuse, or future tool interchange.
 
 ## Milestone 22
+
+Goal: make the pipeline status tracker registry-driven by adding
+`pipeline_family` and `pipeline_stage_order` fields to
+`RegistryCompatibilityMetadata` so stage lists are derived from the registry
+rather than hardcoded per pipeline.
+
+Status: Not started
+
+### Still required
+
+- [ ] Add `pipeline_family: str = ""` and `pipeline_stage_order: int = 0` to
+      `RegistryCompatibilityMetadata` in `src/flytetest/registry.py`.
+- [ ] Populate all 17 existing `_WORKFLOW_COMPATIBILITY_METADATA` entries with
+      correct `pipeline_family` and `pipeline_stage_order` values.
+- [ ] Add `get_pipeline_stages(family: str)` pure function to `registry.py`.
+- [ ] Replace hardcoded `ANNOTATION_PIPELINE_STAGES` in `pipeline_tracker.py`
+      with `get_pipeline_stages("annotation")`.
+- [ ] Add 3 tests to `tests/test_pipeline_tracker.py`.
+- [ ] Update `CHANGELOG.md`.
+
+### Acceptance evidence
+
+- `docs/realtime_refactor_plans/2026-04-16-milestone-22-registry-driven-pipeline-tracker.md`
+- `docs/realtime_refactor_milestone_22_submission_prompt.md`
+- All existing pipeline tracker tests pass; 3 new tests added.
+
+### Compatibility risks
+
+- `RegistryCompatibilityMetadata` is a compatibility-critical frozen dataclass;
+  new fields must have safe defaults so existing construction sites remain valid.
+- `get_pipeline_stages` must be pure (no I/O) — called at import time.
+- `ANNOTATION_PIPELINE_STAGES` must remain a public module-level name.
+
+## Milestone 23
 
 Goal: define and adopt a biology-facing generic asset surface for the current
 TransDecoder-backed coding-prediction boundary while retaining legacy replay.
@@ -1823,7 +1873,7 @@ Status: Not started
 - [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
       after the behavior lands.
 
-### Milestone 22 implementation note
+### Milestone 23 implementation note
 
 - This slice should stay limited to the TransDecoder family.
 - It should not rename unrelated PASA, protein-evidence, or consensus assets.
@@ -1832,8 +1882,8 @@ Status: Not started
 
 ### Acceptance evidence
 
-- `docs/realtime_refactor_plans/2026-04-10-milestone-22-transdecoder-generic-asset-follow-up.md`
-- `docs/realtime_refactor_milestone_22_submission_prompt.md`
+- `docs/realtime_refactor_plans/2026-04-10-milestone-23-transdecoder-generic-asset-follow-up.md`
+- `docs/realtime_refactor_milestone_23_submission_prompt.md`
 - Tests likely to include `tests/test_transdecoder.py`,
   `tests/test_planner_types.py`, and any focused adapter or manifest-shape
   coverage
@@ -1849,7 +1899,7 @@ Status: Not started
 - Generalizing the TransDecoder family before another implementation path
   actually exists
 
-## Milestone 23
+## Milestone 24
 
 Goal: make the nested protein-evidence alignment assets less Exonerate-specific
 while preserving the current top-level protein-evidence bundle contract.
@@ -1871,7 +1921,7 @@ Status: Not started
 - [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
       after the behavior lands.
 
-### Milestone 23 implementation note
+### Milestone 24 implementation note
 
 - This slice should stay limited to the protein-evidence family.
 - The top-level bundle name is already acceptable and should not be broadened
@@ -1881,8 +1931,8 @@ Status: Not started
 
 ### Acceptance evidence
 
-- `docs/realtime_refactor_plans/2026-04-10-milestone-23-protein-evidence-nested-asset-cleanup.md`
-- `docs/realtime_refactor_milestone_23_submission_prompt.md`
+- `docs/realtime_refactor_plans/2026-04-10-milestone-24-protein-evidence-nested-asset-cleanup.md`
+- `docs/realtime_refactor_milestone_24_submission_prompt.md`
 - Tests likely to include `tests/test_protein_evidence.py`,
   `tests/test_planner_types.py`, and any focused adapter or manifest-shape
   coverage
@@ -1896,7 +1946,7 @@ Status: Not started
 - Introducing generic nested names that hide useful current-tool truth
 - Renaming nested assets without clear downstream planner or reuse benefit
 
-## Milestone 24
+## Milestone 25
 
 Goal: define whether PASA post-EVM refinement should grow a generic annotation-
 refinement asset layer, and adopt it only if that abstraction is genuinely
@@ -1919,7 +1969,7 @@ Status: Not started
 - [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
       after the behavior lands.
 
-### Milestone 24 implementation note
+### Milestone 25 implementation note
 
 - This slice may legitimately decide not to introduce a generic sibling layer
   yet if PASA remains the only clear truthful boundary.
@@ -1929,8 +1979,8 @@ Status: Not started
 
 ### Acceptance evidence
 
-- `docs/realtime_refactor_plans/2026-04-10-milestone-24-pasa-refinement-asset-generalization-boundary.md`
-- `docs/realtime_refactor_milestone_24_submission_prompt.md`
+- `docs/realtime_refactor_plans/2026-04-10-milestone-25-pasa-refinement-asset-generalization-boundary.md`
+- `docs/realtime_refactor_milestone_25_submission_prompt.md`
 - Tests likely to include `tests/test_pasa_update.py`, `tests/test_planner_types.py`,
   and any focused adapter or manifest-shape coverage
 - `README.md`, `docs/capability_maturity.md`, and compatibility docs stay
@@ -1945,7 +1995,7 @@ Status: Not started
 - Forcing rename churn that does not materially help planner or composition
   work
 
-## Milestone 25
+## Milestone 26
 
 Goal: define whether the EVM-prefixed consensus assets need a generic
 consensus-annotation layer, and adopt it only when another implementation path
@@ -1968,7 +2018,7 @@ Status: Not started
 - [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
       after the behavior lands.
 
-### Milestone 25 implementation note
+### Milestone 26 implementation note
 
 - This slice should not proceed as a casual rename.
 - It should only introduce a generic consensus layer if the repo has a real
@@ -1979,8 +2029,8 @@ Status: Not started
 
 ### Acceptance evidence
 
-- `docs/realtime_refactor_plans/2026-04-10-milestone-25-consensus-asset-generalization-boundary.md`
-- `docs/realtime_refactor_milestone_25_submission_prompt.md`
+- `docs/realtime_refactor_plans/2026-04-10-milestone-26-consensus-asset-generalization-boundary.md`
+- `docs/realtime_refactor_milestone_26_submission_prompt.md`
 - Tests likely to include `tests/test_consensus.py`, `tests/test_planner_types.py`,
   and any focused adapter or manifest-shape coverage
 - `README.md`, `docs/capability_maturity.md`, and compatibility docs stay

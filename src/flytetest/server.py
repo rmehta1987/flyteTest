@@ -48,6 +48,7 @@ from flytetest.mcp_contract import (
     RUN_RECIPE_RESOURCE_URI_PREFIX,
     RUN_SLURM_RECIPE_TOOL_NAME,
     WAIT_FOR_SLURM_JOB_TOOL_NAME,
+    GET_PIPELINE_STATUS_TOOL_NAME,
     RESULT_CODE_DECLINED_MISSING_INPUTS,
     RESULT_CODE_DECLINED_UNSUPPORTED_REQUEST,
     RESULT_CODE_DEFINITIONS,
@@ -75,6 +76,10 @@ from flytetest.mcp_contract import (
     TASK_EXAMPLE_PROMPT,
     WORKFLOW_EXAMPLE_PROMPT,
     supported_runnable_targets_payload,
+)
+from flytetest.pipeline_tracker import (
+    get_annotation_pipeline_status,
+    get_pipeline_summary,
 )
 from flytetest.planning import (
     plan_typed_request,
@@ -362,6 +367,43 @@ def list_slurm_run_history(
         active_only=active_only,
         terminal_only=terminal_only,
     )
+
+
+def _get_pipeline_status_impl(
+    *,
+    runs_dir: Path | None = None,
+) -> dict[str, object]:
+    """Return per-stage status for the 15-stage annotation pipeline."""
+    history_root = runs_dir or DEFAULT_RUN_DIR
+    stages = get_annotation_pipeline_status(history_root)
+    summary = get_pipeline_summary(stages)
+    return {
+        "supported": True,
+        "run_root": str(history_root),
+        "summary": summary,
+        "stages": [
+            {
+                "index": s.stage_index,
+                "workflow_name": s.workflow_name,
+                "label": s.label,
+                "status": s.status,
+                "job_id": s.job_id,
+                "run_record_path": s.run_record_path,
+                "submitted_at": s.submitted_at,
+            }
+            for s in stages
+        ],
+    }
+
+
+def get_pipeline_status() -> dict[str, object]:
+    """Return checklist status for all 15 annotation pipeline stages.
+
+    Reads durable Slurm run records from ``.runtime/runs/`` and maps each
+    stage to COMPLETED, FAILED, RUNNING, PENDING, or UNKNOWN based on the
+    most recent submission for that stage.
+    """
+    return _get_pipeline_status_impl()
 
 
 def _entry_payload(name: str) -> dict[str, object]:
@@ -3038,6 +3080,7 @@ def create_mcp_server(fastmcp_cls: Any | None = None) -> Any:
     mcp.tool()(inspect_run_result)
     mcp.tool()(fetch_job_log)
     mcp.tool()(wait_for_slurm_job)
+    mcp.tool()(get_pipeline_status)
     mcp.resource(SERVER_RESOURCE_URIS[0])(resource_scope)
     mcp.resource(SERVER_RESOURCE_URIS[1])(resource_supported_targets)
     mcp.resource(SERVER_RESOURCE_URIS[2])(resource_example_prompts)

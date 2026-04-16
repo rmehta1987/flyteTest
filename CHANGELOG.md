@@ -45,6 +45,54 @@ Entry template:
       CLI, not the Perl 1.x scripts. Confirm that EVM task wrappers use the correct 2.x
       flags before the first real run.
 
+### Milestone 22 — Registry-Driven Pipeline Tracker (2026-04-16)
+
+- [x] 2026-04-16 added `pipeline_family: str = ""` and `pipeline_stage_order: int = 0`
+  to `RegistryCompatibilityMetadata` (frozen dataclass) with safe defaults so all
+  existing construction sites remain valid. *(registry.py)*
+
+- [x] 2026-04-16 populated all 17 `_WORKFLOW_COMPATIBILITY_METADATA` entries with
+  `pipeline_family="annotation"` and `pipeline_stage_order=1..15` for the 15 annotation
+  pipeline workflows; `busco_assess_proteins` and `rnaseq_qc_quant` keep defaults
+  (`pipeline_family=""`). *(registry.py)*
+
+- [x] 2026-04-16 added `get_pipeline_stages(family: str) -> list[tuple[str, str]]`
+  pure function to `registry.py`; returns `(workflow_name, biological_stage_label)` pairs
+  ordered by `pipeline_stage_order`, empty list for unknown or empty family. *(registry.py)*
+
+- [x] 2026-04-16 replaced the hardcoded `ANNOTATION_PIPELINE_STAGES` literal in
+  `pipeline_tracker.py` with `get_pipeline_stages("annotation")`; removed the 15
+  `config.py` workflow-name imports that were no longer needed. *(pipeline_tracker.py)*
+
+- [x] 2026-04-16 added 3 tests to `test_pipeline_tracker.py` covering annotation stage
+  count/order, empty-family guard, and standalone-workflow exclusion. *(tests/test_pipeline_tracker.py)*
+
+### Milestone 21d — Pipeline Status Tracker (2026-04-15)
+
+- [x] 2026-04-15 added `src/flytetest/pipeline_tracker.py` with
+  `ANNOTATION_PIPELINE_STAGES` (15-stage ordered list), `StageStatus` dataclass,
+  `get_annotation_pipeline_status(runs_dir)`, and `get_pipeline_summary(stages)`.
+  Reads durable `SlurmRunRecord` files from `.runtime/runs/` without modification.
+  Self-contained — no imports from `server.py`. *(pipeline_tracker.py)*
+
+- [x] 2026-04-15 added `GET_PIPELINE_STATUS_TOOL_NAME = "get_pipeline_status"` to
+  `mcp_contract.py` and appended it to `MCP_TOOL_NAMES`. *(mcp_contract.py)*
+
+- [x] 2026-04-15 added `_get_pipeline_status_impl()` and `get_pipeline_status()`
+  public wrapper to `server.py`; registered `mcp.tool()(get_pipeline_status)` in
+  `create_mcp_server`. *(server.py)*
+
+- [x] 2026-04-15 added `tests/test_pipeline_tracker.py` with 11 synthetic tests
+  covering: all-pending, completed/failed/running/timeout states, most-recent-wins,
+  summary counts, next-pending-stage label, none-when-all-complete, all-pending summary.
+  All 11 pass; full suite unaffected. *(tests/test_pipeline_tracker.py)*
+
+- [x] 2026-04-15 added Stage 0 status-check section and introductory note to
+  `docs/mcp_full_pipeline_prompt_tests.md`. *(mcp_full_pipeline_prompt_tests.md)*
+
+- [x] 2026-04-15 created milestone plan doc at
+  `docs/realtime_refactor_plans/2026-04-15-milestone-21d-pipeline-status-tracker.md`.
+
 ### Milestone 21c — Biology Closure: table2asn NCBI Submission (2026-04-15)
 
 - [x] 2026-04-15 added `TABLE2ASN_WORKFLOW_NAME = "annotation_postprocess_table2asn"`,

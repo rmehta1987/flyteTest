@@ -54,6 +54,7 @@ GET_RUN_SUMMARY_TOOL_NAME = "get_run_summary"
 INSPECT_RUN_RESULT_TOOL_NAME = "inspect_run_result"
 FETCH_JOB_LOG_TOOL_NAME = "fetch_job_log"
 WAIT_FOR_SLURM_JOB_TOOL_NAME = "wait_for_slurm_job"
+GET_PIPELINE_STATUS_TOOL_NAME = "get_pipeline_status"
 RUN_RECIPE_RESOURCE_URI_PREFIX = "flytetest://run-recipes/"
 RESULT_MANIFEST_RESOURCE_URI_PREFIX = "flytetest://result-manifests/"
 MCP_TOOL_NAMES = (
@@ -73,6 +74,7 @@ MCP_TOOL_NAMES = (
     INSPECT_RUN_RESULT_TOOL_NAME,
     FETCH_JOB_LOG_TOOL_NAME,
     WAIT_FOR_SLURM_JOB_TOOL_NAME,
+    GET_PIPELINE_STATUS_TOOL_NAME,
 )
 MCP_RESOURCE_URIS = (
     "flytetest://scope",

@@ -1,4 +1,4 @@
-# Milestone 25 Consensus Asset Generalization Boundary
+# Milestone 26 Consensus Asset Generalization Boundary
 
 Date: 2026-04-10
 Status: Proposed

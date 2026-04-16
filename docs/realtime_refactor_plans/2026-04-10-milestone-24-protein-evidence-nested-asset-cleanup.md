@@ -1,4 +1,4 @@
-# Milestone 23 Protein Evidence Nested Asset Cleanup
+# Milestone 24 Protein Evidence Nested Asset Cleanup
 
 Date: 2026-04-10
 Status: Proposed

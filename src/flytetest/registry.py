@@ -46,6 +46,8 @@ class RegistryCompatibilityMetadata:
     runtime_image_policy: str = "Optional local tool image paths remain user-supplied when supported."
     synthesis_eligible: bool = False
     composition_constraints: tuple[str, ...] = ()
+    pipeline_family: str = ""
+    pipeline_stage_order: int = 0
 
 
 @dataclass(frozen=True)
@@ -2314,6 +2316,8 @@ _WORKFLOW_COMPATIBILITY_METADATA: dict[str, RegistryCompatibilityMetadata] = {
             "Current implementation is a one paired-end sample subset of the full all-sample branch.",
             "Downstream PASA alignment should consume the manifest-bearing transcript evidence result bundle.",
         ),
+        pipeline_family="annotation",
+        pipeline_stage_order=1,
     ),
     "pasa_transcript_alignment": RegistryCompatibilityMetadata(
         biological_stage="PASA transcript alignment and assembly",
@@ -2326,6 +2330,8 @@ _WORKFLOW_COMPATIBILITY_METADATA: dict[str, RegistryCompatibilityMetadata] = {
             "Consumes the existing transcript evidence result bundle directly.",
             "Requires a user-supplied UniVec FASTA and PASA config template.",
         ),
+        pipeline_family="annotation",
+        pipeline_stage_order=2,
     ),
     "transdecoder_from_pasa": RegistryCompatibilityMetadata(
         biological_stage="TransDecoder coding-region prediction from PASA assemblies",
@@ -2337,6 +2343,8 @@ _WORKFLOW_COMPATIBILITY_METADATA: dict[str, RegistryCompatibilityMetadata] = {
         composition_constraints=(
             "TransDecoder command sequence remains documented as inferred from the notes.",
         ),
+        pipeline_family="annotation",
+        pipeline_stage_order=3,
     ),
     "protein_evidence_alignment": RegistryCompatibilityMetadata(
         biological_stage="protein evidence alignment",
@@ -2348,6 +2356,8 @@ _WORKFLOW_COMPATIBILITY_METADATA: dict[str, RegistryCompatibilityMetadata] = {
         composition_constraints=(
             "Protein FASTA inputs are local and explicit; the workflow does not fetch UniProt or RefSeq automatically.",
         ),
+        pipeline_family="annotation",
+        pipeline_stage_order=4,
     ),
     "ab_initio_annotation_braker3": RegistryCompatibilityMetadata(
         biological_stage="BRAKER3 ab initio annotation",
@@ -2360,6 +2370,8 @@ _WORKFLOW_COMPATIBILITY_METADATA: dict[str, RegistryCompatibilityMetadata] = {
             "Requires a genome plus at least one explicit evidence source across RNA-seq BAM or protein FASTA.",
             "BRAKER3 invocation details remain Galaxy tutorial-backed where the notes are not explicit.",
         ),
+        pipeline_family="annotation",
+        pipeline_stage_order=5,
     ),
     "consensus_annotation_evm_prep": RegistryCompatibilityMetadata(
         biological_stage="pre-EVM consensus input preparation",
@@ -2371,6 +2383,8 @@ _WORKFLOW_COMPATIBILITY_METADATA: dict[str, RegistryCompatibilityMetadata] = {
         composition_constraints=(
             "Assembles transcripts.gff3, predictions.gff3, and proteins.gff3 but does not execute EVM.",
         ),
+        pipeline_family="annotation",
+        pipeline_stage_order=6,
     ),
     "consensus_annotation_evm": RegistryCompatibilityMetadata(
         biological_stage="EVidenceModeler consensus annotation",
@@ -2382,6 +2396,8 @@ _WORKFLOW_COMPATIBILITY_METADATA: dict[str, RegistryCompatibilityMetadata] = {
         composition_constraints=(
             "Consumes an existing pre-EVM bundle and stops before PASA update rounds.",
         ),
+        pipeline_family="annotation",
+        pipeline_stage_order=7,
     ),
     "annotation_refinement_pasa": RegistryCompatibilityMetadata(
         biological_stage="PASA-based gene model update",
@@ -2393,6 +2409,8 @@ _WORKFLOW_COMPATIBILITY_METADATA: dict[str, RegistryCompatibilityMetadata] = {
         composition_constraints=(
             "Consumes existing PASA and EVM result bundles without reopening upstream evidence generation.",
         ),
+        pipeline_family="annotation",
+        pipeline_stage_order=8,
     ),
     "annotation_repeat_filtering": RegistryCompatibilityMetadata(
         biological_stage="repeat filtering and annotation cleanup",
@@ -2404,6 +2422,8 @@ _WORKFLOW_COMPATIBILITY_METADATA: dict[str, RegistryCompatibilityMetadata] = {
         composition_constraints=(
             "Starts from the PASA-updated sorted GFF3 boundary plus a user-supplied RepeatMasker .out file.",
         ),
+        pipeline_family="annotation",
+        pipeline_stage_order=9,
     ),
     "annotation_qc_busco": RegistryCompatibilityMetadata(
         biological_stage="BUSCO annotation quality assessment",
@@ -2415,6 +2435,8 @@ _WORKFLOW_COMPATIBILITY_METADATA: dict[str, RegistryCompatibilityMetadata] = {
         composition_constraints=(
             "Consumes the repeat-filtered protein FASTA boundary as the current QC target and does not run EggNOG, AGAT, or submission prep.",
         ),
+        pipeline_family="annotation",
+        pipeline_stage_order=10,
     ),
     "annotation_functional_eggnog": RegistryCompatibilityMetadata(
         biological_stage="EggNOG functional annotation",
@@ -2426,6 +2448,8 @@ _WORKFLOW_COMPATIBILITY_METADATA: dict[str, RegistryCompatibilityMetadata] = {
         composition_constraints=(
             "Consumes the repeat-filtered protein FASTA boundary after BUSCO-style quality assessment and keeps AGAT and submission prep deferred.",
         ),
+        pipeline_family="annotation",
+        pipeline_stage_order=11,
     ),
     "annotation_postprocess_agat": RegistryCompatibilityMetadata(
         biological_stage="AGAT post-processing",
@@ -2437,6 +2461,8 @@ _WORKFLOW_COMPATIBILITY_METADATA: dict[str, RegistryCompatibilityMetadata] = {
         composition_constraints=(
             "Consumes the EggNOG-annotated GFF3 boundary after quality assessment and keeps AGAT conversion, cleanup, and table2asn as separate follow-on slices.",
         ),
+        pipeline_family="annotation",
+        pipeline_stage_order=12,
     ),
     "annotation_postprocess_agat_conversion": RegistryCompatibilityMetadata(
         biological_stage="AGAT post-processing",
@@ -2448,6 +2474,8 @@ _WORKFLOW_COMPATIBILITY_METADATA: dict[str, RegistryCompatibilityMetadata] = {
         composition_constraints=(
             "Consumes the EggNOG-annotated GFF3 boundary after quality assessment, uses the AGAT conversion command family explicitly, and keeps cleanup as a separate follow-on slice before table2asn.",
         ),
+        pipeline_family="annotation",
+        pipeline_stage_order=13,
     ),
     "annotation_postprocess_agat_cleanup": RegistryCompatibilityMetadata(
         biological_stage="AGAT post-processing",
@@ -2459,6 +2487,8 @@ _WORKFLOW_COMPATIBILITY_METADATA: dict[str, RegistryCompatibilityMetadata] = {
         composition_constraints=(
             "Consumes the AGAT conversion GFF3 boundary after quality assessment, applies the deterministic cleanup rules, and keeps table2asn deferred.",
         ),
+        pipeline_family="annotation",
+        pipeline_stage_order=14,
     ),
     "annotation_postprocess_table2asn": RegistryCompatibilityMetadata(
         biological_stage="NCBI submission preparation",
@@ -2470,6 +2500,8 @@ _WORKFLOW_COMPATIBILITY_METADATA: dict[str, RegistryCompatibilityMetadata] = {
         composition_constraints=(
             "Consumes the AGAT cleanup GFF3 boundary and runs table2asn to produce an NCBI .sqn submission file. Requires a valid NCBI .sbt submission template and a BioProject locus-tag prefix.",
         ),
+        pipeline_family="annotation",
+        pipeline_stage_order=15,
     ),
 }
 
@@ -2627,3 +2659,21 @@ def get_entry(name: str) -> RegistryEntry:
     except KeyError as exc:
         supported = ", ".join(sorted(_REGISTRY))
         raise KeyError(f"Unknown catalog entry '{name}'. Supported entries: {supported}") from exc
+
+
+def get_pipeline_stages(family: str) -> list[tuple[str, str]]:
+    """Return (workflow_name, biological_stage_label) pairs for a pipeline family.
+
+    Entries are ordered by pipeline_stage_order.  Workflows with
+    pipeline_family != family or pipeline_stage_order == 0 are excluded.
+    Returns an empty list for unknown or empty family strings.
+    """
+    if not family:
+        return []
+    candidates = [
+        (entry.name, entry.compatibility.biological_stage, entry.compatibility.pipeline_stage_order)
+        for entry in REGISTRY_ENTRIES
+        if entry.compatibility.pipeline_family == family and entry.compatibility.pipeline_stage_order > 0
+    ]
+    candidates.sort(key=lambda t: t[2])
+    return [(name, label) for name, label, _ in candidates]
