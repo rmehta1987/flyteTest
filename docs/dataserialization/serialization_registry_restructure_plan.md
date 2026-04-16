@@ -4,6 +4,8 @@
 **Status:** Final draft — ready for implementation
 **Branch:** Create a new branch from `main` (e.g. `refactor/serialization-registry`)
 **Prerequisite:** M23-26 complete (generic asset subclasses landed)
+**Checklist:** `docs/dataserialization/checklist.md`
+**Prompts:** `docs/dataserialization/prompts/`
 
 ---
 
@@ -48,9 +50,14 @@ Patterns evaluated and why we chose what we did:
 organized by pipeline family in a package. No decorators, no metaclasses,
 no import-order tricks. Composition via type-graph metadata matching.
 
-### Key Files (current state, read before implementing)
+### Key Files (read before implementing)
 
-| File | Role | Lines |
+**Note on line numbers:** All line numbers in this plan are from plan-writing
+time (2026-04-16). M21c through M26 modified `registry.py`, `server.py`,
+`mcp_contract.py`, and `planning.py` after this snapshot. Use `rg` to locate
+the actual positions of named functions, dicts, and classes before editing.
+
+| File | Role | Lines (approx) |
 |---|---|---|
 | `src/flytetest/registry.py` | Monolith: 73 entries + 3 parallel dicts + query functions | 2679 |
 | `src/flytetest/specs.py` | `SpecSerializable` mixin, `_serialize`/`_deserialize` (lines 22-103) | 331 |
@@ -137,9 +144,15 @@ Layer wrappers preserve these exact behaviors:
 
 **Mixin:**
 - `class SerializableMixin` — plain class (not dataclass), provides
-  `to_dict()`/`from_dict()` via `dataclasses.fields(self)` iteration.
-  Subclasses override `_deserialize_field` to select strict vs coercing.
-  Works with `@dataclass(frozen=True, slots=True)` consumers via MRO.
+  `to_dict()` (instance method) and `from_dict()` (`@classmethod`).
+  Both call `dataclasses.fields()` on `self`/`cls` (the concrete dataclass),
+  NOT on the mixin class itself (which would raise `TypeError`).
+  Subclass mixins set class-level attributes (`_serialize_fn`,
+  `_deserialize_fn`) pointing to the appropriate layer functions via
+  `staticmethod()`. This avoids the `@classmethod` binding pitfall where
+  an instance method override would receive `cls` as `self` inside
+  `from_dict()`. Works with `@dataclass(frozen=True, slots=True)`
+  consumers via MRO.
 
 Create `tests/test_serialization.py` with edge-case round-trips (Path,
 nested dataclass, Optional, tuple, dict, scalar coercion, None) testing
@@ -190,11 +203,12 @@ A0 manifest reload fixture.
 Two changes working together:
 
 1. **Fold the 3 parallel dicts into each `RegistryEntry`** — eliminate
-   `_WORKFLOW_COMPATIBILITY_METADATA` (line 2286),
-   `_WORKFLOW_LOCAL_RESOURCE_DEFAULTS` (line 2509),
-   `_WORKFLOW_SLURM_RESOURCE_HINTS` (line 2535),
-   and the `_backfill_workflow_compatibility_metadata()` merge step (line 2606).
+   `_WORKFLOW_COMPATIBILITY_METADATA`, `_WORKFLOW_LOCAL_RESOURCE_DEFAULTS`,
+   `_WORKFLOW_SLURM_RESOURCE_HINTS`, and the
+   `_backfill_workflow_compatibility_metadata()` merge step.
    Each entry becomes self-contained.
+   (Use `rg` to locate these — line numbers from plan-writing time are stale
+   due to M21c-M26 edits.)
 
 2. **Split `registry.py` into a package by pipeline family** — same
    pattern as Stargazer's `assets/` folder. Each family file contains
@@ -335,7 +349,7 @@ _REGISTRY: dict[str, RegistryEntry] = {e.name: e for e in REGISTRY_ENTRIES}
 
 
 def list_entries(category: Category | None = None) -> tuple[RegistryEntry, ...]:
-    ...  # moved from registry.py line 2634
+    ...  # moved from registry.py
 
 
 def get_entry(name: str) -> RegistryEntry:
@@ -346,13 +360,13 @@ def get_pipeline_stages(family: str) -> list[tuple[str, str]]:
     ...  # moved from registry.py line 2664
 ```
 
-**Delete from `_registry_legacy.py`:**
-- `_WORKFLOW_COMPATIBILITY_METADATA` dict (line 2286)
-- `_WORKFLOW_LOCAL_RESOURCE_DEFAULTS` dict (line 2509)
-- `_WORKFLOW_SLURM_RESOURCE_HINTS` dict (line 2535)
-- `_with_resource_defaults()` (line 2566)
-- `_backfill_workflow_compatibility_metadata()` (line 2606)
-- Then delete `_registry_legacy.py` entirely.
+**Delete from the monolith (all eliminated by the package restructure):**
+- `_WORKFLOW_COMPATIBILITY_METADATA` dict
+- `_WORKFLOW_LOCAL_RESOURCE_DEFAULTS` dict
+- `_WORKFLOW_SLURM_RESOURCE_HINTS` dict
+- `_with_resource_defaults()`
+- `_backfill_workflow_compatibility_metadata()`
+- Then delete `registry.py` entirely (replaced by `registry/` package).
 
 **Validation:** Full test suite. `REGISTRY_ENTRIES` must contain the same
 73 entries with identical `to_dict()` output. `get_pipeline_stages("annotation")`
@@ -385,6 +399,9 @@ SHOWCASE_TARGETS: tuple[ShowcaseTarget, ...] = tuple(
     for e in REGISTRY_ENTRIES
     if e.showcase_module
 )
+# These tuples ALREADY EXIST in mcp_contract.py — do NOT duplicate them.
+# Replace the derivation source (SHOWCASE_TARGETS becomes registry-derived)
+# and the existing definitions will automatically reflect the new source.
 SUPPORTED_TARGET_NAMES = tuple(t.name for t in SHOWCASE_TARGETS)
 SUPPORTED_WORKFLOW_NAMES = tuple(
     t.name for t in SHOWCASE_TARGETS if t.category == "workflow"
@@ -396,8 +413,11 @@ SUPPORTED_TASK_NAMES = tuple(
 
 Delete the 12 hardcoded `ShowcaseTarget(...)` blocks.
 
-Derive `SHOWCASE_LIMITATIONS` strings dynamically from
-`SUPPORTED_TARGET_NAMES` instead of hardcoding the name list.
+Update `SHOWCASE_LIMITATIONS`: replace only the embedded name list in the first
+string with the derived `SUPPORTED_TARGET_NAMES`, keeping the surrounding
+curated prose ("The MCP recipe surface executes ... through explicit local
+handlers."). Review the generated output — if it reads mechanically, keep the
+string manually curated and update it alongside target changes instead.
 
 **Named constants that MUST be preserved as policy seams:**
 
@@ -530,21 +550,26 @@ bypass these other requirements.
 ## Sequencing
 
 ```
-Track A:  A0 -> A1 -> A2 -> A3 -> A4   (serialization, regression-gated)
-Track B:  B1 -> B2 -> B3 -> B4 -> B5   (registry consolidation)
-
-A and B are independent — can run in parallel.
-A0 must complete before any A1-A4 rewiring begins.
-B1+B2 fold data and split files — verify to_dict() output stability.
-B3+B4 derive MCP/server surfaces — verify target sets unchanged.
-B5 is the proof: GATK entry in one file, visible in catalog queries.
+Track A:  A0 -> A1 -> A2 -> A3 -> A4       (serialization, regression-gated)
+Track B:  B1+B2 -> B3 -> B4 -> B5          (registry consolidation)
 ```
 
-Recommended merge order: A0, A1, B1, B2, A2-A4, B3, B4, B5
+**Tracks A and B are fully independent.** They touch different files, have no
+shared prerequisites, and can be developed, reviewed, and merged as separate
+PRs with no ordering constraint between them. Only the steps *within* each
+track have sequential dependencies (A0 gates A1-A4; B1+B2 gates B3-B5).
 
-A0 first (regression fixtures), then A1 (shared module) and B1 (package
-scaffold) can proceed in parallel. B2 is the largest step — fold and split
-all 73 entries.
+- A0 must complete before any A1-A4 rewiring begins.
+- B1+B2 is one atomic commit — no intermediate `_registry_legacy.py` file.
+- B3+B4 derive MCP/server surfaces — verify target sets unchanged.
+- B5 is the proof: GATK entry in one file, visible in catalog queries.
+
+Recommended merge order: A0, A1, B1+B2, A2-A4, B3, B4, B5
+
+A0 first (regression fixtures), then A1 (shared module) and B1+B2 (package
+restructure) can proceed in parallel. B1+B2 is the largest step — scaffold
+the package, fold the 3 parallel dicts, and split all 73 entries into 7
+family files in one commit.
 
 ---
 
