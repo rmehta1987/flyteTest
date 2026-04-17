@@ -15,7 +15,7 @@ When a new bioinformatics tool is introduced, look first for a small tutorial-ba
 Before testing, read:
 
 1. the touched task/workflow modules
-2. `src/flytetest/registry.py` if the public interface changed
+2. `src/flytetest/registry/` if the public interface changed
 3. any helper scripts that were modified
 
 If parameter names or example commands were changed, spot-check the relevant

@@ -17,7 +17,7 @@ Before reviewing, read:
 3. `.codex/code-review.md`
 4. the touched modules
 5. `README.md` if user-facing behavior changed
-6. `src/flytetest/registry.py` if public interfaces changed
+6. `src/flytetest/registry/` if public interfaces changed
 7. `docs/realtime_refactor_checklist.md` if the change claims to complete a
    checklist item
 
@@ -47,7 +47,7 @@ You are responsible for catching:
 
 - `flyte_rnaseq_workflow.py` export drift
 - `src/flytetest/planning.py` output-shape drift
-- `src/flytetest/registry.py` metadata drift
+- `src/flytetest/registry/` metadata drift
 - `src/flytetest/server.py` MCP contract drift
 - `run_manifest.json` truthfulness
 - README or DESIGN language that overclaims target-state behavior

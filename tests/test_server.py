@@ -25,6 +25,14 @@ from flyte_stub import install_flyte_stub
 
 install_flyte_stub()
 
+from flytetest.config import (
+    AGAT_CLEANUP_WORKFLOW_NAME as SUPPORTED_AGAT_CLEANUP_WORKFLOW_NAME,
+    AGAT_CONVERSION_WORKFLOW_NAME as SUPPORTED_AGAT_CONVERSION_WORKFLOW_NAME,
+    AGAT_WORKFLOW_NAME as SUPPORTED_AGAT_WORKFLOW_NAME,
+    EGGNOG_WORKFLOW_NAME as SUPPORTED_EGGNOG_WORKFLOW_NAME,
+    FUNCTIONAL_QC_WORKFLOW_NAME as SUPPORTED_BUSCO_WORKFLOW_NAME,
+    TABLE2ASN_WORKFLOW_NAME as SUPPORTED_TABLE2ASN_WORKFLOW_NAME,
+)
 from flytetest.mcp_contract import (
     DECLINE_CATEGORY_CODES,
     FETCH_JOB_LOG_TOOL_NAME,
@@ -36,13 +44,7 @@ from flytetest.mcp_contract import (
     RESULT_MANIFEST_RESOURCE_URI_PREFIX,
     RUN_RECIPE_RESOURCE_URI_PREFIX,
     SHOWCASE_SERVER_NAME,
-    SUPPORTED_AGAT_CLEANUP_WORKFLOW_NAME,
-    SUPPORTED_TABLE2ASN_WORKFLOW_NAME,
-    SUPPORTED_AGAT_CONVERSION_WORKFLOW_NAME,
-    SUPPORTED_AGAT_WORKFLOW_NAME,
     SUPPORTED_BUSCO_FIXTURE_TASK_NAME,
-    SUPPORTED_BUSCO_WORKFLOW_NAME,
-    SUPPORTED_EGGNOG_WORKFLOW_NAME,
     SUPPORTED_PROTEIN_WORKFLOW_NAME,
     SUPPORTED_TARGET_NAMES,
     SUPPORTED_TASK_NAME,
@@ -214,6 +216,28 @@ class ServerTests(TestCase):
 
     This test class keeps the current contract explicit and documents the current boundary behavior.
 """
+
+    def test_supported_target_names_match_expected_set(self) -> None:
+        """Derived SUPPORTED_TARGET_NAMES must exactly match the known showcase set.
+
+    This guards against accidental additions or removals when registry entries change.
+"""
+        from flytetest.mcp_contract import SUPPORTED_TARGET_NAMES
+        expected = (
+            "ab_initio_annotation_braker3",
+            "protein_evidence_alignment",
+            "exonerate_align_chunk",
+            "busco_assess_proteins",
+            "annotation_qc_busco",
+            "annotation_functional_eggnog",
+            "annotation_postprocess_agat",
+            "annotation_postprocess_agat_conversion",
+            "annotation_postprocess_agat_cleanup",
+            "annotation_postprocess_table2asn",
+            "fastqc",
+            "gffread_proteins",
+        )
+        self.assertEqual(set(SUPPORTED_TARGET_NAMES), set(expected))
 
     def test_create_mcp_server_registers_only_the_required_tools(self) -> None:
         """Keep the MCP tool surface limited to list, plan, and prompt-and-run.

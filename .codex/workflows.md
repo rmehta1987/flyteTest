@@ -18,7 +18,7 @@ Before changing workflow code, read:
 1. `AGENTS.md`
 2. `DESIGN.md`
 3. the relevant task modules
-4. `src/flytetest/registry.py`
+4. `src/flytetest/registry/`
 5. `README.md`
 
 ## Repo Truths
@@ -157,7 +157,7 @@ Workflow work is incomplete until these stay aligned:
 - `src/flytetest/workflows/...`
 - `src/flytetest/workflows/__init__.py`
 - `flyte_rnaseq_workflow.py`
-- `src/flytetest/registry.py`
+- `src/flytetest/registry/`
 - `README.md`
 
 The registry entry should match the real workflow signature exactly:

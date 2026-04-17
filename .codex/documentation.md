@@ -31,7 +31,7 @@ Before writing docs, read:
 1. `AGENTS.md`
 2. `DESIGN.md`
 3. the touched task/workflow modules
-4. `src/flytetest/registry.py`
+4. `src/flytetest/registry/`
 5. any existing result-manifest structure if the stage writes one
 
 ## What To Update

@@ -1,0 +1,325 @@
+"""Registry entries for the consensus pipeline family."""
+
+from __future__ import annotations
+
+from flytetest.registry._types import (
+    InterfaceField,
+    RegistryCompatibilityMetadata,
+    RegistryEntry,
+)
+
+
+CONSENSUS_ENTRIES: tuple[RegistryEntry, ...] = (
+    RegistryEntry(
+        name='pasa_transcript_alignment',
+        category='workflow',
+        description="PASA transcript preparation and align/assemble workflow built from the PASA tool reference and the transcript-evidence bundle's de novo Trinity, Trinity-GG, and StringTie outputs.",
+        inputs=(
+            InterfaceField('genome', 'File', 'Reference genome FASTA.'),
+            InterfaceField('transcript_evidence_results', 'Dir', 'Transcript evidence results directory containing trinity_denovo/, trinity_gg/, and stringtie/ outputs.'),
+            InterfaceField('univec_fasta', 'File', 'UniVec FASTA used by seqclean.'),
+            InterfaceField('pasa_config_template', 'File', 'PASA alignAssembly template config file supplied from a PASA installation.'),
+            InterfaceField('pasa_sif', 'str', 'Optional Apptainer/Singularity image path for PASA tools.'),
+            InterfaceField('seqclean_threads', 'int', 'Thread count for seqclean.'),
+            InterfaceField('pasa_cpu', 'int', 'CPU count for PASA Launch_PASA_pipeline.pl.'),
+            InterfaceField('pasa_max_intron_length', 'int', 'Maximum intron length passed to PASA.'),
+            InterfaceField('pasa_aligners', 'str', 'Comma-separated PASA aligner list.'),
+            InterfaceField('pasa_db_name', 'str', 'SQLite database filename created for PASA.'),
+        ),
+        outputs=(
+            InterfaceField('results_dir', 'Dir', 'Timestamped PASA results directory with combined transcripts, seqclean outputs, SQLite config, PASA outputs, and a manifest.'),
+        ),
+        tags=('workflow', 'pasa', 'transcript-alignment', 'sqlite'),
+        compatibility=RegistryCompatibilityMetadata(
+            biological_stage='PASA transcript alignment and assembly',
+            accepted_planner_types=('ReferenceGenome', 'TranscriptEvidenceSet',),
+            produced_planner_types=('TranscriptEvidenceSet',),
+            reusable_as_reference=True,
+            execution_defaults={
+            'profile': 'local',
+            'result_manifest': 'run_manifest.json',
+            'resources': {'cpu': '8', 'memory': '32Gi', 'execution_class': 'local'},
+            'slurm_resource_hints': {'cpu': '8', 'memory': '32Gi', 'walltime': '04:00:00'},
+        },
+            supported_execution_profiles=('local', 'slurm',),
+            synthesis_eligible=True,
+            composition_constraints=('Consumes the existing transcript evidence result bundle directly.', 'Requires a user-supplied UniVec FASTA and PASA config template.',),
+            pipeline_family='annotation',
+            pipeline_stage_order=2,
+        ),
+    ),
+    RegistryEntry(
+        name='transdecoder_from_pasa',
+        category='workflow',
+        description='TransDecoder coding-prediction workflow built from the PASA results bundle and the TransDecoder tool reference.',
+        inputs=(
+            InterfaceField('pasa_results', 'Dir', 'PASA results directory containing pasa/ and config/ outputs from pasa_transcript_alignment.'),
+            InterfaceField('transdecoder_sif', 'str', 'Optional Apptainer/Singularity image path for TransDecoder.'),
+            InterfaceField('transdecoder_min_protein_length', 'int', 'Minimum predicted protein length passed to TransDecoder.LongOrfs with -m.'),
+            InterfaceField('transdecoder_genome_orf_script', 'str', 'TransDecoder utility script used to convert transcript-level ORFs to genome-coordinates.'),
+        ),
+        outputs=(
+            InterfaceField('results_dir', 'Dir', 'Timestamped TransDecoder results directory with copied outputs and a manifest.'),
+        ),
+        tags=('workflow', 'transdecoder', 'coding-prediction', 'pasa'),
+        compatibility=RegistryCompatibilityMetadata(
+            biological_stage='TransDecoder coding-region prediction from PASA assemblies',
+            accepted_planner_types=('TranscriptEvidenceSet',),
+            produced_planner_types=('AnnotationEvidenceSet',),
+            reusable_as_reference=True,
+            execution_defaults={
+            'profile': 'local',
+            'result_manifest': 'run_manifest.json',
+            'resources': {'cpu': '8', 'memory': '32Gi', 'execution_class': 'local'},
+            'slurm_resource_hints': {'cpu': '8', 'memory': '32Gi', 'walltime': '01:00:00'},
+        },
+            supported_execution_profiles=('local', 'slurm',),
+            synthesis_eligible=True,
+            composition_constraints=('TransDecoder command sequence remains documented as inferred from the notes.',),
+            pipeline_family='annotation',
+            pipeline_stage_order=3,
+        ),
+    ),
+    RegistryEntry(
+        name='annotation_refinement_pasa',
+        category='workflow',
+        description='PASA post-EVM annotation-refinement workflow built from the PASA tool reference, explicit update rounds, and the existing PASA and EVM bundles.',
+        inputs=(
+            InterfaceField('pasa_results', 'Dir', 'PASA results directory from pasa_transcript_alignment.'),
+            InterfaceField('evm_results', 'Dir', 'EVM results directory from consensus_annotation_evm.'),
+            InterfaceField('pasa_annot_compare_template', 'File', 'PASA annotCompare template config file supplied from a PASA installation.'),
+            InterfaceField('fasta36_binary_path', 'str', 'Optional local fasta36 binary path used to create the note-described bin/fasta symlink.'),
+            InterfaceField('load_current_annotations_script', 'str', 'Load_Current_Gene_Annotations.dbi path or executable name.'),
+            InterfaceField('pasa_update_script', 'str', 'Launch_PASA_pipeline.pl path or executable name for annotCompare mode.'),
+            InterfaceField('gff3sort_script', 'str', 'Optional gff3sort.pl path or executable name. When empty, sorting is skipped explicitly.'),
+            InterfaceField('pasa_update_rounds', 'int', 'Number of PASA post-EVM update rounds to run; must be at least 2 to match the current PASA refinement contract.'),
+            InterfaceField('pasa_sif', 'str', 'Optional Apptainer/Singularity image path for PASA tools.'),
+            InterfaceField('pasa_update_cpu', 'int', 'CPU count passed to Launch_PASA_pipeline.pl during PASA post-EVM update rounds.'),
+        ),
+        outputs=(
+            InterfaceField('results_dir', 'Dir', 'Timestamped PASA-update results directory with staged inputs, copied round workspaces, final updated GFF3 files, and run_manifest.json.'),
+        ),
+        tags=('workflow', 'pasa', 'post-evm', 'annotation-refinement'),
+        compatibility=RegistryCompatibilityMetadata(
+            biological_stage='PASA-based gene model update',
+            accepted_planner_types=('TranscriptEvidenceSet', 'ConsensusAnnotation',),
+            produced_planner_types=('ConsensusAnnotation',),
+            reusable_as_reference=True,
+            execution_defaults={
+            'profile': 'local',
+            'result_manifest': 'run_manifest.json',
+            'resources': {'cpu': '8', 'memory': '32Gi', 'execution_class': 'local'},
+            'slurm_resource_hints': {'cpu': '8', 'memory': '32Gi', 'walltime': '08:00:00'},
+        },
+            supported_execution_profiles=('local', 'slurm',),
+            synthesis_eligible=True,
+            composition_constraints=('Consumes existing PASA and EVM result bundles without reopening upstream evidence generation.',),
+            pipeline_family='annotation',
+            pipeline_stage_order=8,
+        ),
+    ),
+    RegistryEntry(
+        name='pasa_accession_extract',
+        category='task',
+        description='Extract PASA TDN accessions from the de novo Trinity FASTA for PASA align/assemble input.',
+        inputs=(
+            InterfaceField('denovo_trinity_fasta', 'File', 'De novo Trinity transcript FASTA.'),
+            InterfaceField('pasa_sif', 'str', 'Optional Apptainer/Singularity image path for PASA tools.'),
+        ),
+        outputs=(
+            InterfaceField('tdn_accs', 'File', 'PASA de novo transcript accession list.'),
+        ),
+        tags=('pasa', 'transcript-prep', 'accessions', 'trinity'),
+    ),
+    RegistryEntry(
+        name='combine_trinity_fastas',
+        category='task',
+        description='Concatenate de novo and genome-guided Trinity transcript FASTAs into the PASA input order.',
+        inputs=(
+            InterfaceField('genome_guided_trinity_fasta', 'File', 'Genome-guided Trinity transcript FASTA.'),
+            InterfaceField('denovo_trinity_fasta', 'File', 'De novo Trinity transcript FASTA.'),
+        ),
+        outputs=(
+            InterfaceField('combined_fasta', 'File', 'Combined Trinity transcript FASTA for PASA.'),
+        ),
+        tags=('pasa', 'transcript-prep', 'trinity', 'concatenate'),
+    ),
+    RegistryEntry(
+        name='pasa_seqclean',
+        category='task',
+        description='Run PASA seqclean against the combined Trinity transcript FASTA using a UniVec reference.',
+        inputs=(
+            InterfaceField('transcripts', 'File', 'Combined Trinity transcript FASTA.'),
+            InterfaceField('univec_fasta', 'File', 'UniVec FASTA used by seqclean.'),
+            InterfaceField('pasa_sif', 'str', 'Optional Apptainer/Singularity image path for PASA tools.'),
+            InterfaceField('seqclean_threads', 'int', 'Thread count passed to seqclean with -c.'),
+        ),
+        outputs=(
+            InterfaceField('seqclean_dir', 'Dir', 'Directory containing seqclean outputs, including the .clean FASTA.'),
+        ),
+        tags=('pasa', 'transcript-prep', 'seqclean', 'univec'),
+    ),
+    RegistryEntry(
+        name='pasa_create_sqlite_db',
+        category='task',
+        description='Prepare a SQLite-backed PASA align/assemble config from a user-supplied PASA template.',
+        inputs=(
+            InterfaceField('pasa_config_template', 'File', 'PASA alignAssembly template config file supplied from a PASA installation.'),
+            InterfaceField('pasa_db_name', 'str', 'SQLite database filename to create for PASA.'),
+        ),
+        outputs=(
+            InterfaceField('config_dir', 'Dir', 'Directory containing the rewritten PASA config and SQLite database.'),
+        ),
+        tags=('pasa', 'sqlite', 'config', 'database'),
+    ),
+    RegistryEntry(
+        name='pasa_align_assemble',
+        category='task',
+        description='Run the PASA align/assemble command boundary with de novo Trinity, Trinity-GG, and StringTie evidence.',
+        inputs=(
+            InterfaceField('genome', 'File', 'Reference genome FASTA.'),
+            InterfaceField('cleaned_transcripts', 'Dir', 'seqclean output directory containing the cleaned Trinity transcript FASTA.'),
+            InterfaceField('unclean_transcripts', 'File', 'Combined Trinity transcript FASTA passed to PASA with -u.'),
+            InterfaceField('stringtie_gtf', 'File', 'StringTie transcript GTF passed to PASA with --trans_gtf.'),
+            InterfaceField('pasa_config', 'Dir', 'Directory containing the PASA config and SQLite database.'),
+            InterfaceField('tdn_accs', 'File', 'PASA de novo Trinity accession list.'),
+            InterfaceField('pasa_sif', 'str', 'Optional Apptainer/Singularity image path for PASA tools.'),
+            InterfaceField('pasa_aligners', 'str', 'Comma-separated PASA aligner list, following the PASA tool reference.'),
+            InterfaceField('pasa_cpu', 'int', 'CPU count passed to Launch_PASA_pipeline.pl.'),
+            InterfaceField('pasa_max_intron_length', 'int', 'Maximum intron length passed to PASA.'),
+        ),
+        outputs=(
+            InterfaceField('pasa_dir', 'Dir', 'Directory containing PASA align/assemble outputs.'),
+        ),
+        tags=('pasa', 'align-assemble', 'sqlite', 'stringtie', 'trinity'),
+    ),
+    RegistryEntry(
+        name='collect_pasa_results',
+        category='task',
+        description='Collect PASA preparation and align/assemble outputs into a structured results directory with a manifest.',
+        inputs=(
+            InterfaceField('genome', 'File', 'Reference genome FASTA.'),
+            InterfaceField('transcript_evidence_results', 'Dir', 'Transcript evidence results directory used as PASA source input.'),
+            InterfaceField('univec_fasta', 'File', 'UniVec FASTA used by seqclean.'),
+            InterfaceField('combined_trinity', 'File', 'Combined Trinity transcript FASTA.'),
+            InterfaceField('seqclean', 'Dir', 'seqclean output directory.'),
+            InterfaceField('pasa_config', 'Dir', 'PASA config directory containing the SQLite database.'),
+            InterfaceField('pasa_run', 'Dir', 'PASA output directory.'),
+            InterfaceField('stringtie_gtf', 'File', 'StringTie transcript GTF used for PASA.'),
+            InterfaceField('trinity_denovo_fasta', 'File', 'De novo Trinity FASTA used for PASA transcript preparation.'),
+            InterfaceField('tdn_accs', 'File', 'PASA TDN accession list used during align/assemble.'),
+            InterfaceField('sample_id', 'str', 'Sample identifier propagated from transcript evidence results.'),
+        ),
+        outputs=(
+            InterfaceField('results_dir', 'Dir', 'Timestamped PASA results directory with combined transcripts, seqclean, config, PASA outputs, and run_manifest.json.'),
+        ),
+        tags=('pasa', 'results', 'manifest'),
+    ),
+    RegistryEntry(
+        name='prepare_pasa_update_inputs',
+        category='task',
+        description='Stage the existing PASA and EVM result bundles into a deterministic PASA post-EVM refinement workspace with rewritten annotCompare config and canonical current annotations.',
+        inputs=(
+            InterfaceField('pasa_results', 'Dir', 'PASA results directory from pasa_transcript_alignment containing seqclean outputs, config/, and PASA database state.'),
+            InterfaceField('evm_results', 'Dir', 'EVM results directory from consensus_annotation_evm containing EVM.all.sort.gff3 and the staged reference genome.'),
+            InterfaceField('pasa_annot_compare_template', 'File', 'PASA annotCompare template config supplied from a PASA installation.'),
+            InterfaceField('fasta36_binary_path', 'str', 'Optional local fasta36 binary path used to create the note-described bin/fasta symlink.'),
+        ),
+        outputs=(
+            InterfaceField('pasa_update_inputs_dir', 'Dir', 'Directory containing copied PASA configs and database, cleaned transcripts, genome.fa, current_annotations.gff3, optional bin/fasta, and run_manifest.json.'),
+        ),
+        tags=('pasa', 'post-evm', 'staging', 'config'),
+    ),
+    RegistryEntry(
+        name='pasa_load_current_annotations',
+        category='task',
+        description='Load the current annotation GFF3 into the original PASA database state before one PASA post-EVM update round.',
+        inputs=(
+            InterfaceField('pasa_update_inputs', 'Dir', 'Directory produced by prepare_pasa_update_inputs or by a previous PASA update round.'),
+            InterfaceField('round_index', 'int', '1-based PASA update round index used for deterministic manifesting and directory naming.'),
+            InterfaceField('load_current_annotations_script', 'str', 'Load_Current_Gene_Annotations.dbi path or executable name.'),
+            InterfaceField('pasa_sif', 'str', 'Optional Apptainer/Singularity image path for PASA tools.'),
+        ),
+        outputs=(
+            InterfaceField('loaded_pasa_update_dir', 'Dir', 'Directory containing the copied PASA update workspace after loading current annotations plus run_manifest.json.'),
+        ),
+        tags=('pasa', 'post-evm', 'load-annotations', 'database'),
+    ),
+    RegistryEntry(
+        name='pasa_update_gene_models',
+        category='task',
+        description='Run one PASA annotation-refinement round, resolve the new post-update GFF3, and promote it as the canonical current annotations file for the next round.',
+        inputs=(
+            InterfaceField('loaded_pasa_update', 'Dir', 'Directory produced by pasa_load_current_annotations.'),
+            InterfaceField('round_index', 'int', '1-based PASA update round index used for deterministic manifesting and directory naming.'),
+            InterfaceField('pasa_update_script', 'str', 'Launch_PASA_pipeline.pl path or executable name for annotCompare mode.'),
+            InterfaceField('pasa_sif', 'str', 'Optional Apptainer/Singularity image path for PASA tools.'),
+            InterfaceField('pasa_update_cpu', 'int', 'CPU count passed to Launch_PASA_pipeline.pl during PASA post-EVM update rounds.'),
+        ),
+        outputs=(
+            InterfaceField('pasa_update_round_dir', 'Dir', 'Directory containing one PASA update-round workspace, the resolved new gene-model GFF3, optional BED output, promoted current_annotations.gff3, and run_manifest.json.'),
+        ),
+        tags=('pasa', 'post-evm', 'annotation-update', 'round'),
+    ),
+    RegistryEntry(
+        name='finalize_pasa_update_outputs',
+        category='task',
+        description='Create stable final PASA post-update GFF3 filenames, remove blank lines, and optionally sort the last-round output with gff3sort.',
+        inputs=(
+            InterfaceField('pasa_update_round', 'Dir', 'Directory produced by pasa_update_gene_models for the final refinement round.'),
+            InterfaceField('gff3sort_script', 'str', 'Optional gff3sort.pl path or executable name. When empty, sorting is skipped explicitly.'),
+            InterfaceField('pasa_sif', 'str', 'Optional Apptainer/Singularity image path for PASA tools.'),
+        ),
+        outputs=(
+            InterfaceField('finalized_pasa_update_dir', 'Dir', 'Directory containing post_pasa_updates.gff3, post_pasa_updates.removed.gff3, post_pasa_updates.sort.gff3, and run_manifest.json.'),
+        ),
+        tags=('pasa', 'post-evm', 'finalize', 'gff3'),
+    ),
+    RegistryEntry(
+        name='collect_pasa_update_results',
+        category='task',
+        description='Collect PASA post-EVM staged inputs, per-round workspaces, and final updated GFF3 outputs into one manifest-bearing results directory.',
+        inputs=(
+            InterfaceField('pasa_results', 'Dir', 'Original PASA results bundle used as the upstream database and transcript source.'),
+            InterfaceField('evm_results', 'Dir', 'Original EVM results bundle used as the upstream consensus-annotation source.'),
+            InterfaceField('pasa_update_inputs', 'Dir', 'Directory produced by prepare_pasa_update_inputs.'),
+            InterfaceField('load_rounds', 'list[Dir]', 'Per-round PASA load-current-annotations directories in workflow order.'),
+            InterfaceField('update_rounds', 'list[Dir]', 'Per-round PASA update directories in workflow order.'),
+            InterfaceField('finalized_outputs', 'Dir', 'Directory produced by finalize_pasa_update_outputs.'),
+        ),
+        outputs=(
+            InterfaceField('results_dir', 'Dir', 'Timestamped PASA-update results directory containing staged inputs, copied round workspaces, final updated GFF3 files, and run_manifest.json.'),
+        ),
+        tags=('pasa', 'post-evm', 'results', 'manifest'),
+    ),
+    RegistryEntry(
+        name='transdecoder_train_from_pasa',
+        category='task',
+        description='Run the TransDecoder LongOrfs/Predict phase sequence from PASA assemblies and lift ORFs onto genome coordinates.',
+        inputs=(
+            InterfaceField('pasa_assemblies_fasta', 'File', 'PASA assemblies FASTA generated from the PASA align/assemble stage.'),
+            InterfaceField('pasa_assemblies_gff3', 'File', 'PASA assemblies GFF3 used to project TransDecoder ORFs onto genome coordinates.'),
+            InterfaceField('transdecoder_sif', 'str', 'Optional Apptainer/Singularity image path for TransDecoder.'),
+            InterfaceField('transdecoder_min_protein_length', 'int', 'Minimum predicted protein length passed to TransDecoder.LongOrfs with -m.'),
+            InterfaceField('transdecoder_genome_orf_script', 'str', 'TransDecoder utility script used to convert transcript-level ORFs to genome-coordinates; defaults to cdna_alignment_orf_to_genome_orf.pl.'),
+        ),
+        outputs=(
+            InterfaceField('transdecoder_dir', 'Dir', 'Directory containing TransDecoder intermediates plus transcript-level and genome-level coding predictions.'),
+        ),
+        tags=('transdecoder', 'coding-prediction', 'pasa', 'orfs'),
+    ),
+    RegistryEntry(
+        name='collect_transdecoder_results',
+        category='task',
+        description='Collect TransDecoder outputs into a structured results directory with a manifest and typed asset summary.',
+        inputs=(
+            InterfaceField('pasa_results', 'Dir', 'PASA results directory used as the source input boundary for TransDecoder.'),
+            InterfaceField('transdecoder_run', 'Dir', 'TransDecoder output directory to collect.'),
+            InterfaceField('sample_id', 'str', 'Sample identifier propagated from the PASA results manifest.'),
+        ),
+        outputs=(
+            InterfaceField('results_dir', 'Dir', 'Timestamped TransDecoder results directory with copied outputs and run_manifest.json.'),
+        ),
+        tags=('transdecoder', 'results', 'manifest'),
+    ),
+)

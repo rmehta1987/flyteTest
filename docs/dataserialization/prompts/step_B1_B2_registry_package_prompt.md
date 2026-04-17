@@ -23,7 +23,7 @@ Context:
 - The current `src/flytetest/registry.py` is a 2679-line monolith with 73
   entries + 3 parallel dicts + query functions. This step replaces it with a
   package of 7 family files + types + init.
-- Work on the `refactor/serialization-registry` branch.
+- Work on the `datatypes` branch.
 
 Why B1+B2 are atomic:
 

@@ -19,7 +19,7 @@ Submission prompts live under `docs/dataserialization/prompts/`.
 
 ## Branch
 
-All work on branch `refactor/serialization-registry` (create from `main`).
+All work on branch `datatypes`.
 
 ## Status Labels
 
@@ -75,20 +75,20 @@ Recommended merge order: A0, A1, B1+B2, A2-A4, B3, B4, B5, Docs
 
 Goal: Lock current serialization behavior with snapshot tests before any rewiring.
 
-Status: Not started
+Status: Complete
 
 Prompt: `docs/dataserialization/prompts/step_A0_regression_fixtures_prompt.md`
 
-- [ ] Create `tests/fixtures/` directory
-- [ ] Create and commit `tests/fixtures/run_manifest_regression.json` (sanitized from a real manifest under `results/`)
-- [ ] Create `tests/test_serialization_regression.py`
-- [ ] Spec layer snapshot: serialize representative spec, assert exact output
-- [ ] Planner layer snapshot: round-trip planner type, assert field equality
-- [ ] Asset layer snapshot: serialize manifest asset, assert exact JSON output
-- [ ] Asset reload-from-disk: test loading committed fixture, assert expected asset objects
-- [ ] Edge cases: None/Optional, Path, tuple, nested dataclass
-- [ ] Full test suite passes alongside new tests
-- [ ] `CHANGELOG.md` updated
+- [x] Create `tests/fixtures/` directory
+- [x] Create and commit `tests/fixtures/run_manifest_regression.json` (sanitized from a real manifest under `results/`)
+- [x] Create `tests/test_serialization_regression.py`
+- [x] Spec layer snapshot: serialize representative spec, assert exact output
+- [x] Planner layer snapshot: round-trip planner type, assert field equality
+- [x] Asset layer snapshot: serialize manifest asset, assert exact JSON output
+- [x] Asset reload-from-disk: test loading committed fixture, assert expected asset objects
+- [x] Edge cases: None/Optional, Path, tuple, nested dataclass
+- [x] Full test suite passes alongside new tests (442 tests, 0 failures)
+- [x] `CHANGELOG.md` updated
 
 ### Acceptance evidence
 
@@ -108,20 +108,20 @@ Prompt: `docs/dataserialization/prompts/step_A0_regression_fixtures_prompt.md`
 Goal: Create `src/flytetest/serialization.py` with shared primitives and
 layer-specific wrappers, independently testable.
 
-Status: Not started
+Status: Complete
 
 Prompt: `docs/dataserialization/prompts/step_A1_serialization_module_prompt.md`
 
-- [ ] Create `src/flytetest/serialization.py`
-- [ ] Shared primitives: `_is_optional`, `_serialize_core`, `_deserialize_core`
-- [ ] Layer-specific serialize wrappers: `serialize_value_plain`, `serialize_value_with_dicts`, `serialize_value_full`
-- [ ] Layer-specific deserialize wrappers: `deserialize_value_strict`, `deserialize_value_coercing`
-- [ ] `SerializableMixin` class (plain class, not dataclass)
-- [ ] Create `tests/test_serialization.py` with edge-case round-trips
-- [ ] Tests cover both deserializer variants
-- [ ] A0 regression fixtures still pass
-- [ ] Full test suite passes
-- [ ] `CHANGELOG.md` updated
+- [x] Create `src/flytetest/serialization.py`
+- [x] Shared primitives: `_is_optional`, `_serialize_core`, `_deserialize_core`
+- [x] Layer-specific serialize wrappers: `serialize_value_plain`, `serialize_value_with_dicts`, `serialize_value_full`
+- [x] Layer-specific deserialize wrappers: `deserialize_value_strict`, `deserialize_value_coercing`
+- [x] `SerializableMixin` class (plain class, not dataclass)
+- [x] Create `tests/test_serialization.py` with edge-case round-trips (52 tests)
+- [x] Tests cover both deserializer variants
+- [x] A0 regression fixtures still pass
+- [x] Full test suite passes (494 tests, 0 failures)
+- [x] `CHANGELOG.md` updated
 
 ### Acceptance evidence
 
@@ -140,14 +140,14 @@ Prompt: `docs/dataserialization/prompts/step_A1_serialization_module_prompt.md`
 
 Goal: Remove duplicate serialization helpers from `specs.py`, wire to shared module.
 
-Status: Not started
+Status: Complete
 
 Prompt: `docs/dataserialization/prompts/step_A2_A3_A4_rewire_serializers_prompt.md`
 
-- [ ] Remove `_serialize()`, `_is_optional()`, `_deserialize()` from `specs.py`
-- [ ] `SpecSerializable` uses `SerializableMixin` with `serialize_value_with_dicts` + `deserialize_value_strict`
-- [ ] A0 regression fixtures pass
-- [ ] Spec-specific tests pass: `test_specs`, `test_spec_artifacts`, `test_spec_executor`, `test_recipe_approval`
+- [x] Remove `_serialize()`, `_is_optional()`, `_deserialize()` from `specs.py`
+- [x] `SpecSerializable` uses `SerializableMixin` with `serialize_value_with_dicts` + `deserialize_value_strict`
+- [x] A0 regression fixtures pass
+- [x] Spec-specific tests pass: `test_specs`, `test_spec_artifacts`, `test_spec_executor`, `test_recipe_approval`
 
 ---
 
@@ -155,14 +155,14 @@ Prompt: `docs/dataserialization/prompts/step_A2_A3_A4_rewire_serializers_prompt.
 
 Goal: Remove duplicate serialization helpers from `planner_types.py`, wire to shared module.
 
-Status: Not started
+Status: Complete
 
 Prompt: `docs/dataserialization/prompts/step_A2_A3_A4_rewire_serializers_prompt.md`
 
-- [ ] Remove `_serialize_value()`, `_is_optional()`, `_deserialize_value()` from `planner_types.py`
-- [ ] `PlannerSerializable` uses `SerializableMixin` with `serialize_value_plain` + `deserialize_value_strict`
-- [ ] A0 regression fixtures pass
-- [ ] Planner-specific tests pass: `test_planner_types`, `test_planning`
+- [x] Remove `_serialize_value()`, `_is_optional()`, `_deserialize_value()` from `planner_types.py`
+- [x] `PlannerSerializable` uses `SerializableMixin` with `serialize_value_plain` + `deserialize_value_strict`
+- [x] A0 regression fixtures pass
+- [x] Planner-specific tests pass: `test_planner_types`, `test_planning`
 
 ---
 
@@ -170,23 +170,23 @@ Prompt: `docs/dataserialization/prompts/step_A2_A3_A4_rewire_serializers_prompt.
 
 Goal: Remove duplicate serialization helpers from `types/assets.py`, wire to shared module.
 
-Status: Not started
+Status: Complete
 
 Prompt: `docs/dataserialization/prompts/step_A2_A3_A4_rewire_serializers_prompt.md`
 
-- [ ] Remove `_serialize_manifest_value()`, `_is_optional_manifest_type()`, `_deserialize_manifest_value()` from `types/assets.py`
-- [ ] `ManifestSerializable` uses `SerializableMixin` with `serialize_value_full` + `deserialize_value_coercing`
-- [ ] A0 regression fixtures pass (including manifest reload-from-disk)
-- [ ] Full test suite passes
-- [ ] `rg "def _serialize|def _deserialize" src/flytetest/` — only in `serialization.py` + unrelated helpers
-- [ ] `CHANGELOG.md` updated
+- [x] Remove `_serialize_manifest_value()`, `_is_optional_manifest_type()`, `_deserialize_manifest_value()` from `types/assets.py`
+- [x] `ManifestSerializable` uses `SerializableMixin` with `serialize_value_full` + `deserialize_value_coercing`
+- [x] A0 regression fixtures pass (including manifest reload-from-disk)
+- [x] Full test suite passes (494 tests, 0 failures)
+- [x] `rg "def _serialize|def _deserialize" src/flytetest/` — only in `serialization.py` + unrelated helpers
+- [x] `CHANGELOG.md` updated
 
 ### Track A acceptance evidence
 
 - Three duplicate `_serialize*`/`_deserialize*` helper sets eliminated
 - All serialization flows through `src/flytetest/serialization.py`
 - A0 regression fixtures pass at every step
-- Full test suite passes (421+ tests)
+- Full test suite passes (494 tests as of 2026-04-16)
 
 ---
 
@@ -205,38 +205,38 @@ if the session stalls or CI runs between scaffold and split, the legacy file
 becomes a confusing artifact that invites accidental direct imports. The
 monolith goes directly to package in one commit.
 
-Status: Not started
+Status: Complete (2026-04-16)
 
 Prompt: `docs/dataserialization/prompts/step_B1_B2_registry_package_prompt.md`
 
 Phase 1 — Package structure:
-- [ ] Create `src/flytetest/registry/__init__.py`
-- [ ] Create `src/flytetest/registry/_types.py` with dataclass definitions
-- [ ] Add `showcase_module: str = ""` field to `RegistryEntry`
-- [ ] Override `to_dict()` to exclude `showcase_module`
+- [x] Create `src/flytetest/registry/__init__.py`
+- [x] Create `src/flytetest/registry/_types.py` with dataclass definitions
+- [x] Add `showcase_module: str = ""` field to `RegistryEntry`
+- [x] Override `to_dict()` to exclude `showcase_module`
 
 Phase 2 — Family files with self-contained entries:
-- [ ] Create `_transcript_evidence.py` (8 entries)
-- [ ] Create `_consensus.py` (16 entries)
-- [ ] Create `_protein_evidence.py` (6 entries)
-- [ ] Create `_annotation.py` (5 entries)
-- [ ] Create `_evm.py` (12 entries)
-- [ ] Create `_postprocessing.py` (21 entries)
-- [ ] Create `_rnaseq.py` (5 entries)
+- [x] Create `_transcript_evidence.py` (8 entries)
+- [x] Create `_consensus.py` (16 entries)
+- [x] Create `_protein_evidence.py` (6 entries)
+- [x] Create `_annotation.py` (5 entries)
+- [x] Create `_evm.py` (12 entries)
+- [x] Create `_postprocessing.py` (21 entries)
+- [x] Create `_rnaseq.py` (5 entries)
 
 Phase 3 — Wire up and delete monolith:
-- [ ] `__init__.py` collects all family tuples + re-exports types + query functions
-- [ ] Delete `src/flytetest/registry.py` (monolith)
-- [ ] No `_registry_legacy.py` exists
+- [x] `__init__.py` collects all family tuples + re-exports types + query functions
+- [x] Delete `src/flytetest/registry.py` (monolith)
+- [x] No `_registry_legacy.py` exists
 
 Phase 4 — Verify:
-- [ ] All existing `from flytetest.registry import ...` work (12 known consumers)
-- [ ] `len(REGISTRY_ENTRIES) == 73`
-- [ ] `to_dict()` output identical for all entries (no `showcase_module` leakage)
-- [ ] `_WORKFLOW_COMPATIBILITY_METADATA`, `_WORKFLOW_LOCAL_RESOURCE_DEFAULTS`, `_WORKFLOW_SLURM_RESOURCE_HINTS` — 0 hits in codebase
-- [ ] `get_pipeline_stages("annotation")` returns correct order
-- [ ] Full test suite passes
-- [ ] `CHANGELOG.md` updated
+- [x] All existing `from flytetest.registry import ...` work (12 known consumers)
+- [x] `len(REGISTRY_ENTRIES) == 73`
+- [x] `to_dict()` output identical for all entries (no `showcase_module` leakage)
+- [x] `_WORKFLOW_COMPATIBILITY_METADATA`, `_WORKFLOW_LOCAL_RESOURCE_DEFAULTS`, `_WORKFLOW_SLURM_RESOURCE_HINTS` — 0 hits in codebase
+- [x] `get_pipeline_stages("annotation")` returns correct order (15 stages)
+- [x] Full test suite passes (494 tests, 1 skipped)
+- [x] `CHANGELOG.md` updated
 
 ### Acceptance evidence
 
@@ -261,18 +261,18 @@ Phase 4 — Verify:
 Goal: Replace 12 hardcoded ShowcaseTarget entries with registry-derived targets.
 Preserve 4 named policy constants.
 
-Status: Not started
+Status: Complete (2026-04-16)
 
 Prompt: `docs/dataserialization/prompts/step_B3_B4_derive_mcp_and_server_prompt.md`
 
-- [ ] Add `showcase_module` values to appropriate registry entries
-- [ ] Derive `SHOWCASE_TARGETS` from `REGISTRY_ENTRIES`
-- [ ] Delete 12 hardcoded `ShowcaseTarget(...)` blocks
-- [ ] Delete 8 replaceable `SUPPORTED_*_NAME` constants
-- [ ] Preserve 4 named policy constants as explicit string assignments
-- [ ] Update `SHOWCASE_LIMITATIONS` name list (keep curated prose, review output)
-- [ ] Safety test: derived `SUPPORTED_TARGET_NAMES` matches expected set
-- [ ] MCP tests pass: `test_server`, `test_mcp_prompt_flows`
+- [x] Add `showcase_module` values to appropriate registry entries
+- [x] Derive `SHOWCASE_TARGETS` from `REGISTRY_ENTRIES`
+- [x] Delete 12 hardcoded `ShowcaseTarget(...)` blocks
+- [x] Delete 8 replaceable `SUPPORTED_*_NAME` constants
+- [x] Preserve 4 named policy constants as explicit string assignments
+- [x] Update `SHOWCASE_LIMITATIONS` name list (keep curated prose, review output)
+- [x] Safety test: derived `SUPPORTED_TARGET_NAMES` matches expected set
+- [x] MCP tests pass: `test_server`, `test_mcp_prompt_flows`
 
 ---
 
@@ -280,15 +280,15 @@ Prompt: `docs/dataserialization/prompts/step_B3_B4_derive_mcp_and_server_prompt.
 
 Goal: Simplify `_local_node_handlers()` using derived workflow/task name tuples.
 
-Status: Not started
+Status: Complete (2026-04-16)
 
 Prompt: `docs/dataserialization/prompts/step_B3_B4_derive_mcp_and_server_prompt.md`
 
-- [ ] Update `server.py` imports (remove 8 deleted constants, add derived tuples)
-- [ ] Replace explicit handler map with derived loop
-- [ ] `TASK_PARAMETERS` stays manual (4 entries)
-- [ ] Full test suite passes
-- [ ] `CHANGELOG.md` updated
+- [x] Update `server.py` imports (remove 8 deleted constants, add derived tuples)
+- [x] Replace explicit handler map with derived loop
+- [x] `TASK_PARAMETERS` stays manual (4 entries)
+- [x] Full test suite passes (495 tests, 1 skipped)
+- [x] `CHANGELOG.md` updated
 
 ### Track B3-B4 acceptance evidence
 
@@ -308,17 +308,17 @@ Prompt: `docs/dataserialization/prompts/step_B3_B4_derive_mcp_and_server_prompt.
 
 Goal: Demonstrate the new structure by adding a GATK entry in one file.
 
-Status: Not started
+Status: Complete (2026-04-16)
 
 Prompt: `docs/dataserialization/prompts/step_B5_gatk_proof_of_concept_prompt.md`
 
-- [ ] Create `src/flytetest/registry/_gatk.py` with `GATK_ENTRIES`
-- [ ] Add import + concatenation in `__init__.py`
-- [ ] GATK entry visible in `list_entries()` and `get_pipeline_stages("variant_calling")`
-- [ ] GATK entry NOT in MCP showcase targets (showcase_module empty)
-- [ ] `len(REGISTRY_ENTRIES) == 74`
-- [ ] Full test suite passes
-- [ ] `CHANGELOG.md` updated
+- [x] Create `src/flytetest/registry/_gatk.py` with `GATK_ENTRIES`
+- [x] Add import + concatenation in `__init__.py`
+- [x] GATK entry visible in `list_entries()` and `get_pipeline_stages("variant_calling")`
+- [x] GATK entry NOT in MCP showcase targets (showcase_module empty)
+- [x] `len(REGISTRY_ENTRIES) == 74`
+- [x] Full test suite passes (495 tests, 1 skipped)
+- [x] `CHANGELOG.md` updated
 
 ### Acceptance evidence
 
@@ -336,33 +336,61 @@ Prompt: `docs/dataserialization/prompts/step_B5_gatk_proof_of_concept_prompt.md`
 
 Goal: Update all project documentation to reflect the new structure.
 
-Status: Not started
+Status: Complete (2026-04-16)
 
 Prompt: `docs/dataserialization/prompts/step_post_refactor_docs_prompt.md`
 
-- [ ] Create `.codex/registry.md` — registry package guide
-- [ ] Create `.codex/agent/registry.md` — specialist role prompt
-- [ ] Update `AGENTS.md` — add Project Structure quick-map section
-- [ ] Update `CLAUDE.md` — add registry guide to specialist guides table
-- [ ] Update `DESIGN.md` — reflect registry package split and serialization consolidation
-- [ ] Update 9 `.codex/` files — change `registry.py` references to `registry/`
-  - [ ] `.codex/workflows.md`
-  - [ ] `.codex/documentation.md`
-  - [ ] `.codex/testing.md`
-  - [ ] `.codex/code-review.md`
-  - [ ] `.codex/agent/workflow.md`
-  - [ ] `.codex/agent/code-review.md`
-  - [ ] `.codex/agent/test.md`
-  - [ ] `.codex/agent/architecture.md`
-  - [ ] `.codex/agent/README.md`
-- [ ] `rg "src/flytetest/registry.py" .codex/ AGENTS.md CLAUDE.md DESIGN.md` — 0 hits
-- [ ] `CHANGELOG.md` updated with comprehensive refactor entry
+- [x] Create `.codex/registry.md` — registry package guide
+- [x] Create `.codex/agent/registry.md` — specialist role prompt
+- [x] Update `AGENTS.md` — add Project Structure quick-map section
+- [x] Update `CLAUDE.md` — add registry guide to specialist guides table
+- [x] Update `DESIGN.md` — reflect registry package split and serialization consolidation
+- [x] Update 9 `.codex/` files — change `registry.py` references to `registry/`
+  - [x] `.codex/workflows.md`
+  - [x] `.codex/documentation.md`
+  - [x] `.codex/testing.md`
+  - [x] `.codex/code-review.md`
+  - [x] `.codex/agent/workflow.md`
+  - [x] `.codex/agent/code-review.md`
+  - [x] `.codex/agent/test.md`
+  - [x] `.codex/agent/architecture.md`
+  - [x] `.codex/agent/README.md`
+- [x] `rg "src/flytetest/registry.py" .codex/ AGENTS.md CLAUDE.md DESIGN.md` — 0 hits
+- [x] `CHANGELOG.md` updated with comprehensive refactor entry
 
 ### Acceptance evidence
 
 - `.codex/registry.md` and `.codex/agent/registry.md` exist
 - 0 references to `registry.py` monolith path in documentation
 - AGENTS.md has Project Structure section
+
+---
+
+## Deferred TODOs
+
+### Remove flyte_stub.py
+
+Now that `flyte` (v2.1.2) is installed in the venv, the real `flyte.io.File` and
+`flyte.io.Dir` are available. All task and test code already uses `File(path=str(...))`
+keyword construction, which works with the real types. `Dir.download_sync()` returns
+the same local path; `File.download_sync()` copies to a new temp path (minor behavioral
+difference from the stub).
+
+Work involved:
+1. Remove per-file `from flyte_stub import install_flyte_stub; install_flyte_stub()` calls
+   from every test file — redundant since `tests/__init__.py` already fires first under
+   `python3 -m unittest discover`
+2. Run the suite without the stub entirely (comment out the `tests/__init__.py` call);
+   fix any File-path assertion failures from `File.download_sync()` copying to a new temp
+   path instead of returning the original (expected to be small; `Dir.download_sync()`
+   already returns the same local path)
+3. If step 2 passes cleanly: delete `tests/flyte_stub.py` and gut `tests/__init__.py`
+
+Note: `conftest.py` is NOT an option — we keep `python3 -m unittest discover` as the
+runner. The `tests/__init__.py` hook is the correct place for any remaining setup.
+
+Deferred because: nothing is currently broken; verification cost is non-trivial.
+Do after B5 is complete.
 
 ---
 

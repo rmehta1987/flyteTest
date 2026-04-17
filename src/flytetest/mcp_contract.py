@@ -11,15 +11,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from flytetest.config import (
-    AGAT_CLEANUP_WORKFLOW_NAME,
-    AGAT_CONVERSION_WORKFLOW_NAME,
-    AGAT_WORKFLOW_NAME,
     ANNOTATION_WORKFLOW_NAME,
-    EGGNOG_WORKFLOW_NAME,
-    FUNCTIONAL_QC_WORKFLOW_NAME,
     PROTEIN_EVIDENCE_WORKFLOW_NAME,
-    TABLE2ASN_WORKFLOW_NAME,
 )
+from flytetest.registry import REGISTRY_ENTRIES
 
 
 @dataclass(frozen=True, slots=True)
@@ -89,90 +84,25 @@ SUPPORTED_WORKFLOW_NAME = ANNOTATION_WORKFLOW_NAME
 SUPPORTED_PROTEIN_WORKFLOW_NAME = PROTEIN_EVIDENCE_WORKFLOW_NAME
 SUPPORTED_TASK_NAME = "exonerate_align_chunk"
 SUPPORTED_BUSCO_FIXTURE_TASK_NAME = "busco_assess_proteins"
-SUPPORTED_FASTQC_TASK_NAME = "fastqc"
-SUPPORTED_GFFREAD_PROTEINS_TASK_NAME = "gffread_proteins"
-SUPPORTED_BUSCO_WORKFLOW_NAME = FUNCTIONAL_QC_WORKFLOW_NAME
-SUPPORTED_EGGNOG_WORKFLOW_NAME = EGGNOG_WORKFLOW_NAME
-SUPPORTED_AGAT_WORKFLOW_NAME = AGAT_WORKFLOW_NAME
-SUPPORTED_AGAT_CONVERSION_WORKFLOW_NAME = AGAT_CONVERSION_WORKFLOW_NAME
-SUPPORTED_AGAT_CLEANUP_WORKFLOW_NAME = AGAT_CLEANUP_WORKFLOW_NAME
-SUPPORTED_TABLE2ASN_WORKFLOW_NAME = TABLE2ASN_WORKFLOW_NAME
 
 _PACKAGE_ROOT = Path(__file__).resolve().parent
 
-SHOWCASE_TARGETS = (
+
+def _resolve_source_path(module_name: str) -> Path:
+    """Derive the source file path for a flytetest module from its import path."""
+    relative = module_name.removeprefix("flytetest.").replace(".", "/") + ".py"
+    return _PACKAGE_ROOT / relative
+
+
+SHOWCASE_TARGETS = tuple(
     ShowcaseTarget(
-        name=SUPPORTED_WORKFLOW_NAME,
-        category="workflow",
-        module_name="flytetest.workflows.annotation",
-        source_path=_PACKAGE_ROOT / "workflows" / "annotation.py",
-    ),
-    ShowcaseTarget(
-        name=SUPPORTED_PROTEIN_WORKFLOW_NAME,
-        category="workflow",
-        module_name="flytetest.workflows.protein_evidence",
-        source_path=_PACKAGE_ROOT / "workflows" / "protein_evidence.py",
-    ),
-    ShowcaseTarget(
-        name=SUPPORTED_TASK_NAME,
-        category="task",
-        module_name="flytetest.tasks.protein_evidence",
-        source_path=_PACKAGE_ROOT / "tasks" / "protein_evidence.py",
-    ),
-    ShowcaseTarget(
-        name=SUPPORTED_BUSCO_FIXTURE_TASK_NAME,
-        category="task",
-        module_name="flytetest.tasks.functional",
-        source_path=_PACKAGE_ROOT / "tasks" / "functional.py",
-    ),
-    ShowcaseTarget(
-        name=SUPPORTED_BUSCO_WORKFLOW_NAME,
-        category="workflow",
-        module_name="flytetest.workflows.functional",
-        source_path=_PACKAGE_ROOT / "workflows" / "functional.py",
-    ),
-    ShowcaseTarget(
-        name=SUPPORTED_EGGNOG_WORKFLOW_NAME,
-        category="workflow",
-        module_name="flytetest.workflows.eggnog",
-        source_path=_PACKAGE_ROOT / "workflows" / "eggnog.py",
-    ),
-    ShowcaseTarget(
-        name=SUPPORTED_AGAT_WORKFLOW_NAME,
-        category="workflow",
-        module_name="flytetest.workflows.agat",
-        source_path=_PACKAGE_ROOT / "workflows" / "agat.py",
-    ),
-    ShowcaseTarget(
-        name=SUPPORTED_AGAT_CONVERSION_WORKFLOW_NAME,
-        category="workflow",
-        module_name="flytetest.workflows.agat",
-        source_path=_PACKAGE_ROOT / "workflows" / "agat.py",
-    ),
-    ShowcaseTarget(
-        name=SUPPORTED_AGAT_CLEANUP_WORKFLOW_NAME,
-        category="workflow",
-        module_name="flytetest.workflows.agat",
-        source_path=_PACKAGE_ROOT / "workflows" / "agat.py",
-    ),
-    ShowcaseTarget(
-        name=SUPPORTED_TABLE2ASN_WORKFLOW_NAME,
-        category="workflow",
-        module_name="flytetest.workflows.agat",
-        source_path=_PACKAGE_ROOT / "workflows" / "agat.py",
-    ),
-    ShowcaseTarget(
-        name=SUPPORTED_FASTQC_TASK_NAME,
-        category="task",
-        module_name="flytetest.tasks.qc",
-        source_path=_PACKAGE_ROOT / "tasks" / "qc.py",
-    ),
-    ShowcaseTarget(
-        name=SUPPORTED_GFFREAD_PROTEINS_TASK_NAME,
-        category="task",
-        module_name="flytetest.tasks.filtering",
-        source_path=_PACKAGE_ROOT / "tasks" / "filtering.py",
-    ),
+        name=entry.name,
+        category=entry.category,
+        module_name=entry.showcase_module,
+        source_path=_resolve_source_path(entry.showcase_module),
+    )
+    for entry in REGISTRY_ENTRIES
+    if entry.showcase_module
 )
 SHOWCASE_TARGETS_BY_NAME = {target.name: target for target in SHOWCASE_TARGETS}
 SUPPORTED_TARGET_NAMES = tuple(target.name for target in SHOWCASE_TARGETS)
@@ -229,12 +159,16 @@ TASK_EXAMPLE_PROMPT = (
     "data/braker3/reference/genome.fa and protein chunk data/braker3/protein_data/fastas/proteins.fa"
 )
 SHOWCASE_LIMITATIONS = (
-    "The MCP recipe surface executes `ab_initio_annotation_braker3`, `protein_evidence_alignment`, `exonerate_align_chunk`, `busco_assess_proteins`, `fastqc`, `gffread_proteins`, `annotation_qc_busco`, `annotation_functional_eggnog`, `annotation_postprocess_agat`, `annotation_postprocess_agat_conversion`, `annotation_postprocess_agat_cleanup`, and `annotation_postprocess_table2asn` through explicit local handlers.",
+    "The MCP recipe surface executes "
+    + ", ".join(f"`{n}`" for n in SUPPORTED_TARGET_NAMES)
+    + " through explicit local handlers.",
     "Prompt-contained local file paths and explicit recipe inputs are frozen into saved WorkflowSpec artifacts before execution.",
     "Additional registered workflows require explicit local handlers before they are exposed as runnable MCP targets.",
 )
 LIST_ENTRIES_LIMITATIONS = (
-    "The MCP recipe surface exposes only `ab_initio_annotation_braker3`, `protein_evidence_alignment`, `exonerate_align_chunk`, `busco_assess_proteins`, `fastqc`, `gffread_proteins`, `annotation_qc_busco`, `annotation_functional_eggnog`, `annotation_postprocess_agat`, `annotation_postprocess_agat_conversion`, `annotation_postprocess_agat_cleanup`, and `annotation_postprocess_table2asn` as runnable targets.",
+    "The MCP recipe surface exposes only "
+    + ", ".join(f"`{n}`" for n in SUPPORTED_TARGET_NAMES)
+    + " as runnable targets.",
     "The primary MCP flow is `prompt_and_run(prompt)`, which prepares and executes a saved WorkflowSpec artifact.",
 )
 PROMPT_REQUIREMENTS = (

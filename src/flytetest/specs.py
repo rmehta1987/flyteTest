@@ -8,133 +8,19 @@ already exists.
 
 from __future__ import annotations
 
-import types
-from dataclasses import dataclass, field, fields, is_dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Literal, Mapping, TypeVar, Union, get_args, get_origin, get_type_hints
+from typing import Any, Literal
 
+from flytetest.serialization import SerializableMixin, deserialize_value_strict, serialize_value_with_dicts
 
-_SpecSerializableT = TypeVar("_SpecSerializableT", bound="SpecSerializable")
 EntityKind = Literal["task", "workflow", "generated_workflow"]
 NodeKind = Literal["task", "workflow", "generated_workflow"]
 
 
-def _serialize(value: Any) -> Any:
-    """Convert spec values into JSON-compatible primitives.
-
-    Args:
-        value: Spec field value to serialize.
-
-    Returns:
-        JSON-compatible representation of the supplied value.
-    """
-    # Persist filesystem paths as strings so spec payloads stay JSON-compatible.
-    if isinstance(value, Path):
-        return str(value)
-    # Immutable tuple fields become JSON lists during serialization.
-    if isinstance(value, tuple):
-        return [_serialize(item) for item in value]
-    # Dict values may contain nested dataclasses or paths, so recurse through
-    # both the keys and values before returning the payload.
-    if isinstance(value, dict):
-        return {str(key): _serialize(item) for key, item in value.items()}
-    # Nested spec dataclasses serialize using the same field-by-field rules.
-    if is_dataclass(value):
-        return {field.name: _serialize(getattr(value, field.name)) for field in fields(value)}
-    return value
-
-
-def _is_optional(annotation: Any) -> bool:
-    """Return whether one type hint is an optional union.
-
-    Args:
-        annotation: Type annotation being inspected during serialization.
-
-    Returns:
-        ``True`` when the annotation is an optional union.
-    """
-    origin = get_origin(annotation)
-    return origin in (Union, types.UnionType) and type(None) in get_args(annotation)
-
-
-def _deserialize(annotation: Any, value: Any) -> Any:
-    """Rehydrate one serialized spec value using a dataclass type hint.
-
-    Args:
-        annotation: Declared type for the field being restored.
-        value: Serialized field value to turn back into a typed object.
-
-    Returns:
-        Typed value reconstructed from the serialized payload.
-    """
-    if value is None:
-        return None
-
-    # Recover serialized path strings as `Path` objects.
-    if annotation is Path:
-        return Path(str(value))
-
-    origin = get_origin(annotation)
-    # Rebuild tuple members item-by-item with the declared element type.
-    if origin in (tuple, tuple):
-        item_type = get_args(annotation)[0]
-        return tuple(_deserialize(item_type, item) for item in value)
-
-    # Mapping members recurse through both key and value type hints.
-    if origin is dict:
-        key_type, value_type = get_args(annotation)
-        return {
-            _deserialize(key_type, key): _deserialize(value_type, item)
-            for key, item in value.items()
-        }
-
-    # Optional values are represented as unions, so unwrap the real inner type
-    # before recursing further.
-    if _is_optional(annotation):
-        inner = [item for item in get_args(annotation) if item is not type(None)]
-        if len(inner) == 1:
-            return _deserialize(inner[0], value)
-
-    # Nested spec dataclasses expose `from_dict`, so reuse that instead of
-    # rebuilding each structure manually here.
-    if isinstance(annotation, type) and is_dataclass(annotation):
-        return annotation.from_dict(value)
-
-    return value
-
-
-class SpecSerializable:
-    """Mixin that gives spec dataclasses stable dict round-trips."""
-
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize one spec dataclass into JSON-compatible data.
-
-        Returns:
-            Field-ordered JSON-compatible payload for the dataclass.
-        """
-        # Preserve declared field order so serialized specs stay predictable in
-        # tests, docs, and any later saved artifact formats.
-        return {field.name: _serialize(getattr(self, field.name)) for field in fields(self)}
-
-    @classmethod
-    def from_dict(cls: type[_SpecSerializableT], payload: Mapping[str, Any]) -> _SpecSerializableT:
-        """Deserialize one spec dataclass from JSON-compatible data.
-
-        Args:
-            payload: Structured payload to restore into the dataclass.
-
-        Returns:
-            Dataclass instance reconstructed from the supplied payload.
-        """
-        hints = get_type_hints(cls)
-        kwargs = {}
-        for field_info in fields(cls):
-            if field_info.name not in payload:
-                continue
-            # Deserialize each provided field using the declared type hints so
-            # nested specs and path members round-trip correctly.
-            kwargs[field_info.name] = _deserialize(hints[field_info.name], payload[field_info.name])
-        return cls(**kwargs)
+class SpecSerializable(SerializableMixin):
+    _serialize_fn = staticmethod(serialize_value_with_dicts)
+    _deserialize_fn = staticmethod(deserialize_value_strict)
 
 
 @dataclass(frozen=True, slots=True)

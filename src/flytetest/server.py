@@ -61,12 +61,6 @@ from flytetest.mcp_contract import (
     REASON_CODE_UNSUPPORTED_EXECUTION_TARGET,
     REASON_CODE_UNSUPPORTED_OR_AMBIGUOUS_REQUEST,
     SHOWCASE_SERVER_NAME,
-    SUPPORTED_AGAT_CLEANUP_WORKFLOW_NAME,
-    SUPPORTED_TABLE2ASN_WORKFLOW_NAME,
-    SUPPORTED_AGAT_CONVERSION_WORKFLOW_NAME,
-    SUPPORTED_AGAT_WORKFLOW_NAME,
-    SUPPORTED_BUSCO_WORKFLOW_NAME,
-    SUPPORTED_EGGNOG_WORKFLOW_NAME,
     SUPPORTED_PROTEIN_WORKFLOW_NAME,
     SUPPORTED_TARGET_NAMES,
     SUPPORTED_TASK_NAME,
@@ -1295,14 +1289,7 @@ def _local_node_handlers(
         }
 
     return {
-        SUPPORTED_WORKFLOW_NAME: workflow_handler,
-        SUPPORTED_PROTEIN_WORKFLOW_NAME: workflow_handler,
-        SUPPORTED_BUSCO_WORKFLOW_NAME: workflow_handler,
-        SUPPORTED_EGGNOG_WORKFLOW_NAME: workflow_handler,
-        SUPPORTED_AGAT_WORKFLOW_NAME: workflow_handler,
-        SUPPORTED_AGAT_CONVERSION_WORKFLOW_NAME: workflow_handler,
-        SUPPORTED_AGAT_CLEANUP_WORKFLOW_NAME: workflow_handler,
-        SUPPORTED_TABLE2ASN_WORKFLOW_NAME: workflow_handler,
+        **{name: workflow_handler for name in SUPPORTED_WORKFLOW_NAMES},
         **{name: task_handler for name in SUPPORTED_TASK_NAMES},
     }
 
@@ -2044,12 +2031,12 @@ def _summary_used_inputs(plan: dict[str, object]) -> dict[str, object]:
             matched_entry_names = plan.get("matched_entry_names", [])
             target_name = matched_entry_names[0] if isinstance(matched_entry_names, list) and matched_entry_names else None
             input_name = {
-                SUPPORTED_BUSCO_WORKFLOW_NAME: "repeat_filter_results",
-                SUPPORTED_EGGNOG_WORKFLOW_NAME: "repeat_filter_results",
-                SUPPORTED_AGAT_WORKFLOW_NAME: "eggnog_results",
-                SUPPORTED_AGAT_CONVERSION_WORKFLOW_NAME: "eggnog_results",
-                SUPPORTED_AGAT_CLEANUP_WORKFLOW_NAME: "agat_conversion_results",
-                SUPPORTED_TABLE2ASN_WORKFLOW_NAME: "agat_cleanup_results",
+                "annotation_qc_busco": "repeat_filter_results",
+                "annotation_functional_eggnog": "repeat_filter_results",
+                "annotation_postprocess_agat": "eggnog_results",
+                "annotation_postprocess_agat_conversion": "eggnog_results",
+                "annotation_postprocess_agat_cleanup": "agat_conversion_results",
+                "annotation_postprocess_table2asn": "agat_cleanup_results",
             }.get(str(target_name), "repeat_filter_results")
             source_dir = target_value.get("source_result_dir")
             if not source_dir and isinstance(target_value.get("source_manifest_path"), str):

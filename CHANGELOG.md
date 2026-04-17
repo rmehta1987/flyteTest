@@ -25,250 +25,6 @@ Entry template:
 ```markdown
 ## Unreleased
 
-### Open TODOs
-
-- [ ] **Confirm AUGUSTUS_CONFIG_PATH fix for BRAKER3 container runs** — `.runtime/augustus_config/`
-      exists at repo root (gitignored, 171 species configs from prior runs) and was likely
-      created to work around AUGUSTUS writing species configs into a read-only container path.
-      On the next real BRAKER3 run: confirm whether `AUGUSTUS_CONFIG_PATH` must be set and
-      bind-mounted explicitly. Document the confirmed fix in `docs/tool_refs/braker3.md`.
-
-- [ ] **Confirm RepeatMasker library path on RCC** — `repeatmasker_4.2.3.sif` requires a
-      Dfam/RepBase repeat library bind-mounted at runtime. Confirm the shared library path
-      on RCC before the first real annotation run. Document in `docs/annotation_pipeline_setup.md`.
-
-- [ ] **Confirm eggNOG database path on RCC** — `eggnog_mapper_2.1.13.sif` requires the
-      eggNOG database (~50 GB) staged and bind-mounted. Confirm whether it is already on a
-      shared project path or needs to be downloaded. Document in `docs/annotation_pipeline_setup.md`.
-
-- [ ] **Verify EVM 2.x command flags** — `evidencemodeler_2.1.0.sif` uses the Python 2.x
-      CLI, not the Perl 1.x scripts. Confirm that EVM task wrappers use the correct 2.x
-      flags before the first real run.
-
-### Milestone 26 — Consensus Annotation Generic Asset Surface (2026-04-16)
-
-- [x] 2026-04-16 introduced `ConsensusAnnotationResultBundle` as a biology-
-  facing generic sibling dataclass that inherits all fields from
-  `EvmConsensusResultBundle` unchanged. The 7 internal EVM computation types
-  (execution input bundle, partition bundle, command set, etc.) remain
-  EVM-named because they are internal implementation details. *(types/assets.py)*
-
-- [x] 2026-04-16 updated `consensus.py` `collect_evm_results()` to construct
-  `ConsensusAnnotationResultBundle` and emit both the generic manifest asset key
-  `consensus_annotation_result_bundle` and the legacy key
-  `evm_consensus_result_bundle` for backward replay compatibility. *(tasks/consensus.py)*
-
-- [x] 2026-04-16 exported `ConsensusAnnotationResultBundle` from
-  `flytetest.types` and `flytetest` package top-level. *(types/__init__.py,
-  __init__.py)*
-
-- [x] 2026-04-16 added 3 tests to `tests/test_consensus.py` in new
-  `ConsensusAnnotationResultBundleTests` class: subtype isinstance check, generic
-  manifest key present, legacy manifest key present. Full suite: 421 tests,
-  1 skipped.
-
-- [x] 2026-04-16 updated checklist, `capability_maturity.md`, `README.md`, and
-  plan doc to reflect Milestone 26 Complete. Generic biology-facing asset
-  surface is now complete for all current stage boundaries (M23\u2013M26).
-
-### Milestone 25 — PASA Refinement Generic Asset Surface (2026-04-16)
-
-- [x] 2026-04-16 introduced `AnnotationRefinementResultBundle` as a biology-
-  facing generic sibling dataclass that inherits all fields from
-  `PasaGeneModelUpdateResultBundle` unchanged. The nested input bundle
-  (`PasaGeneModelUpdateInputBundleAsset`) and round result
-  (`PasaGeneModelUpdateRoundResult`) remain PASA-named because their fields
-  reference PASA-specific paths (database, align/annotCompare config files).
-  *(types/assets.py)*
-
-- [x] 2026-04-16 updated `pasa.py` `collect_pasa_update_results()` to construct
-  `AnnotationRefinementResultBundle` and emit both the generic manifest asset key
-  `annotation_refinement_bundle` and the legacy key `pasa_gene_model_update_bundle`
-  for backward replay compatibility. *(tasks/pasa.py)*
-
-- [x] 2026-04-16 exported `AnnotationRefinementResultBundle` from
-  `flytetest.types` and `flytetest` package top-level. *(types/__init__.py,
-  __init__.py)*
-
-- [x] 2026-04-16 added 3 tests to `tests/test_pasa_update.py` in new
-  `AnnotationRefinementResultBundleTests` class: subtype isinstance check, generic
-  manifest key present, legacy manifest key present. Full suite: 418 tests,
-  1 skipped.
-
-- [x] 2026-04-16 updated checklist, `capability_maturity.md`, `README.md`, and
-  plan doc to reflect Milestone 25 Complete.
-
-### Milestone 24 — Protein Evidence Generic Alignment Asset Surface (2026-04-16)
-
-- [x] 2026-04-16 added `ProteinAlignmentChunkResult` as a biology-facing
-  generic sibling dataclass that inherits all fields from
-  `ExonerateChunkAlignmentResult` unchanged; `ExonerateChunkAlignmentResult`
-  remains readable for legacy replay. *(types/assets.py)*
-
-- [x] 2026-04-16 updated `protein_evidence.py` `exonerate_concat_results()` to
-  construct raw chunk assets as `ProteinAlignmentChunkResult` and emit generic
-  keys alongside legacy keys in new manifests:
-  `raw_alignment_chunks_dir` (alongside `raw_exonerate_chunks_dir`),
-  `concatenated_raw_alignments` (alongside `concatenated_raw_exonerate`), and
-  `raw_alignment_chunk_results` (alongside `raw_exonerate_chunk_results`).
-  Historical manifests remain replayable unchanged. *(tasks/protein_evidence.py)*
-
-- [x] 2026-04-16 exported `ProteinAlignmentChunkResult` from `flytetest.types`
-  and `flytetest` public namespaces. *(types/__init__.py, __init__.py)*
-
-- [x] 2026-04-16 added 4 tests to `tests/test_protein_evidence.py` in new
-  `ProteinAlignmentChunkResultTests` class: subtype check, generic output keys
-  present, legacy output keys still present, both generic and legacy asset
-  keys present in manifest. All 415 tests pass. *(tests/test_protein_evidence.py)*
-
-- [x] 2026-04-16 updated `docs/capability_maturity.md`, `README.md`,
-  `CHANGELOG.md`, checklist, and plan doc to reflect landed state.
-
-### Milestone 23 — TransDecoder Generic Asset Surface (2026-04-16)
-
-- [x] 2026-04-16 added `CodingPredictionResult` as a biology-facing generic
-  sibling dataclass that inherits all fields from `TransDecoderPredictionResult`
-  unchanged; `TransDecoderPredictionResult` remains readable for legacy replay.
-  *(types/assets.py)*
-
-- [x] 2026-04-16 updated `transdecoder.py` `collect_transdecoder_results()` to
-  construct the result as `CodingPredictionResult` and emit both
-  `"coding_prediction"` (preferred generic key) and `"transdecoder_prediction"`
-  (legacy compatibility key) in new manifests. Historical manifests that only
-  carry `transdecoder_prediction` load and replay unchanged. *(tasks/transdecoder.py)*
-
-- [x] 2026-04-16 exported `CodingPredictionResult` from `flytetest.types` and
-  `flytetest` public namespaces. *(types/__init__.py, __init__.py)*
-
-- [x] 2026-04-16 added 3 tests to `tests/test_transdecoder.py`: subtype check
-  (`CodingPredictionResult` satisfies `isinstance` against tool-branded type),
-  new manifest includes `coding_prediction` key, new manifest still includes
-  legacy `transdecoder_prediction` key. *(tests/test_transdecoder.py)*
-
-- [x] 2026-04-16 updated `docs/capability_maturity.md`, `README.md`,
-  `CHANGELOG.md`, checklist, and plan doc to reflect landed state.
-
-### Milestone 22 — Registry-Driven Pipeline Tracker (2026-04-16)
-
-- [x] 2026-04-16 added `pipeline_family: str = ""` and `pipeline_stage_order: int = 0`
-  to `RegistryCompatibilityMetadata` (frozen dataclass) with safe defaults so all
-  existing construction sites remain valid. *(registry.py)*
-
-- [x] 2026-04-16 populated all 17 `_WORKFLOW_COMPATIBILITY_METADATA` entries with
-  `pipeline_family="annotation"` and `pipeline_stage_order=1..15` for the 15 annotation
-  pipeline workflows; `busco_assess_proteins` and `rnaseq_qc_quant` keep defaults
-  (`pipeline_family=""`). *(registry.py)*
-
-- [x] 2026-04-16 added `get_pipeline_stages(family: str) -> list[tuple[str, str]]`
-  pure function to `registry.py`; returns `(workflow_name, biological_stage_label)` pairs
-  ordered by `pipeline_stage_order`, empty list for unknown or empty family. *(registry.py)*
-
-- [x] 2026-04-16 replaced the hardcoded `ANNOTATION_PIPELINE_STAGES` literal in
-  `pipeline_tracker.py` with `get_pipeline_stages("annotation")`; removed the 15
-  `config.py` workflow-name imports that were no longer needed. *(pipeline_tracker.py)*
-
-- [x] 2026-04-16 added 3 tests to `test_pipeline_tracker.py` covering annotation stage
-  count/order, empty-family guard, and standalone-workflow exclusion. *(tests/test_pipeline_tracker.py)*
-
-### Milestone 21d — Pipeline Status Tracker (2026-04-15)
-
-- [x] 2026-04-15 added `src/flytetest/pipeline_tracker.py` with
-  `ANNOTATION_PIPELINE_STAGES` (15-stage ordered list), `StageStatus` dataclass,
-  `get_annotation_pipeline_status(runs_dir)`, and `get_pipeline_summary(stages)`.
-  Reads durable `SlurmRunRecord` files from `.runtime/runs/` without modification.
-  Self-contained — no imports from `server.py`. *(pipeline_tracker.py)*
-
-- [x] 2026-04-15 added `GET_PIPELINE_STATUS_TOOL_NAME = "get_pipeline_status"` to
-  `mcp_contract.py` and appended it to `MCP_TOOL_NAMES`. *(mcp_contract.py)*
-
-- [x] 2026-04-15 added `_get_pipeline_status_impl()` and `get_pipeline_status()`
-  public wrapper to `server.py`; registered `mcp.tool()(get_pipeline_status)` in
-  `create_mcp_server`. *(server.py)*
-
-- [x] 2026-04-15 added `tests/test_pipeline_tracker.py` with 11 synthetic tests
-  covering: all-pending, completed/failed/running/timeout states, most-recent-wins,
-  summary counts, next-pending-stage label, none-when-all-complete, all-pending summary.
-  All 11 pass; full suite unaffected. *(tests/test_pipeline_tracker.py)*
-
-- [x] 2026-04-15 added Stage 0 status-check section and introductory note to
-  `docs/mcp_full_pipeline_prompt_tests.md`. *(mcp_full_pipeline_prompt_tests.md)*
-
-- [x] 2026-04-15 created milestone plan doc at
-  `docs/realtime_refactor_plans/2026-04-15-milestone-21d-pipeline-status-tracker.md`.
-
-### Milestone 21c — Biology Closure: table2asn NCBI Submission (2026-04-15)
-
-- [x] 2026-04-15 added `TABLE2ASN_WORKFLOW_NAME = "annotation_postprocess_table2asn"`,
-      `TABLE2ASN_RESULTS_PREFIX = "table2asn_results"`, `TaskEnvironmentConfig` entry,
-      and `table2asn_env` handle to `src/flytetest/config.py`. *(config.py)*
-
-- [x] 2026-04-15 added `SUPPORTED_TABLE2ASN_WORKFLOW_NAME` constant and new
-      `ShowcaseTarget(category="workflow", module_name="flytetest.workflows.agat")`
-      entry to `mcp_contract.py`; updated `SHOWCASE_LIMITATIONS` and
-      `LIST_ENTRIES_LIMITATIONS` strings. *(mcp_contract.py)*
-
-- [x] 2026-04-15 implemented `_agat_cleaned_gff3(results_dir)` helper (manifest
-      lookup with `agat_output/*.gff3` fallback) and `table2asn_submission` task in
-      `src/flytetest/tasks/agat.py`. Command shape follows `docs/braker3_evm_notes.md`
-      line ~920: `-M n -J -c w -euk -gaps-min 10 -l proximity-ligation -Z -V b`
-      plus conditional `-locus-tag-prefix` and `-j` flags. Writes `run_manifest.json`
-      with `workflow`, `assumptions`, `source_bundle`, `copied_source_manifests`,
-      `inputs`, `outputs`. *(tasks/agat.py)*
-
-- [x] 2026-04-15 added `annotation_postprocess_table2asn` workflow to
-      `src/flytetest/workflows/agat.py`; updated `__all__`. *(workflows/agat.py)*
-
-- [x] 2026-04-15 wired `SUPPORTED_TABLE2ASN_WORKFLOW_NAME` handler in `server.py`
-      `_local_node_handlers()` dict and added QualityAssessmentTarget `input_name`
-      mapping entry. *(server.py)*
-
-- [x] 2026-04-15 added `annotation_postprocess_table2asn` to all three spots in
-      `src/flytetest/registry.py`: `RegistryEntry`, `RegistryCompatibilityMetadata`,
-      `_WORKFLOW_LOCAL_RESOURCE_DEFAULTS`, and `_WORKFLOW_SLURM_RESOURCE_HINTS`.
-      *(registry.py)*
-
-- [x] 2026-04-15 added T19–T23: 2 server tests (`run_task` declines
-      `table2asn_submission`, `list_entries` includes the workflow entry) in
-      `tests/test_server.py` and 3 task tests (correct command flags, manifest
-      written, FileNotFoundError when no GFF3) in `tests/test_agat.py`; full suite
-      now 393 tests passing, 1 skipped.
-
-- [x] 2026-04-15 updated `docs/mcp_showcase.md`, `docs/capability_maturity.md`,
-      `README.md`, and `docs/realtime_refactor_checklist.md` (M21c marked Complete).
-
-### Milestone 21b — HPC Observability (2026-04-15)
-
-- [x] 2026-04-15 added `FETCH_JOB_LOG_TOOL_NAME`, `WAIT_FOR_SLURM_JOB_TOOL_NAME`,
-      `RUN_RECIPE_RESOURCE_URI_PREFIX`, `RESULT_MANIFEST_RESOURCE_URI_PREFIX`
-      constants to `mcp_contract.py`; updated `MCP_TOOL_NAMES` (now 16 entries)
-      and `MCP_RESOURCE_URIS` (now 6 entries, indices 4–5 for run-recipe and
-      result-manifest resources). *(mcp_contract.py)*
-
-- [x] 2026-04-15 added `import time` to `server.py`; implemented
-      `_fetch_job_log_impl` and `fetch_job_log(log_path, tail_lines=100)` reusing
-      the existing `_read_text_tail` path-traversal guard with `DEFAULT_RUN_DIR`
-      as `allowed_root`. *(server.py)*
-
-- [x] 2026-04-15 implemented `_wait_for_slurm_job_impl` (injected `sleep_fn` for
-      test isolation) and `wait_for_slurm_job(run_record_path, timeout_s=300,
-      poll_interval_s=15)`: polls `_monitor_slurm_job_impl` until `final_scheduler_state`
-      is non-None or the timeout expires; returns standard monitor payload plus
-      `timed_out: bool`. Poll interval floored at 5 seconds. *(server.py)*
-
-- [x] 2026-04-15 implemented `resource_run_recipe(path)` and
-      `resource_result_manifest(path)` with `REPO_ROOT`-scoped path validation;
-      `resource_result_manifest` resolves `run_manifest.json` from a directory
-      argument. Registered all new tools and resources in `create_mcp_server()`.
-      *(server.py)*
-
-- [x] 2026-04-15 added 8 new tests T11–T18 in `tests/test_server.py`; full suite
-      now 388 tests passing, 1 skipped.
-
-- [x] 2026-04-15 updated `docs/mcp_showcase.md` with "HPC Observability (M21b)"
-      section covering `fetch_job_log`, `wait_for_slurm_job`, and both new
-      resource URIs; updated `docs/capability_maturity.md` with "Job log fetching"
-      and "Job polling / wait-for-completion" rows; added new tools to `README.md`.
-
 ### Milestone 21 — Ad Hoc Task Execution Surface (2026-04-15)
 
 - [x] 2026-04-15 added `SUPPORTED_FASTQC_TASK_NAME`, `SUPPORTED_GFFREAD_PROTEINS_TASK_NAME`,
@@ -310,6 +66,117 @@ Entry template:
       381 tests, all pass (1 skipped).
 
 ## Unreleased
+
+### Post-Refactor Documentation (2026-04-16)
+
+Checklist: `docs/dataserialization/checklist.md` → Post-Refactor Documentation
+
+- [x] 2026-04-16 created `.codex/registry.md` — full registry package guide
+  covering package structure, field semantics, how to add entries, how
+  `showcase_module` controls MCP exposure, `pipeline_stage_order` conventions,
+  and `to_dict()` serialization contract.
+- [x] 2026-04-16 created `.codex/agent/registry.md` — specialist role prompt for
+  delegated registry entry work (Purpose/Read First/Role/Core Principles/Validation/
+  Handoff pattern).
+- [x] 2026-04-16 updated `AGENTS.md`: added `## Read Before Editing` registry row
+  (`.codex/registry.md`) and replaced stale `## Project Structure` section with a
+  complete orientation map of the registry package, core concept modules, tasks,
+  workflows, and types.
+- [x] 2026-04-16 updated `CLAUDE.md`: added "Registry entries and pipeline families"
+  row to specialist guides table pointing at `.codex/registry.md` and
+  `.codex/agent/registry.md`.
+- [x] 2026-04-16 updated `DESIGN.md` layout section (was "as of 2026-04-14"):
+  expanded the `registry/` package tree with all 9 submodule files and their
+  entry counts. Updated date to 2026-04-16.
+- [x] 2026-04-16 fixed all 12 stale `src/flytetest/registry.py` references across
+  9 `.codex/` files (`workflows.md`, `documentation.md`, `testing.md`,
+  `code-review.md`, `agent/workflow.md`, `agent/code-review.md`, `agent/test.md`,
+  `agent/architecture.md`, `agent/README.md`). Verified 0 hits in
+  `.codex/ AGENTS.md CLAUDE.md DESIGN.md`.
+
+### B5 — GATK Proof of Concept (2026-04-16)
+
+Checklist: `docs/dataserialization/checklist.md` → Step B5
+
+- [x] 2026-04-16 created `src/flytetest/registry/_gatk.py` with one entry:
+  `gatk_haplotype_caller` (category=workflow, pipeline_family=variant_calling,
+  pipeline_stage_order=3). Inputs and outputs modelled on the real GATK4
+  HaplotypeCaller task in the Stargazer reference project
+  (`/home/rmeht/Projects/stargazer/.opencode/reference/stargazer_flyte_v1/tasks/haplotype_caller.py`).
+  `showcase_module=""` — no handler or planning coverage yet.
+- [x] 2026-04-16 added `from flytetest.registry._gatk import GATK_ENTRIES` and
+  `+ GATK_ENTRIES` to `src/flytetest/registry/__init__.py`.
+  `len(REGISTRY_ENTRIES)` is now 74 (was 73).
+- [x] 2026-04-16 verified: entry visible in `get_pipeline_stages("variant_calling")`,
+  absent from `SUPPORTED_TARGET_NAMES`, `to_dict()` does not leak `showcase_module`.
+- [x] 2026-04-16 full test suite: 495 tests, all pass (1 skipped).
+
+### B3+B4 — MCP/Server Derivation from Registry (2026-04-16)
+
+Checklist: `docs/dataserialization/checklist.md` → Steps B3+B4
+
+- [x] 2026-04-16 added `showcase_module: str` field (set in B1+B2, populated now)
+  to 12 registry entries across `_annotation.py`, `_protein_evidence.py`,
+  `_postprocessing.py`, and `_rnaseq.py`. Values match the original hardcoded
+  `module_name` paths in the deleted `ShowcaseTarget(...)` blocks.
+- [x] 2026-04-16 added `_resolve_source_path(module_name)` helper to
+  `mcp_contract.py`; derives the filesystem path for any `flytetest.*` module
+  without hardcoding directory segments.
+- [x] 2026-04-16 replaced 12 hardcoded `ShowcaseTarget(...)` blocks in
+  `mcp_contract.py` with a single generator expression that iterates
+  `REGISTRY_ENTRIES` and yields one `ShowcaseTarget` per entry where
+  `showcase_module` is set. `SHOWCASE_TARGETS_BY_NAME`, `SUPPORTED_TARGET_NAMES`,
+  `SUPPORTED_WORKFLOW_NAMES`, and `SUPPORTED_TASK_NAMES` continue to derive from
+  `SHOWCASE_TARGETS` unchanged.
+- [x] 2026-04-16 deleted 8 `SUPPORTED_*_NAME` constants from `mcp_contract.py`
+  (`SUPPORTED_FASTQC_TASK_NAME`, `SUPPORTED_GFFREAD_PROTEINS_TASK_NAME`,
+  `SUPPORTED_BUSCO_WORKFLOW_NAME`, `SUPPORTED_EGGNOG_WORKFLOW_NAME`,
+  `SUPPORTED_AGAT_WORKFLOW_NAME`, `SUPPORTED_AGAT_CONVERSION_WORKFLOW_NAME`,
+  `SUPPORTED_AGAT_CLEANUP_WORKFLOW_NAME`, `SUPPORTED_TABLE2ASN_WORKFLOW_NAME`).
+  The 4 policy constants used by `planning.py` as branch points are preserved.
+- [x] 2026-04-16 updated `SHOWCASE_LIMITATIONS` and `LIST_ENTRIES_LIMITATIONS`
+  in `mcp_contract.py` to derive the name list from `SUPPORTED_TARGET_NAMES`;
+  surrounding prose kept as curated text.
+- [x] 2026-04-16 simplified `_local_node_handlers()` in `server.py`: removed
+  8 explicit per-workflow-name dict entries; replaced with
+  `{name: workflow_handler for name in SUPPORTED_WORKFLOW_NAMES}` plus the
+  existing `{name: task_handler for name in SUPPORTED_TASK_NAMES}`. The
+  QualityAssessmentTarget input-name dispatch map at line ~2034 replaced its 6
+  deleted constant references with literal workflow name strings.
+- [x] 2026-04-16 updated `test_server.py`: moved the 6 deleted constants to
+  aliased imports from `flytetest.config`; added
+  `test_supported_target_names_match_expected_set` safety test.
+- [x] 2026-04-16 full test suite: 495 tests, all pass (1 skipped).
+
+### B1+B2 — Registry Package Restructure (2026-04-16)
+
+Checklist: `docs/dataserialization/checklist.md` → Step B1+B2
+
+- [x] 2026-04-16 converted `src/flytetest/registry.py` (2679-line monolith)
+  into `src/flytetest/registry/` package in one atomic change, no intermediate
+  `_registry_legacy.py` file.
+- [x] 2026-04-16 created `src/flytetest/registry/_types.py` with the exact
+  dataclass definitions (`Category`, `InterfaceField`,
+  `RegistryCompatibilityMetadata`, `RegistryEntry`); added
+  `showcase_module: str = ""` field to `RegistryEntry`; overrode `to_dict()`
+  to exclude `showcase_module` from serialized output, preserving the public
+  payload shape for all downstream consumers.
+- [x] 2026-04-16 created 7 family files (entries/counts):
+  `_transcript_evidence.py` (8), `_consensus.py` (16),
+  `_protein_evidence.py` (6), `_annotation.py` (5), `_evm.py` (12),
+  `_postprocessing.py` (21), `_rnaseq.py` (5). Total: 73 entries.
+  Each entry is self-contained with inline `RegistryCompatibilityMetadata`
+  (resources + slurm hints folded in); `_WORKFLOW_COMPATIBILITY_METADATA`,
+  `_WORKFLOW_LOCAL_RESOURCE_DEFAULTS`, `_WORKFLOW_SLURM_RESOURCE_HINTS` dicts
+  and both merge helpers eliminated.
+- [x] 2026-04-16 created `src/flytetest/registry/__init__.py` re-exporting
+  all types plus query functions (`list_entries`, `get_entry`,
+  `get_pipeline_stages`) verbatim; all existing
+  `from flytetest.registry import ...` consumers unchanged.
+- [x] 2026-04-16 deleted `src/flytetest/registry.py` monolith.
+- [x] 2026-04-16 full test suite: 494 tests, all pass (1 skipped).
+- [x] 2026-04-16 updated branch reference from `refactor/serialization-registry`
+  to `datatypes` in checklist and all four prompt/plan files that referenced it.
 
 ### Archive Migration and Policy Cleanup (2026-04-15)
 

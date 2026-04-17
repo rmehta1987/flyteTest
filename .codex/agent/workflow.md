@@ -16,7 +16,7 @@ Before workflow work, read:
 2. `DESIGN.md`
 3. `.codex/workflows.md`
 4. the relevant task modules
-5. `src/flytetest/registry.py`
+5. `src/flytetest/registry/`
 6. `README.md` Quick Start and workflow table if touching examples or docs
 7. `docs/realtime_refactor_checklist.md` if the work is part of the architecture
    refactor

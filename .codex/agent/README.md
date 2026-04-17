@@ -37,7 +37,7 @@ These guides complement, but do not override:
 - Prefer disjoint write scopes to avoid merge conflicts.
 - Keep compatibility-critical surfaces explicit:
   `flyte_rnaseq_workflow.py`, `src/flytetest/server.py`,
-  `src/flytetest/planning.py`, `src/flytetest/registry.py`,
+  `src/flytetest/planning.py`, `src/flytetest/registry/`,  
   `src/flytetest/specs.py`, `src/flytetest/spec_executor.py`,
   `src/flytetest/slurm_monitor.py`, and current manifest contracts.
 - When architecture refactor work is active, use

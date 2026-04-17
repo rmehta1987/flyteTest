@@ -29,7 +29,7 @@ Before reviewing, read:
 2. `DESIGN.md`
 3. the touched modules
 4. `README.md` if user-facing behavior changed
-5. `src/flytetest/registry.py` if public interfaces changed
+5. `src/flytetest/registry/` if public interfaces changed
 6. `CHANGELOG.md` and the milestone archive when the change touches planned scope or completed milestones
 
 ## What To Look For
@@ -50,7 +50,7 @@ Prioritize findings in this order:
 Common FLyteTest review targets:
 
 - `flyte_rnaseq_workflow.py` compatibility exports
-- `src/flytetest/registry.py` accuracy
+- `src/flytetest/registry/` accuracy
 - `AGENTS.md` and `DESIGN.md` agreement on working rules versus architecture
 - `src/flytetest/types/assets.py` provenance clarity
 - result bundle structure under `results/`

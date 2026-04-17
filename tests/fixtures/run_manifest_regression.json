@@ -1,0 +1,69 @@
+{
+  "result_dir": "/fixtures/braker3_results",
+  "staged_inputs_dir": "/fixtures/braker3_results/staged_inputs",
+  "raw_run_dir": "/fixtures/braker3_results/braker3_raw",
+  "normalized_dir": "/fixtures/braker3_results/braker3_normalized",
+  "braker_gff3_path": "/fixtures/braker3_results/braker3_raw/braker_output/braker.gff3",
+  "normalized_gff3_path": "/fixtures/braker3_results/braker3_normalized/braker3.evm.gff3",
+  "reference_genome": {
+    "fasta_path": "/tmp/braker3_synth/genome.fa",
+    "organism_name": null,
+    "assembly_name": null,
+    "taxonomy_id": null,
+    "softmasked_fasta_path": null,
+    "annotation_gff3_path": null
+  },
+  "input_bundle": {
+    "staged_dir": "/fixtures/braker3_results/staged_inputs",
+    "genome_fasta_path": "/fixtures/braker3_results/staged_inputs/genome/genome.fa",
+    "rnaseq_bam_path": "/fixtures/braker3_results/staged_inputs/rnaseq_bam/reads.bam",
+    "protein_fasta_path": null,
+    "notes": [
+      "This staged bundle preserves the local inputs used for the inferred BRAKER3 boundary in this milestone."
+    ]
+  },
+  "raw_run": {
+    "output_dir": "/fixtures/braker3_results/braker3_raw",
+    "braker_gff3_path": "/fixtures/braker3_results/braker3_raw/braker_output/braker.gff3",
+    "species_name": "synthetic_species",
+    "input_bundle": {
+      "staged_dir": "/fixtures/braker3_results/staged_inputs",
+      "genome_fasta_path": "/fixtures/braker3_results/staged_inputs/genome/genome.fa",
+      "rnaseq_bam_path": "/fixtures/braker3_results/staged_inputs/rnaseq_bam/reads.bam",
+      "protein_fasta_path": null,
+      "notes": [
+        "This staged bundle preserves the local inputs used for the inferred BRAKER3 boundary in this milestone."
+      ]
+    },
+    "notes": [
+      "The BRAKER3 command boundary is inferred conservatively from the notes because the extracted text does not provide the exact invocation sequence."
+    ]
+  },
+  "normalized_prediction": {
+    "output_dir": "/fixtures/braker3_results/braker3_normalized",
+    "normalized_gff3_path": "/fixtures/braker3_results/braker3_normalized/braker3.evm.gff3",
+    "source_run": {
+      "output_dir": "/fixtures/braker3_results/braker3_raw",
+      "braker_gff3_path": "/fixtures/braker3_results/braker3_raw/braker_output/braker.gff3",
+      "species_name": "synthetic_species",
+      "input_bundle": {
+        "staged_dir": "/fixtures/braker3_results/staged_inputs",
+        "genome_fasta_path": "/fixtures/braker3_results/staged_inputs/genome/genome.fa",
+        "rnaseq_bam_path": "/fixtures/braker3_results/staged_inputs/rnaseq_bam/reads.bam",
+        "protein_fasta_path": null,
+        "notes": [
+          "This staged bundle preserves the local inputs used for the inferred BRAKER3 boundary in this milestone."
+        ]
+      },
+      "notes": [
+        "The BRAKER3 command boundary is inferred conservatively from the notes because the extracted text does not provide the exact invocation sequence."
+      ]
+    },
+    "notes": [
+      "Normalization remains intentionally narrow and stops at a stable later-EVM-ready GFF3 boundary."
+    ]
+  },
+  "notes": [
+    "This milestone stops at BRAKER3 raw-output capture plus deterministic normalization for later EVM use."
+  ]
+}

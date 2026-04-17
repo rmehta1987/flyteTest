@@ -2,7 +2,7 @@
 
 **Date:** 2026-04-16
 **Status:** Final draft — ready for implementation
-**Branch:** Create a new branch from `main` (e.g. `refactor/serialization-registry`)
+**Branch:** `datatypes`
 **Prerequisite:** M23-26 complete (generic asset subclasses landed)
 **Checklist:** `docs/dataserialization/checklist.md`
 **Prompts:** `docs/dataserialization/prompts/`

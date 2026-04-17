@@ -68,7 +68,7 @@ Pay special attention to:
 - `flyte_rnaseq_workflow.py` compatibility exports
 - `src/flytetest/server.py` MCP tool names and resource URIs
 - `src/flytetest/planning.py` output shape
-- `src/flytetest/registry.py` public listing behavior
+- `src/flytetest/registry/` public listing behavior
 - `src/flytetest/specs.py` `WorkflowSpec` and `BindingPlan` contract
 - `src/flytetest/spec_executor.py` local handler registration and execution contract
 - `src/flytetest/slurm_monitor.py` polling loop lifecycle and run-record schema

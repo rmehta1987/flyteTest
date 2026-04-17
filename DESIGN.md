@@ -1120,7 +1120,7 @@ The goal is to keep biological stages, planning logic, execution logic, and
 interface code in separate modules so the codebase is easy to navigate for
 both humans and agents.
 
-### Current layout (as of 2026-04-14)
+### Current layout (as of 2026-04-16)
 
 ```text
 src/flytetest/
@@ -1133,7 +1133,17 @@ src/flytetest/
   planner_adapters.py  # adapt current assets/manifests into planner dataclasses
   planner_types.py     # stable biology-facing planner dataclasses
   planning.py          # plan_typed_request(), intent matching, decline handling
-  registry.py          # registered tasks, workflows, compatibility metadata
+  registry/              # registered tasks, workflows, compatibility metadata
+    __init__.py          # REGISTRY_ENTRIES, query functions, public re-exports
+    _types.py            # RegistryEntry, RegistryCompatibilityMetadata, InterfaceField
+    _annotation.py       # BRAKER3 ab initio annotation family
+    _consensus.py        # PASA/TransDecoder consensus family
+    _evm.py              # EVM consensus preparation and execution family
+    _gatk.py             # GATK4 variant-calling family (catalog-only placeholder)
+    _postprocessing.py   # repeat filtering, QC, functional annotation, AGAT, table2asn
+    _protein_evidence.py # Exonerate protein-evidence family
+    _rnaseq.py           # RNA-seq QC and quantification family
+    _transcript_evidence.py  # transcript evidence generation family
   resolver.py          # LocalManifestAssetResolver, binding resolution
   server.py            # FastMCP server, all tool implementations
   slurm_monitor.py     # async background Slurm polling loop

@@ -25,8 +25,7 @@ Context:
   immediately.
 - The project uses `unittest` (not pytest). Run tests via
   `python3 -m unittest discover -s tests`.
-- Work on the `refactor/serialization-registry` branch (create from `main` if
-  it does not exist yet).
+- Work on the `datatypes` branch.
 
 Key decisions already made (do not re-litigate):
 

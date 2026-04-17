@@ -19,7 +19,7 @@ Before testing work, read:
 1. `AGENTS.md`
 2. `.codex/testing.md`
 3. the touched modules
-4. `src/flytetest/registry.py` if the public contract changed
+4. `src/flytetest/registry/` if the public contract changed
 5. `docs/realtime_refactor_checklist.md` if the work is tied to a checklist
    item
 
