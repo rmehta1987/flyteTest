@@ -46,7 +46,7 @@ call sites and documentation.
 | # | Step | Plan section | Prompt | Status |
 |---|------|--------------|--------|--------|
 | 08 | Widen `_entry_payload` + `list_entries(pipeline_family)` | §1 | `prompts/step_08_list_entries_widening.md` | Complete |
-| 09 | Registry–manifest name alignment sweep | §3b (commit 2) | `prompts/step_09_manifest_name_alignment.md` | Not started |
+| 09 | Registry–manifest name alignment sweep | §3b (commit 2) | `prompts/step_09_manifest_name_alignment.md` | Complete |
 | 10 | Export `MANIFEST_OUTPUT_KEYS` on every task module | §3b (commit 3) | `prompts/step_10_manifest_output_keys.md` | Not started |
 | 11 | `test_registry_manifest_contract.py` contract test | §3b (commit 4) | `prompts/step_11_manifest_contract_test.md` | Not started |
 | 12 | Expand `execution_defaults` schema + resolution order | §3c | `prompts/step_12_execution_defaults_schema.md` | Not started |

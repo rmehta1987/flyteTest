@@ -254,7 +254,11 @@ def gffread_proteins(
     gffread_binary: str = "gffread",
     repeat_filter_sif: str = "",
 ) -> Dir:
-    """Extract protein sequences from GFF3 annotation and sanitize for repeat blasting."""
+    """Extract protein sequences from GFF3 annotation and sanitize for repeat blasting.
+
+    Manifest keys written to run_manifest.json: proteins_dir (primary), proteins_fasta,
+    sanitized_proteins_fasta.
+    """
     annotation_path = require_path(Path(annotation_gff3.download_sync()), "Annotation GFF3")
     genome_path = require_path(Path(genome_fasta.download_sync()), "Reference genome FASTA")
     out_dir = project_mkdtemp("gffread_proteins_") / "proteins"
@@ -285,6 +289,7 @@ def gffread_proteins(
             "repeat_filter_sif": repeat_filter_sif,
         },
         "outputs": {
+            "proteins_dir": str(out_dir),
             "proteins_fasta": str(proteins_fasta),
             "sanitized_proteins_fasta": str(sanitized_fasta),
         },

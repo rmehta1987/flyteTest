@@ -143,7 +143,11 @@ def busco_assess_proteins(
     busco_cpu: int = 8,
     busco_mode: str = "prot",
 ) -> Dir:
-    """Run one BUSCO lineage assessment on the repeat-filtered proteins boundary."""
+    """Run one BUSCO lineage assessment on the repeat-filtered proteins boundary.
+
+    Manifest keys written to run_manifest.json: run_dir (primary); short_summary,
+    full_table, summary_notation (optional audit keys, may be null).
+    """
     proteins_path = require_path(Path(proteins_fasta.download_sync()), "Proteins FASTA")
     work_root = project_mkdtemp("busco_run_") / "busco"
     work_root.mkdir(parents=True, exist_ok=True)
@@ -203,7 +207,11 @@ def collect_busco_results(
     busco_runs: list[Dir],
     busco_lineages_text: str = DEFAULT_BUSCO_LINEAGES_TEXT,
 ) -> Dir:
-    """Collect lineage-level BUSCO runs into the QC bundle for this milestone."""
+    """Collect lineage-level BUSCO runs into the QC bundle for this milestone.
+
+    Manifest keys written to run_manifest.json: results_dir (primary), final_proteins_fasta,
+    busco_summary_tsv.
+    """
     if not busco_runs:
         raise ValueError("collect_busco_results requires at least one BUSCO run directory.")
 
@@ -280,6 +288,7 @@ def collect_busco_results(
         },
         "copied_stage_dirs": copied_stage_dirs,
         "outputs": {
+            "results_dir": str(out_dir),
             "final_proteins_fasta": str(copied_final_proteins),
             "busco_summary_tsv": str(summary_tsv),
         },

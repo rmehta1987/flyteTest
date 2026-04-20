@@ -342,7 +342,11 @@ def collect_eggnog_results(
     repeat_filter_results: Dir,
     eggnog_run: Dir,
 ) -> Dir:
-    """Collect the EggNOG run into the stable functional-annotation bundle."""
+    """Collect the EggNOG run into the stable functional-annotation bundle.
+
+    Manifest keys written to run_manifest.json: results_dir (primary), eggnog_annotated_gff3,
+    tx2gene_tsv, eggnog_annotations, eggnog_decorated_gff.
+    """
     repeat_filter_dir = require_path(
         Path(repeat_filter_results.download_sync()),
         "Repeat-filtering results directory",
@@ -413,6 +417,7 @@ def collect_eggnog_results(
             "eggnog_annotations": str(require_path(copied_annotations, "EggNOG annotations")),
         },
         "outputs": {
+            "results_dir": str(out_dir),
             "repeat_filter_proteins_fasta": str(copied_proteins),
             "repeat_filter_gff3": str(copied_gff3),
             "tx2gene_tsv": str(copied_tx2gene),

@@ -414,6 +414,8 @@ def exonerate_align_chunk(
     Returns:
         Alignment bundle containing raw Exonerate stdout and a manifest that
         records the chunk-specific inputs and assumptions.
+
+    Manifest keys written to run_manifest.json: alignment_dir (primary), raw_output.
     """
     genome_path = require_path(Path(genome.download_sync()), "Reference genome FASTA")
     chunk_path = require_path(Path(protein_chunk.download_sync()), "Protein FASTA chunk")
@@ -454,6 +456,7 @@ def exonerate_align_chunk(
             "The raw output preserved here is Exonerate stdout with target GFF emission enabled for later deterministic conversion.",
         ],
         "outputs": {
+            "alignment_dir": str(out_dir),
             "raw_output": str(raw_output_path),
         },
         "inputs": {
@@ -550,6 +553,9 @@ def exonerate_concat_results(
         Final protein-evidence result bundle with staged inputs, per-chunk raw
         and converted outputs, concatenated collection files, and a manifest
         ready for later EVM-stage consumers.
+
+    Manifest keys written to run_manifest.json: results_dir (primary),
+    concatenated_evm_protein_gff3, concatenated_raw_exonerate, staged_proteins_dir.
     """
     if not raw_chunk_results:
         raise ValueError("exonerate_concat_results requires at least one raw Exonerate chunk result.")
@@ -717,6 +723,7 @@ def exonerate_concat_results(
             "This milestone does not yet implement BRAKER3, EVM, PASA update rounds, repeat filtering, BUSCO, EggNOG, AGAT, or submission preparation.",
         ],
         "outputs": {
+            "results_dir": str(out_dir),
             "staged_proteins_dir": str(copied_staged_dir),
             "combined_protein_fasta": str(combined_protein_fasta_path),
             "protein_chunks_dir": str(copied_chunk_dir),

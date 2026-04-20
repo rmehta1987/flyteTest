@@ -340,7 +340,11 @@ def collect_braker3_results(
     normalized_braker: Dir,
     braker_species: str = "flytetest_braker3",
 ) -> Dir:
-    """Collect the BRAKER3 raw and normalized outputs into the result bundle."""
+    """Collect the BRAKER3 raw and normalized outputs into the result bundle.
+
+    Manifest keys written to run_manifest.json: results_dir (primary), staged_inputs_dir,
+    braker3_raw_dir, braker_gff3, braker3_normalized_dir, normalized_braker_gff3.
+    """
     genome_input = Path(str(genome.path))
     staged_dir = require_path(Path(staged_inputs.download_sync()), "Staged BRAKER3 input directory")
     braker_run_dir = require_path(Path(braker_run.download_sync()), "BRAKER3 run directory")
@@ -428,6 +432,7 @@ def collect_braker3_results(
             "This milestone does not yet implement EVM, PASA update rounds, repeat filtering, BUSCO, EggNOG, AGAT, or submission preparation.",
         ],
         "outputs": {
+            "results_dir": str(out_dir),
             "staged_inputs_dir": str(copied_staged_dir),
             "braker3_raw_dir": str(copied_raw_dir),
             "braker_gff3": str(raw_run_asset.braker_gff3_path),

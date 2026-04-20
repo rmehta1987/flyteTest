@@ -267,7 +267,11 @@ def _cleanup_gff3_attributes(source_gff3: Path, cleaned_gff3: Path) -> dict[str,
 def agat_cleanup_gff3(
     agat_conversion_results: Dir,
 ) -> Dir:
-    """Clean the AGAT-converted GFF3 with the deterministic attribute edits."""
+    """Clean the AGAT-converted GFF3 with the deterministic attribute edits.
+
+    Manifest keys written to run_manifest.json: results_dir (primary), agat_cleaned_gff3,
+    agat_converted_gff3, agat_cleanup_summary_json.
+    """
     conversion_dir = require_path(
         Path(agat_conversion_results.download_sync()),
         "AGAT conversion results directory",
@@ -321,6 +325,7 @@ def agat_cleanup_gff3(
             "agat_conversion_results": str(conversion_dir),
         },
         "outputs": {
+            "results_dir": str(out_dir),
             "agat_converted_gff3": str(copied_converted),
             "agat_output_dir": str(agat_output_dir),
             "agat_cleaned_gff3": str(copied_cleaned),
@@ -336,7 +341,11 @@ def agat_convert_sp_gxf2gxf(
     eggnog_results: Dir,
     agat_sif: str = "",
 ) -> Dir:
-    """Run AGAT conversion on the EggNOG-annotated GFF3 boundary."""
+    """Run AGAT conversion on the EggNOG-annotated GFF3 boundary.
+
+    Manifest keys written to run_manifest.json: results_dir (primary), agat_converted_gff3,
+    eggnog_annotated_gff3.
+    """
     eggnog_dir = require_path(Path(eggnog_results.download_sync()), "EggNOG results directory")
     eggnog_gff3 = _eggnog_annotated_gff3(eggnog_dir)
 
@@ -397,6 +406,7 @@ def agat_convert_sp_gxf2gxf(
             "agat_sif": agat_sif,
         },
         "outputs": {
+            "results_dir": str(out_dir),
             "eggnog_annotated_gff3": str(copied_gff3),
             "agat_output_dir": str(agat_output_dir),
             "agat_converted_gff3": str(copied_converted),
@@ -412,7 +422,11 @@ def agat_statistics(
     annotation_fasta_path: str = "",
     agat_sif: str = "",
 ) -> Dir:
-    """Run AGAT statistics on the EggNOG-annotated GFF3 boundary."""
+    """Run AGAT statistics on the EggNOG-annotated GFF3 boundary.
+
+    Manifest keys written to run_manifest.json: results_dir (primary), agat_statistics_tsv,
+    eggnog_annotated_gff3.
+    """
     eggnog_dir = require_path(Path(eggnog_results.download_sync()), "EggNOG results directory")
     eggnog_gff3 = _eggnog_annotated_gff3(eggnog_dir)
     annotation_fasta = require_path(Path(annotation_fasta_path), "Annotation FASTA") if annotation_fasta_path else None
@@ -476,6 +490,7 @@ def agat_statistics(
             "agat_sif": agat_sif,
         },
         "outputs": {
+            "results_dir": str(out_dir),
             "eggnog_annotated_gff3": str(copied_gff3),
             "annotation_fasta_path": str(copied_annotation_fasta) if copied_annotation_fasta is not None else "",
             "agat_output_dir": str(agat_output_dir),
@@ -523,6 +538,9 @@ def table2asn_submission(
     Consumes the AGAT cleanup results bundle and produces a ``table2asn_output``
     directory containing the ``.sqn`` and validation artefacts alongside a
     ``run_manifest.json``.
+
+    Manifest keys written to run_manifest.json: results_dir (primary), submission_sqn,
+    cleaned_gff3, table2asn_output_dir.
 
     Args:
         agat_cleanup_results: The Dir output of ``agat_cleanup_gff3``.
@@ -618,6 +636,7 @@ def table2asn_submission(
             "table2asn_sif": table2asn_sif,
         },
         "outputs": {
+            "results_dir": str(out_dir),
             "cleaned_gff3": str(copied_gff3),
             "genome_fasta": str(copied_fasta),
             "table2asn_output_dir": str(table2asn_output_dir),

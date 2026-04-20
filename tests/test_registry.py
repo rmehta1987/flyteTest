@@ -220,7 +220,7 @@ class RegistryTests(TestCase):
             [field.name for field in entry.inputs],
             ["proteins_fasta", "lineage_dataset", "busco_sif", "busco_cpu", "busco_mode"],
         )
-        self.assertEqual([field.name for field in entry.outputs], ["busco_run_dir"])
+        self.assertEqual([field.name for field in entry.outputs], ["run_dir"])
 
     def test_eggnog_task_entry_is_registered(self) -> None:
         """Expose the EggNOG functional-annotation task boundary in the catalog.

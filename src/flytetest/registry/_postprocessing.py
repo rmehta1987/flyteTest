@@ -370,7 +370,7 @@ POSTPROCESSING_ENTRIES: tuple[RegistryEntry, ...] = (
             InterfaceField('busco_mode', 'str', 'BUSCO mode passed with `-m`; this milestone uses `prot`.'),
         ),
         outputs=(
-            InterfaceField('busco_run_dir', 'Dir', 'Directory containing one BUSCO lineage run plus run_manifest.json.'),
+            InterfaceField('run_dir', 'Dir', 'Directory containing one BUSCO lineage run plus run_manifest.json.'),
         ),
         tags=('busco', 'annotation-qc', 'proteins', 'lineage'),
         showcase_module='flytetest.tasks.functional',

@@ -7,6 +7,7 @@ expectations follow `docs/tool_refs/fastqc.md`.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from flyte.io import Dir, File
@@ -16,7 +17,10 @@ from flytetest.config import project_mkdtemp, require_path, rnaseq_qc_quant_env,
 
 @rnaseq_qc_quant_env.task
 def fastqc(left: File, right: File, fastqc_sif: str = "") -> Dir:
-    """Run FastQC on the paired-end reads that anchor the RNA-seq QC stage."""
+    """Run FastQC on the paired-end reads that anchor the RNA-seq QC stage.
+
+    Manifest keys written to run_manifest.json: qc_dir.
+    """
     left_path = require_path(Path(left.download_sync()), "Read 1 FASTQ")
     right_path = require_path(Path(right.download_sync()), "Read 2 FASTQ")
     out_dir = project_mkdtemp("fastqc_") / "qc"
@@ -27,4 +31,16 @@ def fastqc(left: File, right: File, fastqc_sif: str = "") -> Dir:
         fastqc_sif,
         [left_path.parent, right_path.parent, out_dir.parent],
     )
+    manifest = {
+        "stage": "fastqc",
+        "inputs": {
+            "left": str(left_path),
+            "right": str(right_path),
+            "fastqc_sif": fastqc_sif,
+        },
+        "outputs": {
+            "qc_dir": str(out_dir),
+        },
+    }
+    (out_dir / "run_manifest.json").write_text(json.dumps(manifest, indent=2))
     return Dir(path=str(out_dir))
