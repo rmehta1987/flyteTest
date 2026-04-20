@@ -244,7 +244,14 @@ def artifact_from_typed_plan(
     if typed_plan.get("workflow_spec") is None or typed_plan.get("binding_plan") is None:
         raise ValueError("Typed plans must include both workflow_spec and binding_plan payloads before saving.")
 
-    workflow_spec = WorkflowSpec.from_dict(typed_plan["workflow_spec"])
+    # Merge top-level tool_databases from the plan into the workflow_spec dict
+    # so callers can carry tool_databases at either location.  The value inside
+    # workflow_spec takes precedence; a top-level key fills the gap when the
+    # spec was built before the field existed (§8 resolution order).
+    workflow_spec_dict = dict(typed_plan["workflow_spec"])
+    if "tool_databases" not in workflow_spec_dict:
+        workflow_spec_dict["tool_databases"] = typed_plan.get("tool_databases") or {}
+    workflow_spec = WorkflowSpec.from_dict(workflow_spec_dict)
     binding_plan = BindingPlan.from_dict(typed_plan["binding_plan"])
     return SavedWorkflowSpecArtifact(
         schema_version=SPEC_ARTIFACT_SCHEMA_VERSION,

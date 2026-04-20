@@ -14,6 +14,8 @@ from unittest import TestCase
 SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(SRC_DIR))
 
+import json
+
 from flytetest.planner_types import ConsensusAnnotation, ReferenceGenome
 from flytetest.planning import plan_typed_request
 from flytetest.spec_artifacts import (
@@ -217,3 +219,132 @@ class DurableAssetIndexTests(TestCase):
                 load_durable_asset_index(run_dir)
 
         self.assertIn("durable-asset-index-v0-stale", str(ctx.exception))
+
+
+class ToolDatabasesTests(TestCase):
+    """Step-06 tests: WorkflowSpec.tool_databases round-trips and BC defaults."""
+
+    # Minimal plan for constructing artifacts without calling plan_typed_request.
+    _WORKFLOW_SPEC_BASE: dict = {
+        "name": "test_wf",
+        "analysis_goal": "test",
+        "inputs": [],
+        "outputs": [],
+        "nodes": [],
+        "edges": [],
+        "ordering_constraints": [],
+        "fanout_behavior": [],
+        "fanin_behavior": [],
+        "reusable_registered_refs": [],
+        "final_output_bindings": [],
+        "default_execution_profile": None,
+        "replay_metadata": {},
+        "generated_entity_record": None,
+        "metadata_only": True,
+    }
+    _BINDING_PLAN_BASE: dict = {
+        "target_name": "test_wf",
+        "target_kind": "workflow",
+        "explicit_user_bindings": {},
+        "resolved_prior_assets": {},
+        "manifest_derived_paths": {},
+        "execution_profile": None,
+        "resource_spec": None,
+        "runtime_image": None,
+        "runtime_bindings": {},
+        "unresolved_requirements": [],
+        "assumptions": [],
+        "metadata_only": True,
+    }
+    _ARTIFACT_BASE: dict = {
+        "schema_version": SPEC_ARTIFACT_SCHEMA_VERSION,
+        "source_prompt": "test prompt",
+        "biological_goal": "test_goal",
+        "planning_outcome": "supported",
+        "candidate_outcome": "supported",
+        "referenced_registered_stages": [],
+        "assumptions": [],
+        "runtime_requirements": [],
+        "created_at": "2026-01-01T00:00:00Z",
+        "replay_metadata": {},
+        "metadata_only": True,
+    }
+
+    def _make_artifact_payload(self, tool_databases: dict | None = None) -> dict:
+        """Build a minimal SavedWorkflowSpecArtifact payload dict."""
+        spec = dict(self._WORKFLOW_SPEC_BASE)
+        if tool_databases is not None:
+            spec["tool_databases"] = tool_databases
+        return {
+            **self._ARTIFACT_BASE,
+            "workflow_spec": spec,
+            "binding_plan": dict(self._BINDING_PLAN_BASE),
+        }
+
+    def test_round_trip_with_tool_databases(self) -> None:
+        """tool_databases is preserved through save_workflow_spec_artifact + load."""
+        payload = self._make_artifact_payload(tool_databases={"busco_lineage_dir": "/x/y"})
+        with tempfile.TemporaryDirectory() as tmp:
+            artifact_path = Path(tmp) / "artifact.json"
+            artifact_path.write_text(json.dumps(payload, indent=2) + "\n")
+            loaded = load_workflow_spec_artifact(artifact_path)
+
+        self.assertEqual(loaded.workflow_spec.tool_databases, {"busco_lineage_dir": "/x/y"})
+
+    def test_load_old_artifact_without_tool_databases_defaults_to_empty(self) -> None:
+        """An artifact JSON that predates tool_databases loads without raising and
+        gives an empty dict — the hard constraint against rewriting frozen artifacts."""
+        payload = self._make_artifact_payload()          # no tool_databases key
+        self.assertNotIn("tool_databases", payload["workflow_spec"])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            artifact_path = Path(tmp) / "artifact.json"
+            artifact_path.write_text(json.dumps(payload, indent=2) + "\n")
+            loaded = load_workflow_spec_artifact(artifact_path)
+
+        self.assertEqual(loaded.workflow_spec.tool_databases, {})
+
+    def test_artifact_from_typed_plan_wires_tool_databases(self) -> None:
+        """artifact_from_typed_plan populates workflow_spec.tool_databases from the plan."""
+        reference_genome = ReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa"))
+        consensus_annotation = ConsensusAnnotation(
+            reference_genome=reference_genome,
+            annotation_gff3_path=Path("results/evm/evm.out.gff3"),
+        )
+        typed_plan = plan_typed_request(
+            "Create a generated WorkflowSpec for repeat filtering and BUSCO QC.",
+            explicit_bindings={"ConsensusAnnotation": consensus_annotation},
+        )
+        # Inject tool_databases into the workflow_spec sub-dict (simulates Step 21/22
+        # passing the resolved value from the bundle or explicit kwarg).
+        typed_plan["workflow_spec"]["tool_databases"] = {"eggnog_db": "/data/eggnog/5.0"}
+
+        artifact = artifact_from_typed_plan(typed_plan, created_at="2026-01-01T00:00:00Z")
+
+        self.assertEqual(
+            artifact.workflow_spec.tool_databases,
+            {"eggnog_db": "/data/eggnog/5.0"},
+        )
+
+    def test_artifact_from_typed_plan_top_level_tool_databases_fallback(self) -> None:
+        """Top-level tool_databases in the plan dict fills the gap when absent
+        from workflow_spec (§8 fallback wiring)."""
+        reference_genome = ReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa"))
+        consensus_annotation = ConsensusAnnotation(
+            reference_genome=reference_genome,
+            annotation_gff3_path=Path("results/evm/evm.out.gff3"),
+        )
+        typed_plan = plan_typed_request(
+            "Create a generated WorkflowSpec for repeat filtering and BUSCO QC.",
+            explicit_bindings={"ConsensusAnnotation": consensus_annotation},
+        )
+        # Remove from workflow_spec (simulate old plan format), put at top level.
+        typed_plan["workflow_spec"].pop("tool_databases", None)
+        typed_plan["tool_databases"] = {"busco_lineage": "/data/busco/lineages/eukaryota_odb10"}
+
+        artifact = artifact_from_typed_plan(typed_plan, created_at="2026-01-01T00:00:00Z")
+
+        self.assertEqual(
+            artifact.workflow_spec.tool_databases,
+            {"busco_lineage": "/data/busco/lineages/eukaryota_odb10"},
+        )
