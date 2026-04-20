@@ -52,6 +52,12 @@ Entry template:
       CLI, not the Perl 1.x scripts. Confirm that EVM task wrappers use the correct 2.x
       flags before the first real run.
 
+### MCP Reshape Step 10 — Manifest Output Keys (2026-04-20)
+
+- [x] 2026-04-20 added module-level `MANIFEST_OUTPUT_KEYS` tuples to every task module under `src/flytetest/tasks/` as the source of truth for keys written under `manifest["outputs"]`.
+- [x] 2026-04-20 included audit-only outputs in those tuples where applicable, including BUSCO's `summary_notation`, and exported the constant from task modules that already curate `__all__`.
+- [x] 2026-04-20 verified the slice with `/home/rmeht/Projects/flyteTest/.venv/bin/python -m compileall src/flytetest/tasks/` and one `MANIFEST_OUTPUT_KEYS` definition per task module.
+
 ### Post-Refactor Documentation (2026-04-16)
 
 Checklist: `docs/dataserialization/checklist.md` → Post-Refactor Documentation

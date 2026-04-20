@@ -38,6 +38,30 @@ from flytetest.manifest_io import (
 )
 
 
+# Source of truth for the registry-manifest contract: every key this module writes under manifest["outputs"].
+MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
+    "all_repeats_removed_gff3",
+    "bed_filtered_proteins_fasta",
+    "bed_filtered_sanitized_proteins_fasta",
+    "bed_repeats_removed_gff3",
+    "clean_gff3",
+    "filtered_gff3",
+    "final_proteins_fasta",
+    "final_sanitized_proteins_fasta",
+    "initial_proteins_fasta",
+    "initial_sanitized_proteins_fasta",
+    "models_to_remove",
+    "proteins_dir",
+    "proteins_fasta",
+    "repeat_blast_hits",
+    "repeat_blast_placeholder",
+    "repeatmasker_bed",
+    "repeatmasker_gff3",
+    "sanitized_proteins_fasta",
+    "staged_repeatmasker_out",
+)
+
+
 def _manifest_path(directory: Path, label: str) -> Path:
     """Resolve the manifest file expected within a stage output directory."""
     return require_path(directory / "run_manifest.json", f"{label} manifest")
@@ -668,6 +692,7 @@ def collect_repeat_filter_results(
 
 
 __all__ = [
+    "MANIFEST_OUTPUT_KEYS",
     "collect_repeat_filter_results",
     "funannotate_remove_bad_models",
     "funannotate_repeat_blast",

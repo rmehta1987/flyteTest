@@ -39,6 +39,20 @@ from flytetest.types import (
 )
 
 
+# Source of truth for the registry-manifest contract: every key this module writes under manifest["outputs"].
+MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
+    "merged_bam",
+    "star_alignment_dir",
+    "star_index_dir",
+    "stringtie_dir",
+    "stringtie_gtf",
+    "trinity_denovo_dir",
+    "trinity_denovo_fasta",
+    "trinity_gg_dir",
+    "trinity_gg_fasta",
+)
+
+
 STRINGTIE_LABEL = "STRG"
 STRINGTIE_MIN_ISOFORM_FRACTION = "0.10"
 STRINGTIE_MIN_READ_COVERAGE = "3"

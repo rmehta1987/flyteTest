@@ -54,6 +54,44 @@ from flytetest.types import (
     TrinityGenomeGuidedAssemblyResult,
 )
 
+
+# Source of truth for the registry-manifest contract: every key this module writes under manifest["outputs"].
+MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
+    "align_config",
+    "alt_splicing_support",
+    "annot_compare_config",
+    "cleaned_transcripts_fasta",
+    "combined_trinity_fasta",
+    "config_dir",
+    "current_annotations_gff3",
+    "evm_sorted_gff3",
+    "fasta_symlink",
+    "final_removed_gff3",
+    "final_sorted_gff3",
+    "final_updated_gff3",
+    "loaded_annotations_snapshot",
+    "pasa_assemblies_fasta",
+    "pasa_assemblies_gff3",
+    "pasa_assemblies_gtf",
+    "pasa_config",
+    "pasa_output_dir",
+    "polyasites_fasta",
+    "raw_final_gff3",
+    "reference_genome_fasta",
+    "removed_gff3",
+    "seqclean_clean_fasta",
+    "seqclean_dir",
+    "sorted_gff3",
+    "source_manifests_dir",
+    "source_stringtie_gtf",
+    "source_trinity_denovo_fasta",
+    "sqlite_database",
+    "tdn_accs",
+    "updated_bed",
+    "updated_gff3",
+)
+
+
 def _trinity_gg_fasta(trinity_dir: Path) -> Path:
     """Resolve the genome-guided Trinity FASTA from a Trinity output directory."""
     for candidate in (
@@ -1345,6 +1383,7 @@ def collect_pasa_update_results(
 
 
 __all__ = [
+    "MANIFEST_OUTPUT_KEYS",
     "collect_pasa_results",
     "collect_pasa_update_results",
     "combine_trinity_fastas",

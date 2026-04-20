@@ -25,6 +25,14 @@ from flytetest.config import (
 )
 
 
+# Source of truth for the registry-manifest contract: every key this module writes under manifest["outputs"].
+MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
+    "qc_dir",
+    "quant_dir",
+    "salmon_quant_file",
+)
+
+
 @rnaseq_qc_quant_env.task
 def salmon_index(ref: File, salmon_sif: str = "") -> Dir:
     """Build the Salmon index directory from the reference transcriptome."""

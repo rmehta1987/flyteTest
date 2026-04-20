@@ -33,6 +33,22 @@ from flytetest.tasks.pasa import _pasa_assemblies_fasta, _pasa_assemblies_gff3, 
 from flytetest.types import CodingPredictionResult, PasaAlignmentAssemblyResult, TransDecoderPredictionResult
 
 
+# Source of truth for the registry-manifest contract: every key this module writes under manifest["outputs"].
+MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
+    "input_transcripts_fasta",
+    "source_pasa_assemblies_fasta",
+    "source_pasa_assemblies_gff3",
+    "transdecoder_bed",
+    "transdecoder_cds",
+    "transdecoder_dir",
+    "transdecoder_genome_gff3",
+    "transdecoder_intermediate_dir",
+    "transdecoder_mrna",
+    "transdecoder_orfs_gff3",
+    "transdecoder_pep",
+)
+
+
 def _as_json_compatible(value: Any) -> Any:
     """Convert nested manifest values into JSON-friendly primitives."""
     if isinstance(value, Path):

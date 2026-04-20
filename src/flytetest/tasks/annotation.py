@@ -40,6 +40,23 @@ from flytetest.types import (
 )
 
 
+# Source of truth for the registry-manifest contract: every key this module writes under manifest["outputs"].
+MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
+    "braker3_normalized_dir",
+    "braker3_raw_dir",
+    "braker_gff3",
+    "normalized_braker_gff3",
+    "normalized_gff3",
+    "normalized_source_fields",
+    "raw_run_dir",
+    "results_dir",
+    "staged_genome_fasta",
+    "staged_inputs_dir",
+    "staged_protein_fasta",
+    "staged_rnaseq_bam",
+)
+
+
 def _as_json_compatible(value: Any) -> Any:
     """Convert manifest values into JSON-serializable primitives for provenance."""
     if isinstance(value, Path):

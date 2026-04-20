@@ -49,6 +49,29 @@ from flytetest.types import (
 )
 
 
+# Source of truth for the registry-manifest contract: every key this module writes under manifest["outputs"].
+MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
+    "blank_lines_removed_gff3",
+    "braker_gff3",
+    "commands_path",
+    "concatenated_gff3",
+    "evm_weights",
+    "execution_logs_dir",
+    "genome_fasta",
+    "partition_listing",
+    "partitions_dir",
+    "predictions_gff3",
+    "prepared_inputs_dir",
+    "proteins_gff3",
+    "reference_dir",
+    "reference_genome_fasta",
+    "sorted_gff3",
+    "transcripts_gff3",
+    "transdecoder_genome_gff3",
+    "weights_path",
+)
+
+
 def _as_json_compatible(value: Any) -> Any:
     """Convert manifest values into JSON-serializable primitives."""
     if isinstance(value, Path):
@@ -1358,6 +1381,7 @@ def collect_evm_results(
 
 
 __all__ = [
+    "MANIFEST_OUTPUT_KEYS",
     "collect_evm_results",
     "collect_evm_prep_results",
     "evm_execute_commands",

@@ -40,6 +40,26 @@ from flytetest.types import (
 )
 
 
+# Source of truth for the registry-manifest contract: every key this module writes under manifest["outputs"].
+MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
+    "alignment_dir",
+    "combined_fasta",
+    "combined_protein_fasta",
+    "concatenated_evm_protein_gff3",
+    "concatenated_raw_alignments",
+    "concatenated_raw_exonerate",
+    "evm_gff3",
+    "evm_protein_gff3_chunks_dir",
+    "inputs_dir",
+    "protein_chunks_dir",
+    "raw_alignment_chunks_dir",
+    "raw_exonerate_chunks_dir",
+    "raw_output",
+    "results_dir",
+    "staged_proteins_dir",
+)
+
+
 def _as_json_compatible(value: Any) -> Any:
     """Recursively convert manifest values into JSON-serializable primitives.
 

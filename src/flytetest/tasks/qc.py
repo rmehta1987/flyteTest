@@ -15,6 +15,12 @@ from flyte.io import Dir, File
 from flytetest.config import project_mkdtemp, require_path, rnaseq_qc_quant_env, run_tool
 
 
+# Source of truth for the registry-manifest contract: every key this module writes under manifest["outputs"].
+MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
+    "qc_dir",
+)
+
+
 @rnaseq_qc_quant_env.task
 def fastqc(left: File, right: File, fastqc_sif: str = "") -> Dir:
     """Run FastQC on the paired-end reads that anchor the RNA-seq QC stage.

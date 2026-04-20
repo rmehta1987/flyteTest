@@ -36,6 +36,23 @@ from flytetest.config import (
 )
 
 
+# Source of truth for the registry-manifest contract: every key this module writes under manifest["outputs"].
+MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
+    "agat_cleaned_gff3",
+    "agat_cleanup_summary_json",
+    "agat_converted_gff3",
+    "agat_output_dir",
+    "agat_statistics_tsv",
+    "annotation_fasta_path",
+    "cleaned_gff3",
+    "eggnog_annotated_gff3",
+    "genome_fasta",
+    "results_dir",
+    "submission_sqn",
+    "table2asn_output_dir",
+)
+
+
 _AGAT_OUTPUT_DIRNAME = "agat_output"
 _AGAT_OUTPUT_FILENAME = "agat_statistics.tsv"
 _AGAT_CONVERT_OUTPUT_FILENAME = "all_repeats_removed.agat.gff3"
@@ -647,4 +664,10 @@ def table2asn_submission(
     return Dir(path=str(out_dir))
 
 
-__all__ = ["agat_cleanup_gff3", "agat_convert_sp_gxf2gxf", "agat_statistics", "table2asn_submission"]
+__all__ = [
+    "MANIFEST_OUTPUT_KEYS",
+    "agat_cleanup_gff3",
+    "agat_convert_sp_gxf2gxf",
+    "agat_statistics",
+    "table2asn_submission",
+]

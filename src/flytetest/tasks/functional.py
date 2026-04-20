@@ -35,6 +35,18 @@ from flytetest.manifest_io import (
 )
 
 
+# Source of truth for the registry-manifest contract: every key this module writes under manifest["outputs"].
+MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
+    "busco_summary_tsv",
+    "final_proteins_fasta",
+    "full_table",
+    "results_dir",
+    "run_dir",
+    "short_summary",
+    "summary_notation",
+)
+
+
 DEFAULT_BUSCO_LINEAGES_TEXT = (
     "eukaryota_odb10,metazoa_odb10,insecta_odb10,arthropoda_odb10,diptera_odb10"
 )
@@ -299,6 +311,7 @@ def collect_busco_results(
 
 
 __all__ = [
+    "MANIFEST_OUTPUT_KEYS",
     "DEFAULT_BUSCO_LINEAGES_TEXT",
     "_lineages_from_text",
     "_repeat_filter_final_proteins",

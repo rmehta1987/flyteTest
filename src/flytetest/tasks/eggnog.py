@@ -42,6 +42,18 @@ from flytetest.manifest_io import (
 )
 
 
+# Source of truth for the registry-manifest contract: every key this module writes under manifest["outputs"].
+MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
+    "eggnog_annotated_gff3",
+    "eggnog_annotations",
+    "eggnog_decorated_gff",
+    "repeat_filter_gff3",
+    "repeat_filter_proteins_fasta",
+    "results_dir",
+    "tx2gene_tsv",
+)
+
+
 _EGGNOG_OUTPUT_PREFIX = "eggnog_output"
 
 
@@ -431,6 +443,7 @@ def collect_eggnog_results(
 
 
 __all__ = [
+    "MANIFEST_OUTPUT_KEYS",
     "collect_eggnog_results",
     "eggnog_map",
 ]
