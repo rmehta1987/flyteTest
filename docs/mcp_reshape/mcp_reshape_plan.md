@@ -56,6 +56,15 @@ Several pieces of the new surface are already in the repo from prior milestones.
 - **Durable asset index** (M20b). `DurableAssetRef` + `durable_asset_index.json` sidecar; `LocalManifestAssetResolver.resolve(durable_index=...)` — the plumbing for cross-run output reuse is already in place.
 - **Composition fallback** (`_try_composition_fallback` in `planning.py`, M15 P2). Operates on structured planning goals, not prose — keeps working unchanged after we remove the prose-parsing helpers.
 
+### What already landed in Milestone 1 (do not re-implement)
+
+Two additive pieces from §3d and §3g are already on this branch (commit `3c1e6d3`, 2026-04-18, *"errors: add PlannerResolution to show when workflow fails in midrun"*). Milestone 2's job for these surfaces is **wiring them into the reshaped run tools, not redefining them**:
+
+- **`src/flytetest/mcp_replies.py`** — the canonical reply dataclasses: `SuggestedBundle`, `SuggestedPriorRun`, `RunReply` (already includes `execution_status` + `exit_status` from §3g), `PlanDecline`, `PlanSuccess` (already includes `artifact_path` + `suggested_next_call` from §3j), `BundleAvailabilityReply`, `ValidateRecipeReply`, `DryRunReply`. Exactly the consolidated shape described in §3d-final below.
+- **`src/flytetest/errors.py`** — the typed exception hierarchy: `PlannerResolutionError` base + `UnknownRunIdError`, `UnknownOutputNameError`, `ManifestNotFoundError`, `BindingPathMissingError`. Matches §3g. §7's type-compatibility check (this revision) adds one more subclass, `BindingTypeMismatchError`.
+
+Consequence for implementers: §3d, §3d-final, and §3g are **spec-reference** sections, not net-new work. The remaining Milestone 2 surface is the run-tool reshape itself (§§2, 3, 3b), the planner rewire (§5), the new modules `bundles.py` (§4) and `staging.py` (§8), the new `validate_run_recipe` tool (§11), and the `$ref` grammar wiring in `resolver.py` (§7).
+
 ### Outcome
 
 After this milestone, the scientist-facing experiment loop is:
@@ -81,6 +90,8 @@ run_workflow("braker3_annotation_workflow", **bundle, source_prompt="...")
 Reshaping `run_task` and `run_workflow` from the M21 flat `inputs` shape to the new `bindings` + scalar `inputs` + `resources` + `execution_profile` + `runtime_images` + `source_prompt` shape is a hard-break API change. Per DESIGN §8.7, this qualifies as an **intentional compatibility migration** rather than an accidental breakage: it is coordinated inside one branch, all dependent callers (tests, smoke scripts, documentation examples, active milestone plans) are updated in the same change series, and `CHANGELOG.md` records the cutover with a dated entry. No shim for the old flat shape is provided; the scientist's client is expected to adopt the new shape at the same time the server does.
 
 ## Changes (with concrete code)
+
+**Commit ordering.** §5 (reshape `plan_typed_request` to structured-only keyword args) lands **before or in the same commit as** §2/§3. The reshaped `run_task` / `run_workflow` bodies in §2/§3 call `plan_typed_request(biological_goal=..., target_name=..., explicit_bindings=..., scalar_inputs=..., ...)` — keyword arguments that do not exist on the current signature (`request: str, *, explicit_bindings=..., manifest_sources=..., result_bundles=..., runtime_bindings=..., resource_request=..., execution_profile=..., runtime_image=..., resolver=...` at `planning.py:1737`). Landing §2/§3 before §5 produces a `TypeError` at import of `server.py` because the reshaped run tools import `plan_typed_request` and reference its new kwargs at module load time. The rest of the steps (§3b, §3c, §3f, §§4, 6–14) are order-independent with respect to §5 and may interleave.
 
 ### 1. Widen the MCP `list_entries` tool
 
@@ -1052,6 +1063,12 @@ class PlanSuccess:
 
 The split is: `plan_request` is for *"what would I run?"*; dry-run is for *"what exactly does this call resolve to?"*; real run is for *"do it."* Each tool has a non-overlapping job.
 
+**Accepted tradeoff: re-resolution drift (single-entry path).** The no-freeze single-entry path means any `$ref` or `$manifest` binding inside `suggested_next_call.kwargs["bindings"]` is *not* resolved at preview time — it is a pointer that `run_task` / `run_workflow` will dereference later and freeze into the executed `WorkflowSpec`. Between the preview and the run, the durable asset index (or the referenced manifest) could change. In an interactive single-user session the window is bounded by the scientist's round-trip (seconds to a few minutes), but concurrent-write scenarios (e.g., a sibling job updating `.runtime/durable_asset_index.json`) could in principle drift the resolved path.
+
+**Decision: accept the drift for single-entry previews.** Freezing at preview time would produce an orphan artifact for every `plan_request` call that is never executed (the typical exploratory case), and the dominant drift mode — the durable index being rewritten by another process — requires deliberate concurrent action, not a silent race. The "preview freshness" concern is real but small.
+
+**Escape hatch for scientists who need lock-in.** Call `run_task` / `run_workflow` directly with `dry_run=True` (§3i). That path freezes the artifact AND returns the fully resolved paths, closing the window in a single call — at the cost of a `.runtime/specs/` entry that may never execute. The composed path (§3j, second row of the two-table comparison) is unchanged: it always freezes at preview time because there is no alternative "structured kwargs" call to re-resolve against.
+
 **Approval gate.** Composed plans set `requires_user_approval=True` in the frozen artifact (M15 P2, unchanged). `plan_request` surfaces this as a `limitations` advisory pointing at `approve_composed_recipe` — same rule the execute path enforces, no new logic.
 
 **Commit sequence.**
@@ -1060,6 +1077,133 @@ The split is: `plan_request` is for *"what would I run?"*; dry-run is for *"what
 2. In `planning.py::plan_typed_request` (or a thin wrapper the `plan_request` tool calls), branch on single-entry vs composed: single-entry fills `suggested_next_call` and leaves `artifact_path=""`; composed calls `artifact_from_typed_plan` + `save_workflow_spec_artifact` and fills both.
 3. Update `plan_request` MCP tool body to return the new shape; preserve decline routing via `PlanDecline` + §10 channels.
 4. Tests: single-entry NL goal → `artifact_path == ""` and no file on disk; `suggested_next_call["tool"] == "run_workflow"` with kwargs the scientist can copy-paste; composed NL goal → `artifact_path` populated, file exists on disk, `requires_user_approval=True`, `suggested_next_call["tool"] == "approve_composed_recipe"`; declining NL goal → `PlanDecline` with `suggested_bundles` populated.
+
+### 3d-final. Consolidated reply and exception shapes (post-§3g/§3i/§3j)
+
+Sections §3d, §3g, §3i, and §3j each introduce or extend a reply dataclass. This subsection states the **single canonical final shape** of every reply type the reshape emits — use it as the reviewer's cross-reference when reading any individual §3-series section.
+
+**Status.** The dataclasses below ship today in `src/flytetest/mcp_replies.py` (commit `3c1e6d3`, Milestone 1). `execution_status`/`exit_status` on `RunReply` (§3g) and `artifact_path`/`suggested_next_call` on `PlanSuccess` (§3j) are already present. Milestone 2 does not redefine them — it wires them through the reshaped run and plan tools. The §7 type-compatibility check (this revision) adds **one** new subclass to `src/flytetest/errors.py`; no other exception shape changes.
+
+**Reply shapes (`src/flytetest/mcp_replies.py`):**
+
+```python
+@dataclass(frozen=True)
+class SuggestedBundle:
+    name: str
+    description: str
+    applies_to: tuple[str, ...]
+    available: bool
+
+
+@dataclass(frozen=True)
+class SuggestedPriorRun:
+    run_id: str
+    produced_type: str
+    output_name: str
+    hint: str
+
+
+@dataclass(frozen=True)
+class RunReply:                          # §3, extended by §3g
+    supported: Literal[True]
+    recipe_id: str
+    run_record_path: str                 # "" on pre-submit staging failure (§8)
+    artifact_path: str
+    execution_profile: Literal["local", "slurm"]
+    execution_status: Literal["success", "failed"]  # §3g
+    exit_status: int | None              # §3g; None for slurm-in-flight or pre-submit fail
+    outputs: dict[str, str]              # §3b named outputs
+    limitations: tuple[str, ...]
+    task_name: str = ""
+    workflow_name: str = ""
+
+
+@dataclass(frozen=True)
+class PlanDecline:                       # §3d, §3g translations, §10 routing
+    supported: Literal[False]
+    target: str
+    pipeline_family: str
+    limitations: tuple[str, ...]
+    suggested_bundles: tuple[SuggestedBundle, ...] = ()
+    suggested_prior_runs: tuple[SuggestedPriorRun, ...] = ()
+    next_steps: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class PlanSuccess:                       # §3d, extended by §3j
+    supported: Literal[True]
+    target: str
+    pipeline_family: str
+    biological_goal: str
+    requires_user_approval: bool
+    bindings: dict[str, dict[str, object]]
+    scalar_inputs: dict[str, object]
+    composition_stages: tuple[str, ...]
+    artifact_path: str                   # §3j; "" for single-entry, populated for composed
+    suggested_next_call: dict[str, object]  # §3j; {"tool": ..., "kwargs": {...}}
+    limitations: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class BundleAvailabilityReply:           # §4
+    name: str
+    description: str
+    pipeline_family: str
+    applies_to: tuple[str, ...]
+    binding_types: tuple[str, ...]
+    available: bool
+    reasons: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ValidateRecipeReply:               # §11
+    supported: bool
+    recipe_id: str
+    execution_profile: Literal["local", "slurm"]
+    findings: tuple[dict[str, str], ...]
+
+
+@dataclass(frozen=True)
+class DryRunReply:                       # §3i
+    supported: Literal[True]
+    recipe_id: str
+    artifact_path: str
+    execution_profile: Literal["local", "slurm"]
+    resolved_bindings: dict[str, dict[str, str]]
+    resolved_environment: dict[str, object]
+    staging_findings: tuple[dict[str, str], ...]   # populated for slurm preflight (§8)
+    limitations: tuple[str, ...]
+    task_name: str = ""
+    workflow_name: str = ""
+```
+
+**Exception hierarchy (`src/flytetest/errors.py`):**
+
+```python
+class PlannerResolutionError(Exception): ...            # §3g base
+
+class UnknownRunIdError(PlannerResolutionError):        # §3g
+    run_id: str
+    available_count: int
+
+class UnknownOutputNameError(PlannerResolutionError):   # §3g
+    run_id: str
+    output_name: str
+    known_outputs: tuple[str, ...]
+
+class ManifestNotFoundError(PlannerResolutionError):    # §3g
+    manifest_path: str
+
+class BindingPathMissingError(PlannerResolutionError):  # §3g
+    path: str
+
+class BindingTypeMismatchError(PlannerResolutionError): # §7 (this revision) — NEW
+    binding_key: str         # planner type named by the caller, e.g. "ReadSet"
+    resolved_type: str       # planner type actually produced by the $ref / $manifest source
+    source: str              # the run_id or manifest path that was referenced
+```
+
+Each origin section keeps its rationale; this block owns the canonical layout. If you are reading §3g and want the final `RunReply`, look here. If you are reading §7 and want to see where `BindingTypeMismatchError` slots into the hierarchy, look here.
 
 ### 4. New module `src/flytetest/bundles.py`
 
@@ -1319,6 +1463,54 @@ def plan_typed_request(
 4. Returns a plan preview (with `requires_user_approval` set for composed novel DAGs per M15 P2) when a match or composition succeeds.
 5. Declines only when both structured match and composition fallback fail — returning the same three recovery channels defined in §10 (`suggested_bundles`, `suggested_prior_runs`, `next_steps`).
 
+**Deterministic target matching — the algorithm that replaces `_classify_target`.**
+
+The phrase "structured match against `biological_stage` and `name`" above is not hand-wavy — it is one deterministic procedure with explicit tiebreakers and a defined ambiguity-decline path. No keyword scoring, no fuzzy ranking, no precedence by import order.
+
+Matching procedure (in order; first rule that yields a non-empty match wins):
+
+1. **Normalize.** Lowercase and collapse internal whitespace on both the input `biological_goal` and each candidate `entry.compatibility.biological_stage`. Normalization is cheap and removes cosmetic variation (capitalized headlines, tabs) without inviting fuzzy semantics.
+2. **Primary match** — `normalized(biological_goal) == normalized(entry.compatibility.biological_stage)`. Collect every matching entry.
+3. **Secondary match** — only if the primary set is empty: `normalized(biological_goal) == normalized(entry.name)`. Collect matches.
+
+Tiebreakers (applied to the collected match set, in order; first that reduces the set to one wins):
+
+1. Prefer `entry.category == "workflow"` over `entry.category == "task"`. A `biological_goal` that resolves to both a single-task entry and a workflow entry is asking about the stage, and workflow entrypoints are the production answer; tasks are stage-scoped experiments.
+2. Within the surviving category, prefer the lowest `entry.compatibility.pipeline_stage_order`. If a goal matches both stage 1 and stage 3 entries, the earliest stage is the natural anchor — downstream stages can still be requested by `target_name=` or by `pipeline_family=`.
+
+If >1 entry survives the tiebreakers the match is **ambiguous**. Return a `PlanDecline` (§3d-final) with:
+
+- `limitations=("Ambiguous target: biological_goal resolved to N entries: [name1, name2, ...].",)`
+- `next_steps=("Supply target_name=<name> to disambiguate.", "Or restate biological_goal to match one entry's biological_stage exactly.", "Or call list_entries(category=..., pipeline_family=...) to browse the candidates.")`
+
+If zero entries match the matcher returns `NoMatch` and the caller (`plan_request`) proceeds to `_try_composition_fallback`. If `_try_composition_fallback` also fails, `plan_request` returns a `PlanDecline` with the §10 recovery channels.
+
+Pseudocode for the matcher (lives near `_try_composition_fallback` in `planning.py`):
+
+```python
+def _match_target(
+    biological_goal: str,
+    registry_entries: Sequence[RegistryEntry],
+) -> RegistryEntry | AmbiguousMatch | NoMatch:
+    goal = _normalize(biological_goal)
+    primary = [e for e in registry_entries
+               if _normalize(e.compatibility.biological_stage) == goal]
+    candidates = primary or [e for e in registry_entries
+                             if _normalize(e.name) == goal]
+    if not candidates:
+        return NoMatch()
+    workflows = [e for e in candidates if e.category == "workflow"]
+    pool = workflows or candidates
+    pool.sort(key=lambda e: e.compatibility.pipeline_stage_order)
+    lowest_order = pool[0].compatibility.pipeline_stage_order
+    pool = [e for e in pool if e.compatibility.pipeline_stage_order == lowest_order]
+    if len(pool) == 1:
+        return pool[0]
+    return AmbiguousMatch(entries=tuple(pool))
+```
+
+**When `target_name=` is supplied** (by `run_task`, `run_workflow`, or a scientist disambiguating a prior ambiguous decline), the matcher is bypassed entirely: the registered entry is looked up by name and validated against `biological_goal` only as a sanity check (if the entry's `biological_stage` does not match, emit a soft `limitations` advisory but proceed). `target_name=` is the scientist's explicit override; it does not go through tiebreakers.
+
 The net effect: prompts that the old heuristics *happened to handle* because of keyword luck now either work through structured matching, work through composition fallback, or decline cleanly with a concrete recovery path. No silent mis-parses.
 
 ### 6. Tool descriptions in `src/flytetest/mcp_contract.py`
@@ -1359,7 +1551,37 @@ Mixing is allowed across bindings in the same call: the scientist can pass a raw
 
 Once resolved, every form lowers to the same concrete planner dataclass with a concrete filesystem path. That concrete path is then frozen into the `WorkflowSpec`, which means the recipe remains replayable even if the durable asset index is later rewritten — the pointer indirection is a convenience for the scientist, not a reproducibility promise on its own.
 
-**Failure modes.** If a `$ref` refers to an unknown `run_id`, the reply is a typed decline with the offending `run_id` in `limitations` and `next_steps` pointing at `list_available_bindings()` or at a re-run of the producing workflow. If a `$ref` refers to a real `run_id` but a missing `output_name`, the reply enumerates the known output names for that run. If a `$manifest` path does not exist, the reply names the expected manifest file. No silent fall-throughs.
+**Type compatibility check.** Resolving a `$ref` or `$manifest` returns a concrete path, but the *biological type* of that path is a separate concern. Nothing in the filesystem stops a scientist from passing `bindings={"ReadSet": {"$ref": {"run_id": "<gatk_run>", "output_name": "gvcf_path"}}}`. The resolver must reject that pairing *before* the planner dataclass is constructed — otherwise a VCF path lands in a `ReadSet.left_reads_path` slot and the error surfaces much deeper (inside a task, at task-runtime) as an opaque Exonerate or STAR failure.
+
+The check runs in `_materialize_bindings` immediately after path resolution, before `PlannerSerializable` construction, for both `$ref` and `$manifest`:
+
+- **`$ref` path.** `DurableAssetRef` already carries a `produced_type: str` field (populated at write time from the producing entry's `produced_planner_types`). Compare exactly: the binding key the caller supplied (e.g. `"ReadSet"`) must equal `produced_type`.
+- **`$manifest` path.** The manifest's top-level `stage` key is the producing task's registry name. Look up the entry via `registry.get_entry(stage)` and read `entry.compatibility.produced_planner_types`. The binding key must be an exact member. If the producing entry declares multiple produced types and the manifest output_name maps to a single one, prefer per-output type info if present on the manifest; otherwise require membership in the tuple.
+
+Exact-name match only. Biology types are flat — there is no `ReadSet` subtype of `FastqSet`. A subtype-aware check would imply a hierarchy the repo does not have and would invite silent cross-type substitution.
+
+**Mismatch handling.** On failure, `_materialize_bindings` raises `BindingTypeMismatchError(binding_key, resolved_type, source)` (see §3d-final's new subclass entry). The exception-to-decline translation in §3g's `_execute_run_tool` picks it up and maps it to:
+
+```python
+except BindingTypeMismatchError as exc:
+    return asdict(PlanDecline(
+        supported=False, target=target_name, pipeline_family=pipeline_family,
+        limitations=(
+            f"Binding key {exc.binding_key!r} expected a {exc.binding_key} "
+            f"but source {exc.source!r} produces {exc.resolved_type!r}.",
+        ),
+        next_steps=(
+            f"Pick a $ref / $manifest whose producing entry declares "
+            f"{exc.binding_key!r} in produced_planner_types.",
+            "Call list_available_bindings(<target>) for compatible prior-run outputs.",
+            "Or use the raw-path form if you explicitly want to reinterpret the file.",
+        ),
+    ))
+```
+
+This is a one-row addition to the §3g translation table, not a new surface: typed decline, no log emission, no FastMCP 500.
+
+**Failure modes.** If a `$ref` refers to an unknown `run_id`, the reply is a typed decline (`UnknownRunIdError`) with the offending `run_id` in `limitations` and `next_steps` pointing at `list_available_bindings()` or at a re-run of the producing workflow. If a `$ref` refers to a real `run_id` but a missing `output_name`, the reply (`UnknownOutputNameError`) enumerates the known output names for that run. If a `$manifest` path does not exist, the reply (`ManifestNotFoundError`) names the expected manifest file. If the resolved output's biological type does not match the binding key, the reply (`BindingTypeMismatchError`, new per this revision) names both types and points at substitutes. No silent fall-throughs.
 
 ### 8. Preflight offline-compute staging validation
 
@@ -1404,6 +1626,34 @@ def check_offline_staging(artifact, shared_fs_roots: tuple[Path, ...]) -> list[S
 ```
 
 Wired into `SlurmWorkflowSpecExecutor.submit`: before calling `sbatch`, run `check_offline_staging`; if any findings are returned, block submission and surface them in the MCP reply as structured `limitations`. The existing `classify_slurm_failure()` semantics are untouched (hard constraint per AGENTS.md).
+
+**Reply semantics for pre-submit staging failure.** A staging failure sits between "MCP-layer failure" (the plan was not understood) and "task-side execution failure" (the task ran and failed): the request was understood, the recipe was planned and frozen, but the offline-compute precondition was unmet before `sbatch` was ever invoked. Rather than inventing a new reply shape for this narrow case, reuse `RunReply` (§3d-final) with a specific field pattern:
+
+| Field | Value on staging failure |
+|---|---|
+| `supported` | `True` (the request was understood and planned) |
+| `execution_status` | `"failed"` |
+| `exit_status` | `None` (no process ran) |
+| `run_record_path` | `""` (no run record written — the executor short-circuited) |
+| `recipe_id` | populated (the artifact was frozen before staging ran) |
+| `artifact_path` | populated (the frozen file remains on disk) |
+| `outputs` | `{}` |
+| `limitations` | one string per `StagingFinding`, formatted as `"<kind> '<key>' at <path>: <reason>"` |
+
+The scientist can inspect the frozen artifact, fix the missing paths on the shared filesystem, and retry with `run_slurm_recipe(artifact_path=<artifact_path>)` — no re-resolution, no new recipe_id. This is the same chain the §3i dry-run path enables, reused for the "staging surprised me" case.
+
+**Dry-run case is different.** When the reshaped run tool runs with `dry_run=True` (§3i), staging findings populate `DryRunReply.staging_findings` (a structured list), not `limitations`. The scientist explicitly asked for a preview; the findings *are* the preview, not a failure signal. `dry_run=True` never produces a `RunReply(execution_status="failed")` from staging — it produces a `DryRunReply` with non-empty `staging_findings`.
+
+**Local-profile behavior.** `execution_profile="local"` still calls `check_offline_staging` but skips the "on shared FS" check — only existence and readability are verified. A local run cannot have an offline-compute staging failure in the HPC sense; missing local paths surface through the existing `BindingPathMissingError` (§3g) during `_materialize_bindings`, before staging runs.
+
+**Shared-FS rule — symlinks and bind-mounts.** The "on shared fs" check is ambiguous without a stated rule for symlinks. Use `Path.resolve(strict=True)` on both the candidate path and each shared-FS root before the ancestor check, so:
+
+- A symlink inside a shared root that points to a target *inside* the same shared root → passes.
+- A symlink inside a shared root that points to a target *outside* any shared root → fails (compute node cannot reach the dereferenced target).
+- A symlink *outside* all shared roots that points to a target *inside* a shared root → fails (the node won't see the symlink at all unless its parent is staged).
+- Apptainer bind-mount destinations (paths inside the container, e.g. `/data`) must be declared by the caller in `shared_fs_roots` — the check does not auto-detect them. `.sif` files themselves, however, are handled as host-visible paths and checked normally.
+
+Broken symlinks raise during `Path.resolve(strict=True)` → wrapped as a `StagingFinding(kind=..., reason="not_readable")` with the original (unresolved) path.
 
 `WorkflowSpec` gains a `tool_databases: dict[str, str]` field (carried through from the originating bundle or explicit argument). `artifact_from_typed_plan` wires it from the plan.
 
@@ -1517,15 +1767,24 @@ Because `run_task` / `run_workflow` change shape (not shimmed), every caller bre
 
 Grep anchors: `rg -n 'run_task\(|run_workflow\(' src/ tests/ docs/ scripts/` — every hit is a call-site review. CI green post-sweep is part of the acceptance criteria.
 
-### 13. Seed-bundle tool-DB reality check
+### 13. Seed-bundle reality check (runtime validation, not import-time)
 
-`_validate_bundles()` fires at import. If a seed bundle references `data/busco/lineages/eukaryota_odb10/` and that directory is absent, the server won't boot. Before merging:
+An earlier draft of this plan paired bundle registration with an import-time `_validate_bundles()` hard-fail: any missing backing path (a BUSCO lineage directory, an EVM weight table, a container image) would crash server startup. §4 already rejects that design — it defers availability checks to `_check_bundle_availability` at call time, returning `available=False` + structured `reasons` from `list_bundles()` and `supported=False` from `load_bundle()`. This section used to contradict §4 on exactly that point; the rewrite below aligns the two.
 
-- Audit each seed bundle against what actually ships under `data/`.
-- For bundles whose tool DBs already exist: ship as-is.
-- For bundles whose tool DBs don't exist locally: either drop the missing bundle from the initial seed set (preferred — ship fewer, working bundles) or mark the specific tool-DB paths with a `demo_only=True` flag that `_validate_bundles()` treats as a soft-warn instead of a hard failure.
+**What runtime validation actually gives us.**
 
-Decision: **ship fewer, working bundles** — hard-fail validation stays loud; a bundle is either usable or absent.
+- `python -c "import flytetest.server"` succeeds regardless of whether any bundle's backing data is present under `data/`.
+- `list_bundles()` surfaces every seeded bundle with an honest `available` flag and a per-problem `reasons` list — missing containers, missing tool DBs, absent `applies_to` entries in the registry, pipeline-family mismatches.
+- `load_bundle(<name>)` of an unavailable bundle returns a structured `{"supported": False, "reasons": [...], "next_steps": [...]}` instead of raising.
+- An unrelated task run (`run_task("exonerate_align_chunk", ...)`) is never blocked by another bundle's missing fixture.
+
+The *seeding* question — which bundles to ship — still matters:
+
+**Criterion: seed bundles alongside their fixtures.** If a bundle's referenced `tool_databases`, `runtime_images`, or `bindings` paths are not present in a fresh clone of the repo, do not add that bundle to `BUNDLES` yet. Land the bundle entry in the same commit as (or immediately after) the fixtures it needs. This keeps `list_bundles()` output honest on a fresh clone — every seeded bundle either works out of the box or carries a `reasons` list the scientist can act on without guessing which file under `data/` is missing.
+
+**What this replaces.** The `demo_only=True` soft-warn flag proposal is dropped — it only existed to soften an import-time hard-fail that no longer exists. No new flag on `ResourceBundle`. No audit step before merge beyond confirming the seeded set matches what ships under `data/`.
+
+See §4 for the full availability-check implementation (`_check_bundle_availability`, `BundleAvailability`, `list_bundles`, `load_bundle`).
 
 ### 14. Documentation and coding-agent context refresh
 
@@ -1541,7 +1800,7 @@ The `.codex/` specialist guides and top-level agent files are the context future
 - `.codex/registry.md` — add the "Adding a Pipeline Family" walkthrough (`_<family>.py` + planner types + tasks + workflows + optional bundle, nothing else). Link the GATK placeholder as the worked example.
 - `.codex/tasks.md` — document the `bindings` vs `inputs` split for `run_task`; show how `TASK_PARAMETERS` entries map to scalar inputs once typed bindings cover the rest.
 - `.codex/workflows.md` — document that workflows receive scalar `inputs` only at the MCP boundary and own their internal assembly.
-- `.codex/testing.md` — add patterns for: mocking `_validate_bundles()` in unit tests, testing `$ref` resolution, testing preflight staging findings, asserting the decline-to-bundles shape.
+- `.codex/testing.md` — add patterns for: exercising `_check_bundle_availability` with `tmp_path`-rooted fixtures (no import-time mock needed — §13 rewrite defers validation to runtime), testing `$ref` resolution, testing `$ref` / `$manifest` type-compatibility declines (§7), testing preflight staging findings and the `RunReply(execution_status="failed")` reply shape (§8), and asserting the decline-to-bundles shape.
 - `.codex/documentation.md`, `.codex/comments.md` — no changes unless a grep surfaces stale examples referencing the old flat shape.
 - `.codex/code-review.md` — add a checklist item: MCP-layer PRs must not introduce family-specific branches; families live in `registry/_<family>.py` + `tasks/` + `workflows/` + optional `bundles.py`.
 
@@ -1737,6 +1996,12 @@ This is the extensibility contract: pipeline-family growth is a `registry/_<fami
 27. **recipe_id format**: `run_task("exonerate_align_chunk", ...)` returns a `recipe_id` matching `^\d{8}T\d{6}\.\d{3}Z-exonerate_align_chunk$`. `ls .runtime/specs/` shows self-describing filenames. Slurm `sacct --format=JobName` shows the same token. Planner-composed DAGs produce recipe_ids prefixed `composed-`. Two submissions in distinct milliseconds produce distinct recipe_ids; same-millisecond collision is documented as a negligible edge case given FastMCP's serialized event loop.
 28. **Dry-run preview**: `run_task(..., dry_run=True)` returns a `DryRunReply` with the frozen `artifact_path` and the fully-resolved `resolved_bindings` + `resolved_environment`; no `run_record_path`, no `outputs`, no subprocess or `sbatch` call. A subsequent `run_slurm_recipe(artifact_path=...)` on that artifact executes the previewed recipe successfully with no re-resolution. A slurm dry-run for a workflow whose container image is unreachable surfaces the missing path in `staging_findings` without dispatching. A dry-run for a planner-composed novel DAG surfaces `requires_user_approval` as a `limitations` advisory.
 29. **`plan_request` asymmetric freeze**: `plan_request(biological_goal="annotate small eukaryote with BRAKER3", ...)` that resolves to a single registered entry returns a `PlanSuccess` with `artifact_path=""`, `composition_stages=()`, and `suggested_next_call["tool"] == "run_workflow"` — no file written to `.runtime/specs/`. A request that only resolves via `_try_composition_fallback` returns a `PlanSuccess` with `artifact_path` populated (file exists on disk), `composition_stages` listing the assembled stages, `requires_user_approval=True`, and `suggested_next_call["tool"] == "approve_composed_recipe"`. A request that fails both structured match and composition fallback returns a `PlanDecline` with `suggested_bundles` / `suggested_prior_runs` / `next_steps` populated per §10.
+30. **Ambiguous target matching (§5)**: register two synthetic entries whose normalized `biological_stage` strings match one `plan_request` goal. `plan_request(biological_goal=<shared stage>)` returns a `PlanDecline` whose `limitations` names both candidate entries and whose `next_steps` includes the `target_name=<name>` disambiguation hint. Supplying `target_name=<one>` on the same goal via `run_task` / `run_workflow` bypasses the matcher and executes against that entry.
+31. **`$ref` type mismatch (§7)**: freeze a GATK-style run whose `produced_planner_types` is `("VariantCallSet",)`; in a second call, pass `bindings={"ReadSet": {"$ref": {"run_id": <that id>, "output_name": "gvcf_path"}}}`. The reply is a `PlanDecline` (`BindingTypeMismatchError`-driven) naming both types in `limitations`; `next_steps` points at compatible prior-run outputs. No FastMCP 500; §3e does not emit an ERROR log.
+32. **Staging-failure reply shape (§8)**: a slurm `run_workflow` call whose container path is removed before submission returns a `RunReply` with `supported=True`, `execution_status="failed"`, `exit_status=None`, `run_record_path=""`, and both `recipe_id` and `artifact_path` populated; `limitations` contains one string per finding. `sbatch` is never invoked. After fixing the path, `run_slurm_recipe(artifact_path=<artifact_path>)` executes the same frozen recipe successfully.
+33. **Shared-FS symlink rule (§8)**: a symlink inside `shared_fs_roots` that dereferences to a target outside every root produces a staging finding with `reason="not_on_shared_fs"`; a symlink outside all roots that points into a root also fails; a symlink inside a root pointing to another path inside (possibly) a different listed root passes. Broken symlinks produce `reason="not_readable"`.
+34. **Bundle runtime validation, no import-time fail (§13 rewrite)**: with a seeded bundle whose `tool_databases` path has been deliberately removed from `data/`, `python -c "import flytetest.server"` succeeds (exit 0, no traceback). `list_bundles()` shows that bundle with `available=False` and a human-readable `reasons` entry naming the missing path. `load_bundle(<that name>)` returns `supported=False` with the same reasons and a populated `next_steps`. An unrelated `run_task` call succeeds regardless.
+35. **Single-entry `plan_request` leaves no artifact**: `ls .runtime/specs/` count before `plan_request(biological_goal=<single-entry goal>)` equals count after; subsequently calling `run_workflow(**suggested_next_call["kwargs"])` adds exactly one artifact. The composed path continues to freeze at preview time — count increments on the `plan_request` call itself.
 
 ## Out of Scope
 

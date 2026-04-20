@@ -1,5 +1,7 @@
 Use this prompt when starting Step 16 or when handing it off to another session.
 
+Model: Opus recommended — heuristic-removal surgery has high surprise potential (dead branches, over-preserved helpers, test fallout in unexpected places).
+
 ```text
 You are continuing the FLyteTest scientist-centered MCP surface reshape under the rules in:
 

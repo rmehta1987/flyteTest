@@ -1,5 +1,7 @@
 Use this prompt when starting Step 17 or when handing it off to another session.
 
+Model: Opus recommended — single-entry (no freeze) vs composed (freeze) semantics are subtle; preview/run re-resolution window is an accepted tradeoff that must not be silently widened.
+
 ```text
 You are continuing the FLyteTest scientist-centered MCP surface reshape under the rules in:
 

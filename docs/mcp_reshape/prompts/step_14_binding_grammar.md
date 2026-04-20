@@ -10,9 +10,12 @@ You are continuing the FLyteTest scientist-centered MCP surface reshape under th
 
 Context:
 
-- This is Step 14. Depends on Step 13 (typed resolver exceptions). Adds
-  the `$ref` binding form so scientists can reference a prior run's output
-  without copy-pasting paths.
+- This is Step 14. Depends on Step 13 (typed resolver exceptions +
+  `BindingTypeMismatchError` appended to errors.py). Adds the `$ref` binding
+  form so scientists can reference a prior run's output without copy-pasting
+  paths, AND adds the §7 type-compatibility check that rejects a
+  `$ref` / `$manifest` whose producing entry declared a different planner
+  type than the binding key.
 
 Key decisions already made (do not re-litigate):
 
@@ -27,6 +30,11 @@ Key decisions already made (do not re-litigate):
   pointer). The pointer indirection is convenience, not reproducibility.
 - Mixing forms is allowed within one call: a raw-path `ReferenceGenome` and
   a `$ref`-based `AnnotationGff` can coexist.
+- Type-compatibility check is EXACT-NAME match only (§7). Biology types are
+  flat — no subtype hierarchy; `ReadSet` is not a supertype of `FastqSet`.
+- Raw-path form is NOT type-checked. The scientist asking "use this file I
+  have on disk" is asserting the type; raw-path is the deliberate escape
+  hatch for intentional reinterpretation.
 
 Task:
 
@@ -39,7 +47,26 @@ Task:
    concrete filesystem path is frozen into the plan (and later into
    `WorkflowSpec`).
 
-3. Failure paths raise the typed exceptions from Step 13.
+3. Implement the §7 type-compatibility check, run after path resolution
+   and before `PlannerSerializable` construction, for BOTH `$ref` and
+   `$manifest` forms:
+   - `$ref`: compare the binding key (e.g. `"ReadSet"`) against
+     `DurableAssetRef.produced_type` (populated at write time from the
+     producing entry's `produced_planner_types`). On mismatch, raise
+     `BindingTypeMismatchError(binding_key, resolved_type=produced_type,
+     source=run_id)`.
+   - `$manifest`: read the manifest's top-level `stage` key, look up the
+     entry via `registry.get_entry(stage)`, read
+     `entry.compatibility.produced_planner_types`. If the binding key is
+     not an exact member, raise `BindingTypeMismatchError(binding_key,
+     resolved_type=<first-of-produced_planner_types-or-per-output-type>,
+     source=<manifest_path>)`. If the manifest carries per-output type
+     info, prefer it; otherwise require tuple membership.
+   - Raw-path form is not type-checked — documented as the deliberate
+     escape hatch.
+
+4. Failure paths raise the typed exceptions from Step 13, including the
+   new `BindingTypeMismatchError`. Do NOT catch here — Step 19 translates.
 
 Tests to add (tests/test_resolver.py):
 
@@ -50,6 +77,14 @@ Tests to add (tests/test_resolver.py):
 - `$ref` with bad `output_name` raises `UnknownOutputNameError` carrying
   the known-outputs list.
 - Mixed-form call (raw + `$ref`) resolves all bindings correctly.
+- `$ref` whose producing entry declares a different `produced_type` than
+  the binding key raises `BindingTypeMismatchError` with
+  `binding_key`, `resolved_type`, and `source=run_id` populated.
+- `$manifest` whose producing entry's `produced_planner_types` does not
+  contain the binding key raises `BindingTypeMismatchError` with
+  `source=<manifest_path>` populated.
+- Raw-path form with a "wrong" biological type on disk does NOT raise
+  — raw path is the escape hatch.
 
 Verification:
 

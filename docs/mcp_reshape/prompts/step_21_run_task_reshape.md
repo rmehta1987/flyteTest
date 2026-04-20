@@ -1,5 +1,7 @@
 Use this prompt when starting Step 21 or when handing it off to another session.
 
+Model: Opus recommended — this is the BC break; missteps cascade into Step 22 (symmetric reshape) and the Step 26 call-site sweep.
+
 ```text
 You are continuing the FLyteTest scientist-centered MCP surface reshape under the rules in:
 
