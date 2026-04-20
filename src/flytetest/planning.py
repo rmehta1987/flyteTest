@@ -128,6 +128,9 @@ class TypedPlanningGoal:
     execution_profile: str | None = None
     resource_spec: ResourceSpec | None = None
     runtime_image: RuntimeImageSpec | None = None
+    runtime_images: dict[str, str] = field(default_factory=dict)
+    tool_databases: dict[str, str] = field(default_factory=dict)
+    env_vars: dict[str, str] = field(default_factory=dict)
 
 
 def _normalize(text: str) -> str:
@@ -707,6 +710,51 @@ def _registry_default_resource_spec(entry: RegistryEntry) -> ResourceSpec | None
     return _coerce_resource_spec(resources) if isinstance(resources, Mapping) else None
 
 
+def _coerce_string_mapping(value: Mapping[str, Any] | None) -> dict[str, str]:
+    """Normalize an optional string-keyed mapping used in execution_defaults."""
+    if not isinstance(value, Mapping):
+        return {}
+    normalized: dict[str, str] = {}
+    for key, item in value.items():
+        if key in (None, "") or item in (None, ""):
+            continue
+        normalized[str(key)] = str(item)
+    return normalized
+
+
+def _coerce_string_tuple(value: object) -> tuple[str, ...]:
+    """Normalize one optional string or sequence of strings into a tuple."""
+    if value in (None, ""):
+        return ()
+    if isinstance(value, str) or not isinstance(value, Sequence):
+        return (str(value),)
+    return tuple(str(item) for item in value if item not in (None, ""))
+
+
+def _runtime_image_spec_from_named_images(images: Mapping[str, str]) -> RuntimeImageSpec | None:
+    """Derive the legacy single-image policy from a named runtime-images mapping."""
+    if not images:
+        return None
+    _, image_path = sorted(images.items())[0]
+    return _coerce_runtime_image_spec(image_path)
+
+
+def _resolved_environment_payload(
+    *,
+    runtime_images: Mapping[str, str],
+    tool_databases: Mapping[str, str],
+    resource_spec: ResourceSpec | None,
+    env_vars: Mapping[str, str],
+) -> dict[str, object]:
+    """Return the resolved environment metadata frozen into the planning output."""
+    return {
+        "runtime_images": dict(runtime_images),
+        "tool_databases": dict(tool_databases),
+        "module_loads": list(resource_spec.module_loads) if resource_spec is not None else [],
+        "env_vars": dict(env_vars),
+    }
+
+
 def _select_execution_policy(
     goal: TypedPlanningGoal,
     *,
@@ -714,7 +762,19 @@ def _select_execution_policy(
     resource_request: Mapping[str, Any] | ResourceSpec | None,
     execution_profile: str | None,
     runtime_image: Mapping[str, Any] | RuntimeImageSpec | str | None,
-) -> tuple[str, ResourceSpec | None, RuntimeImageSpec | None, tuple[str, ...], tuple[str, ...]]:
+    runtime_images: Mapping[str, Any] | None,
+    tool_databases: Mapping[str, Any] | None,
+    bundle_overrides: Mapping[str, Any] | None,
+) -> tuple[
+    str,
+    ResourceSpec | None,
+    RuntimeImageSpec | None,
+    dict[str, str],
+    dict[str, str],
+    dict[str, str],
+    tuple[str, ...],
+    tuple[str, ...],
+]:
     """Resolve profile, resources, and runtime image policy for a typed goal.
 
     Args:
@@ -723,9 +783,13 @@ def _select_execution_policy(
         resource_request: Caller-supplied compute resource policy or override.
         execution_profile: Caller-supplied execution profile, if any.
         runtime_image: Caller-supplied runtime image policy or override.
+        runtime_images: Caller-supplied named runtime-image overrides.
+        tool_databases: Caller-supplied tool-database overrides.
+        bundle_overrides: Bundle-level environment overrides layered over the entry defaults.
 
     Returns:
         The selected execution profile, resource policy, runtime image policy,
+        resolved runtime-image map, resolved tool-database map, resolved env vars,
         unresolved resource requirements, and assumptions.
 """
     entries = tuple(get_entry(entry_name) for entry_name in goal.target_entry_names)
@@ -735,6 +799,26 @@ def _select_execution_policy(
         supported_profiles.intersection_update(entry.compatibility.supported_execution_profiles)
     if not supported_profiles:
         supported_profiles.add("local")
+
+    entry_execution_defaults = dict(entries[0].compatibility.execution_defaults) if entries else {}
+    bundle_overrides = dict(bundle_overrides or {})
+
+    selected_runtime_images = {
+        **_coerce_string_mapping(entry_execution_defaults.get("runtime_images")),
+        **_coerce_string_mapping(bundle_overrides.get("runtime_images")),
+        **_coerce_string_mapping(runtime_images),
+    }
+    selected_tool_databases = {
+        **_coerce_string_mapping(entry_execution_defaults.get("tool_databases")),
+        **_coerce_string_mapping(bundle_overrides.get("tool_databases")),
+        **_coerce_string_mapping(tool_databases),
+    }
+    selected_env_vars = {
+        **_coerce_string_mapping(entry_execution_defaults.get("env_vars")),
+        **_coerce_string_mapping(bundle_overrides.get("env_vars")),
+    }
+    entry_module_loads = _coerce_string_tuple(entry_execution_defaults.get("module_loads"))
+    bundle_module_loads = _coerce_string_tuple(bundle_overrides.get("module_loads"))
 
     prompt_profile = _extract_execution_profile_from_prompt(request)
     selected_profile = _clean_path(execution_profile or prompt_profile or default_profile or "local").lower()
@@ -746,15 +830,31 @@ def _select_execution_policy(
         )
 
     registry_default = _registry_default_resource_spec(entries[0]) if entries else None
+    if entry_module_loads:
+        registry_default = _merge_resource_specs(
+            registry_default,
+            ResourceSpec(module_loads=entry_module_loads),
+        )
     prompt_resources = _extract_resource_spec_from_prompt(request)
+    bundle_resources = ResourceSpec(module_loads=bundle_module_loads) if bundle_module_loads else None
     caller_resources = _coerce_resource_spec(resource_request)
-    selected_resources = _merge_resource_specs(_merge_resource_specs(registry_default, prompt_resources), caller_resources)
+    selected_resources = _merge_resource_specs(
+        _merge_resource_specs(
+            _merge_resource_specs(registry_default, prompt_resources),
+            bundle_resources,
+        ),
+        caller_resources,
+    )
     if selected_resources is not None and selected_profile != (selected_resources.execution_class or selected_profile):
         selected_resources = replace(selected_resources, execution_class=selected_profile)
     if selected_profile == "slurm":
         selected_resources = _slurm_resource_spec_defaults(selected_resources)
 
-    selected_image = _coerce_runtime_image_spec(runtime_image) or _extract_runtime_image_from_prompt(request)
+    selected_image = (
+        _coerce_runtime_image_spec(runtime_image)
+        or _runtime_image_spec_from_named_images(selected_runtime_images)
+        or _extract_runtime_image_from_prompt(request)
+    )
     if selected_resources is not None:
         assumptions.append(
             "ResourceSpec is frozen into the recipe for review and replay before local or Slurm execution consumes it."
@@ -763,7 +863,24 @@ def _select_execution_policy(
         assumptions.append(
             "RuntimeImageSpec is frozen into the recipe as policy metadata; existing workflow inputs still control tool-specific SIF arguments."
         )
-    return selected_profile, selected_resources, selected_image, tuple(unresolved), tuple(assumptions)
+    if selected_tool_databases:
+        assumptions.append(
+            "Tool-database paths are frozen into WorkflowSpec.tool_databases for deterministic replay."
+        )
+    if selected_env_vars:
+        assumptions.append(
+            "Non-secret environment variables are frozen into WorkflowSpec replay metadata for deterministic replay."
+        )
+    return (
+        selected_profile,
+        selected_resources,
+        selected_image,
+        selected_runtime_images,
+        selected_tool_databases,
+        selected_env_vars,
+        tuple(unresolved),
+        tuple(assumptions),
+    )
 
 
 def _classify_target(request: str) -> tuple[str | None, float, tuple[str, ...]]:
@@ -1349,6 +1466,12 @@ def _workflow_spec_for_typed_goal(goal: TypedPlanningGoal, *, source_prompt: str
         _typed_field(planner_type_name, planner_type_name, f"Planned output `{planner_type_name}`.")
         for planner_type_name in goal.produced_planner_types
     )
+    resolved_environment = _resolved_environment_payload(
+        runtime_images=goal.runtime_images,
+        tool_databases=goal.tool_databases,
+        resource_spec=goal.resource_spec,
+        env_vars=goal.env_vars,
+    )
 
     if goal.outcome in {"registered_task", "registered_workflow"}:
         entry = entries[0]
@@ -1378,7 +1501,11 @@ def _workflow_spec_for_typed_goal(goal: TypedPlanningGoal, *, source_prompt: str
                 ),
             ),
             default_execution_profile=entry.compatibility.execution_defaults.get("profile", "local"),
-            replay_metadata={"selection_mode": selection_mode},
+            replay_metadata={
+                "selection_mode": selection_mode,
+                "resolved_environment": resolved_environment,
+            },
+            tool_databases=dict(goal.tool_databases),
         )
 
     if goal.outcome == "registered_stage_composition":
@@ -1430,7 +1557,11 @@ def _workflow_spec_for_typed_goal(goal: TypedPlanningGoal, *, source_prompt: str
                 ),
             ),
             default_execution_profile="local",
-            replay_metadata={"selection_mode": "registered_stage_composition"},
+            replay_metadata={
+                "selection_mode": "registered_stage_composition",
+                "resolved_environment": resolved_environment,
+            },
+            tool_databases=dict(goal.tool_databases),
         )
 
     if goal.outcome == "generated_workflow_spec":
@@ -1441,7 +1572,7 @@ def _workflow_spec_for_typed_goal(goal: TypedPlanningGoal, *, source_prompt: str
                 "This is a metadata-only generated spec preview in Milestone 5.",
                 "The preview references registered stages and does not generate new task code.",
             ),
-            selected_execution_profile="local",
+            selected_execution_profile=goal.execution_profile or "local",
             referenced_registered_building_blocks=goal.target_entry_names,
             created_at="not_persisted_in_milestone_5",
             replay_metadata={"workflow_spec_version": "preview-v1"},
@@ -1493,7 +1624,11 @@ def _workflow_spec_for_typed_goal(goal: TypedPlanningGoal, *, source_prompt: str
                     ),
                 ),
                 default_execution_profile="local",
-                replay_metadata={"selection_mode": "generated_workflow_spec_preview"},
+                replay_metadata={
+                    "selection_mode": "generated_workflow_spec_preview",
+                    "resolved_environment": resolved_environment,
+                },
+                tool_databases=dict(goal.tool_databases),
                 generated_entity_record=generated_record,
             )
         else:
@@ -1567,7 +1702,11 @@ def _workflow_spec_for_typed_goal(goal: TypedPlanningGoal, *, source_prompt: str
                     ),
                 ),
                 default_execution_profile="local",
-                replay_metadata={"selection_mode": "registry_constrained_composition"},
+                replay_metadata={
+                    "selection_mode": "registry_constrained_composition",
+                    "resolved_environment": resolved_environment,
+                },
+                tool_databases=dict(goal.tool_databases),
                 generated_entity_record=generated_record,
             )
 
@@ -1744,6 +1883,9 @@ def plan_typed_request(
     resource_request: Mapping[str, Any] | ResourceSpec | None = None,
     execution_profile: str | None = None,
     runtime_image: Mapping[str, Any] | RuntimeImageSpec | str | None = None,
+    runtime_images: Mapping[str, Any] | None = None,
+    tool_databases: Mapping[str, Any] | None = None,
+    bundle_overrides: Mapping[str, Any] | None = None,
     resolver: AssetResolver | None = None,
 ) -> dict[str, object]:
     """Plan a prompt through the Milestone 5 typed resolver and registry path.
@@ -1757,6 +1899,9 @@ def plan_typed_request(
         resource_request: Caller-supplied compute resource policy or override.
         execution_profile: Caller-supplied execution profile.
         runtime_image: Caller-supplied runtime image policy or override.
+        runtime_images: Caller-supplied named runtime-image overrides.
+        tool_databases: Caller-supplied tool-database overrides.
+        bundle_overrides: Bundle-level environment overrides layered over the entry defaults.
         resolver: Optional resolver implementation to use for typed inputs.
 
     Returns:
@@ -1782,13 +1927,25 @@ def plan_typed_request(
         result_bundles=result_bundles,
         resolver=resolver,
     )
-    selected_profile, selected_resources, selected_image, resource_requirements, resource_assumptions = (
+    (
+        selected_profile,
+        selected_resources,
+        selected_image,
+        selected_runtime_images,
+        selected_tool_databases,
+        selected_env_vars,
+        resource_requirements,
+        resource_assumptions,
+    ) = (
         _select_execution_policy(
             goal,
             request=request,
             resource_request=resource_request,
             execution_profile=execution_profile,
             runtime_image=runtime_image,
+            runtime_images=runtime_images,
+            tool_databases=tool_databases,
+            bundle_overrides=bundle_overrides,
         )
     )
     merged_runtime_bindings = dict(goal.runtime_bindings)
@@ -1799,6 +1956,9 @@ def plan_typed_request(
         execution_profile=selected_profile,
         resource_spec=selected_resources,
         runtime_image=selected_image,
+        runtime_images=selected_runtime_images,
+        tool_databases=selected_tool_databases,
+        env_vars=selected_env_vars,
     )
     workflow_spec = _workflow_spec_for_typed_goal(goal, source_prompt=request)
     binding_plan = _binding_plan_for_typed_goal(
@@ -1831,6 +1991,15 @@ def plan_typed_request(
         "execution_profile": selected_profile,
         "resource_spec": selected_resources.to_dict() if selected_resources is not None else None,
         "runtime_image": selected_image.to_dict() if selected_image is not None else None,
+        "runtime_images": dict(selected_runtime_images),
+        "tool_databases": dict(selected_tool_databases),
+        "env_vars": dict(selected_env_vars),
+        "resolved_environment": _resolved_environment_payload(
+            runtime_images=selected_runtime_images,
+            tool_databases=selected_tool_databases,
+            resource_spec=selected_resources,
+            env_vars=selected_env_vars,
+        ),
         "assumptions": list(binding_plan.assumptions),
         "rationale": list(goal.rationale),
         "workflow_spec": workflow_spec.to_dict() if workflow_spec is not None else None,

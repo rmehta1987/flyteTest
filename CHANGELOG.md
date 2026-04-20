@@ -52,6 +52,13 @@ Entry template:
       CLI, not the Perl 1.x scripts. Confirm that EVM task wrappers use the correct 2.x
       flags before the first real run.
 
+### MCP Reshape Step 12 — Execution Defaults Layering (2026-04-20)
+
+- [x] 2026-04-20 expanded showcased registry `execution_defaults` for BRAKER3, BUSCO, and Exonerate entries with seeded `runtime_images`, `tool_databases`, and `module_loads` where the repo already had concrete bundle-backed values.
+- [x] 2026-04-20 updated `plan_typed_request` to resolve environment metadata in the documented order: entry defaults, then bundle overrides, then explicit per-call overrides for `runtime_images` and `tool_databases`, while `module_loads` continues to flow through `resource_request.module_loads` and `env_vars` remains bundle-only above the entry default.
+- [x] 2026-04-20 froze the resolved environment into planning outputs by wiring `tool_databases` onto `WorkflowSpec`, preserving the selected runtime image in `BindingPlan`, and recording the full resolved environment in `workflow_spec.replay_metadata`.
+- [x] 2026-04-20 verified the slice with `/home/rmeht/Projects/flyteTest/.venv/bin/python -m compileall src/flytetest/planning.py` and `/home/rmeht/Projects/flyteTest/.venv/bin/python -m pytest tests/test_planning.py` (25 passed).
+
 ### MCP Reshape Step 11 — Registry Manifest Contract Test (2026-04-20)
 
 - [x] 2026-04-20 added `tests/test_registry_manifest_contract.py`, a registry-wide contract test that resolves showcased workflow entries to their owning task modules and asserts every declared registry output name is listed in `MANIFEST_OUTPUT_KEYS`.

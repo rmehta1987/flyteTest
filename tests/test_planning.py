@@ -6,11 +6,13 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 import json
 import sys
 import tempfile
 from pathlib import Path
 from unittest import TestCase
+from unittest.mock import patch
 
 TESTS_DIR = Path(__file__).resolve().parent
 SRC_DIR = TESTS_DIR.parent / "src"
@@ -31,6 +33,7 @@ from flytetest.planner_types import (
     TranscriptEvidenceSet,
 )
 from flytetest.planning import plan_request, plan_typed_request, split_entry_inputs, supported_entry_parameters
+from flytetest.registry import get_entry
 
 
 def _repeat_filter_manifest_dir(base_dir: Path, name: str) -> Path:
@@ -115,6 +118,25 @@ def _agat_conversion_manifest_dir(base_dir: Path, name: str) -> Path:
         )
     )
     return result_dir
+
+
+def _patched_planning_entry(entry_name: str, execution_defaults: dict[str, object]):
+    """Return a patcher that swaps one planning entry for a customized copy."""
+    original_entry = get_entry(entry_name)
+    patched_entry = replace(
+        original_entry,
+        compatibility=replace(
+            original_entry.compatibility,
+            execution_defaults=execution_defaults,
+        ),
+    )
+
+    def _patched_get_entry(name: str):
+        if name == entry_name:
+            return patched_entry
+        return get_entry(name)
+
+    return patch("flytetest.planning.get_entry", side_effect=_patched_get_entry)
 
 
 class PlanningTests(TestCase):
@@ -367,6 +389,157 @@ class PlanningTests(TestCase):
         self.assertEqual(payload["binding_plan"]["runtime_bindings"]["busco_mode"], "geno")
         self.assertEqual(payload["binding_plan"]["runtime_bindings"]["busco_cpu"], 2)
         self.assertEqual(payload["binding_plan"]["runtime_bindings"]["busco_sif"], "data/images/busco_v6.0.0_cv1.sif")
+
+    def test_typed_plan_uses_entry_execution_defaults_when_no_override_provided(self) -> None:
+        """Freeze entry execution_defaults into the plan when no bundle or kwarg overrides exist."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result_dir = _repeat_filter_manifest_dir(tmp_path, "repeat_filter_results")
+
+            payload = plan_typed_request(
+                "Run BUSCO quality assessment on the annotation.",
+                manifest_sources=(result_dir,),
+                runtime_bindings={"busco_lineages_text": "eukaryota_odb10"},
+            )
+
+        self.assertTrue(payload["supported"])
+        self.assertEqual(payload["runtime_images"], {"busco_sif": "data/images/busco_v6.0.0_cv1.sif"})
+        self.assertEqual(
+            payload["tool_databases"],
+            {"busco_lineage_dir": "data/busco/lineages/eukaryota_odb10"},
+        )
+        self.assertEqual(payload["resource_spec"]["module_loads"], ["python/3.11.9", "apptainer/1.4.1"])
+        self.assertEqual(
+            payload["workflow_spec"]["tool_databases"],
+            {"busco_lineage_dir": "data/busco/lineages/eukaryota_odb10"},
+        )
+        self.assertEqual(
+            payload["workflow_spec"]["replay_metadata"]["resolved_environment"]["runtime_images"],
+            {"busco_sif": "data/images/busco_v6.0.0_cv1.sif"},
+        )
+        self.assertEqual(
+            payload["binding_plan"]["runtime_image"]["apptainer_image"],
+            "data/images/busco_v6.0.0_cv1.sif",
+        )
+
+    def test_typed_plan_bundle_override_wins_over_entry_defaults(self) -> None:
+        """Bundle-level overrides beat entry defaults for environment metadata."""
+        execution_defaults = {
+            "profile": "local",
+            "result_manifest": "run_manifest.json",
+            "resources": {"cpu": "16", "memory": "64Gi", "execution_class": "local"},
+            "slurm_resource_hints": {"cpu": "16", "memory": "64Gi", "walltime": "04:00:00"},
+            "runtime_images": {"busco_sif": "/entry/busco.sif"},
+            "tool_databases": {"busco_lineage_dir": "/entry/lineage"},
+            "module_loads": ("entry/python", "entry/apptainer"),
+            "env_vars": {"TMPDIR": "/entry/tmp"},
+        }
+        bundle_overrides = {
+            "runtime_images": {"busco_sif": "/bundle/busco.sif"},
+            "tool_databases": {"busco_lineage_dir": "/bundle/lineage"},
+            "module_loads": ("bundle/python", "bundle/apptainer"),
+            "env_vars": {"TMPDIR": "/bundle/tmp"},
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result_dir = _repeat_filter_manifest_dir(tmp_path, "repeat_filter_results")
+            with _patched_planning_entry("annotation_qc_busco", execution_defaults):
+                payload = plan_typed_request(
+                    "Run BUSCO quality assessment on the annotation.",
+                    manifest_sources=(result_dir,),
+                    runtime_bindings={"busco_lineages_text": "eukaryota_odb10"},
+                    bundle_overrides=bundle_overrides,
+                )
+
+        self.assertTrue(payload["supported"])
+        self.assertEqual(payload["runtime_images"], {"busco_sif": "/bundle/busco.sif"})
+        self.assertEqual(payload["tool_databases"], {"busco_lineage_dir": "/bundle/lineage"})
+        self.assertEqual(payload["resource_spec"]["module_loads"], ["bundle/python", "bundle/apptainer"])
+        self.assertEqual(payload["env_vars"], {"TMPDIR": "/bundle/tmp"})
+
+    def test_typed_plan_explicit_environment_kwargs_win_over_entry_and_bundle_defaults(self) -> None:
+        """Per-call runtime_images and tool_databases override both entry and bundle defaults."""
+        execution_defaults = {
+            "profile": "local",
+            "result_manifest": "run_manifest.json",
+            "resources": {"cpu": "16", "memory": "64Gi", "execution_class": "local"},
+            "runtime_images": {"busco_sif": "/entry/busco.sif"},
+            "tool_databases": {"busco_lineage_dir": "/entry/lineage"},
+            "module_loads": ("entry/python",),
+            "env_vars": {"TMPDIR": "/entry/tmp"},
+        }
+        bundle_overrides = {
+            "runtime_images": {"busco_sif": "/bundle/busco.sif"},
+            "tool_databases": {"busco_lineage_dir": "/bundle/lineage"},
+            "module_loads": ("bundle/python",),
+            "env_vars": {"TMPDIR": "/bundle/tmp"},
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result_dir = _repeat_filter_manifest_dir(tmp_path, "repeat_filter_results")
+            with _patched_planning_entry("annotation_qc_busco", execution_defaults):
+                payload = plan_typed_request(
+                    "Run BUSCO quality assessment on the annotation.",
+                    manifest_sources=(result_dir,),
+                    runtime_bindings={"busco_lineages_text": "eukaryota_odb10"},
+                    bundle_overrides=bundle_overrides,
+                    runtime_images={"busco_sif": "/kwarg/busco.sif"},
+                    tool_databases={"busco_lineage_dir": "/kwarg/lineage"},
+                )
+
+        self.assertTrue(payload["supported"])
+        self.assertEqual(payload["runtime_images"], {"busco_sif": "/kwarg/busco.sif"})
+        self.assertEqual(payload["tool_databases"], {"busco_lineage_dir": "/kwarg/lineage"})
+        self.assertEqual(payload["resource_spec"]["module_loads"], ["bundle/python"])
+        self.assertEqual(payload["env_vars"], {"TMPDIR": "/bundle/tmp"})
+
+    def test_typed_plan_layers_execution_defaults_with_expected_fallback_order(self) -> None:
+        """Kwarg, bundle, and entry layers resolve per key in the documented order."""
+        execution_defaults = {
+            "profile": "local",
+            "result_manifest": "run_manifest.json",
+            "resources": {"cpu": "16", "memory": "64Gi", "execution_class": "local"},
+            "runtime_images": {"busco_sif": "/entry/busco.sif"},
+            "tool_databases": {"busco_lineage_dir": "/entry/lineage"},
+            "module_loads": ("entry/python",),
+            "env_vars": {"TMPDIR": "/entry/tmp"},
+        }
+        bundle_overrides = {
+            "runtime_images": {"busco_sif": "/bundle/busco.sif"},
+            "tool_databases": {"busco_lineage_dir": "/bundle/lineage"},
+            "module_loads": ("bundle/python",),
+            "env_vars": {"TMPDIR": "/bundle/tmp"},
+        }
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result_dir = _repeat_filter_manifest_dir(tmp_path, "repeat_filter_results")
+            with _patched_planning_entry("annotation_qc_busco", execution_defaults):
+                payload = plan_typed_request(
+                    "Run BUSCO quality assessment on the annotation.",
+                    manifest_sources=(result_dir,),
+                    runtime_bindings={"busco_lineages_text": "eukaryota_odb10"},
+                    bundle_overrides=bundle_overrides,
+                    runtime_images={"busco_sif": "/kwarg/busco.sif"},
+                    resource_request={"module_loads": ["caller/python", "caller/apptainer"]},
+                )
+
+        self.assertTrue(payload["supported"])
+        self.assertEqual(payload["runtime_images"], {"busco_sif": "/kwarg/busco.sif"})
+        self.assertEqual(payload["tool_databases"], {"busco_lineage_dir": "/bundle/lineage"})
+        self.assertEqual(payload["resource_spec"]["module_loads"], ["caller/python", "caller/apptainer"])
+        self.assertEqual(payload["env_vars"], {"TMPDIR": "/bundle/tmp"})
+        self.assertEqual(
+            payload["workflow_spec"]["replay_metadata"]["resolved_environment"],
+            {
+                "runtime_images": {"busco_sif": "/kwarg/busco.sif"},
+                "tool_databases": {"busco_lineage_dir": "/bundle/lineage"},
+                "module_loads": ["caller/python", "caller/apptainer"],
+                "env_vars": {"TMPDIR": "/bundle/tmp"},
+            },
+        )
 
     def test_typed_plan_reports_ambiguous_busco_manifest_sources(self) -> None:
         """Decline BUSCO planning when multiple manifests could satisfy the QC target.
