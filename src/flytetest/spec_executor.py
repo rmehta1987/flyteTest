@@ -1341,6 +1341,7 @@ def _slurm_directives(
     stdout_path: Path,
     stderr_path: Path,
     resource_spec: ResourceSpec | None,
+    recipe_id: str | None = None,
 ) -> list[str]:
     """Translate a frozen resource spec into ``#SBATCH`` directive lines.
 
@@ -1373,7 +1374,7 @@ def _slurm_directives(
         in the submission script immediately after the shebang line.
     """
     job_prefix = "pe" if workflow_name == "protein_evidence_alignment" else "flytetest"
-    job_name = _slug(f"{job_prefix}-{run_id}", max_length=32)
+    job_name = _slug(recipe_id, max_length=64) if recipe_id else _slug(f"{job_prefix}-{run_id}", max_length=32)
     directives = [
         f"#SBATCH --job-name={job_name}",
         f"#SBATCH --output={stdout_path}",
@@ -1407,6 +1408,7 @@ def render_slurm_script(
     repo_root: Path,
     python_executable: str,
     resume_from_local_record: Path | None = None,
+    recipe_id: str | None = None,
 ) -> str:
     """Render the bash script that Slurm runs when the job lands on a compute node.
 
@@ -1480,6 +1482,7 @@ def render_slurm_script(
         stdout_path=stdout_path,
         stderr_path=stderr_path,
         resource_spec=resource_spec,
+        recipe_id=recipe_id,
     )
     return "\n".join(
         [
@@ -2083,6 +2086,7 @@ class SlurmWorkflowSpecExecutor:
             repo_root=self._repo_root,
             python_executable=self._python_executable,
             resume_from_local_record=resume_from_local_record,
+            recipe_id=artifact_path.stem,
         )
         script_path.write_text(script_text)
         script_path.chmod(0o755)

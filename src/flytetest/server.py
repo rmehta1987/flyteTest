@@ -8,7 +8,6 @@ through explicit node handlers.
 from __future__ import annotations
 
 import difflib
-import hashlib
 import inspect
 from importlib import import_module
 import os
@@ -86,6 +85,7 @@ from flytetest.spec_artifacts import (
     artifact_from_typed_plan,
     check_recipe_approval,
     load_workflow_spec_artifact,
+    make_recipe_id,
     RecipeApprovalRecord,
     RECIPE_APPROVAL_SCHEMA_VERSION,
     save_recipe_approval,
@@ -1299,16 +1299,32 @@ def _created_at() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def _recipe_artifact_destination(prompt: str, *, recipe_dir: Path | None = None) -> Path:
+def _recipe_target_name(typed_plan: dict) -> str:
+    """Derive a self-describing target name from a typed plan for the recipe_id.
+
+    Single-entry plans use the matched registry name.  Composition-fallback
+    plans use ``composed-<first>_to_<last>`` so the recipe_id encodes the DAG
+    boundaries for both filesystem and Slurm accounting.
+    """
+    matched = typed_plan.get("matched_entry_names") or []
+    if typed_plan.get("planning_outcome") == "generated_workflow_spec":
+        if len(matched) >= 2:
+            return f"composed-{matched[0]}_to_{matched[-1]}"
+        if matched:
+            return f"composed-{matched[0]}"
+        return "composed"
+    return str(matched[0]) if matched else "unknown"
+
+
+def _recipe_artifact_destination(target_name: str, *, recipe_dir: Path | None = None) -> Path:
     """Build a unique path for one frozen recipe artifact.
 
     Args:
-        prompt: Natural-language prompt being planned or frozen into a recipe.
+        target_name: Registry entry name or ``composed-*`` sentinel used in the
+            recipe_id; see :func:`_recipe_target_name`.
         recipe_dir: Directory that will hold the frozen recipe artifact.
-"""
-    created = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    digest = hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:12]
-    return (recipe_dir or DEFAULT_RECIPE_DIR) / f"{created}-{digest}.json"
+    """
+    return (recipe_dir or DEFAULT_RECIPE_DIR) / f"{make_recipe_id(target_name)}.json"
 
 
 def _limitations_from_typed_plan(plan: dict[str, object]) -> list[str]:
@@ -1546,7 +1562,7 @@ def _prepare_run_recipe_impl(
     )
     artifact_path = save_workflow_spec_artifact(
         artifact,
-        _recipe_artifact_destination(prompt, recipe_dir=recipe_dir),
+        _recipe_artifact_destination(_recipe_target_name(typed_plan), recipe_dir=recipe_dir),
     )
     return {
         "supported": True,

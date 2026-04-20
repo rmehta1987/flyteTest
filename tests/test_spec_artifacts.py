@@ -6,8 +6,10 @@
 
 from __future__ import annotations
 
+import re
 import sys
 import tempfile
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 from unittest import TestCase
 
@@ -27,6 +29,7 @@ from flytetest.spec_artifacts import (
     artifact_from_typed_plan,
     load_durable_asset_index,
     load_workflow_spec_artifact,
+    make_recipe_id,
     replayable_spec_pair,
     save_durable_asset_index,
     save_workflow_spec_artifact,
@@ -348,3 +351,68 @@ class ToolDatabasesTests(TestCase):
             artifact.workflow_spec.tool_databases,
             {"busco_lineage": "/data/busco/lineages/eukaryota_odb10"},
         )
+
+
+_RECIPE_ID_PATTERN = re.compile(r"^\d{8}T\d{6}\.\d{3}Z-.+$")
+
+
+class RecipeIdTests(TestCase):
+    """Step-07 tests: make_recipe_id format and filesystem integration."""
+
+    def _fixed_now(self, millis: int = 123) -> datetime:
+        return datetime(2026, 4, 20, 12, 34, 56, millis * 1000, tzinfo=UTC)
+
+    def test_format_matches_pattern(self) -> None:
+        rid = make_recipe_id("exonerate_align_chunk", now=self._fixed_now())
+        self.assertRegex(rid, r"^\d{8}T\d{6}\.\d{3}Z-exonerate_align_chunk$")
+
+    def test_format_timestamp_values(self) -> None:
+        rid = make_recipe_id("busco_assess_proteins", now=self._fixed_now(42))
+        self.assertTrue(rid.startswith("20260420T123456.042Z-"))
+
+    def test_target_name_slug_sanitization(self) -> None:
+        rid = make_recipe_id("My Workflow / V2", now=self._fixed_now())
+        self.assertRegex(rid, _RECIPE_ID_PATTERN)
+        self.assertNotIn(" ", rid)
+        self.assertNotIn("/", rid)
+
+    def test_composition_sentinel_prefix(self) -> None:
+        target = "composed-annotation_repeat_filtering_to_annotation_qc_busco"
+        rid = make_recipe_id(target, now=self._fixed_now())
+        self.assertIn("composed-", rid)
+        self.assertRegex(rid, _RECIPE_ID_PATTERN)
+
+    def test_distinct_timestamps_produce_distinct_ids(self) -> None:
+        rid1 = make_recipe_id("exonerate_align_chunk", now=self._fixed_now(100))
+        rid2 = make_recipe_id("exonerate_align_chunk", now=self._fixed_now(200))
+        self.assertNotEqual(rid1, rid2)
+        self.assertIn(".100Z-", rid1)
+        self.assertIn(".200Z-", rid2)
+
+    def test_filesystem_roundtrip(self) -> None:
+        """Artifact saved at <recipe_id>.json has recipe_id == artifact_path.stem."""
+        from flytetest.specs import BindingPlan, WorkflowSpec
+        from flytetest.spec_artifacts import SavedWorkflowSpecArtifact
+
+        rid = make_recipe_id("protein_evidence_alignment", now=self._fixed_now())
+        spec = WorkflowSpec(
+            name="protein_evidence_alignment",
+            analysis_goal="test",
+            inputs=(), outputs=(), nodes=(), edges=(),
+        )
+        artifact = SavedWorkflowSpecArtifact(
+            schema_version=SPEC_ARTIFACT_SCHEMA_VERSION,
+            workflow_spec=spec,
+            binding_plan=BindingPlan(target_name="protein_evidence_alignment", target_kind="task"),
+            source_prompt="test",
+            biological_goal="test",
+            planning_outcome="supported",
+            candidate_outcome="supported",
+            referenced_registered_stages=(),
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            artifact_path = Path(tmp) / f"{rid}.json"
+            save_workflow_spec_artifact(artifact, artifact_path)
+            loaded = load_workflow_spec_artifact(artifact_path)
+            self.assertEqual(artifact_path.stem, rid)
+            self.assertEqual(loaded.workflow_spec.name, "protein_evidence_alignment")

@@ -10,9 +10,11 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -25,6 +27,24 @@ RECIPE_APPROVAL_SCHEMA_VERSION = "recipe-approval-v1"
 DEFAULT_RECIPE_APPROVAL_FILENAME = "recipe_approval.json"
 DURABLE_ASSET_INDEX_SCHEMA_VERSION = "durable-asset-index-v1"
 DEFAULT_DURABLE_ASSET_INDEX_FILENAME = "durable_asset_index.json"
+
+_TARGET_NAME_UNSAFE = re.compile(r"[^a-z0-9_-]")
+
+
+def make_recipe_id(target_name: str, *, now: datetime | None = None) -> str:
+    """Generate a stable recipe identifier: ``<YYYYMMDDThhmmss.mmm>Z-<target_name>``.
+
+    Millisecond resolution makes collisions negligible for serialized calls.
+    ``target_name`` is lower-cased and stripped of filesystem-unsafe characters
+    so the id is valid as a filename stem and a Slurm job name.
+
+    Composition-fallback plans should pass ``"composed-<first>_to_<last>"`` as
+    *target_name* so the id self-describes the DAG boundaries.
+    """
+    ts = now or datetime.now(UTC)
+    millis = ts.microsecond // 1000
+    slug = _TARGET_NAME_UNSAFE.sub("_", target_name.lower()).strip("_") or "unknown"
+    return f"{ts.strftime('%Y%m%dT%H%M%S')}.{millis:03d}Z-{slug}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -503,6 +523,7 @@ def check_recipe_approval(artifact_path: Path, now: str | None = None) -> tuple[
 
 __all__ = [
     "DEFAULT_DURABLE_ASSET_INDEX_FILENAME",
+    "make_recipe_id",
     "DEFAULT_RECIPE_APPROVAL_FILENAME",
     "DEFAULT_SPEC_ARTIFACT_FILENAME",
     "DURABLE_ASSET_INDEX_SCHEMA_VERSION",
