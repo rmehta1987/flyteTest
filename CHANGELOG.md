@@ -52,6 +52,12 @@ Entry template:
       CLI, not the Perl 1.x scripts. Confirm that EVM task wrappers use the correct 2.x
       flags before the first real run.
 
+### MCP Reshape Step 11 — Registry Manifest Contract Test (2026-04-20)
+
+- [x] 2026-04-20 added `tests/test_registry_manifest_contract.py`, a registry-wide contract test that resolves showcased workflow entries to their owning task modules and asserts every declared registry output name is listed in `MANIFEST_OUTPUT_KEYS`.
+- [x] 2026-04-20 kept the contract one-way: extra manifest keys remain allowed for internal audit fields, while missing declared output names fail the test.
+- [x] 2026-04-20 marked Step 11 complete in `docs/mcp_reshape/checklist.md` after verifying the passing case and an in-memory negative case with a bogus registry output.
+
 ### MCP Reshape Step 10 — Manifest Output Keys (2026-04-20)
 
 - [x] 2026-04-20 added module-level `MANIFEST_OUTPUT_KEYS` tuples to every task module under `src/flytetest/tasks/` as the source of truth for keys written under `manifest["outputs"]`.
