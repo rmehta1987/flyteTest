@@ -52,6 +52,13 @@ Entry template:
       CLI, not the Perl 1.x scripts. Confirm that EVM task wrappers use the correct 2.x
       flags before the first real run.
 
+### MCP Reshape Step 14 — Binding Grammar and Durable Reuse (2026-04-20)
+
+- [x] 2026-04-20 added `produced_type` to durable asset refs and populated it during local run indexing when the producing entry declares an unambiguous planner type or the manifest records per-output planner-type metadata.
+- [x] 2026-04-20 extended `resolver._materialize_bindings()` with exact-name compatibility checks for both `$manifest` and `$ref` bindings while preserving raw-path bindings as the deliberate type-check escape hatch.
+- [x] 2026-04-20 taught manifest-backed type checks to accept both current workflow-level manifests and task-stage manifests by consulting the top-level `workflow` or `stage` key and preferring per-output type metadata when present.
+- [x] 2026-04-20 added focused resolver coverage for raw, `$manifest`, `$ref`, mixed-form, and mismatch cases, plus durable-asset-index round-trip coverage for the new `produced_type` field.
+
 ### MCP Reshape Step 13 — Resolver Typed Exceptions (2026-04-20)
 
 - [x] 2026-04-20 added `BindingTypeMismatchError` to the typed planner-resolution hierarchy so the resolver path now has the missing subclass the reshape plan expects before Step 14 adds full type-compatibility checks.

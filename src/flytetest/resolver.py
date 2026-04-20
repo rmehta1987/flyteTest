@@ -19,11 +19,13 @@ from pathlib import Path
 from typing import Any, Literal, Mapping, Protocol, Sequence
 
 from flytetest.errors import (
+    BindingTypeMismatchError,
     BindingPathMissingError,
     ManifestNotFoundError,
     UnknownOutputNameError,
     UnknownRunIdError,
 )
+from flytetest.registry import get_entry
 from flytetest.planner_adapters import (
     annotation_evidence_from_ab_initio_bundle,
     annotation_evidence_from_braker_bundle,
@@ -228,6 +230,100 @@ def _materialize_raw_binding(binding_key: str, binding_value: Mapping[str, Any])
     return resolved
 
 
+def _manifest_entry_name(manifest: Mapping[str, Any]) -> str | None:
+    """Return the registry entry name recorded on a manifest when present."""
+    for key in ("stage", "workflow"):
+        value = manifest.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _manifest_output_type(manifest: Mapping[str, Any], output_name: str | None) -> str | None:
+    """Return one explicit planner type for a manifest output when recorded."""
+    if not output_name:
+        return None
+
+    for mapping_key in ("output_planner_types", "output_types"):
+        mapping_value = manifest.get(mapping_key)
+        if not isinstance(mapping_value, Mapping):
+            continue
+        planner_type = mapping_value.get(output_name)
+        if isinstance(planner_type, str) and planner_type.strip():
+            return planner_type.strip()
+
+    outputs = manifest.get("outputs")
+    if isinstance(outputs, Mapping):
+        output_value = outputs.get(output_name)
+        if isinstance(output_value, Mapping):
+            for field_name in ("produced_type", "planner_type", "type_name", "type"):
+                planner_type = output_value.get(field_name)
+                if isinstance(planner_type, str) and planner_type.strip():
+                    return planner_type.strip()
+    return None
+
+
+def _manifest_produced_types(manifest: Mapping[str, Any]) -> tuple[str, ...]:
+    """Return the registry-declared produced planner types for one manifest."""
+    entry_name = _manifest_entry_name(manifest)
+    if entry_name is None:
+        return ()
+    try:
+        entry = get_entry(entry_name)
+    except KeyError:
+        return ()
+    return tuple(entry.compatibility.produced_planner_types or ())
+
+
+def _raise_binding_type_mismatch(binding_key: str, resolved_type: str, source: str) -> None:
+    """Raise BindingTypeMismatchError with binding-key context."""
+    raise _binding_context_error(
+        BindingTypeMismatchError(binding_key=binding_key, resolved_type=resolved_type, source=source),
+        binding_key,
+    )
+
+
+def _validate_manifest_binding_type(
+    binding_key: str,
+    manifest: Mapping[str, Any],
+    *,
+    manifest_path: Path,
+    output_name: str | None,
+) -> None:
+    """Reject manifest-backed bindings whose producer type is incompatible."""
+    explicit_output_type = _manifest_output_type(manifest, output_name)
+    if explicit_output_type is not None:
+        if explicit_output_type != binding_key:
+            _raise_binding_type_mismatch(binding_key, explicit_output_type, str(manifest_path))
+        return
+
+    produced_types = _manifest_produced_types(manifest)
+    if produced_types and binding_key not in produced_types:
+        _raise_binding_type_mismatch(binding_key, produced_types[0], str(manifest_path))
+
+
+def _validate_ref_binding_type(
+    binding_key: str,
+    durable_ref: DurableAssetRef,
+    manifest: Mapping[str, Any],
+) -> None:
+    """Reject durable-ref bindings whose producer type is incompatible."""
+    if durable_ref.produced_type:
+        if durable_ref.produced_type != binding_key:
+            _raise_binding_type_mismatch(binding_key, durable_ref.produced_type, durable_ref.run_id)
+        return
+
+    explicit_output_type = _manifest_output_type(manifest, durable_ref.output_name)
+    if explicit_output_type is not None:
+        if explicit_output_type != binding_key:
+            _raise_binding_type_mismatch(binding_key, explicit_output_type, durable_ref.run_id)
+        return
+
+    produced_types = _manifest_produced_types(manifest)
+    if produced_types and binding_key not in produced_types:
+        _raise_binding_type_mismatch(binding_key, produced_types[0], durable_ref.run_id)
+
+
 def _materialize_manifest_binding(binding_key: str, binding_value: Mapping[str, Any]) -> Any:
     """Construct one planner type from a manifest-backed binding form."""
     manifest_location = Path(str(binding_value["$manifest"]))
@@ -250,6 +346,13 @@ def _materialize_manifest_binding(binding_key: str, binding_value: Mapping[str, 
                 ),
                 binding_key,
             )
+
+    _validate_manifest_binding_type(
+        binding_key,
+        manifest,
+        manifest_path=manifest_path,
+        output_name=output_name if isinstance(output_name, str) else None,
+    )
 
     manifest_adapter = _MANIFEST_ADAPTERS.get(binding_key)
     if manifest_adapter is None:
@@ -294,6 +397,9 @@ def _materialize_ref_binding(
         resolved_manifest_path = manifest_path or (matching_ref.asset_path / "run_manifest.json")
         raise _binding_context_error(ManifestNotFoundError(str(resolved_manifest_path)), binding_key)
 
+    manifest = json.loads(manifest_path.read_text())
+    _validate_ref_binding_type(binding_key, matching_ref, manifest)
+
     manifest_adapter = _MANIFEST_ADAPTERS.get(binding_key)
     if manifest_adapter is None:
         raise KeyError(f"Unsupported planner type for durable-ref materialization: {binding_key}")
@@ -307,9 +413,8 @@ def _materialize_bindings(
 ) -> dict[str, Any]:
     """Materialize structured run bindings into planner dataclasses.
 
-    Supports the current raw-path form plus the planned manifest-backed and
-    durable-ref forms. This helper is intentionally narrow in Step 13: it adds
-    the typed raise path and leaves the type-compatibility check for Step 14.
+    Supports the raw-path form plus manifest-backed and durable-ref forms,
+    including the exact-name type compatibility checks for $manifest and $ref.
     """
     materialized: dict[str, Any] = {}
     for binding_key, binding_value in bindings.items():

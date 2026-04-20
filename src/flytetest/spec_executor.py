@@ -711,6 +711,52 @@ def _manifest_paths_for_outputs(outputs: Mapping[str, Any]) -> dict[str, Path]:
     }
 
 
+def _manifest_output_planner_type(manifest: Mapping[str, Any], output_name: str) -> str:
+    """Return one explicit planner type for a manifest output when recorded."""
+    for mapping_key in ("output_planner_types", "output_types"):
+        mapping_value = manifest.get(mapping_key)
+        if not isinstance(mapping_value, Mapping):
+            continue
+        planner_type = mapping_value.get(output_name)
+        if isinstance(planner_type, str) and planner_type.strip():
+            return planner_type.strip()
+
+    outputs = manifest.get("outputs")
+    if isinstance(outputs, Mapping):
+        output_value = outputs.get(output_name)
+        if isinstance(output_value, Mapping):
+            for field_name in ("produced_type", "planner_type", "type_name", "type"):
+                planner_type = output_value.get(field_name)
+                if isinstance(planner_type, str) and planner_type.strip():
+                    return planner_type.strip()
+
+    return ""
+
+
+def _durable_ref_produced_type(node_result: LocalNodeExecutionResult, output_name: str) -> str:
+    """Derive the exact planner type for one durable ref when the source is unambiguous."""
+    manifest_path = node_result.manifest_paths.get(output_name)
+    if manifest_path is not None and manifest_path.exists():
+        try:
+            manifest = json.loads(manifest_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            manifest = None
+        if isinstance(manifest, Mapping):
+            planner_type = _manifest_output_planner_type(manifest, output_name)
+            if planner_type:
+                return planner_type
+
+    try:
+        entry = get_entry(node_result.reference_name)
+    except KeyError:
+        return ""
+
+    produced_types = tuple(entry.compatibility.produced_planner_types or ())
+    if len(produced_types) == 1:
+        return produced_types[0]
+    return ""
+
+
 def _durable_refs_from_record(record: LocalRunRecord) -> list[DurableAssetRef]:
     """Emit one DurableAssetRef per Path-valued output across all node results.
 
@@ -741,6 +787,7 @@ def _durable_refs_from_record(record: LocalRunRecord) -> list[DurableAssetRef]:
                 manifest_path=node_result.manifest_paths.get(output_name),
                 created_at=record.created_at,
                 run_record_path=record.run_record_path,
+                produced_type=_durable_ref_produced_type(node_result, output_name),
             ))
     return refs
 

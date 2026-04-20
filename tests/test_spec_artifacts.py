@@ -167,6 +167,7 @@ class DurableAssetIndexTests(TestCase):
                 manifest_path=manifest_path,
                 created_at="2026-04-14T12:00:00Z",
                 run_record_path=run_record_path,
+                produced_type="QualityAssessmentTarget",
             )
 
             index_path = save_durable_asset_index([ref], run_dir)
@@ -184,6 +185,7 @@ class DurableAssetIndexTests(TestCase):
         self.assertEqual(loaded_ref.manifest_path, manifest_path)
         self.assertEqual(loaded_ref.created_at, "2026-04-14T12:00:00Z")
         self.assertEqual(loaded_ref.run_record_path, run_record_path)
+        self.assertEqual(loaded_ref.produced_type, "QualityAssessmentTarget")
 
     def test_load_durable_asset_index_returns_empty_for_missing_file(self) -> None:
         """load_durable_asset_index must return [] without raising when there

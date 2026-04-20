@@ -134,6 +134,10 @@ class DurableAssetRef(SpecSerializable):
         created_at: UTC timestamp from the parent ``LocalRunRecord.created_at``.
         run_record_path: Absolute path to the companion ``local_run_record.json``
             so callers can navigate from any ref back to the full run record.
+        produced_type: Planner type this durable ref is known to produce when
+            the originating entry declares exactly one produced planner type or
+            the manifest carries per-output planner-type metadata. Empty means
+            the ref must fall back to manifest membership checks.
     """
 
     schema_version: str
@@ -145,6 +149,7 @@ class DurableAssetRef(SpecSerializable):
     manifest_path: Path | None
     created_at: str
     run_record_path: Path
+    produced_type: str = ""
 
 
 def save_durable_asset_index(refs: Sequence[DurableAssetRef], run_dir: Path) -> Path:

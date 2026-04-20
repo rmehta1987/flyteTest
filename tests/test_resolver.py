@@ -16,6 +16,7 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(SRC_DIR))
 
 from flytetest.errors import (
+    BindingTypeMismatchError,
     BindingPathMissingError,
     ManifestNotFoundError,
     UnknownOutputNameError,
@@ -26,6 +27,48 @@ from flytetest.resolver import LocalManifestAssetResolver, _materialize_bindings
 from flytetest.spec_artifacts import DURABLE_ASSET_INDEX_SCHEMA_VERSION, DurableAssetRef
 from flytetest.types.assets import AbInitioResultBundle, AssetToolProvenance, ProteinEvidenceResultBundle, ProteinReferenceDatasetAsset
 from flytetest.types.assets import ReferenceGenome as AssetReferenceGenome
+
+
+def _write_transcript_evidence_manifest(result_dir: Path) -> Path:
+    """Write one transcript-evidence manifest that the planner adapter can read."""
+    manifest_path = result_dir / "run_manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "workflow": "transcript_evidence_generation",
+                "notes_alignment": {"reason": "Both Trinity branches remain visible upstream of PASA."},
+                "assumptions": ["Single-sample STAR alignment remains the current simplification."],
+                "outputs": {
+                    "trinity_denovo_fasta": str(result_dir / "trinity_denovo.Trinity.fasta"),
+                    "trinity_gg_fasta": str(result_dir / "trinity_gg.Trinity-GG.fasta"),
+                    "stringtie_gtf": str(result_dir / "transcripts.gtf"),
+                    "merged_bam": str(result_dir / "merged.bam"),
+                },
+                "assets": {
+                    "reference_genome": {
+                        "fasta_path": "data/braker3/reference/genome.fa",
+                        "organism_name": "Example organism",
+                        "assembly_name": None,
+                        "taxonomy_id": None,
+                        "softmasked_fasta_path": None,
+                        "annotation_gff3_path": None,
+                        "notes": [],
+                    },
+                    "read_pair": {
+                        "sample_id": "sampleA",
+                        "left_reads_path": "data/transcriptomics/ref-based/reads_1.fq.gz",
+                        "right_reads_path": "data/transcriptomics/ref-based/reads_2.fq.gz",
+                        "platform": "ILLUMINA",
+                        "strandedness": None,
+                        "condition": None,
+                        "replicate_label": None,
+                    },
+                },
+            },
+            indent=2,
+        )
+    )
+    return manifest_path
 
 
 class ResolverTests(TestCase):
@@ -271,6 +314,42 @@ class ResolverTests(TestCase):
         self.assertEqual(exc_info.exception.path, "/no/such/genome.fa")
         self.assertIn("ReferenceGenome", str(exc_info.exception))
 
+    def test_materialize_bindings_resolves_raw_path_form(self) -> None:
+        """Raw path bindings should materialize directly into planner dataclasses."""
+        with tempfile.TemporaryDirectory() as tmp:
+            fasta_path = Path(tmp) / "reads.fastq"
+            fasta_path.write_text("@r1\nACGT\n+\n!!!!\n")
+
+            materialized = _materialize_bindings(
+                {"ReferenceGenome": {"fasta_path": str(fasta_path)}},
+            )
+
+        self.assertIsInstance(materialized["ReferenceGenome"], ReferenceGenome)
+        self.assertEqual(materialized["ReferenceGenome"].fasta_path, fasta_path)
+
+    def test_materialize_bindings_resolves_manifest_form(self) -> None:
+        """Manifest-backed bindings should lower to the same planner dataclass shape."""
+        with tempfile.TemporaryDirectory() as tmp:
+            result_dir = Path(tmp) / "transcript_results"
+            result_dir.mkdir()
+            manifest_path = _write_transcript_evidence_manifest(result_dir)
+
+            materialized = _materialize_bindings(
+                {
+                    "TranscriptEvidenceSet": {
+                        "$manifest": str(manifest_path),
+                        "output_name": "trinity_denovo_fasta",
+                    }
+                }
+            )
+
+        self.assertIsInstance(materialized["TranscriptEvidenceSet"], TranscriptEvidenceSet)
+        self.assertEqual(
+            materialized["TranscriptEvidenceSet"].de_novo_transcripts_path,
+            result_dir / "trinity_denovo.Trinity.fasta",
+        )
+        self.assertEqual(materialized["TranscriptEvidenceSet"].read_sets[0].sample_id, "sampleA")
+
     def test_materialize_bindings_raises_manifest_not_found_for_manifest_form(self) -> None:
         """Manifest-backed bindings should fail with ManifestNotFoundError when the sidecar is absent."""
         with self.assertRaises(ManifestNotFoundError) as exc_info:
@@ -298,6 +377,7 @@ class ResolverTests(TestCase):
             manifest_path=Path("/tmp/known-run/run_manifest.json"),
             created_at="2026-04-20T12:00:00Z",
             run_record_path=Path("/tmp/known-run/local_run_record.json"),
+            produced_type="QualityAssessmentTarget",
         )
 
         with self.assertRaises(UnknownRunIdError) as exc_info:
@@ -326,6 +406,7 @@ class ResolverTests(TestCase):
             manifest_path=Path("/tmp/known-run/run_manifest.json"),
             created_at="2026-04-20T12:00:00Z",
             run_record_path=Path("/tmp/known-run/local_run_record.json"),
+            produced_type="QualityAssessmentTarget",
         )
 
         with self.assertRaises(UnknownOutputNameError) as exc_info:
@@ -342,6 +423,141 @@ class ResolverTests(TestCase):
         self.assertEqual(exc_info.exception.output_name, "missing_output")
         self.assertEqual(exc_info.exception.known_outputs, ("results_dir",))
         self.assertIn("QualityAssessmentTarget", str(exc_info.exception))
+
+    def test_materialize_bindings_resolves_ref_form(self) -> None:
+        """Durable-ref bindings should resolve through the durable index to a planner dataclass."""
+        with tempfile.TemporaryDirectory() as tmp:
+            result_dir = Path(tmp) / "transcript_results"
+            result_dir.mkdir()
+            manifest_path = _write_transcript_evidence_manifest(result_dir)
+            ref = DurableAssetRef(
+                schema_version=DURABLE_ASSET_INDEX_SCHEMA_VERSION,
+                run_id="known-run",
+                workflow_name="transcript_evidence_generation",
+                output_name="results_dir",
+                node_name="transcript_evidence_generation",
+                asset_path=result_dir,
+                manifest_path=manifest_path,
+                created_at="2026-04-20T12:00:00Z",
+                run_record_path=Path(tmp) / "local_run_record.json",
+                produced_type="TranscriptEvidenceSet",
+            )
+
+            materialized = _materialize_bindings(
+                {
+                    "TranscriptEvidenceSet": {
+                        "$ref": {"run_id": "known-run", "output_name": "results_dir"},
+                    }
+                },
+                durable_index=(ref,),
+            )
+
+        self.assertIsInstance(materialized["TranscriptEvidenceSet"], TranscriptEvidenceSet)
+        self.assertEqual(
+            materialized["TranscriptEvidenceSet"].genome_guided_transcripts_path,
+            result_dir / "trinity_gg.Trinity-GG.fasta",
+        )
+
+    def test_materialize_bindings_resolves_mixed_raw_and_ref_forms(self) -> None:
+        """A single materialization call may mix raw-path and durable-ref bindings."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            fasta_path = tmp_path / "custom_reference.txt"
+            fasta_path.write_text("pretend biological data")
+            result_dir = tmp_path / "transcript_results"
+            result_dir.mkdir()
+            manifest_path = _write_transcript_evidence_manifest(result_dir)
+            ref = DurableAssetRef(
+                schema_version=DURABLE_ASSET_INDEX_SCHEMA_VERSION,
+                run_id="known-run",
+                workflow_name="transcript_evidence_generation",
+                output_name="results_dir",
+                node_name="transcript_evidence_generation",
+                asset_path=result_dir,
+                manifest_path=manifest_path,
+                created_at="2026-04-20T12:00:00Z",
+                run_record_path=tmp_path / "local_run_record.json",
+                produced_type="TranscriptEvidenceSet",
+            )
+
+            materialized = _materialize_bindings(
+                {
+                    "ReferenceGenome": {"fasta_path": str(fasta_path)},
+                    "TranscriptEvidenceSet": {
+                        "$ref": {"run_id": "known-run", "output_name": "results_dir"},
+                    },
+                },
+                durable_index=(ref,),
+            )
+
+        self.assertEqual(materialized["ReferenceGenome"].fasta_path, fasta_path)
+        self.assertEqual(materialized["TranscriptEvidenceSet"].read_sets[0].sample_id, "sampleA")
+
+    def test_materialize_bindings_raises_type_mismatch_for_ref_form(self) -> None:
+        """Durable refs should reject incompatible binding keys before planner construction."""
+        with tempfile.TemporaryDirectory() as tmp:
+            result_dir = Path(tmp) / "transcript_results"
+            result_dir.mkdir()
+            manifest_path = _write_transcript_evidence_manifest(result_dir)
+            ref = DurableAssetRef(
+                schema_version=DURABLE_ASSET_INDEX_SCHEMA_VERSION,
+                run_id="known-run",
+                workflow_name="transcript_evidence_generation",
+                output_name="results_dir",
+                node_name="transcript_evidence_generation",
+                asset_path=result_dir,
+                manifest_path=manifest_path,
+                created_at="2026-04-20T12:00:00Z",
+                run_record_path=Path(tmp) / "local_run_record.json",
+                produced_type="TranscriptEvidenceSet",
+            )
+
+            with self.assertRaises(BindingTypeMismatchError) as exc_info:
+                _materialize_bindings(
+                    {
+                        "QualityAssessmentTarget": {
+                            "$ref": {"run_id": "known-run", "output_name": "results_dir"},
+                        }
+                    },
+                    durable_index=(ref,),
+                )
+
+        self.assertEqual(exc_info.exception.binding_key, "QualityAssessmentTarget")
+        self.assertEqual(exc_info.exception.resolved_type, "TranscriptEvidenceSet")
+        self.assertEqual(exc_info.exception.source, "known-run")
+
+    def test_materialize_bindings_raises_type_mismatch_for_manifest_form(self) -> None:
+        """Manifest bindings should reject producers whose declared type does not match the binding key."""
+        with tempfile.TemporaryDirectory() as tmp:
+            result_dir = Path(tmp) / "transcript_results"
+            result_dir.mkdir()
+            manifest_path = _write_transcript_evidence_manifest(result_dir)
+
+            with self.assertRaises(BindingTypeMismatchError) as exc_info:
+                _materialize_bindings(
+                    {
+                        "QualityAssessmentTarget": {
+                            "$manifest": str(manifest_path),
+                            "output_name": "trinity_denovo_fasta",
+                        }
+                    }
+                )
+
+        self.assertEqual(exc_info.exception.binding_key, "QualityAssessmentTarget")
+        self.assertEqual(exc_info.exception.resolved_type, "TranscriptEvidenceSet")
+        self.assertEqual(exc_info.exception.source, str(manifest_path))
+
+    def test_materialize_bindings_raw_path_escape_hatch_skips_type_check(self) -> None:
+        """Raw-path bindings intentionally skip biology-type compatibility checks."""
+        with tempfile.TemporaryDirectory() as tmp:
+            odd_path = Path(tmp) / "reads.fastq"
+            odd_path.write_text("@r1\nACGT\n+\n!!!!\n")
+
+            materialized = _materialize_bindings(
+                {"ReferenceGenome": {"fasta_path": str(odd_path)}},
+            )
+
+        self.assertEqual(materialized["ReferenceGenome"].fasta_path, odd_path)
 
 
 class DurableIndexResolverTests(TestCase):
@@ -374,6 +590,7 @@ class DurableIndexResolverTests(TestCase):
                 manifest_path=missing_manifest,
                 created_at="2026-04-14T12:00:00Z",
                 run_record_path=asset_path.parent / "local_run_record.json",
+                produced_type="QualityAssessmentTarget",
             )
 
             result = resolver.resolve(
@@ -423,6 +640,7 @@ class DurableIndexResolverTests(TestCase):
                 manifest_path=result_dir / "run_manifest.json",
                 created_at="2026-04-14T12:00:00Z",
                 run_record_path=result_dir.parent / "local_run_record.json",
+                produced_type="QualityAssessmentTarget",
             )
 
             result = resolver.resolve(
