@@ -77,10 +77,10 @@ from flytetest.pipeline_tracker import (
 from flytetest.planning import (
     plan_typed_request,
     showcase_limitations,
-    split_entry_inputs,
     supported_entry_parameters,
 )
 from flytetest.registry import RegistryEntry, get_entry
+from flytetest.registry import list_entries as registry_list_entries
 from flytetest.spec_artifacts import (
     artifact_from_typed_plan,
     check_recipe_approval,
@@ -400,33 +400,30 @@ def get_pipeline_status() -> dict[str, object]:
     return _get_pipeline_status_impl()
 
 
-def _entry_payload(name: str) -> dict[str, object]:
-    """Serialize one supported showcase target for stable tool responses.
-
-    Args:
-        name: The supported entry name being looked up.
-
-    Returns:
-        A serialized payload for the requested supported showcase entry.
-"""
-    entry: RegistryEntry = get_entry(name)
-    required_inputs, optional_inputs = split_entry_inputs(name)
+def _entry_payload(entry: RegistryEntry) -> dict[str, object]:
+    c = entry.compatibility
     return {
         "name": entry.name,
         "category": entry.category,
         "description": entry.description,
-        "supported_execution_profiles": list(entry.compatibility.supported_execution_profiles),
-        "default_execution_profile": entry.compatibility.execution_defaults.get("profile", "local"),
-        "slurm_resource_hints": entry.compatibility.execution_defaults.get("slurm_resource_hints", {}),
-        "required_inputs": [asdict(field) for field in required_inputs],
-        "optional_inputs": [asdict(field) for field in optional_inputs],
-        "outputs": [asdict(field) for field in entry.outputs],
+        "pipeline_family": c.pipeline_family,
+        "pipeline_stage_order": c.pipeline_stage_order,
+        "biological_stage": c.biological_stage,
+        "accepted_planner_types": list(c.accepted_planner_types),
+        "produced_planner_types": list(c.produced_planner_types),
+        "supported_execution_profiles": list(c.supported_execution_profiles),
+        "slurm_resource_hints": c.execution_defaults.get("slurm_resource_hints", {}),
+        "local_resource_defaults": c.execution_defaults.get("local_resource_defaults", {}),
+        "inputs": [asdict(f) for f in entry.inputs],
+        "outputs": [asdict(f) for f in entry.outputs],
+        "tags": list(entry.tags),
+        "execution_defaults": dict(c.execution_defaults),
     }
 
 
 def _supported_entry_payloads() -> list[dict[str, object]]:
     """Return the serialized showcase targets shared by tools and resources."""
-    return [_entry_payload(name) for name in SUPPORTED_TARGET_NAMES]
+    return [_entry_payload(e) for e in registry_list_entries() if e.showcase_module]
 
 
 def _normalize_manifest_sources(manifest_sources: Sequence[str | Path] | None) -> tuple[tuple[Path, ...], tuple[str, ...]]:
@@ -768,13 +765,15 @@ def _run_workflow_direct(workflow_name: str, inputs: Mapping[str, object]) -> di
         }
 
 
-def list_entries() -> dict[str, object]:
-    """List the day-one MCP recipe execution targets."""
-    return {
-        "entries": _supported_entry_payloads(),
-        "server_tools": list(SERVER_TOOL_NAMES),
-        "limitations": list(LIST_ENTRIES_LIMITATIONS),
-    }
+def list_entries(
+    category: str | None = None,
+    pipeline_family: str | None = None,
+) -> list[dict[str, object]]:
+    """List showcased MCP recipe targets, optionally filtered by category or pipeline family."""
+    entries = registry_list_entries(category)
+    if pipeline_family:
+        entries = tuple(e for e in entries if e.compatibility.pipeline_family == pipeline_family)
+    return [_entry_payload(e) for e in entries if e.showcase_module]
 
 
 def resource_scope() -> dict[str, object]:
