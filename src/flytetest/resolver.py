@@ -14,10 +14,16 @@ database requirement, remote search, or automatic execution.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields, is_dataclass
 from pathlib import Path
 from typing import Any, Literal, Mapping, Protocol, Sequence
 
+from flytetest.errors import (
+    BindingPathMissingError,
+    ManifestNotFoundError,
+    UnknownOutputNameError,
+    UnknownRunIdError,
+)
 from flytetest.planner_adapters import (
     annotation_evidence_from_ab_initio_bundle,
     annotation_evidence_from_braker_bundle,
@@ -177,6 +183,152 @@ _BUNDLE_ADAPTERS: dict[type[Any], dict[str, Any]] = {
         "ConsensusAnnotation": consensus_annotation_from_bundle,
     },
 }
+
+
+def _binding_context_error(exc: Exception, binding_key: str) -> Exception:
+    """Prefix a typed resolver exception with the binding key context."""
+    exc.args = (f"Binding {binding_key!r}: {exc}",)
+    return exc
+
+
+def _iter_path_values(value: Any) -> tuple[Path, ...]:
+    """Collect concrete Path values from a planner dataclass recursively."""
+    if isinstance(value, Path):
+        return (value,)
+    if is_dataclass(value):
+        collected: list[Path] = []
+        for field_info in fields(value):
+            collected.extend(_iter_path_values(getattr(value, field_info.name)))
+        return tuple(collected)
+    if isinstance(value, Mapping):
+        collected = []
+        for item in value.values():
+            collected.extend(_iter_path_values(item))
+        return tuple(collected)
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        collected = []
+        for item in value:
+            collected.extend(_iter_path_values(item))
+        return tuple(collected)
+    return ()
+
+
+def _validate_materialized_paths(binding_key: str, value: Any) -> None:
+    """Raise BindingPathMissingError when a materialized raw binding path is absent."""
+    for path_value in _iter_path_values(value):
+        if not path_value.exists():
+            raise _binding_context_error(BindingPathMissingError(str(path_value)), binding_key)
+
+
+def _materialize_raw_binding(binding_key: str, binding_value: Mapping[str, Any]) -> Any:
+    """Construct one planner type directly from a raw binding mapping."""
+    planner_type = _PLANNER_TYPES_BY_NAME[binding_key]
+    resolved = planner_type.from_dict(dict(binding_value))
+    _validate_materialized_paths(binding_key, resolved)
+    return resolved
+
+
+def _materialize_manifest_binding(binding_key: str, binding_value: Mapping[str, Any]) -> Any:
+    """Construct one planner type from a manifest-backed binding form."""
+    manifest_location = Path(str(binding_value["$manifest"]))
+    manifest_path = manifest_location / "run_manifest.json" if manifest_location.is_dir() else manifest_location
+    if not manifest_path.exists():
+        raise _binding_context_error(ManifestNotFoundError(str(manifest_path)), binding_key)
+
+    manifest = json.loads(manifest_path.read_text())
+    output_name = binding_value.get("output_name")
+    if isinstance(output_name, str) and output_name:
+        manifest_outputs = manifest.get("outputs", {})
+        if not isinstance(manifest_outputs, Mapping) or output_name not in manifest_outputs:
+            raise _binding_context_error(
+                UnknownOutputNameError(
+                    run_id=str(manifest_path),
+                    output_name=output_name,
+                    known_outputs=tuple(sorted(str(key) for key in manifest_outputs))
+                    if isinstance(manifest_outputs, Mapping)
+                    else (),
+                ),
+                binding_key,
+            )
+
+    manifest_adapter = _MANIFEST_ADAPTERS.get(binding_key)
+    if manifest_adapter is None:
+        raise KeyError(f"Unsupported planner type for manifest materialization: {binding_key}")
+    return manifest_adapter(manifest_path)
+
+
+def _materialize_ref_binding(
+    binding_key: str,
+    binding_value: Mapping[str, Any],
+    *,
+    durable_index: Sequence[DurableAssetRef],
+) -> Any:
+    """Resolve one durable-reference binding enough to surface typed resolver errors."""
+    ref_payload = binding_value.get("$ref")
+    if not isinstance(ref_payload, Mapping):
+        raise ValueError(f"Binding {binding_key!r} has a malformed $ref payload.")
+    run_id = str(ref_payload.get("run_id") or "")
+    output_name = str(ref_payload.get("output_name") or "")
+
+    run_refs = tuple(ref for ref in durable_index if ref.run_id == run_id)
+    if not run_refs:
+        available_run_ids = {ref.run_id for ref in durable_index}
+        raise _binding_context_error(
+            UnknownRunIdError(run_id=run_id, available_count=len(available_run_ids)),
+            binding_key,
+        )
+
+    matching_ref = next((ref for ref in run_refs if ref.output_name == output_name), None)
+    if matching_ref is None:
+        raise _binding_context_error(
+            UnknownOutputNameError(
+                run_id=run_id,
+                output_name=output_name,
+                known_outputs=tuple(sorted(ref.output_name for ref in run_refs)),
+            ),
+            binding_key,
+        )
+
+    manifest_path = matching_ref.manifest_path
+    if manifest_path is None or not manifest_path.exists():
+        resolved_manifest_path = manifest_path or (matching_ref.asset_path / "run_manifest.json")
+        raise _binding_context_error(ManifestNotFoundError(str(resolved_manifest_path)), binding_key)
+
+    manifest_adapter = _MANIFEST_ADAPTERS.get(binding_key)
+    if manifest_adapter is None:
+        raise KeyError(f"Unsupported planner type for durable-ref materialization: {binding_key}")
+    return manifest_adapter(manifest_path)
+
+
+def _materialize_bindings(
+    bindings: Mapping[str, Mapping[str, Any]],
+    *,
+    durable_index: Sequence[DurableAssetRef] = (),
+) -> dict[str, Any]:
+    """Materialize structured run bindings into planner dataclasses.
+
+    Supports the current raw-path form plus the planned manifest-backed and
+    durable-ref forms. This helper is intentionally narrow in Step 13: it adds
+    the typed raise path and leaves the type-compatibility check for Step 14.
+    """
+    materialized: dict[str, Any] = {}
+    for binding_key, binding_value in bindings.items():
+        if binding_key not in _PLANNER_TYPES_BY_NAME:
+            raise KeyError(f"Unsupported planner type for materialization: {binding_key}")
+        if not isinstance(binding_value, Mapping):
+            raise TypeError(f"Binding {binding_key!r} must be a mapping payload.")
+
+        if "$manifest" in binding_value:
+            materialized[binding_key] = _materialize_manifest_binding(binding_key, binding_value)
+        elif "$ref" in binding_value:
+            materialized[binding_key] = _materialize_ref_binding(
+                binding_key,
+                binding_value,
+                durable_index=durable_index,
+            )
+        else:
+            materialized[binding_key] = _materialize_raw_binding(binding_key, binding_value)
+    return materialized
 
 
 def _manifest_workflow_name(manifest: Mapping[str, Any]) -> str | None:
@@ -468,4 +620,5 @@ __all__ = [
     "ResolutionCandidate",
     "ResolutionResult",
     "ResolverSource",
+    "_materialize_bindings",
 ]

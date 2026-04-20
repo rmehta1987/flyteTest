@@ -52,6 +52,13 @@ Entry template:
       CLI, not the Perl 1.x scripts. Confirm that EVM task wrappers use the correct 2.x
       flags before the first real run.
 
+### MCP Reshape Step 13 — Resolver Typed Exceptions (2026-04-20)
+
+- [x] 2026-04-20 added `BindingTypeMismatchError` to the typed planner-resolution hierarchy so the resolver path now has the missing subclass the reshape plan expects before Step 14 adds full type-compatibility checks.
+- [x] 2026-04-20 added `_materialize_bindings()` to `src/flytetest/resolver.py` with typed failure handling for raw-path bindings, manifest-backed bindings, and durable `$ref` lookups, including binding-key context in the surfaced exception messages.
+- [x] 2026-04-20 added focused Step 13 coverage in `tests/test_errors.py` and `tests/test_resolver.py` for `BindingTypeMismatchError`, missing raw paths, missing manifest sidecars, unknown durable `run_id` values, and unknown durable `output_name` values.
+- [x] 2026-04-20 verified the slice with `/home/rmeht/Projects/flyteTest/.venv/bin/python -m compileall src/flytetest/resolver.py` and `/home/rmeht/Projects/flyteTest/.venv/bin/python -m pytest tests/test_resolver.py tests/test_errors.py` (32 passed).
+
 ### MCP Reshape Step 12 — Execution Defaults Layering (2026-04-20)
 
 - [x] 2026-04-20 expanded showcased registry `execution_defaults` for BRAKER3, BUSCO, and Exonerate entries with seeded `runtime_images`, `tool_databases`, and `module_loads` where the repo already had concrete bundle-backed values.

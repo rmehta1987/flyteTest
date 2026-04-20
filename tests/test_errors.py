@@ -8,6 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from flytetest.errors import (
+    BindingTypeMismatchError,
     BindingPathMissingError,
     ManifestNotFoundError,
     PlannerResolutionError,
@@ -106,6 +107,36 @@ class TestBindingPathMissingError:
         assert isinstance(exc, PlannerResolutionError)
 
 
+class TestBindingTypeMismatchError:
+    def test_attributes(self):
+        exc = BindingTypeMismatchError(
+            binding_key="ReadSet",
+            resolved_type="VariantCallSet",
+            source="run-123",
+        )
+        assert exc.binding_key == "ReadSet"
+        assert exc.resolved_type == "VariantCallSet"
+        assert exc.source == "run-123"
+
+    def test_str_contains_all_context(self):
+        exc = BindingTypeMismatchError(
+            binding_key="ReadSet",
+            resolved_type="VariantCallSet",
+            source="run-123",
+        )
+        assert "ReadSet" in str(exc)
+        assert "VariantCallSet" in str(exc)
+        assert "run-123" in str(exc)
+
+    def test_is_planner_resolution_error(self):
+        exc = BindingTypeMismatchError(
+            binding_key="ReadSet",
+            resolved_type="VariantCallSet",
+            source="run-123",
+        )
+        assert isinstance(exc, PlannerResolutionError)
+
+
 class TestPlannerResolutionErrorBase:
     def test_all_subclasses_are_exceptions(self):
         for cls in (
@@ -113,6 +144,7 @@ class TestPlannerResolutionErrorBase:
             UnknownOutputNameError,
             ManifestNotFoundError,
             BindingPathMissingError,
+            BindingTypeMismatchError,
         ):
             assert issubclass(cls, Exception)
 

@@ -91,3 +91,22 @@ class BindingPathMissingError(PlannerResolutionError):
         super().__init__(
             f"binding path {path!r} does not exist on disk"
         )
+
+
+class BindingTypeMismatchError(PlannerResolutionError):
+    """Raised when a resolved binding source produces the wrong planner type.
+
+    Attributes:
+        binding_key: Planner type requested by the caller.
+        resolved_type: Planner type or source type actually produced.
+        source: Human-readable origin of the resolved value.
+    """
+
+    def __init__(self, binding_key: str, resolved_type: str, source: str) -> None:
+        self.binding_key = binding_key
+        self.resolved_type = resolved_type
+        self.source = source
+        super().__init__(
+            f"binding {binding_key!r} expected {binding_key!r} but source "
+            f"{source!r} resolved to {resolved_type!r}"
+        )

@@ -15,8 +15,14 @@ from unittest import TestCase
 SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(SRC_DIR))
 
+from flytetest.errors import (
+    BindingPathMissingError,
+    ManifestNotFoundError,
+    UnknownOutputNameError,
+    UnknownRunIdError,
+)
 from flytetest.planner_types import ProteinEvidenceSet, QualityAssessmentTarget, ReferenceGenome, TranscriptEvidenceSet
-from flytetest.resolver import LocalManifestAssetResolver
+from flytetest.resolver import LocalManifestAssetResolver, _materialize_bindings
 from flytetest.spec_artifacts import DURABLE_ASSET_INDEX_SCHEMA_VERSION, DurableAssetRef
 from flytetest.types.assets import AbInitioResultBundle, AssetToolProvenance, ProteinEvidenceResultBundle, ProteinReferenceDatasetAsset
 from flytetest.types.assets import ReferenceGenome as AssetReferenceGenome
@@ -254,6 +260,88 @@ class ResolverTests(TestCase):
         self.assertIsInstance(result.resolved_value, QualityAssessmentTarget)
         self.assertEqual(result.resolved_value.annotation_gff3_path, result_dir / "all_repeats_removed.gff3")
         self.assertEqual(result.resolved_value.proteins_fasta_path, result_dir / "all_repeats_removed.proteins.fa")
+
+    def test_materialize_bindings_raises_binding_path_missing_for_raw_path_form(self) -> None:
+        """Raw path bindings should fail with BindingPathMissingError when a path is absent."""
+        with self.assertRaises(BindingPathMissingError) as exc_info:
+            _materialize_bindings(
+                {"ReferenceGenome": {"fasta_path": "/no/such/genome.fa"}},
+            )
+
+        self.assertEqual(exc_info.exception.path, "/no/such/genome.fa")
+        self.assertIn("ReferenceGenome", str(exc_info.exception))
+
+    def test_materialize_bindings_raises_manifest_not_found_for_manifest_form(self) -> None:
+        """Manifest-backed bindings should fail with ManifestNotFoundError when the sidecar is absent."""
+        with self.assertRaises(ManifestNotFoundError) as exc_info:
+            _materialize_bindings(
+                {
+                    "QualityAssessmentTarget": {
+                        "$manifest": "/no/such/run_manifest.json",
+                        "output_name": "results_dir",
+                    }
+                }
+            )
+
+        self.assertEqual(exc_info.exception.manifest_path, "/no/such/run_manifest.json")
+        self.assertIn("QualityAssessmentTarget", str(exc_info.exception))
+
+    def test_materialize_bindings_raises_unknown_run_id_for_ref_form(self) -> None:
+        """Durable-ref bindings should fail with UnknownRunIdError when the run_id is absent."""
+        ref = DurableAssetRef(
+            schema_version=DURABLE_ASSET_INDEX_SCHEMA_VERSION,
+            run_id="known-run",
+            workflow_name="select_annotation_qc_busco",
+            output_name="results_dir",
+            node_name="annotation_qc_busco",
+            asset_path=Path("/tmp/known-run"),
+            manifest_path=Path("/tmp/known-run/run_manifest.json"),
+            created_at="2026-04-20T12:00:00Z",
+            run_record_path=Path("/tmp/known-run/local_run_record.json"),
+        )
+
+        with self.assertRaises(UnknownRunIdError) as exc_info:
+            _materialize_bindings(
+                {
+                    "QualityAssessmentTarget": {
+                        "$ref": {"run_id": "missing-run", "output_name": "results_dir"},
+                    }
+                },
+                durable_index=(ref,),
+            )
+
+        self.assertEqual(exc_info.exception.run_id, "missing-run")
+        self.assertEqual(exc_info.exception.available_count, 1)
+        self.assertIn("QualityAssessmentTarget", str(exc_info.exception))
+
+    def test_materialize_bindings_raises_unknown_output_name_for_ref_form(self) -> None:
+        """Durable-ref bindings should fail with UnknownOutputNameError when the output is absent on a known run."""
+        ref = DurableAssetRef(
+            schema_version=DURABLE_ASSET_INDEX_SCHEMA_VERSION,
+            run_id="known-run",
+            workflow_name="select_annotation_qc_busco",
+            output_name="results_dir",
+            node_name="annotation_qc_busco",
+            asset_path=Path("/tmp/known-run"),
+            manifest_path=Path("/tmp/known-run/run_manifest.json"),
+            created_at="2026-04-20T12:00:00Z",
+            run_record_path=Path("/tmp/known-run/local_run_record.json"),
+        )
+
+        with self.assertRaises(UnknownOutputNameError) as exc_info:
+            _materialize_bindings(
+                {
+                    "QualityAssessmentTarget": {
+                        "$ref": {"run_id": "known-run", "output_name": "missing_output"},
+                    }
+                },
+                durable_index=(ref,),
+            )
+
+        self.assertEqual(exc_info.exception.run_id, "known-run")
+        self.assertEqual(exc_info.exception.output_name, "missing_output")
+        self.assertEqual(exc_info.exception.known_outputs, ("results_dir",))
+        self.assertIn("QualityAssessmentTarget", str(exc_info.exception))
 
 
 class DurableIndexResolverTests(TestCase):
