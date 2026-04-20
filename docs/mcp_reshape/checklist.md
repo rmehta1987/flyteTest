@@ -34,8 +34,8 @@ call sites and documentation.
 | # | Step | Plan section | Prompt | Status |
 |---|------|--------------|--------|--------|
 | 01 | Add `InterfaceField.required` default-True flag | §3b (commit 1) | `prompts/step_01_interface_field_required.md` | Complete |
-| 02 | New module `mcp_replies.py` — typed reply dataclasses | §3d | `prompts/step_02_mcp_replies.md` | Not started |
-| 03 | New module `errors.py` — typed exception hierarchy | §3g (commit 1) | `prompts/step_03_errors.md` | Not started |
+| 02 | New module `mcp_replies.py` — typed reply dataclasses | §3d | `prompts/step_02_mcp_replies.md` | Complete |
+| 03 | New module `errors.py` — typed exception hierarchy | §3g (commit 1) | `prompts/step_03_errors.md` | Complete |
 | 04 | New module `bundles.py` — `ResourceBundle` + availability | §4 | `prompts/step_04_bundles.md` | Not started |
 | 05 | New module `staging.py` — offline-staging preflight | §8 (module) | `prompts/step_05_staging.md` | Not started |
 | 06 | `WorkflowSpec.tool_databases` field + round-trip | §8 (artifact) | `prompts/step_06_workflowspec_tool_databases.md` | Not started |

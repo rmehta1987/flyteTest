@@ -22,16 +22,21 @@ Task:
      `available_count`.
    - `UnknownOutputNameError(PlannerResolutionError)` — carries `run_id`,
      `output_name`, `known_outputs: tuple[str, ...]`.
-   - `ManifestNotFoundError(PlannerResolutionError)` — a $manifest path that
-     does not exist on disk.
-   - `BindingPathMissingError(PlannerResolutionError)` — a raw-path binding
-     pointing at a missing file.
+   - `ManifestNotFoundError(PlannerResolutionError)` — carries
+     `manifest_path`; represents a `$manifest` path that does not exist on
+     disk.
+   - `BindingPathMissingError(PlannerResolutionError)` — carries `path`;
+     represents a raw-path binding pointing at a missing file.
 
 2. Each subclass stores the contextual fields as attributes AND composes a
    human-readable message in `__init__` via `super().__init__(msg)`. The
    attributes let the _execute_run_tool wrapper (Step 19) populate a
    PlanDecline's `next_steps` field deterministically; the message is the
    human-readable `limitations` entry.
+
+3. Keep this step minimal. Do not add richer metadata such as planner type,
+  binding field name, or filesystem classification yet; that can be added in
+  a later refinement if Step 19 or Step 13 proves it is needed.
 
 3. Module docstring explains the opt-in semantics: raising a
    `PlannerResolutionError` subclass opts the failure into the exception-to-
@@ -41,7 +46,8 @@ Task:
 Tests to add (tests/test_errors.py):
 
 - Each subclass carries the expected attributes.
-- `str(exc)` contains the key context (run_id, output_name, known_outputs).
+- `str(exc)` contains the key context (`run_id`, `output_name`,
+  `known_outputs`, `manifest_path`, or `path`, as appropriate).
 - `isinstance(exc, PlannerResolutionError)` is True for every subclass.
 
 Verification:
