@@ -14,6 +14,7 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(SRC_DIR))
 
 from flytetest.registry import REGISTRY_ENTRIES, RegistryCompatibilityMetadata, get_entry, list_entries
+from flytetest.registry._types import InterfaceField, RegistryEntry
 
 
 class RegistryTests(TestCase):
@@ -28,6 +29,44 @@ class RegistryTests(TestCase):
     This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         self.assertEqual(list_entries(), REGISTRY_ENTRIES)
+
+    def test_interface_field_required_round_trips_through_registry_entry_dict(self) -> None:
+        """Keep InterfaceField.required backward-compatible in serialized registry payloads.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
+        entry = RegistryEntry(
+            name="synthetic_optional_output_task",
+            category="task",
+            description="Synthetic registry entry for InterfaceField.required serialization.",
+            inputs=(InterfaceField("input_fasta", "File", "Synthetic input FASTA."),),
+            outputs=(
+                InterfaceField("results_dir", "Dir", "Synthetic results directory."),
+                InterfaceField("tbi_path", "File", "Optional tabix index output.", required=False),
+            ),
+            tags=("test",),
+        )
+
+        payload = entry.to_dict()
+
+        self.assertTrue(entry.outputs[0].required)
+        self.assertEqual(
+            payload["outputs"],
+            [
+                {
+                    "name": "results_dir",
+                    "type": "Dir",
+                    "description": "Synthetic results directory.",
+                    "required": True,
+                },
+                {
+                    "name": "tbi_path",
+                    "type": "File",
+                    "description": "Optional tabix index output.",
+                    "required": False,
+                },
+            ],
+        )
 
     def test_list_entries_filters_by_category_without_rewriting_entries(self) -> None:
         """Keep category filtering as a pure view over the declared registry entries.

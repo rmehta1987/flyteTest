@@ -14,12 +14,17 @@ class InterfaceField:
     """One named input or output listed in the catalog.
 
     These fields keep the public shape readable without importing Flyte objects
-    or task functions.
+    or task functions. The optional ``required`` flag lets registry entries
+    distinguish outputs that must be produced on every run from ones that are
+    conditional (e.g. a TBI index emitted only in GVCF mode), so MCP replies
+    can surface the distinction as a prominent-vs-soft advisory when a
+    declared output is absent from a run manifest.
     """
 
     name: str
     type: str
     description: str
+    required: bool = True
 
 
 @dataclass(frozen=True)
