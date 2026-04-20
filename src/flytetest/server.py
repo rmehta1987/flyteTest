@@ -25,6 +25,7 @@ from io import TextIOWrapper
 from pathlib import Path
 from typing import Any, get_args, get_origin, get_type_hints
 
+import flytetest.planner_types as planner_types_module
 from flytetest.mcp_contract import (
     DECLINE_CATEGORY_CODES,
     EXAMPLE_PROMPT_REQUIREMENTS,
@@ -2406,6 +2407,80 @@ _SCALAR_HINT_TYPES = {
 }
 
 
+def _scan_name_variants(name: str) -> tuple[str, ...]:
+    """Return the semantic name variants used for binding discovery scans."""
+    variants = [name]
+    if name.endswith("_path"):
+        stripped = name.removesuffix("_path")
+        if stripped:
+            variants.append(stripped)
+    return tuple(dict.fromkeys(variants))
+
+
+def _matches_scan_suffix(candidate_name: str, suffix: str) -> bool:
+    """Return whether one semantic name matches one scan suffix rule."""
+    normalized = suffix.lstrip("_")
+    return (
+        candidate_name == normalized
+        or candidate_name.endswith(suffix)
+        or candidate_name.endswith(normalized)
+        or candidate_name.startswith(f"{normalized}_")
+    )
+
+
+def _scan_patterns_for_name(name: str) -> tuple[str, ...]:
+    """Return file-scan patterns for one parameter or planner Path field name."""
+    for candidate_name in _scan_name_variants(name):
+        for suffixes, exts in _PARAM_EXTENSION_MAP:
+            if any(_matches_scan_suffix(candidate_name, suffix) for suffix in suffixes):
+                return exts
+    return ()
+
+
+def _looks_like_run_dir_name(name: str) -> bool:
+    """Return whether one semantic name should scan for manifest-bearing run dirs."""
+    return any(candidate_name.endswith(("_dir", "_results")) for candidate_name in _scan_name_variants(name))
+
+
+def _is_path_annotation(annotation: Any) -> bool:
+    """Return whether one type annotation is Path or Optional[Path]."""
+    if annotation is Path:
+        return True
+    origin = get_origin(annotation)
+    if origin is None:
+        return False
+    args = tuple(arg for arg in get_args(annotation) if arg is not type(None))
+    return len(args) == 1 and args[0] is Path
+
+
+def _path_fields_for(planner_type: type[Any]) -> tuple[str, ...]:
+    """Return the Path-bearing field names declared on one planner dataclass."""
+    return tuple(
+        field_name
+        for field_name, annotation in get_type_hints(planner_type).items()
+        if _is_path_annotation(annotation)
+    )
+
+
+def _typed_binding_candidates(entry: RegistryEntry, root: Path) -> dict[str, dict[str, list[str]]]:
+    """Return typed binding candidates grouped by accepted planner type."""
+    typed_bindings: dict[str, dict[str, list[str]]] = {}
+    for planner_type_name in entry.compatibility.accepted_planner_types:
+        planner_type = getattr(planner_types_module, planner_type_name, None)
+        field_candidates: dict[str, list[str]] = {}
+        if planner_type is not None:
+            for field_name in _path_fields_for(planner_type):
+                scan_patterns = _scan_patterns_for_name(field_name)
+                if scan_patterns:
+                    field_candidates[field_name] = _scan_for_files(root, scan_patterns)
+                elif _looks_like_run_dir_name(field_name):
+                    field_candidates[field_name] = _scan_for_run_dirs(root)
+                else:
+                    field_candidates[field_name] = []
+        typed_bindings[planner_type_name] = field_candidates
+    return typed_bindings
+
+
 def _task_parameter_scan_patterns(task_name: str) -> dict[str, tuple[str, ...]]:
     """Return per-parameter scan extension lists for one supported task.
 
@@ -2418,12 +2493,7 @@ def _task_parameter_scan_patterns(task_name: str) -> dict[str, tuple[str, ...]]:
     parameters = TASK_PARAMETERS.get(task_name, ())
     result: dict[str, tuple[str, ...]] = {}
     for param_name, required in parameters:
-        matched: tuple[str, ...] = ()
-        for suffixes, exts in _PARAM_EXTENSION_MAP:
-            if any(param_name == s or param_name.endswith(s) for s in suffixes):
-                matched = exts
-                break
-        result[param_name] = matched
+        result[param_name] = _scan_patterns_for_name(param_name)
     return result
 
 
@@ -2540,6 +2610,7 @@ def _list_available_bindings_impl(
             "supported": False,
             "task_name": task_name,
             "bindings": {},
+            "typed_bindings": {},
             "limitations": [
                 "Only "
                 + ", ".join(f"`{n}`" for n in SUPPORTED_TASK_NAMES)
@@ -2548,13 +2619,13 @@ def _list_available_bindings_impl(
         }
 
     root = Path(search_root) if search_root else Path.cwd()
+    entry = get_entry(task_name)
     scan_patterns = _task_parameter_scan_patterns(task_name)
     bindings: dict[str, object] = {}
     for param_name, exts in scan_patterns.items():
         if not exts:
             # Scalar or Dir param
-            param_lower = param_name.lower()
-            if any(param_lower.endswith(s) for s in ("_dir", "_results")):
+            if _looks_like_run_dir_name(param_name):
                 bindings[param_name] = _scan_for_run_dirs(root)
             else:
                 # Pure scalar: find its type hint from TASK_PARAMETERS
@@ -2570,6 +2641,7 @@ def _list_available_bindings_impl(
         "task_name": task_name,
         "search_root": str(root),
         "bindings": bindings,
+        "typed_bindings": _typed_binding_candidates(entry, root),
         "limitations": [
             "Search depth capped at 3; pass search_root for a narrower scope.",
             "V1 is best-effort: coverage depends on parameter naming conventions.",

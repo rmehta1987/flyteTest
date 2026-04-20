@@ -52,7 +52,7 @@ call sites and documentation.
 | 12 | Expand `execution_defaults` schema + resolution order | §3c | `prompts/step_12_execution_defaults_schema.md` | Complete |
 | 13 | Typed exceptions in `_materialize_bindings` (raise path) | §3g (commit 2) | `prompts/step_13_resolver_typed_exceptions.md` | Complete |
 | 14 | `$ref` binding grammar + durable-index lookup | §7 | `prompts/step_14_binding_grammar.md` | Complete |
-| 15 | `list_available_bindings` additive `typed_bindings` field | §3f | `prompts/step_15_list_available_bindings_typed.md` | Not started |
+| 15 | `list_available_bindings` additive `typed_bindings` field | §3f | `prompts/step_15_list_available_bindings_typed.md` | Complete |
 
 ### Planner
 

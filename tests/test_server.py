@@ -10,7 +10,7 @@ import json
 import subprocess
 import sys
 import tempfile
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from unittest import TestCase
 from unittest.mock import patch
@@ -25,6 +25,7 @@ from flyte_stub import install_flyte_stub
 
 install_flyte_stub()
 
+import flytetest.planner_types as planner_types_module
 from flytetest.config import (
     AGAT_CLEANUP_WORKFLOW_NAME as SUPPORTED_AGAT_CLEANUP_WORKFLOW_NAME,
     AGAT_CONVERSION_WORKFLOW_NAME as SUPPORTED_AGAT_CONVERSION_WORKFLOW_NAME,
@@ -61,6 +62,7 @@ from flytetest.server import (
     _fetch_job_log_impl,
     _get_run_summary_impl,
     _list_available_bindings_impl,
+    _path_fields_for,
     _prepare_direct_workflow_inputs,
     _prompt_and_run_impl,
     _read_text_tail,
@@ -98,6 +100,7 @@ from flytetest.server import (
     run_workflow,
     wait_for_slurm_job,
 )
+from flytetest.registry import InterfaceField, RegistryCompatibilityMetadata, RegistryEntry, get_entry
 from flytetest.spec_artifacts import load_workflow_spec_artifact
 from flytetest.spec_executor import (
     DEFAULT_LOCAL_RUN_RECORD_FILENAME,
@@ -114,6 +117,14 @@ from flytetest.spec_executor import (
 
 EXPECTED_TARGET_NAMES = list(SUPPORTED_TARGET_NAMES)
 EXPECTED_RUNNABLE_TARGETS = supported_runnable_targets_payload()
+
+
+@dataclass(frozen=True, slots=True)
+class SyntheticBindingBundle:
+    custom_fasta_path: Path
+    custom_gff3_path: Path | None = None
+    source_result_dir: Path | None = None
+    label: str = ""
 
 
 def _repeat_filter_manifest_dir(tmp_path: Path) -> Path:
@@ -3013,6 +3024,7 @@ class ServerTests(TestCase):
         payload = list_available_bindings("not_a_real_task")
         self.assertFalse(payload["supported"])
         self.assertEqual(payload["task_name"], "not_a_real_task")
+        self.assertEqual(payload["typed_bindings"], {})
 
     def test_list_available_bindings_finds_files_matching_fasta_pattern(self) -> None:
         """FASTA files planted under search_root appear in the binding list.
@@ -3047,6 +3059,91 @@ class ServerTests(TestCase):
         scalar_hint = bindings.get("protein_output_stem")
         self.assertIsInstance(scalar_hint, str)
         self.assertIn("scalar", scalar_hint)
+
+    def test_list_available_bindings_typed_keys_follow_registry_accepted_types(self) -> None:
+        """typed_bindings keys should mirror the registry entry's accepted planner types."""
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = _list_available_bindings_impl("gffread_proteins", search_root=tmp)
+
+        entry = get_entry("gffread_proteins")
+        self.assertEqual(
+            set(payload["typed_bindings"].keys()),
+            set(entry.compatibility.accepted_planner_types),
+        )
+
+    def test_list_available_bindings_typed_inner_keys_follow_planner_path_fields(self) -> None:
+        """typed_bindings inner keys should come from planner Path field annotations."""
+        synthetic_entry = RegistryEntry(
+            name="gffread_proteins",
+            category="task",
+            description="Synthetic compatibility entry for typed binding discovery.",
+            inputs=(InterfaceField("annotation_gff3", "File", "Annotation GFF3."),),
+            outputs=(InterfaceField("proteins_dir", "Dir", "Protein outputs."),),
+            tags=("synthetic",),
+            compatibility=RegistryCompatibilityMetadata(
+                accepted_planner_types=("SyntheticBindingBundle",),
+            ),
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            (tmp_path / "genome.fasta").write_text(">seq1\nACGT\n")
+            (tmp_path / "annotation.gff3").write_text("##gff-version 3\n")
+            run_dir = tmp_path / "prior_results"
+            run_dir.mkdir()
+            (run_dir / "run_manifest.json").write_text("{}")
+
+            with patch("flytetest.server.get_entry", return_value=synthetic_entry), patch.object(
+                planner_types_module,
+                "SyntheticBindingBundle",
+                SyntheticBindingBundle,
+                create=True,
+            ):
+                payload = _list_available_bindings_impl("gffread_proteins", search_root=str(tmp_path))
+
+        typed_bindings = payload["typed_bindings"]
+        self.assertEqual(
+            set(typed_bindings["SyntheticBindingBundle"].keys()),
+            set(_path_fields_for(SyntheticBindingBundle)),
+        )
+        self.assertNotIn("label", typed_bindings["SyntheticBindingBundle"])
+
+    def test_list_available_bindings_surfaces_new_planner_types_without_server_edits(self) -> None:
+        """New planner types should appear in typed_bindings when the registry entry references them."""
+        synthetic_entry = RegistryEntry(
+            name="gffread_proteins",
+            category="task",
+            description="Synthetic compatibility entry for typed binding discovery.",
+            inputs=(InterfaceField("annotation_gff3", "File", "Annotation GFF3."),),
+            outputs=(InterfaceField("proteins_dir", "Dir", "Protein outputs."),),
+            tags=("synthetic",),
+            compatibility=RegistryCompatibilityMetadata(
+                accepted_planner_types=("SyntheticBindingBundle",),
+            ),
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            fasta_path = tmp_path / "candidate.fasta"
+            fasta_path.write_text(">seq1\nACGT\n")
+            gff_path = tmp_path / "candidate.gff3"
+            gff_path.write_text("##gff-version 3\n")
+            result_dir = tmp_path / "synthetic_results"
+            result_dir.mkdir()
+            (result_dir / "run_manifest.json").write_text("{}")
+
+            with patch("flytetest.server.get_entry", return_value=synthetic_entry), patch.object(
+                planner_types_module,
+                "SyntheticBindingBundle",
+                SyntheticBindingBundle,
+                create=True,
+            ):
+                payload = _list_available_bindings_impl("gffread_proteins", search_root=str(tmp_path))
+
+        typed_binding = payload["typed_bindings"]["SyntheticBindingBundle"]
+        self.assertIn(str(fasta_path), typed_binding["custom_fasta_path"])
+        self.assertIn(str(gff_path), typed_binding["custom_gff3_path"])
+        self.assertIn(str(result_dir), typed_binding["source_result_dir"])
 
     # ------------------------------------------------------------------
     # M21 Phase 3 — run dashboard (T8–T10)

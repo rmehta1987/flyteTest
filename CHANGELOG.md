@@ -52,6 +52,13 @@ Entry template:
       CLI, not the Perl 1.x scripts. Confirm that EVM task wrappers use the correct 2.x
       flags before the first real run.
 
+### MCP Reshape Step 15 — Typed Binding Discovery (2026-04-20)
+
+- [x] 2026-04-20 added `_path_fields_for()` and typed planner-field discovery to `list_available_bindings`, exposing a new additive `typed_bindings` field while preserving the existing scalar-parameter `bindings` payload unchanged.
+- [x] 2026-04-20 kept the current best-effort scan model intact by reusing the existing extension-based discovery rules for planner Path fields, including run-directory discovery for `_dir` and `_results` style fields.
+- [x] 2026-04-20 added server coverage for the additive reply shape, including empty existing-task behavior and a synthetic new planner type that appears in `typed_bindings` without any MCP-layer registration changes.
+- [x] 2026-04-20 verified the slice with `/home/rmeht/Projects/flyteTest/.venv/bin/python -m compileall src/flytetest/server.py` and `/home/rmeht/Projects/flyteTest/.venv/bin/python -m pytest tests/test_server.py` (104 passed).
+
 ### MCP Reshape Step 14 — Binding Grammar and Durable Reuse (2026-04-20)
 
 - [x] 2026-04-20 added `produced_type` to durable asset refs and populated it during local run indexing when the producing entry declares an unambiguous planner type or the manifest records per-output planner-type metadata.
