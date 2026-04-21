@@ -31,6 +31,7 @@ class ResourceBundle:
     runtime_images: dict[str, str]  # container defaults; scientist may override
     tool_databases: dict[str, str]  # reference data (BUSCO lineage, EVM weights, dbSNP, ...)
     applies_to: tuple[str, ...]     # registered entry names
+    fetch_hints: tuple[str, ...] = ()  # scientist-actionable fetch/stage instructions
 
 
 BUNDLES: dict[str, ResourceBundle] = {
@@ -52,6 +53,10 @@ BUNDLES: dict[str, ResourceBundle] = {
         runtime_images={"braker_sif": "data/images/braker3.sif"},
         tool_databases={},
         applies_to=("ab_initio_annotation_braker3",),
+        fetch_hints=(
+            "Pull the BRAKER3 container: `scripts/rcc/download_minimal_images.sh` (or `apptainer pull data/images/braker3.sif docker://teambraker/braker3:latest`)",
+            "Stage the BRAKER3 fixture set under data/braker3/ (reference, rnaseq BAM, protein FASTA) — see scripts/rcc/README.md for expected layout",
+        ),
     ),
     "m18_busco_demo": ResourceBundle(
         name="m18_busco_demo",
@@ -67,6 +72,11 @@ BUNDLES: dict[str, ResourceBundle] = {
         runtime_images={"busco_sif": "data/images/busco_v6.0.0_cv1.sif"},
         tool_databases={"busco_lineage_dir": "data/busco/lineages/eukaryota_odb10"},
         applies_to=("annotation_qc_busco",),
+        fetch_hints=(
+            "Pull the BUSCO container: `scripts/rcc/download_minimal_images.sh` (or `apptainer pull data/images/busco_v6.0.0_cv1.sif docker://ezlabgva/busco:v6.0.0_cv1`)",
+            "Download the eukaryota_odb10 lineage into data/busco/lineages/ (see https://busco.ezlabgva.org/ for the tarball) and extract to data/busco/lineages/eukaryota_odb10/",
+            "Stage a protein FASTA at data/busco/fixtures/proteins.fa — a BRAKER3 run output or any reference proteome works",
+        ),
     ),
     "protein_evidence_demo": ResourceBundle(
         name="protein_evidence_demo",
@@ -85,6 +95,10 @@ BUNDLES: dict[str, ResourceBundle] = {
         runtime_images={"exonerate_sif": "data/images/exonerate_2.2.0--1.sif"},
         tool_databases={},
         applies_to=("protein_evidence_alignment",),
+        fetch_hints=(
+            "Pull the Exonerate container: `scripts/rcc/download_minimal_images.sh` (or `apptainer pull data/images/exonerate_2.2.0--1.sif docker://quay.io/biocontainers/exonerate:2.2.0--1`)",
+            "Stage the BRAKER3 fixture set under data/braker3/ (reference FASTA and protein FASTA) — see scripts/rcc/README.md for expected layout",
+        ),
     ),
     "rnaseq_paired_demo": ResourceBundle(
         name="rnaseq_paired_demo",
@@ -105,6 +119,10 @@ BUNDLES: dict[str, ResourceBundle] = {
         runtime_images={"star_sif": "data/images/star_2.7.10b.sif"},
         tool_databases={},
         applies_to=("transcript_evidence_generation",),
+        fetch_hints=(
+            "Pull the STAR container: `scripts/rcc/download_minimal_images.sh` (or `apptainer pull data/images/star_2.7.10b.sif docker://quay.io/biocontainers/star:2.7.10b--h9ee0642_0`)",
+            "Stage the BRAKER3 fixture set under data/braker3/ (reference FASTA and paired reads at data/braker3/rnaseq/reads_1.fq.gz and reads_2.fq.gz) — see scripts/rcc/README.md for expected layout",
+        ),
     ),
 }
 
@@ -165,6 +183,10 @@ def _check_bundle_availability(b: ResourceBundle) -> BundleAvailability:
                 f"pipeline_family {b.pipeline_family!r} mismatches "
                 f"{entry_name!r} family {entry.compatibility.pipeline_family!r}"
             )
+
+    if reasons and b.fetch_hints:
+        reasons.append("To resolve:")
+        reasons.extend(f"  - {hint}" for hint in b.fetch_hints)
 
     return BundleAvailability(name=b.name, available=not reasons, reasons=tuple(reasons))
 

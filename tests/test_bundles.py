@@ -220,6 +220,60 @@ class TestCheckBundleAvailability:
         assert not any("sample_id" in c or "cpu" in c for c in exists_calls)
 
 
+class TestSeedBundleHonesty:
+    """Step 30 guard: every seeded bundle is honest on a fresh clone.
+
+    Either ``available=True`` with no reasons, or ``available=False`` with a
+    ``reasons`` list that tells the scientist which file to stage or which
+    script to run. Prevents the server from shipping bundles that reduce to a
+    generic "missing" on a fresh clone.
+    """
+
+    def test_seeded_bundles_report_honestly(self):
+        for entry in list_bundles():
+            if entry["available"]:
+                assert entry["reasons"] == []
+                continue
+            assert entry["reasons"], (
+                f"{entry['name']} is unavailable but has no reasons — "
+                "scientist cannot act on a generic failure"
+            )
+            joined = " ".join(entry["reasons"]).lower()
+            has_path = "data/" in joined or "/" in joined
+            has_action = any(
+                verb in joined
+                for verb in ("pull", "stage", "download", "fetch", "apptainer", "scripts/")
+            )
+            assert has_path or has_action, (
+                f"{entry['name']} reasons lack a path or actionable verb: {entry['reasons']}"
+            )
+
+    def test_showcase_bundle_is_available_in_repo(self):
+        """The bundle cited as the primary worked example in ``docs/mcp_showcase.md``
+        must either be available on a fresh clone, or expose ``fetch_hints`` so the
+        scientist gets a concrete recovery path rather than a dead end.
+
+        Checked-in Git cannot hold multi-GB biology fixtures, so an offline fresh
+        clone will legitimately be unavailable; the honest contract is that the
+        reasons list points to a specific fetch/stage action.
+        """
+        showcase = (
+            Path(__file__).resolve().parent.parent / "docs" / "mcp_showcase.md"
+        ).read_text()
+        showcase_bundle_name = "braker3_small_eukaryote"
+        assert showcase_bundle_name in showcase, (
+            f"mcp_showcase.md no longer cites {showcase_bundle_name!r} as the "
+            "primary worked example — update this test to match the new citation"
+        )
+        assert showcase_bundle_name in BUNDLES
+        bundle = BUNDLES[showcase_bundle_name]
+        status = _check_bundle_availability(bundle)
+        assert status.available or bundle.fetch_hints, (
+            f"{showcase_bundle_name} is unavailable and has no fetch_hints — "
+            "the showcase walks the scientist into a dead end"
+        )
+
+
 class TestStartupRobustness:
     def test_server_imports_without_bundle_path_validation(self):
         """server.py imports cleanly regardless of which bundle paths are present."""

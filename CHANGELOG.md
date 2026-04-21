@@ -32,7 +32,28 @@ Entry template:
 
 ## Unreleased
 
-## Unreleased
+### MCP Reshape Step 30 — Seed-bundle audit for fresh-clone honesty (2026-04-21)
+
+- [x] 2026-04-21 added `ResourceBundle.fetch_hints` — optional actionable
+  instructions (apptainer pull command, fixture-staging pointers) appended to
+  `reasons` when a bundle is unavailable, so `list_bundles()` / `load_bundle()`
+  point the scientist at a concrete recovery path instead of a generic
+  "missing" message.
+- [x] 2026-04-21 populated fetch_hints for all four seeded bundles
+  (`braker3_small_eukaryote`, `m18_busco_demo`, `protein_evidence_demo`,
+  `rnaseq_paired_demo`), citing `scripts/rcc/download_minimal_images.sh` for
+  container pulls and `scripts/rcc/README.md` for fixture layout.
+- [x] 2026-04-21 added two bundle-honesty tests in `tests/test_bundles.py`:
+  `test_seeded_bundles_report_honestly` (unavailable bundles must report a
+  path or actionable verb) and `test_showcase_bundle_is_available_in_repo`
+  (the bundle cited in `docs/mcp_showcase.md` is available OR has fetch_hints
+  — no dead-end walkthroughs).
+- Kept all four seeded bundles: multi-GB biology fixtures (FASTA, BAM, SIF
+  containers, BUSCO lineages) cannot be checked into git, so the honest
+  contract is structural availability reporting + actionable fetch_hints.
+  Verified in a clean worktree at `/tmp/ft-clean`:
+  `python -c "import flytetest.server"` succeeds with no `data/` directory,
+  and every unavailable bundle emits a scientist-actionable reasons list.
 
 ### MCP Reshape Step 28 — Docs and agent-context refresh (2026-04-21)
 
