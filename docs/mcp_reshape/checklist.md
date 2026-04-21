@@ -67,7 +67,7 @@ call sites and documentation.
 |---|------|--------------|--------|--------|
 | 18 | Operator-side logging (§3e) | §3e | `prompts/step_18_operator_logging.md` | Complete |
 | 19 | Exception-to-decline translator `_execute_run_tool` | §3g (commit 4) | `prompts/step_19_execute_run_tool_wrapper.md` | Complete |
-| 20 | Structured decline routing (bundles/prior-runs/next-steps) | §10 | `prompts/step_20_decline_routing.md` | Not started |
+| 20 | Structured decline routing (bundles/prior-runs/next-steps) | §10 | `prompts/step_20_decline_routing.md` | Complete |
 | 21 | Reshape `run_task` (bindings + dry_run + RunReply) | §2 / §3b / §3g / §3i | `prompts/step_21_run_task_reshape.md` | Not started |
 | 22 | Reshape `run_workflow` (symmetric with `run_task`) | §3 / §3b / §3g / §3i | `prompts/step_22_run_workflow_reshape.md` | Not started |
 | 23 | Wire `check_offline_staging` into `SlurmWorkflowSpecExecutor.submit` | §8 (executor) | `prompts/step_23_staging_preflight_slurm_submit.md` | Not started |

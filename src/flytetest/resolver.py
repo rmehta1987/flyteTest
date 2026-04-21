@@ -27,8 +27,6 @@ from flytetest.errors import (
     UnknownOutputNameError,
     UnknownRunIdError,
 )
-
-_LOG = logging.getLogger(__name__)
 from flytetest.registry import get_entry
 from flytetest.planner_adapters import (
     annotation_evidence_from_ab_initio_bundle,
@@ -60,6 +58,9 @@ from flytetest.types.assets import (
     EvmInputPreparationBundle,
     ProteinEvidenceResultBundle,
 )
+
+
+_LOG = logging.getLogger(__name__)
 
 
 ResolverSourceKind = Literal["explicit_binding", "manifest", "result_bundle"]

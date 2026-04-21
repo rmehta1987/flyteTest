@@ -67,6 +67,8 @@ from flytetest.server import (
     SERVER_RESOURCE_URIS,
     MAX_MONITOR_TAIL_LINES,
     _execute_run_tool,
+    _limitation_reply,
+    _unsupported_target_reply,
     _fetch_job_log_impl,
     _get_run_summary_impl,
     _list_available_bindings_impl,
@@ -3693,3 +3695,183 @@ class ServerTests(TestCase):
         self.assertIn("tool_name=braker3_annotation_workflow", message)
         self.assertIn("pipeline_family=annotation", message)
         self.assertIsNotNone(record.exc_info)
+
+    # ------------------------------------------------------------------
+    # Step 20: structured decline routing
+    # ------------------------------------------------------------------
+
+    def _write_durable_index(
+        self,
+        run_dir: Path,
+        *,
+        run_id: str,
+        workflow_name: str,
+        output_name: str,
+        produced_type: str,
+    ) -> None:
+        run_dir.mkdir(parents=True, exist_ok=True)
+        asset_path = run_dir / output_name
+        asset_path.mkdir(exist_ok=True)
+        manifest_path = asset_path / "run_manifest.json"
+        manifest_path.write_text("{}\n")
+        run_record_path = run_dir / "local_run_record.json"
+        run_record_path.write_text("{}\n")
+        payload = {
+            "schema_version": "durable-asset-index-v1",
+            "run_id": run_id,
+            "workflow_name": workflow_name,
+            "entries": [
+                {
+                    "schema_version": "durable-asset-index-v1",
+                    "run_id": run_id,
+                    "workflow_name": workflow_name,
+                    "output_name": output_name,
+                    "node_name": output_name,
+                    "asset_path": str(asset_path),
+                    "manifest_path": str(manifest_path),
+                    "created_at": "2026-04-20T00:00:00Z",
+                    "run_record_path": str(run_record_path),
+                    "produced_type": produced_type,
+                },
+            ],
+        }
+        (run_dir / "durable_asset_index.json").write_text(json.dumps(payload))
+
+    def test_limitation_reply_populates_all_three_channels(self) -> None:
+        """Decline for BRAKER3 with no inputs returns bundles, prior runs, and next_steps."""
+        from flytetest import bundles as bundles_mod
+        from flytetest.bundles import BUNDLES, ResourceBundle
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            # Populate bundle paths so _check_bundle_availability sees every file.
+            genome = tmp_path / "genome.fa"
+            rnaseq = tmp_path / "rnaseq.bam"
+            proteins = tmp_path / "proteins.fa"
+            sif = tmp_path / "braker3.sif"
+            for p in (genome, rnaseq, proteins, sif):
+                p.write_text("")
+
+            fake = ResourceBundle(
+                name="braker3_small_eukaryote_test",
+                description="Test fixture BRAKER3 bundle.",
+                pipeline_family="annotation",
+                bindings={
+                    "ReferenceGenome": {"fasta_path": str(genome)},
+                    "TranscriptEvidenceSet": {"bam_path": str(rnaseq)},
+                    "ProteinEvidenceSet": {"protein_fasta_path": str(proteins)},
+                },
+                inputs={"braker_species": "demo_species"},
+                runtime_images={"braker_sif": str(sif)},
+                tool_databases={},
+                applies_to=("ab_initio_annotation_braker3",),
+            )
+            patched_bundles = {fake.name: fake}
+            run_history = tmp_path / "runs"
+            self._write_durable_index(
+                run_history / "2026-04-20T00-00-00Z-demo",
+                run_id="2026-04-20T00-00-00Z-demo",
+                workflow_name="transcript_evidence_generation",
+                output_name="reads",
+                produced_type="TranscriptEvidenceSet",
+            )
+
+            with patch.object(bundles_mod, "BUNDLES", patched_bundles):
+                decline = _limitation_reply(
+                    "ab_initio_annotation_braker3",
+                    "BRAKER3 requires at least one evidence input "
+                    "(ReadSet or ProteinEvidenceSet).",
+                    run_history_root=run_history,
+                )
+
+        self.assertFalse(decline.supported)
+        self.assertEqual(decline.target, "ab_initio_annotation_braker3")
+        self.assertEqual(decline.pipeline_family, "annotation")
+        self.assertEqual(len(decline.suggested_bundles), 1)
+        self.assertEqual(decline.suggested_bundles[0].name, "braker3_small_eukaryote_test")
+        self.assertTrue(decline.suggested_bundles[0].available)
+        self.assertEqual(len(decline.suggested_prior_runs), 1)
+        self.assertEqual(
+            decline.suggested_prior_runs[0].produced_type, "TranscriptEvidenceSet"
+        )
+        # next_steps references both channels plus generic recovery.
+        joined = " | ".join(decline.next_steps)
+        self.assertIn("braker3_small_eukaryote_test", joined)
+        self.assertIn("$ref", joined)
+        self.assertIn("list_available_bindings", joined)
+
+    def test_limitation_reply_without_available_bundle_only_populates_next_steps(
+        self,
+    ) -> None:
+        """When no bundle is available, suggested_bundles stays empty but next_steps is not."""
+        from flytetest import bundles as bundles_mod
+        from flytetest.bundles import BUNDLES, ResourceBundle
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            fake = ResourceBundle(
+                name="braker3_missing_paths",
+                description="Bundle whose backing data is absent.",
+                pipeline_family="annotation",
+                bindings={
+                    "ReferenceGenome": {"fasta_path": str(tmp_path / "missing.fa")},
+                },
+                inputs={},
+                runtime_images={},
+                tool_databases={},
+                applies_to=("ab_initio_annotation_braker3",),
+            )
+            patched_bundles = {fake.name: fake}
+
+            with patch.object(bundles_mod, "BUNDLES", patched_bundles):
+                decline = _limitation_reply(
+                    "ab_initio_annotation_braker3",
+                    "BRAKER3 requires at least one evidence input.",
+                    run_history_root=tmp_path / "empty_runs",
+                )
+
+        self.assertEqual(decline.suggested_bundles, ())
+        self.assertEqual(decline.suggested_prior_runs, ())
+        self.assertGreater(len(decline.next_steps), 0)
+        joined = " | ".join(decline.next_steps)
+        self.assertIn("list_available_bindings", joined)
+
+    def test_limitation_reply_prior_run_hint_contains_ref_shape(self) -> None:
+        """SuggestedPriorRun.hint should echo the $ref binding grammar."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            run_history = tmp_path / "runs"
+            self._write_durable_index(
+                run_history / "run-alpha",
+                run_id="run-alpha",
+                workflow_name="transcript_evidence_generation",
+                output_name="reads",
+                produced_type="TranscriptEvidenceSet",
+            )
+            decline = _limitation_reply(
+                "ab_initio_annotation_braker3",
+                "Missing required evidence inputs.",
+                run_history_root=run_history,
+            )
+
+        self.assertEqual(len(decline.suggested_prior_runs), 1)
+        hint = decline.suggested_prior_runs[0].hint
+        self.assertIn("$ref", hint)
+        self.assertIn("'run_id': 'run-alpha'", hint)
+        self.assertIn("'output_name': 'reads'", hint)
+        self.assertIn("'TranscriptEvidenceSet'", hint)
+
+    def test_unsupported_target_reply_returns_empty_recovery_channels(self) -> None:
+        """Unregistered target names can't suggest bundles or prior runs."""
+        decline = _unsupported_target_reply(
+            "not_a_real_workflow",
+            ("ab_initio_annotation_braker3", "protein_evidence_alignment"),
+            kind="workflow",
+        )
+        self.assertFalse(decline.supported)
+        self.assertEqual(decline.target, "not_a_real_workflow")
+        self.assertEqual(decline.pipeline_family, "")
+        self.assertEqual(decline.suggested_bundles, ())
+        self.assertEqual(decline.suggested_prior_runs, ())
+        joined = " | ".join(decline.next_steps)
+        self.assertIn("list_entries", joined)

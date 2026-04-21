@@ -34,7 +34,7 @@ from flytetest.errors import (
     UnknownOutputNameError,
     UnknownRunIdError,
 )
-from flytetest.mcp_replies import PlanDecline
+from flytetest.mcp_replies import PlanDecline, SuggestedBundle, SuggestedPriorRun
 from flytetest.mcp_contract import (
     DECLINE_CATEGORY_CODES,
     EXAMPLE_PROMPT_REQUIREMENTS,
@@ -93,8 +93,10 @@ from flytetest.planning import (
 from flytetest.registry import RegistryEntry, get_entry
 from flytetest.registry import list_entries as registry_list_entries
 from flytetest.spec_artifacts import (
+    DEFAULT_DURABLE_ASSET_INDEX_FILENAME,
     artifact_from_typed_plan,
     check_recipe_approval,
+    load_durable_asset_index,
     load_workflow_spec_artifact,
     make_recipe_id,
     RecipeApprovalRecord,
@@ -875,6 +877,187 @@ def plan_request(prompt: str) -> dict[str, object]:
         prompt: Natural-language request being converted into a typed plan.
 """
     return asdict(plan_request_reshape(prompt))
+
+
+def _available_bundles_for_target(target: str) -> tuple[SuggestedBundle, ...]:
+    """Return available bundles whose ``applies_to`` lists *target* (§10).
+
+    Unavailable bundles are filtered out so declines never point a scientist at
+    a broken starter kit.
+    """
+    from flytetest.bundles import BUNDLES, _check_bundle_availability
+
+    suggestions: list[SuggestedBundle] = []
+    for bundle in BUNDLES.values():
+        if target not in bundle.applies_to:
+            continue
+        status = _check_bundle_availability(bundle)
+        if not status.available:
+            continue
+        suggestions.append(
+            SuggestedBundle(
+                name=bundle.name,
+                description=bundle.description,
+                applies_to=tuple(bundle.applies_to),
+                available=True,
+            )
+        )
+    return tuple(suggestions)
+
+
+def _scan_durable_prior_runs(
+    run_history_root: Path,
+    accepted_planner_types: Sequence[str],
+) -> tuple[SuggestedPriorRun, ...]:
+    """Scan *run_history_root* for durable asset refs matching any accepted type (§10).
+
+    Each returned :class:`SuggestedPriorRun` carries a ``$ref``-shaped ``hint``
+    string the scientist can copy straight into a ``bindings`` dict on the next
+    ``run_task`` / ``run_workflow`` call.
+    """
+    accepted = tuple(accepted_planner_types or ())
+    if not accepted or not run_history_root.is_dir():
+        return ()
+    accepted_set = set(accepted)
+    suggestions: list[SuggestedPriorRun] = []
+    for index_path in sorted(run_history_root.rglob(DEFAULT_DURABLE_ASSET_INDEX_FILENAME)):
+        try:
+            refs = load_durable_asset_index(index_path.parent)
+        except (OSError, ValueError):
+            continue
+        for ref in refs:
+            if not ref.produced_type or ref.produced_type not in accepted_set:
+                continue
+            hint = (
+                f"Use bindings={{'{ref.produced_type}': "
+                f"{{'$ref': {{'run_id': '{ref.run_id}', "
+                f"'output_name': '{ref.output_name}'}}}}}}"
+            )
+            suggestions.append(
+                SuggestedPriorRun(
+                    run_id=ref.run_id,
+                    produced_type=ref.produced_type,
+                    output_name=ref.output_name,
+                    hint=hint,
+                )
+            )
+    return tuple(suggestions)
+
+
+def _compose_decline_next_steps(
+    bundles: Sequence[SuggestedBundle],
+    prior_runs: Sequence[SuggestedPriorRun],
+    *,
+    extra: Sequence[str] = (),
+) -> tuple[str, ...]:
+    """Combine bundle / prior-run channels with generic recovery strings (§10)."""
+    steps: list[str] = []
+    for bundle in bundles:
+        steps.append(
+            f"load_bundle({bundle.name!r}) then re-call run_workflow / run_task."
+        )
+    if prior_runs:
+        steps.append(
+            "Reference a prior-run output via the $ref binding form "
+            "(see suggested_prior_runs)."
+        )
+    steps.extend(str(item) for item in extra)
+    steps.append("Call list_available_bindings(<target>) to locate unbound workspace files.")
+    steps.append("Or reformulate the request with explicit typed bindings.")
+    return tuple(steps)
+
+
+def _limitation_reply(
+    target: str,
+    limitation: str,
+    *,
+    pipeline_family: str | None = None,
+    extra_next_steps: Sequence[str] = (),
+    run_history_root: Path | None = None,
+) -> PlanDecline:
+    """Build a structured :class:`PlanDecline` for a registered target (§10).
+
+    Populates the three recovery channels whenever *target* names a registered
+    entry:
+
+    * ``suggested_bundles`` — available bundles whose ``applies_to`` includes
+      the target.
+    * ``suggested_prior_runs`` — durable asset index entries whose
+      ``produced_type`` overlaps with the target's ``accepted_planner_types``.
+    * ``next_steps`` — bundle + prior-run load lines followed by generic
+      recovery options.
+
+    Args:
+        target: Registered task or workflow name that failed validation.
+        limitation: Human-readable reason the request was declined.
+        pipeline_family: Pipeline family from the registry entry when known.
+            Defaults to the entry's declared family when omitted.
+        extra_next_steps: Optional additional strings merged into ``next_steps``
+            ahead of the generic recovery options (used by exception-specific
+            decline translators).
+        run_history_root: Directory scanned for ``durable_asset_index.json``
+            sidecars. Defaults to :data:`DEFAULT_RUN_DIR`; tests override it
+            with a ``tmp_path``-rooted fixture.
+    """
+    resolved_family = pipeline_family or ""
+    accepted: tuple[str, ...] = ()
+    try:
+        entry = get_entry(target)
+    except KeyError:
+        entry = None
+    if entry is not None:
+        if not resolved_family:
+            resolved_family = entry.compatibility.pipeline_family
+        accepted = tuple(entry.compatibility.accepted_planner_types)
+
+    bundles = _available_bundles_for_target(target)
+    prior_runs = _scan_durable_prior_runs(
+        run_history_root or DEFAULT_RUN_DIR,
+        accepted_planner_types=accepted,
+    )
+    next_steps = _compose_decline_next_steps(
+        bundles, prior_runs, extra=extra_next_steps
+    )
+    return PlanDecline(
+        supported=False,
+        target=target,
+        pipeline_family=resolved_family,
+        limitations=(limitation,),
+        suggested_bundles=bundles,
+        suggested_prior_runs=prior_runs,
+        next_steps=next_steps,
+    )
+
+
+def _unsupported_target_reply(
+    target: str,
+    supported_names: Sequence[str],
+    *,
+    kind: str,
+) -> PlanDecline:
+    """Build a :class:`PlanDecline` for an unrecognised target name (§10).
+
+    The target is unregistered so neither the pipeline family nor the accepted
+    planner types are known; the bundle / prior-run channels stay empty and
+    ``next_steps`` points the caller at ``list_entries`` for discovery.
+    """
+    supported_list = ", ".join(f"`{name}`" for name in supported_names)
+    limitation = (
+        f"{target!r} is not a supported {kind}. Supported {kind}s: {supported_list}."
+    )
+    next_steps = (
+        f"Call list_entries(category={kind!r}) to browse supported {kind}s.",
+        "Or reformulate the request with one of the supported target names.",
+    )
+    return PlanDecline(
+        supported=False,
+        target=target,
+        pipeline_family="",
+        limitations=(limitation,),
+        suggested_bundles=(),
+        suggested_prior_runs=(),
+        next_steps=next_steps,
+    )
 
 
 def _execute_run_tool(
