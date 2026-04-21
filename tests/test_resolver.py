@@ -394,6 +394,42 @@ class ResolverTests(TestCase):
         self.assertEqual(exc_info.exception.available_count, 1)
         self.assertIn("QualityAssessmentTarget", str(exc_info.exception))
 
+    def test_materialize_bindings_logs_warning_on_ref_resolution_failure(self) -> None:
+        """$ref resolution failures should emit one WARNING with run_id / output_name context."""
+        ref = DurableAssetRef(
+            schema_version=DURABLE_ASSET_INDEX_SCHEMA_VERSION,
+            run_id="known-run",
+            workflow_name="select_annotation_qc_busco",
+            output_name="results_dir",
+            node_name="annotation_qc_busco",
+            asset_path=Path("/tmp/known-run"),
+            manifest_path=Path("/tmp/known-run/run_manifest.json"),
+            created_at="2026-04-20T12:00:00Z",
+            run_record_path=Path("/tmp/known-run/local_run_record.json"),
+            produced_type="QualityAssessmentTarget",
+        )
+
+        with self.assertLogs("flytetest.resolver", level="WARNING") as log_ctx:
+            with self.assertRaises(UnknownRunIdError):
+                _materialize_bindings(
+                    {
+                        "QualityAssessmentTarget": {
+                            "$ref": {"run_id": "missing-run", "output_name": "results_dir"},
+                        }
+                    },
+                    durable_index=(ref,),
+                )
+
+        self.assertEqual(len(log_ctx.records), 1)
+        record = log_ctx.records[0]
+        self.assertEqual(record.levelname, "WARNING")
+        message = record.getMessage()
+        self.assertIn("$ref binding resolution failed", message)
+        self.assertIn("recipe_id=pending", message)
+        self.assertIn("missing-run", message)
+        self.assertIn("results_dir", message)
+        self.assertIn("QualityAssessmentTarget", message)
+
     def test_materialize_bindings_raises_unknown_output_name_for_ref_form(self) -> None:
         """Durable-ref bindings should fail with UnknownOutputNameError when the output is absent on a known run."""
         ref = DurableAssetRef(

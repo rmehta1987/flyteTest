@@ -14,6 +14,7 @@ database requirement, remote search, or automatic execution.
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field, fields, is_dataclass
 from pathlib import Path
 from typing import Any, Literal, Mapping, Protocol, Sequence
@@ -22,9 +23,12 @@ from flytetest.errors import (
     BindingTypeMismatchError,
     BindingPathMissingError,
     ManifestNotFoundError,
+    PlannerResolutionError,
     UnknownOutputNameError,
     UnknownRunIdError,
 )
+
+_LOG = logging.getLogger(__name__)
 from flytetest.registry import get_entry
 from flytetest.planner_adapters import (
     annotation_evidence_from_ab_initio_bundle,
@@ -426,11 +430,29 @@ def _materialize_bindings(
         if "$manifest" in binding_value:
             materialized[binding_key] = _materialize_manifest_binding(binding_key, binding_value)
         elif "$ref" in binding_value:
-            materialized[binding_key] = _materialize_ref_binding(
-                binding_key,
-                binding_value,
-                durable_index=durable_index,
-            )
+            try:
+                materialized[binding_key] = _materialize_ref_binding(
+                    binding_key,
+                    binding_value,
+                    durable_index=durable_index,
+                )
+            except PlannerResolutionError as exc:
+                ref_payload = binding_value.get("$ref")
+                if isinstance(ref_payload, Mapping):
+                    ref_run_id = str(ref_payload.get("run_id") or "")
+                    ref_output_name = str(ref_payload.get("output_name") or "")
+                else:
+                    ref_run_id = ""
+                    ref_output_name = ""
+                _LOG.warning(
+                    "$ref binding resolution failed "
+                    "(recipe_id=pending binding=%s run_id=%s output_name=%s): %s",
+                    binding_key,
+                    ref_run_id,
+                    ref_output_name,
+                    exc,
+                )
+                raise
         else:
             materialized[binding_key] = _materialize_raw_binding(binding_key, binding_value)
     return materialized

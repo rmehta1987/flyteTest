@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 import shlex
 import shutil
@@ -27,6 +28,9 @@ from flytetest.resolver import AssetResolver, LocalManifestAssetResolver, Resolu
 from flytetest.planner_types import QualityAssessmentTarget
 from flytetest.spec_artifacts import SavedWorkflowSpecArtifact, load_workflow_spec_artifact, DurableAssetRef, DURABLE_ASSET_INDEX_SCHEMA_VERSION, save_durable_asset_index, _write_json_atomically
 from flytetest.specs import ResourceSpec, RuntimeImageSpec, SpecSerializable, WorkflowNodeSpec
+
+
+_LOG = logging.getLogger(__name__)
 
 
 RegisteredNodeHandler = Callable[["LocalNodeExecutionRequest"], Mapping[str, Any]]

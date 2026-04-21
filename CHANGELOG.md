@@ -32,6 +32,13 @@ Entry template:
 
 ## Unreleased
 
+### MCP Reshape Step 18 — Operator-Side Logging (2026-04-20)
+
+- [x] 2026-04-20 added `_LOG = logging.getLogger(__name__)` module-level loggers in `src/flytetest/resolver.py`, `src/flytetest/spec_executor.py`, and `src/flytetest/server.py` so the three §3e log sites share a common convention aligned with the existing `slurm_monitor.py` pattern.
+- [x] 2026-04-20 wired the WARNING site in `_materialize_bindings`: `$ref` resolution failures now emit one `WARNING` line with the binding key, `run_id`, `output_name`, and exception reason (`recipe_id` is still pending at this stage) and re-raise without swallowing.
+- [x] 2026-04-20 deferred the ERROR site (uncaught exceptions in `_execute_run_tool`) to Step 19 and the INFO site (`SlurmWorkflowSpecExecutor.submit` staging-preflight short-circuit) to Step 23; Step 18 lands the logger setup only at those modules so the emits drop in cleanly when the surrounding code is written.
+- [x] 2026-04-20 covered the WARNING emission with `self.assertLogs("flytetest.resolver", level="WARNING")` in `tests/test_resolver.py` and verified with `python -m compileall src/flytetest/` and `python -m pytest tests/` (600 passed, 1 skipped, 38 subtests).
+
 ### MCP Reshape Step 16 — Structured Planning Only (2026-04-20)
 
 - [x] 2026-04-20 removed the prose-parsing helpers from `src/flytetest/planning.py`, including prompt-path extraction, execution-profile/runtime-image regex parsing, and the keyword-scored `_classify_target` route.

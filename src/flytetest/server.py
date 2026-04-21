@@ -10,6 +10,7 @@ from __future__ import annotations
 import difflib
 import inspect
 from importlib import import_module
+import logging
 import os
 import time
 import shlex
@@ -111,6 +112,9 @@ from flytetest.spec_executor import (
     load_slurm_run_record,
 )
 from flytetest.specs import ResourceSpec, RuntimeImageSpec
+
+
+_LOG = logging.getLogger(__name__)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
