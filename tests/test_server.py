@@ -56,9 +56,17 @@ from flytetest.mcp_contract import (
     WORKFLOW_EXAMPLE_PROMPT,
     supported_runnable_targets_payload,
 )
+from flytetest.errors import (
+    BindingPathMissingError,
+    BindingTypeMismatchError,
+    ManifestNotFoundError,
+    UnknownOutputNameError,
+    UnknownRunIdError,
+)
 from flytetest.server import (
     SERVER_RESOURCE_URIS,
     MAX_MONITOR_TAIL_LINES,
+    _execute_run_tool,
     _fetch_job_log_impl,
     _get_run_summary_impl,
     _list_available_bindings_impl,
@@ -3503,3 +3511,185 @@ class ServerTests(TestCase):
         self.assertIn(SUPPORTED_TABLE2ASN_WORKFLOW_NAME, names)
         table2asn_entry = next(e for e in entries if e["name"] == SUPPORTED_TABLE2ASN_WORKFLOW_NAME)
         self.assertEqual(table2asn_entry["category"], "workflow")
+
+    # ------------------------------------------------------------------
+    # _execute_run_tool (Step 19): typed exception → PlanDecline
+    # ------------------------------------------------------------------
+
+    def _assert_decline_base(
+        self,
+        reply: dict,
+        *,
+        target: str,
+        pipeline_family: str,
+    ) -> None:
+        self.assertIs(reply["supported"], False)
+        self.assertEqual(reply["target"], target)
+        self.assertEqual(reply["pipeline_family"], pipeline_family)
+        self.assertIsInstance(reply["limitations"], tuple)
+        self.assertIsInstance(reply["next_steps"], tuple)
+        self.assertEqual(reply["suggested_bundles"], ())
+        self.assertEqual(reply["suggested_prior_runs"], ())
+
+    def test_execute_run_tool_translates_unknown_run_id(self) -> None:
+        """UnknownRunIdError → PlanDecline pointing at list_available_bindings + durable index."""
+
+        def body() -> dict[str, object]:
+            raise UnknownRunIdError("missing-run", available_count=3)
+
+        with self.assertNoLogs("flytetest.server", level="ERROR"):
+            reply = _execute_run_tool(
+                body,
+                target_name="braker3_annotation_workflow",
+                pipeline_family="annotation",
+            )
+
+        self._assert_decline_base(
+            reply,
+            target="braker3_annotation_workflow",
+            pipeline_family="annotation",
+        )
+        self.assertEqual(len(reply["limitations"]), 1)
+        self.assertIn("missing-run", reply["limitations"][0])
+        next_steps = reply["next_steps"]
+        self.assertTrue(
+            any("list_available_bindings" in step for step in next_steps)
+        )
+        self.assertTrue(
+            any("durable_asset_index.json" in step for step in next_steps)
+        )
+
+    def test_execute_run_tool_translates_unknown_output_name(self) -> None:
+        """UnknownOutputNameError → PlanDecline listing the known outputs on the run."""
+
+        def body() -> dict[str, object]:
+            raise UnknownOutputNameError(
+                run_id="run-123",
+                output_name="bogus",
+                known_outputs=("results_dir", "summary_json"),
+            )
+
+        with self.assertNoLogs("flytetest.server", level="ERROR"):
+            reply = _execute_run_tool(
+                body,
+                target_name="busco_assess_proteins",
+                pipeline_family="annotation",
+            )
+
+        self._assert_decline_base(
+            reply,
+            target="busco_assess_proteins",
+            pipeline_family="annotation",
+        )
+        next_steps_blob = " | ".join(reply["next_steps"])
+        self.assertIn("'run-123'", next_steps_blob)
+        self.assertIn("results_dir", next_steps_blob)
+        self.assertIn("summary_json", next_steps_blob)
+
+    def test_execute_run_tool_translates_manifest_not_found(self) -> None:
+        """ManifestNotFoundError → PlanDecline pointing at list_available_bindings."""
+
+        def body() -> dict[str, object]:
+            raise ManifestNotFoundError("/nope/run_manifest.json")
+
+        with self.assertNoLogs("flytetest.server", level="ERROR"):
+            reply = _execute_run_tool(
+                body,
+                target_name="braker3_annotation_workflow",
+                pipeline_family="annotation",
+            )
+
+        self._assert_decline_base(
+            reply,
+            target="braker3_annotation_workflow",
+            pipeline_family="annotation",
+        )
+        self.assertIn("/nope/run_manifest.json", reply["limitations"][0])
+        next_steps_blob = " | ".join(reply["next_steps"])
+        self.assertIn("list_available_bindings", next_steps_blob)
+        self.assertIn("readable", next_steps_blob)
+
+    def test_execute_run_tool_translates_binding_path_missing(self) -> None:
+        """BindingPathMissingError → same decline shape as ManifestNotFoundError."""
+
+        def body() -> dict[str, object]:
+            raise BindingPathMissingError("/data/missing.fa")
+
+        with self.assertNoLogs("flytetest.server", level="ERROR"):
+            reply = _execute_run_tool(
+                body,
+                target_name="exonerate_align_chunk",
+                pipeline_family="annotation",
+            )
+
+        self._assert_decline_base(
+            reply,
+            target="exonerate_align_chunk",
+            pipeline_family="annotation",
+        )
+        self.assertIn("/data/missing.fa", reply["limitations"][0])
+        next_steps_blob = " | ".join(reply["next_steps"])
+        self.assertIn("list_available_bindings", next_steps_blob)
+
+    def test_execute_run_tool_translates_binding_type_mismatch(self) -> None:
+        """BindingTypeMismatchError → decline with the §7 type-compatibility wording."""
+
+        def body() -> dict[str, object]:
+            raise BindingTypeMismatchError(
+                binding_key="ReadSet",
+                resolved_type="VariantCallSet",
+                source="$ref run_id=gatk-run-42 output_name=variant_calls",
+            )
+
+        with self.assertNoLogs("flytetest.server", level="ERROR"):
+            reply = _execute_run_tool(
+                body,
+                target_name="braker3_annotation_workflow",
+                pipeline_family="annotation",
+            )
+
+        self._assert_decline_base(
+            reply,
+            target="braker3_annotation_workflow",
+            pipeline_family="annotation",
+        )
+        self.assertEqual(
+            reply["limitations"],
+            (
+                "Binding key 'ReadSet' expected a ReadSet but source "
+                "'$ref run_id=gatk-run-42 output_name=variant_calls' "
+                "produces 'VariantCallSet'.",
+            ),
+        )
+        self.assertEqual(
+            reply["next_steps"],
+            (
+                "Pick a $ref / $manifest whose producing entry declares "
+                "'ReadSet' in produced_planner_types.",
+                "Call list_available_bindings(<target>) for compatible prior-run outputs.",
+                "Or use the raw-path form if you explicitly want to reinterpret the file.",
+            ),
+        )
+
+    def test_execute_run_tool_propagates_non_resolution_exception(self) -> None:
+        """Infrastructure failures propagate AND emit one ERROR log line."""
+
+        def body() -> dict[str, object]:
+            raise OSError("disk full")
+
+        with self.assertLogs("flytetest.server", level="ERROR") as log_ctx:
+            with self.assertRaises(OSError):
+                _execute_run_tool(
+                    body,
+                    target_name="braker3_annotation_workflow",
+                    pipeline_family="annotation",
+                )
+
+        self.assertEqual(len(log_ctx.records), 1)
+        record = log_ctx.records[0]
+        self.assertEqual(record.levelname, "ERROR")
+        message = record.getMessage()
+        self.assertIn("Uncaught exception in run tool", message)
+        self.assertIn("tool_name=braker3_annotation_workflow", message)
+        self.assertIn("pipeline_family=annotation", message)
+        self.assertIsNotNone(record.exc_info)

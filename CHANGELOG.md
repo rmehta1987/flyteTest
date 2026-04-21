@@ -32,6 +32,12 @@ Entry template:
 
 ## Unreleased
 
+### MCP Reshape Step 19 — Exception-to-Decline Wrapper (2026-04-20)
+
+- [x] 2026-04-20 added `_execute_run_tool(fn, *, target_name, pipeline_family) -> dict` in `src/flytetest/server.py` as the tool-boundary wrapper that converts every `PlannerResolutionError` subclass into a typed `PlanDecline` with exception-type-aware `next_steps`, and lets any other exception propagate after emitting one ERROR log line with the §3e `tool_name` / `pipeline_family` / traceback fields.
+- [x] 2026-04-20 wired translations for `UnknownRunIdError` (point at `list_available_bindings` + `.runtime/durable_asset_index.json`), `UnknownOutputNameError` (name the known outputs on the run), `ManifestNotFoundError` / `BindingPathMissingError` (point at `list_available_bindings` + readability check), and `BindingTypeMismatchError` (§7 — `produced_planner_types` guidance plus raw-path escape hatch).
+- [x] 2026-04-20 covered every typed exception with `assertNoLogs("flytetest.server", level="ERROR")` + decline-shape assertions in `tests/test_server.py` and asserted the non-resolution propagation path emits one ERROR record carrying `tool_name` / `pipeline_family` / `exc_info`; verified with `python -m compileall src/flytetest/server.py tests/test_server.py` and `python -m pytest tests/test_server.py` (110 passed).
+
 ### MCP Reshape Step 18 — Operator-Side Logging (2026-04-20)
 
 - [x] 2026-04-20 added `_LOG = logging.getLogger(__name__)` module-level loggers in `src/flytetest/resolver.py`, `src/flytetest/spec_executor.py`, and `src/flytetest/server.py` so the three §3e log sites share a common convention aligned with the existing `slurm_monitor.py` pattern.

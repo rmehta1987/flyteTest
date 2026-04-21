@@ -21,12 +21,20 @@ from contextlib import asynccontextmanager
 from dataclasses import asdict
 from datetime import UTC, datetime
 from collections import deque
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from io import TextIOWrapper
 from pathlib import Path
 from typing import Any, get_args, get_origin, get_type_hints
 
 import flytetest.planner_types as planner_types_module
+from flytetest.errors import (
+    BindingPathMissingError,
+    BindingTypeMismatchError,
+    ManifestNotFoundError,
+    UnknownOutputNameError,
+    UnknownRunIdError,
+)
+from flytetest.mcp_replies import PlanDecline
 from flytetest.mcp_contract import (
     DECLINE_CATEGORY_CODES,
     EXAMPLE_PROMPT_REQUIREMENTS,
@@ -867,6 +875,105 @@ def plan_request(prompt: str) -> dict[str, object]:
         prompt: Natural-language request being converted into a typed plan.
 """
     return asdict(plan_request_reshape(prompt))
+
+
+def _execute_run_tool(
+    fn: Callable[[], dict[str, object]],
+    *,
+    target_name: str,
+    pipeline_family: str,
+) -> dict[str, object]:
+    """Run a reshaped run-tool body and translate typed resolution errors.
+
+    Scientist-addressable :class:`PlannerResolutionError` subclasses become
+    :class:`PlanDecline` replies with exception-type-aware ``next_steps``.
+    Any other exception propagates after emitting the §3e ERROR log line so
+    operator-side observability still captures the failure.
+
+    Args:
+        fn: Zero-argument callable that performs the full reshaped run-tool
+            body (binding resolution, freeze, dispatch, output collection).
+        target_name: Registered task or workflow name being executed, used
+            to populate :class:`PlanDecline.target` and the ERROR log.
+        pipeline_family: Pipeline family advertised on the registry entry,
+            used to populate :class:`PlanDecline.pipeline_family`.
+
+    Returns:
+        The value returned by ``fn`` on success, or ``asdict(PlanDecline(...))``
+        for a scientist-addressable resolution failure.
+    """
+    try:
+        return fn()
+    except UnknownRunIdError as exc:
+        return asdict(
+            PlanDecline(
+                supported=False,
+                target=target_name,
+                pipeline_family=pipeline_family,
+                limitations=(str(exc),),
+                next_steps=(
+                    "Call list_available_bindings(<target>) to confirm the run_id.",
+                    "Re-run the producing workflow to regenerate the output.",
+                    "Inspect .runtime/durable_asset_index.json for indexed runs.",
+                ),
+            )
+        )
+    except UnknownOutputNameError as exc:
+        known = (
+            ", ".join(sorted(exc.known_outputs)) if exc.known_outputs else "(none)"
+        )
+        return asdict(
+            PlanDecline(
+                supported=False,
+                target=target_name,
+                pipeline_family=pipeline_family,
+                limitations=(str(exc),),
+                next_steps=(
+                    f"Known outputs for run {exc.run_id!r}: {known}.",
+                    "Pick one of those output names, or re-run the producing workflow.",
+                ),
+            )
+        )
+    except (ManifestNotFoundError, BindingPathMissingError) as exc:
+        return asdict(
+            PlanDecline(
+                supported=False,
+                target=target_name,
+                pipeline_family=pipeline_family,
+                limitations=(str(exc),),
+                next_steps=(
+                    "Call list_available_bindings(<target>) to locate substitute inputs.",
+                    "Verify the path exists and is readable from this machine.",
+                ),
+            )
+        )
+    except BindingTypeMismatchError as exc:
+        return asdict(
+            PlanDecline(
+                supported=False,
+                target=target_name,
+                pipeline_family=pipeline_family,
+                limitations=(
+                    f"Binding key {exc.binding_key!r} expected a "
+                    f"{exc.binding_key} but source {exc.source!r} produces "
+                    f"{exc.resolved_type!r}.",
+                ),
+                next_steps=(
+                    f"Pick a $ref / $manifest whose producing entry declares "
+                    f"{exc.binding_key!r} in produced_planner_types.",
+                    "Call list_available_bindings(<target>) for compatible prior-run outputs.",
+                    "Or use the raw-path form if you explicitly want to reinterpret the file.",
+                ),
+            )
+        )
+    except Exception:
+        _LOG.exception(
+            "Uncaught exception in run tool "
+            "(recipe_id=pending tool_name=%s pipeline_family=%s)",
+            target_name,
+            pipeline_family,
+        )
+        raise
 
 
 def run_workflow(
