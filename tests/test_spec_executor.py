@@ -54,6 +54,24 @@ from flytetest.spec_executor import (
 )
 
 
+def _typed_plan(
+    target_name: str,
+    *,
+    source_prompt: str = "",
+    biological_goal: str | None = None,
+    **kwargs: object,
+) -> dict[str, object]:
+    """Build one structured typed plan for executor tests."""
+    if biological_goal is None:
+        biological_goal = target_name
+    return plan_typed_request(
+        biological_goal=biological_goal,
+        target_name=target_name,
+        source_prompt=source_prompt,
+        **kwargs,
+    )
+
+
 def _artifact_with_runtime_bindings(tmp_path: Path):
     """Build one generated-spec artifact with enough runtime values to run locally."""
     reference_genome = ReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa"))
@@ -61,8 +79,9 @@ def _artifact_with_runtime_bindings(tmp_path: Path):
         reference_genome=reference_genome,
         annotation_gff3_path=Path("results/evm/evm.out.gff3"),
     )
-    typed_plan = plan_typed_request(
-        "Create a generated WorkflowSpec for repeat filtering and BUSCO QC.",
+    typed_plan = _typed_plan(
+        "repeat_filter_then_busco_qc",
+        source_prompt="Create a generated WorkflowSpec for repeat filtering and BUSCO QC.",
         explicit_bindings={"ConsensusAnnotation": consensus_annotation},
     )
     artifact = artifact_from_typed_plan(typed_plan, created_at="2026-04-07T12:00:00Z")
@@ -100,8 +119,9 @@ def _busco_artifact_with_runtime_bindings(tmp_path: Path):
         annotation_gff3_path=result_dir / "all_repeats_removed.gff3",
         proteins_fasta_path=result_dir / "all_repeats_removed.proteins.fa",
     )
-    typed_plan = plan_typed_request(
-        "Run BUSCO quality assessment on the annotation.",
+    typed_plan = _typed_plan(
+        "annotation_qc_busco",
+        source_prompt="Run BUSCO quality assessment on the annotation.",
         explicit_bindings={"QualityAssessmentTarget": target.to_dict()},
         runtime_bindings={
             "busco_lineages_text": "embryophyta_odb10",
@@ -133,8 +153,9 @@ def _slurm_busco_artifact_with_runtime_bindings(tmp_path: Path):
             indent=2,
         )
     )
-    typed_plan = plan_typed_request(
-        "Run BUSCO quality assessment on the annotation using execution profile slurm.",
+    typed_plan = _typed_plan(
+        "annotation_qc_busco",
+        source_prompt="Run BUSCO quality assessment on the annotation using execution profile slurm.",
         manifest_sources=(result_dir,),
         runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
         resource_request={"cpu": 20, "memory": "80Gi", "queue": "batch", "walltime": "04:00:00"},
@@ -144,14 +165,16 @@ def _slurm_busco_artifact_with_runtime_bindings(tmp_path: Path):
 
 
 def _quality_target_artifact(
+    target_name: str,
     prompt: str,
     target: QualityAssessmentTarget,
     *,
     runtime_bindings: dict[str, object] | None = None,
 ):
     """Build a direct registered-workflow artifact from one quality target."""
-    typed_plan = plan_typed_request(
-        prompt,
+    typed_plan = _typed_plan(
+        target_name,
+        source_prompt=prompt,
         explicit_bindings={"QualityAssessmentTarget": target.to_dict()},
         runtime_bindings=runtime_bindings or {},
     )
@@ -231,6 +254,7 @@ class SpecExecutorTests(TestCase):
                 proteins_fasta_path=repeat_dir / "all_repeats_removed.proteins.fa",
             )
             artifact = _quality_target_artifact(
+                "annotation_functional_eggnog",
                 "Run EggNOG functional annotation on the repeat-filtered proteins.",
                 target,
                 runtime_bindings={
@@ -287,16 +311,19 @@ class SpecExecutorTests(TestCase):
                 annotation_gff3_path=conversion_dir / "all_repeats_removed.agat.gff3",
             )
             stats_artifact = _quality_target_artifact(
+                "annotation_postprocess_agat",
                 "Run AGAT statistics on the EggNOG-annotated GFF3.",
                 eggnog_target,
                 runtime_bindings={"annotation_fasta_path": "data/braker3/reference/genome.fa", "agat_sif": "agat.sif"},
             )
             convert_artifact = _quality_target_artifact(
+                "annotation_postprocess_agat_conversion",
                 "Run AGAT conversion on the EggNOG-annotated GFF3.",
                 eggnog_target,
                 runtime_bindings={"agat_sif": "agat.sif"},
             )
             cleanup_artifact = _quality_target_artifact(
+                "annotation_postprocess_agat_cleanup",
                 "Run AGAT cleanup on the converted GFF3.",
                 conversion_target,
             )

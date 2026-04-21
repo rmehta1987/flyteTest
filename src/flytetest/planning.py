@@ -1,18 +1,17 @@
-"""Deterministic prompt planning for the narrow FLyteTest MCP showcase.
+"""Deterministic planning for the FLyteTest MCP showcase.
 
-This module reads a natural-language request, looks for explicit local files
-and resource hints in the text, and matches the request against the small set
-of supported showcase entries:
+This module keeps two planning entrypoints:
 
-* `ab_initio_annotation_braker3`
-* `protein_evidence_alignment`
-* `exonerate_align_chunk`
+* `plan_request()` remains the free-text preview tool. It performs a
+    deterministic structured match against registered entry `biological_stage`
+    and `name`, then falls back to reviewed composition discovery.
+* `plan_typed_request()` is the structured planner used once the caller has
+    selected a concrete target and provided explicit bindings, manifests, runtime
+    inputs, and execution policy.
 
-The planner does not invent new workflow behavior. Instead, it decides whether
-the request maps cleanly to one of the supported entries, what inputs can be
-frozen from the prompt, what still needs to be resolved from manifests or result
-bundles, and whether a metadata-only generated spec preview should be produced
-for the typed-planning path.
+The planner does not invent new workflow behavior. It only freezes registered
+entries, reviewed stage compositions, or metadata-only generated specs built
+from registered stages.
 """
 
 from __future__ import annotations
@@ -24,7 +23,7 @@ import inspect
 import json
 import re
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass, field, replace
+from dataclasses import dataclass, field, replace
 from importlib import import_module
 from pathlib import Path
 from typing import Any, Literal
@@ -56,8 +55,6 @@ from flytetest.specs import (
 
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
-_PATH_RE = re.compile(r"(?P<path>(?:\.{1,2}/|/|[A-Za-z0-9_-]+/)[A-Za-z0-9_./-]+)")
-_FASTA_SUFFIXES = (".fa", ".faa", ".fasta", ".fna", ".fas")
 TypedPlanningOutcome = Literal[
     "registered_task",
     "registered_workflow",
@@ -93,19 +90,6 @@ class EntryParameter:
 
 
 @dataclass(frozen=True, slots=True)
-class PromptPath:
-    """One explicit local path mention extracted from the prompt text.
-
-    It keeps both the literal path text and the prompt context that surrounded
-    it so later heuristics can tell whether a path was likely a genome, protein,
-    BAM, or tool-image reference.
-"""
-
-    value: str
-    context: str
-
-
-@dataclass(frozen=True, slots=True)
 class TypedPlanningGoal:
     """One biology-level target selected before resolver and registry matching.
 
@@ -131,6 +115,18 @@ class TypedPlanningGoal:
     runtime_images: dict[str, str] = field(default_factory=dict)
     tool_databases: dict[str, str] = field(default_factory=dict)
     env_vars: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class AmbiguousMatch:
+    """Multiple registered entries survived deterministic target matching."""
+
+    entries: tuple[RegistryEntry, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class NoMatch:
+    """Deterministic target matching found no registered entry."""
 
 
 def _normalize(text: str) -> str:
@@ -254,238 +250,43 @@ def _clean_path(raw_path: str) -> str:
     return raw_path.rstrip(".,);:'\"")
 
 
-def _extract_prompt_paths(request: str) -> tuple[PromptPath, ...]:
-    """Return explicit local path mentions with the prefix text that labels them.
-
-    Args:
-        request: The natural-language prompt being searched for path mentions.
-
-    Returns:
-        The explicit path mentions that appear to be written directly in the prompt.
-"""
-    matches: list[PromptPath] = []
-    for match in _PATH_RE.finditer(request):
-        path = _clean_path(match.group("path"))
-        if "/" not in path:
-            continue
-        start = max(0, match.start() - 60)
-        matches.append(PromptPath(value=path, context=request[start:match.start()].lower()))
-    return tuple(matches)
+def _showcase_registry_entries() -> tuple[RegistryEntry, ...]:
+    """Return the currently runnable showcase entries used by MCP planning."""
+    return tuple(get_entry(name) for name in SUPPORTED_TARGET_NAMES)
 
 
-def _is_bam_path(path: str) -> bool:
-    """Return whether a prompt path looks like a BAM file.
-
-    Args:
-        path: A filesystem path or prompt mention being classified.
-
-    Returns:
-        ``True`` when the path ends with `.bam`.
-"""
-    return path.lower().endswith(".bam")
+def _pipeline_stage_order(entry: RegistryEntry) -> int:
+    """Return one sortable pipeline-stage order for deterministic matching."""
+    order = entry.compatibility.pipeline_stage_order
+    return order if isinstance(order, int) else 1_000_000
 
 
-def _is_fasta_path(path: str) -> bool:
-    """Return whether a prompt path looks like a FASTA file.
+def _match_target(
+    biological_goal: str,
+    registry_entries: Sequence[RegistryEntry],
+) -> RegistryEntry | AmbiguousMatch | NoMatch:
+    """Deterministically resolve one biological goal to a registered entry."""
+    goal = _normalize(biological_goal)
+    if not goal:
+        return NoMatch()
 
-    Args:
-        path: A filesystem path or prompt mention being classified.
+    primary = [
+        entry
+        for entry in registry_entries
+        if _normalize(entry.compatibility.biological_stage or "") == goal
+    ]
+    candidates = primary or [entry for entry in registry_entries if _normalize(entry.name) == goal]
+    if not candidates:
+        return NoMatch()
 
-    Returns:
-        ``True`` when the path looks like a FASTA file, including gzipped FASTA.
-"""
-    lowered = path.lower()
-    if lowered.endswith(".gz"):
-        lowered = lowered[:-3]
-    return lowered.endswith(_FASTA_SUFFIXES)
-
-
-def _last_keyword_index(context: str, keywords: tuple[str, ...]) -> int:
-    """Return the nearest keyword position from a short prompt prefix context.
-
-    Args:
-        context: Lowercase prompt context captured before the path mention.
-        keywords: Keywords whose last position should be compared.
-
-    Returns:
-        The rightmost keyword match index, or ``-1`` when no keyword appears.
-"""
-    return max((context.rfind(keyword) for keyword in keywords), default=-1)
-
-
-def _extract_braker_workflow_inputs(request: str, prompt_paths: tuple[PromptPath, ...]) -> dict[str, str]:
-    """Map prompt-contained explicit paths to BRAKER3 workflow inputs.
-
-    Args:
-        request: The natural-language prompt being parsed for BRAKER3 inputs.
-        prompt_paths: The explicit path mentions already extracted from the prompt.
-
-    Returns:
-        The BRAKER3 input mapping inferred from the prompt text.
-"""
-    extracted: dict[str, str] = {}
-    unlabeled_fastas: list[str] = []
-
-    for mention in prompt_paths:
-        path = mention.value
-        if _is_bam_path(path):
-            extracted.setdefault("rnaseq_bam_path", path)
-            continue
-        if path.lower().endswith(".sif") and "braker" in mention.context:
-            extracted.setdefault("braker3_sif", path)
-            continue
-        if not _is_fasta_path(path):
-            continue
-
-        protein_index = _last_keyword_index(mention.context, ("protein",))
-        genome_index = _last_keyword_index(mention.context, ("genome",))
-        if protein_index > genome_index:
-            extracted.setdefault("protein_fasta_path", path)
-            continue
-        if genome_index > protein_index:
-            extracted.setdefault("genome", path)
-            continue
-        unlabeled_fastas.append(path)
-
-    if "genome" not in extracted and len(unlabeled_fastas) == 1 and "protein_fasta_path" not in extracted:
-        extracted["genome"] = unlabeled_fastas[0]
-
-    species_match = re.search(r"\bbraker species\b\s*[:=]?\s*([A-Za-z0-9_.-]+)", request, flags=re.IGNORECASE)
-    if species_match:
-        extracted["braker_species"] = species_match.group(1)
-
-    return extracted
-
-
-def _extract_protein_workflow_inputs(
-    request: str,
-    prompt_paths: tuple[PromptPath, ...],
-) -> dict[str, object]:
-    """Map prompt-contained explicit paths to protein-evidence workflow inputs.
-
-    Args:
-        request: The natural-language prompt being parsed for protein-evidence inputs.
-        prompt_paths: The explicit path mentions already extracted from the prompt.
-
-    Returns:
-        The protein-evidence input mapping inferred from the prompt text.
-"""
-    extracted: dict[str, object] = {}
-    protein_fastas: list[str] = []
-    unlabeled_fastas: list[str] = []
-
-    for mention in prompt_paths:
-        path = mention.value
-        if path.lower().endswith(".sif") and "exonerate" in mention.context:
-            extracted.setdefault("exonerate_sif", path)
-            continue
-        if not _is_fasta_path(path):
-            continue
-
-        protein_index = _last_keyword_index(mention.context, ("protein",))
-        genome_index = _last_keyword_index(mention.context, ("genome",))
-        if protein_index > genome_index:
-            if path not in protein_fastas:
-                protein_fastas.append(path)
-            continue
-        if genome_index > protein_index:
-            extracted.setdefault("genome", path)
-            continue
-        unlabeled_fastas.append(path)
-
-    if "genome" in extracted:
-        for path in unlabeled_fastas:
-            if path != extracted["genome"] and path not in protein_fastas:
-                protein_fastas.append(path)
-    elif len(unlabeled_fastas) == 1 and not protein_fastas:
-        extracted["genome"] = unlabeled_fastas[0]
-
-    proteins_per_chunk_match = re.search(
-        r"\bproteins per chunk\b\s*[:=]?\s*(\d+)",
-        request,
-        flags=re.IGNORECASE,
-    )
-    if proteins_per_chunk_match:
-        extracted["proteins_per_chunk"] = proteins_per_chunk_match.group(1)
-
-    model_match = re.search(r"\bmodel\b\s*[:=]?\s*([A-Za-z0-9_.-]+)", request, flags=re.IGNORECASE)
-    if model_match and "exonerate" in request.lower():
-        extracted["exonerate_model"] = model_match.group(1)
-
-    if protein_fastas:
-        extracted["protein_fastas"] = protein_fastas
-    return extracted
-
-
-def _extract_task_inputs(request: str, prompt_paths: tuple[PromptPath, ...]) -> dict[str, str]:
-    """Map prompt-contained explicit paths to the Exonerate chunk task inputs.
-
-    Args:
-        request: The natural-language prompt being parsed for Exonerate task inputs.
-        prompt_paths: The explicit path mentions already extracted from the prompt.
-
-    Returns:
-        The task input mapping inferred from the prompt text.
-"""
-    extracted: dict[str, str] = {}
-    unlabeled_fastas: list[str] = []
-
-    for mention in prompt_paths:
-        path = mention.value
-        if path.lower().endswith(".sif") and "exonerate" in mention.context:
-            extracted.setdefault("exonerate_sif", path)
-            continue
-        if not _is_fasta_path(path):
-            continue
-
-        protein_index = _last_keyword_index(mention.context, ("protein", "chunk"))
-        genome_index = _last_keyword_index(mention.context, ("genome", "target"))
-        if protein_index > genome_index:
-            extracted.setdefault("protein_chunk", path)
-            continue
-        if genome_index > protein_index:
-            extracted.setdefault("genome", path)
-            continue
-        unlabeled_fastas.append(path)
-
-    if len(unlabeled_fastas) == 1 and "genome" not in extracted and "protein_chunk" not in extracted:
-        extracted["genome"] = unlabeled_fastas[0]
-
-    model_match = re.search(r"\bmodel\b\s*[:=]?\s*([A-Za-z0-9_.-]+)", request, flags=re.IGNORECASE)
-    if model_match and "exonerate" in request.lower():
-        extracted["exonerate_model"] = model_match.group(1)
-
-    return extracted
-
-
-def _extract_busco_fixture_inputs(request: str, prompt_paths: tuple[PromptPath, ...]) -> dict[str, object]:
-    """Build default runtime bindings for the M18 BUSCO fixture smoke."""
-    extracted: dict[str, object] = {
-        "proteins_fasta": "data/busco/test_data/eukaryota/genome.fna",
-        "lineage_dataset": "auto-lineage",
-        "busco_mode": "geno",
-    }
-
-    for mention in prompt_paths:
-        path = mention.value
-        if path.lower().endswith(".sif") and "busco" in mention.context:
-            extracted.setdefault("busco_sif", path)
-            continue
-        if _is_fasta_path(path) and any(keyword in mention.context for keyword in ("busco", "fixture", "genome")):
-            extracted["proteins_fasta"] = path
-
-    cpu_match = re.search(r"\bbusco[_ -]?cpu\s*[:=]?\s*(\d+)\b", request, flags=re.IGNORECASE)
-    if cpu_match:
-        extracted["busco_cpu"] = int(cpu_match.group(1))
-
-    lineage_match = re.search(r"\b(?:lineage|lineage_dataset)\s*[:=]?\s*([A-Za-z0-9_.-]+)\b", request, flags=re.IGNORECASE)
-    if lineage_match:
-        extracted["lineage_dataset"] = lineage_match.group(1)
-
-    mode_match = re.search(r"\bbusco[_ -]?mode\s*[:=]?\s*([A-Za-z0-9_.-]+)\b", request, flags=re.IGNORECASE)
-    if mode_match:
-        extracted["busco_mode"] = mode_match.group(1)
-    return extracted
+    workflows = [entry for entry in candidates if entry.category == "workflow"]
+    pool = workflows or candidates
+    pool = sorted(pool, key=lambda entry: (_pipeline_stage_order(entry), entry.name))
+    lowest_order = _pipeline_stage_order(pool[0])
+    pool = [entry for entry in pool if _pipeline_stage_order(entry) == lowest_order]
+    if len(pool) == 1:
+        return pool[0]
+    return AmbiguousMatch(entries=tuple(pool))
 
 
 def _coerce_resource_spec(value: Mapping[str, Any] | ResourceSpec | None) -> ResourceSpec | None:
@@ -588,57 +389,6 @@ def _merge_resource_specs(base: ResourceSpec | None, override: ResourceSpec | No
     )
 
 
-def _extract_resource_spec_from_prompt(request: str) -> ResourceSpec | None:
-    """Parse conservative resource mentions from prompt text into a ResourceSpec.
-
-    Args:
-        request: The natural-language prompt being searched for resource hints.
-
-    Returns:
-        A parsed resource spec when the prompt names one clearly enough.
-"""
-    cpu: str | None = None
-    memory: str | None = None
-    queue: str | None = None
-    account: str | None = None
-    walltime: str | None = None
-
-    cpu_match = re.search(r"\b(\d+)\s*(?:cpu|cpus|cores?)\b", request, flags=re.IGNORECASE)
-    if cpu_match:
-        cpu = cpu_match.group(1)
-
-    memory_match = re.search(
-        r"\b(?:memory|mem|ram)\s*[:=]?\s*(\d+\s*(?:gib|gb|gi|mib|mb|mi))\b|\b(\d+\s*(?:gib|gb|gi|mib|mb|mi))\s*(?:memory|mem|ram)\b",
-        request,
-        flags=re.IGNORECASE,
-    )
-    if memory_match:
-        memory = (memory_match.group(1) or memory_match.group(2)).replace(" ", "")
-
-    queue_match = re.search(r"\b(?:queue|partition)\s*[:=]?\s*([A-Za-z0-9_.-]+)\b", request, flags=re.IGNORECASE)
-    if queue_match:
-        queue = queue_match.group(1)
-
-    account_match = re.search(r"\baccount\s*[:=]?\s*([A-Za-z0-9_.-]+)\b", request, flags=re.IGNORECASE)
-    if account_match:
-        account = account_match.group(1)
-
-    walltime_match = re.search(
-        r"\b(?:walltime|wall time|time limit)\s*[:=]?\s*([0-9]+(?::[0-9]{2}){1,2}|[0-9]+[hm])\b",
-        request,
-        flags=re.IGNORECASE,
-    )
-    if walltime_match:
-        walltime = walltime_match.group(1)
-
-    if not any((cpu, memory, queue, account, walltime)):
-        return None
-    notes = (
-        "Scheduler-oriented fields are frozen for review and replay before an executor consumes the recipe.",
-    )
-    return ResourceSpec(cpu=cpu, memory=memory, queue=queue, account=account, walltime=walltime, notes=notes)
-
-
 def _slurm_resource_spec_defaults(resource_spec: ResourceSpec | None) -> ResourceSpec | None:
     """Attach cluster-specific Slurm defaults to a selected resource spec.
 
@@ -655,46 +405,6 @@ def _slurm_resource_spec_defaults(resource_spec: ResourceSpec | None) -> Resourc
     if resource_spec.account:
         return resource_spec
     return replace(resource_spec, account=DEFAULT_SLURM_ACCOUNT)
-
-
-def _extract_execution_profile_from_prompt(request: str) -> str | None:
-    """Parse an explicit execution profile name from the prompt when present.
-
-    Args:
-        request: The natural-language prompt being searched for a profile name.
-
-    Returns:
-        The lowercased execution profile name, or ``None`` when not named clearly.
-"""
-    profile_match = re.search(
-        r"\b(?:execution profile|profile)\s*[:=]?\s*([A-Za-z0-9_.-]+)\b",
-        request,
-        flags=re.IGNORECASE,
-    )
-    if profile_match:
-        return _clean_path(profile_match.group(1)).lower()
-    if re.search(r"\bslurm\b", request, flags=re.IGNORECASE):
-        return "slurm"
-    return None
-
-
-def _extract_runtime_image_from_prompt(request: str) -> RuntimeImageSpec | None:
-    """Parse a global runtime image request from prompt text when clearly labeled.
-
-    Args:
-        request: The natural-language prompt being searched for runtime-image hints.
-
-    Returns:
-        A runtime-image spec when the prompt names an image clearly enough.
-"""
-    image_match = re.search(
-        r"\b(?:runtime image|container image|apptainer image)\s*[:=]?\s*([A-Za-z0-9_./:-]+)",
-        request,
-        flags=re.IGNORECASE,
-    )
-    if not image_match:
-        return None
-    return _coerce_runtime_image_spec(_clean_path(image_match.group(1)))
 
 
 def _registry_default_resource_spec(entry: RegistryEntry) -> ResourceSpec | None:
@@ -758,7 +468,6 @@ def _resolved_environment_payload(
 def _select_execution_policy(
     goal: TypedPlanningGoal,
     *,
-    request: str,
     resource_request: Mapping[str, Any] | ResourceSpec | None,
     execution_profile: str | None,
     runtime_image: Mapping[str, Any] | RuntimeImageSpec | str | None,
@@ -779,7 +488,6 @@ def _select_execution_policy(
 
     Args:
         goal: The typed planning goal being prepared for freezing.
-        request: The natural-language prompt being evaluated.
         resource_request: Caller-supplied compute resource policy or override.
         execution_profile: Caller-supplied execution profile, if any.
         runtime_image: Caller-supplied runtime image policy or override.
@@ -820,8 +528,7 @@ def _select_execution_policy(
     entry_module_loads = _coerce_string_tuple(entry_execution_defaults.get("module_loads"))
     bundle_module_loads = _coerce_string_tuple(bundle_overrides.get("module_loads"))
 
-    prompt_profile = _extract_execution_profile_from_prompt(request)
-    selected_profile = _clean_path(execution_profile or prompt_profile or default_profile or "local").lower()
+    selected_profile = _clean_path(execution_profile or default_profile or "local").lower()
     unresolved: list[str] = []
     assumptions: list[str] = []
     if selected_profile not in supported_profiles:
@@ -835,12 +542,11 @@ def _select_execution_policy(
             registry_default,
             ResourceSpec(module_loads=entry_module_loads),
         )
-    prompt_resources = _extract_resource_spec_from_prompt(request)
     bundle_resources = ResourceSpec(module_loads=bundle_module_loads) if bundle_module_loads else None
     caller_resources = _coerce_resource_spec(resource_request)
     selected_resources = _merge_resource_specs(
         _merge_resource_specs(
-            _merge_resource_specs(registry_default, prompt_resources),
+            registry_default,
             bundle_resources,
         ),
         caller_resources,
@@ -853,7 +559,6 @@ def _select_execution_policy(
     selected_image = (
         _coerce_runtime_image_spec(runtime_image)
         or _runtime_image_spec_from_named_images(selected_runtime_images)
-        or _extract_runtime_image_from_prompt(request)
     )
     if selected_resources is not None:
         assumptions.append(
@@ -883,139 +588,6 @@ def _select_execution_policy(
     )
 
 
-def _classify_target(request: str) -> tuple[str | None, float, tuple[str, ...]]:
-    """Classify the prompt as one supported workflow, task, or unsupported.
-
-    Args:
-        request: The natural-language prompt being classified.
-
-    Returns:
-        The selected showcase entry name, confidence, and rationale.
-"""
-    normalized_request = _normalize(_PATH_RE.sub(" ", request))
-    has_exonerate = "exonerate" in normalized_request
-    has_braker = "braker3" in normalized_request or "braker" in normalized_request
-    has_annotation_intent = "annotate" in normalized_request and "genome" in normalized_request
-    has_chunk = "chunk" in normalized_request
-    has_experiment = "experiment" in normalized_request
-    has_protein_workflow = (
-        "protein_evidence_alignment" in normalized_request
-        or "protein evidence alignment" in normalized_request
-        or ("protein evidence" in normalized_request and ("workflow" in normalized_request or "alignment" in normalized_request))
-    )
-    has_task_intent = has_exonerate and (has_chunk or has_experiment)
-    has_braker_intent = has_braker or has_annotation_intent
-
-    intent_count = sum((has_braker_intent, has_protein_workflow, has_task_intent))
-    if intent_count > 1:
-        return (
-            None,
-            0.0,
-            (
-                "The prompt mixes multiple supported showcase targets in one request.",
-                "This showcase runs exactly one target per prompt and declines ambiguous mixed requests.",
-            ),
-        )
-
-    if has_task_intent:
-        return (
-            SUPPORTED_TASK_NAME,
-            0.97,
-            (
-                "The prompt explicitly asks for Exonerate protein-to-genome alignment experimentation.",
-                "That maps to the supported task `exonerate_align_chunk`.",
-            ),
-        )
-
-    if has_braker_intent:
-        rationale = [
-            "The prompt asks for genome annotation in BRAKER3-style language.",
-            "That maps to the supported workflow `ab_initio_annotation_braker3`.",
-        ]
-        confidence = 0.94
-        if has_braker:
-            rationale.insert(0, "The prompt explicitly mentions BRAKER3.")
-            confidence = 0.98
-        return SUPPORTED_WORKFLOW_NAME, confidence, tuple(rationale)
-
-    if has_protein_workflow:
-        return (
-            SUPPORTED_PROTEIN_WORKFLOW_NAME,
-            0.96,
-            (
-                "The prompt asks for the protein-evidence alignment stage rather than a single Exonerate chunk experiment.",
-                "That maps to the supported workflow `protein_evidence_alignment`.",
-            ),
-        )
-
-    return (
-        None,
-        0.0,
-        (
-            "The prompt does not clearly ask for the supported BRAKER3 workflow, protein-evidence workflow, or Exonerate chunk task.",
-        ),
-    )
-
-
-def _missing_required_inputs(name: str, extracted_inputs: dict[str, object]) -> list[str]:
-    """Return missing required prompt-derived inputs for one supported entry.
-
-    Args:
-        name: The supported entry being checked.
-        extracted_inputs: The prompt-derived inputs already recovered for that entry.
-
-    Returns:
-        The required inputs that were not found in the prompt.
-"""
-    def is_missing(value: object) -> bool:
-        """Return whether one extracted prompt value should count as absent.
-
-        Args:
-            value: One extracted prompt value to evaluate.
-
-        Returns:
-            ``True`` when the value is empty or missing.
-"""
-        if value in (None, ""):
-            return True
-        if isinstance(value, list) and not value:
-            return True
-        return False
-
-    missing = [
-        parameter.name
-        for parameter in supported_entry_parameters(name)
-        if parameter.required and is_missing(extracted_inputs.get(parameter.name))
-    ]
-
-    if name == SUPPORTED_WORKFLOW_NAME and not (
-        extracted_inputs.get("rnaseq_bam_path") or extracted_inputs.get("protein_fasta_path")
-    ):
-        missing.append("rnaseq_bam_path or protein_fasta_path")
-    return missing
-
-
-def declined_downstream_stages(_request: str) -> tuple[str, ...]:
-    """Return no downstream blocklist hits after the MCP recipe cutover.
-
-    Args:
-        _request: Present for interface compatibility with older call sites.
-
-    Returns:
-        An empty tuple because this showcase no longer blocks downstream stages here.
-"""
-    return ()
-
-
-def showcase_limitations() -> tuple[str, ...]:
-    """Return the hard interface limits for the showcase planner.
-
-    Returns:
-        The static limitations that define the current showcase surface.
-"""
-    return SHOWCASE_LIMITATIONS
-
-
 def _typed_field(name: str, planner_type_name: str, description: str) -> TypedFieldSpec:
     """Build one planner-facing field for a typed workflow spec preview.
 
@@ -1035,240 +607,106 @@ def _typed_field(name: str, planner_type_name: str, description: str) -> TypedFi
     )
 
 
-def _planning_goal_for_typed_request(request: str) -> TypedPlanningGoal | None:
-    """Classify a prompt into one broader typed-planning goal when possible.
+def showcase_limitations() -> tuple[str, ...]:
+    """Return the hard interface limits for the showcase planner."""
+    return SHOWCASE_LIMITATIONS
 
-    Args:
-        request: The natural-language prompt being mapped into a typed goal.
 
-    Returns:
-        A typed planning goal, or ``None`` when the prompt does not match one.
-"""
-    normalized_request = _normalize(request)
-
-    if any(keyword in normalized_request for keyword in ("variant calling", "snv", "snp", "vcf")):
-        return None
-
-    if (
-        "busco" in normalized_request
-        and ("m18" in normalized_request or "milestone 18" in normalized_request or "fixture" in normalized_request)
-        and ("genome" in normalized_request or "eukaryota" in normalized_request or "fixture" in normalized_request)
-    ):
-        return TypedPlanningGoal(
-            name=SUPPORTED_BUSCO_FIXTURE_TASK_NAME,
-            outcome="registered_task",
-            target_entry_names=(SUPPORTED_BUSCO_FIXTURE_TASK_NAME,),
-            required_planner_types=(),
-            produced_planner_types=("Dir",),
-            rationale=(
-                "The prompt asks for the Milestone 18 BUSCO eukaryota fixture smoke.",
-                "That maps to the registered BUSCO task with explicit fixture-native runtime bindings.",
-            ),
-            analysis_goal="Run the M18 BUSCO genome-mode fixture smoke from a frozen recipe.",
-            runtime_bindings=_extract_busco_fixture_inputs(request, _extract_prompt_paths(request)),
-        )
-
-    matched_name, _, _ = _classify_target(request)
-    if matched_name is not None:
-        prompt_paths = _extract_prompt_paths(request)
-        if matched_name == SUPPORTED_WORKFLOW_NAME:
-            extracted_inputs = _extract_braker_workflow_inputs(request, prompt_paths)
-        elif matched_name == SUPPORTED_PROTEIN_WORKFLOW_NAME:
-            extracted_inputs = _extract_protein_workflow_inputs(request, prompt_paths)
-        else:
-            extracted_inputs = _extract_task_inputs(request, prompt_paths)
-        if not _missing_required_inputs(matched_name, extracted_inputs):
-            entry = get_entry(matched_name)
-            target_kind = "registered_task" if entry.category == "task" else "registered_workflow"
-            produced_types = entry.compatibility.produced_planner_types or tuple(field.type for field in entry.outputs)
-            return TypedPlanningGoal(
-                name=matched_name,
-                outcome=target_kind,
-                target_entry_names=(matched_name,),
-                required_planner_types=(),
-                produced_planner_types=produced_types,
-                rationale=(
-                    f"The prompt maps to the day-one MCP target `{matched_name}`.",
-                    "Prompt-contained local paths are frozen as runtime bindings in the saved recipe.",
-                ),
-                analysis_goal=f"Run the registered {entry.category} `{matched_name}` from a frozen recipe.",
-                runtime_bindings=dict(extracted_inputs),
-            )
-
-    asks_for_generated_spec = "workflow spec" in normalized_request or "generated spec" in normalized_request
-    asks_for_repeat_then_qc = (
-        ("repeat" in normalized_request or "repeat filtering" in normalized_request)
-        and ("busco" in normalized_request or "quality" in normalized_request or "qc" in normalized_request)
+def _repeat_filter_then_busco_goal() -> TypedPlanningGoal:
+    """Return the reviewed repeat-filter plus BUSCO generated-spec goal."""
+    return TypedPlanningGoal(
+        name="repeat_filter_then_busco_qc",
+        outcome="generated_workflow_spec",
+        target_entry_names=("annotation_repeat_filtering", "annotation_qc_busco"),
+        required_planner_types=("ConsensusAnnotation",),
+        produced_planner_types=("QualityAssessmentTarget",),
+        rationale=(
+            "The request asks for a multi-stage repeat-filtering and QC bundle that is not a checked-in single workflow.",
+            "The planner can describe a saved generated WorkflowSpec preview from existing registered stages.",
+        ),
+        analysis_goal="Prepare a generated spec preview for repeat filtering followed by BUSCO QC.",
+        generated_entity_id="generated::repeat_filter_then_busco_qc::preview",
+        unresolved_runtime_requirements=(
+            "`repeatmasker_out` must still be supplied before execution.",
+            "`busco_lineages_text` must still be supplied before execution.",
+            "Milestone 5 creates a metadata-only spec preview and does not persist or execute it yet.",
+        ),
     )
-    if asks_for_generated_spec or asks_for_repeat_then_qc:
-        # In this repo, QC means quality assessment of the repeat-filtered
-        # protein result bundle. BUSCO is the current implementation of that
-        # quality-assessment stage, and later reviewable checks can reuse the
-        # same planner target shape.
-        return TypedPlanningGoal(
-            name="repeat_filter_then_busco_qc",
-            outcome="generated_workflow_spec",
-            target_entry_names=("annotation_repeat_filtering", "annotation_qc_busco"),
-            required_planner_types=("ConsensusAnnotation",),
-            produced_planner_types=("QualityAssessmentTarget",),
-            rationale=(
-                "The prompt asks for a multi-stage repeat-filtering and QC bundle that is not a checked-in single workflow.",
-                "The planner can describe a saved generated WorkflowSpec preview from existing registered stages.",
-            ),
-            analysis_goal="Prepare a generated spec preview for repeat filtering followed by BUSCO QC.",
-            generated_entity_id="generated::repeat_filter_then_busco_qc::preview",
-            unresolved_runtime_requirements=(
-                "`repeatmasker_out` must still be supplied before execution.",
-                "`busco_lineages_text` must still be supplied before execution.",
-                "Milestone 5 creates a metadata-only spec preview and does not persist or execute it yet.",
-            ),
-        )
 
-    if "consensus" in normalized_request and ("evm" in normalized_request or "annotation" in normalized_request):
-        return TypedPlanningGoal(
-            name="consensus_annotation_from_registered_stages",
-            outcome="registered_stage_composition",
-            target_entry_names=("consensus_annotation_evm_prep", "consensus_annotation_evm"),
-            required_planner_types=("TranscriptEvidenceSet", "ProteinEvidenceSet", "AnnotationEvidenceSet"),
-            produced_planner_types=("ConsensusAnnotation",),
-            rationale=(
-                "The prompt asks for consensus annotation through the EVM boundary.",
-                "The registered pre-EVM preparation and EVM execution workflows form the reviewed composition path.",
-            ),
-            analysis_goal="Compose reviewed pre-EVM preparation and EVM execution stages.",
-            unresolved_runtime_requirements=(
-                "EVM script paths and optional weights remain normal runtime bindings.",
-            ),
-        )
 
-    if "agat" in normalized_request and any(
-        keyword in normalized_request
-        for keyword in ("cleanup", "clean up", "cleaned", "submission cleanup", "ncbi")
-    ):
-        return TypedPlanningGoal(
-            name="annotation_postprocess_agat_cleanup",
-            outcome="registered_workflow",
-            target_entry_names=("annotation_postprocess_agat_cleanup",),
-            required_planner_types=("QualityAssessmentTarget",),
-            produced_planner_types=("QualityAssessmentTarget",),
-            rationale=(
-                "The prompt asks for AGAT cleanup on the post-conversion GFF3 boundary.",
-                "That maps to the registered deterministic cleanup workflow while keeping table2asn deferred.",
-            ),
-            analysis_goal="Run the registered AGAT cleanup workflow.",
-        )
+def _consensus_annotation_goal() -> TypedPlanningGoal:
+    """Return the reviewed EVM composition goal."""
+    return TypedPlanningGoal(
+        name="consensus_annotation_from_registered_stages",
+        outcome="registered_stage_composition",
+        target_entry_names=("consensus_annotation_evm_prep", "consensus_annotation_evm"),
+        required_planner_types=("TranscriptEvidenceSet", "ProteinEvidenceSet", "AnnotationEvidenceSet"),
+        produced_planner_types=("ConsensusAnnotation",),
+        rationale=(
+            "The request asks for consensus annotation through the EVM boundary.",
+            "The registered pre-EVM preparation and EVM execution workflows form the reviewed composition path.",
+        ),
+        analysis_goal="Compose reviewed pre-EVM preparation and EVM execution stages.",
+        unresolved_runtime_requirements=(
+            "EVM script paths and optional weights remain normal runtime bindings.",
+        ),
+    )
 
-    if "agat" in normalized_request and any(
-        keyword in normalized_request
-        for keyword in ("convert", "conversion", "normalize", "standardize", "gxf2gxf")
-    ):
-        return TypedPlanningGoal(
-            name="annotation_postprocess_agat_conversion",
-            outcome="registered_workflow",
-            target_entry_names=("annotation_postprocess_agat_conversion",),
-            required_planner_types=("QualityAssessmentTarget",),
-            produced_planner_types=("QualityAssessmentTarget",),
-            rationale=(
-                "The prompt asks for AGAT conversion or normalization on the EggNOG-annotated GFF3 boundary.",
-                "That maps to the registered AGAT conversion workflow while keeping cleanup as a separate follow-on slice before table2asn.",
-            ),
-            analysis_goal="Run the registered AGAT conversion workflow.",
-        )
 
-    if "agat" in normalized_request and any(
-        keyword in normalized_request for keyword in ("statistics", "statistic", "stats")
-    ):
-        return TypedPlanningGoal(
-            name="annotation_postprocess_agat",
-            outcome="registered_workflow",
-            target_entry_names=("annotation_postprocess_agat",),
-            required_planner_types=("QualityAssessmentTarget",),
-            produced_planner_types=("QualityAssessmentTarget",),
-            rationale=(
-                "The prompt asks for AGAT post-processing on the EggNOG-annotated GFF3 boundary.",
-                "That maps to the registered AGAT statistics workflow while keeping conversion and cleanup as explicit separate slices.",
-            ),
-            analysis_goal="Run the registered AGAT post-processing workflow.",
-        )
+def _registered_goal_for_entry(entry: RegistryEntry) -> TypedPlanningGoal:
+    """Build one structured planning goal directly from registry metadata."""
+    produced_types = entry.compatibility.produced_planner_types or tuple(field.type for field in entry.outputs)
+    runtime_requirements_by_name = {
+        "annotation_functional_eggnog": (
+            "`eggnog_data_dir` must still be supplied before execution.",
+            "`eggnog_database` should be selected explicitly for the chosen taxonomic scope.",
+        ),
+    }
+    return TypedPlanningGoal(
+        name=entry.name,
+        outcome="registered_task" if entry.category == "task" else "registered_workflow",
+        target_entry_names=(entry.name,),
+        required_planner_types=tuple(entry.compatibility.accepted_planner_types),
+        produced_planner_types=tuple(produced_types),
+        rationale=(
+            f"Structured planning selected the registered {entry.category} `{entry.name}`.",
+            f"The request maps to the registry biological stage `{entry.compatibility.biological_stage or entry.name}`.",
+        ),
+        analysis_goal=f"Run the registered {entry.category} `{entry.name}` from a frozen recipe.",
+        unresolved_runtime_requirements=runtime_requirements_by_name.get(entry.name, ()),
+    )
 
-    if "eggnog" in normalized_request or "functional annotation" in normalized_request:
-        # EggNOG is modeled as a downstream quality-assessment style stage
-        # because it consumes the cleaned annotation target produced by the
-        # prior pipeline slice rather than raw user input. The stage still
-        # operates on the repeat-filtered protein boundary.
-        return TypedPlanningGoal(
-            name="annotation_functional_eggnog",
-            outcome="registered_workflow",
-            target_entry_names=("annotation_functional_eggnog",),
-            required_planner_types=("QualityAssessmentTarget",),
-            produced_planner_types=("QualityAssessmentTarget",),
-            rationale=(
-                "The prompt asks for post-BUSCO functional annotation.",
-                "That maps to the registered EggNOG functional-annotation workflow when a reviewable quality target can be resolved.",
-            ),
-            analysis_goal="Run the registered EggNOG functional-annotation workflow.",
-            unresolved_runtime_requirements=(
-                "`eggnog_data_dir` must still be supplied before execution.",
-                "`eggnog_database` should be selected explicitly for the chosen taxonomic scope.",
-            ),
-        )
 
-    if "busco" in normalized_request or "quality assessment" in normalized_request:
-        # BUSCO is the current canonical quality-assessment stage. It measures
-        # completeness of the repeat-filtered protein set before later
-        # functional annotation or AGAT post-processing steps.
-        return TypedPlanningGoal(
-            name="annotation_qc_busco",
-            outcome="registered_workflow",
-            target_entry_names=("annotation_qc_busco",),
-            required_planner_types=("QualityAssessmentTarget",),
-            produced_planner_types=("QualityAssessmentTarget",),
-            rationale=(
-                "The prompt asks for BUSCO annotation quality assessment.",
-                "That maps to the registered BUSCO QC workflow when a QC target can be resolved.",
-            ),
-            analysis_goal="Run the registered BUSCO QC workflow from a repeat-filtered annotation target.",
-        )
-
-    if "protein evidence alignment" in normalized_request or (
-        "protein evidence" in normalized_request and "alignment" in normalized_request
-    ):
-        return TypedPlanningGoal(
-            name="protein_evidence_alignment",
-            outcome="registered_workflow",
-            target_entry_names=("protein_evidence_alignment",),
-            required_planner_types=("ReferenceGenome", "ProteinEvidenceSet"),
-            produced_planner_types=("ProteinEvidenceSet",),
-            rationale=(
-                "The prompt asks for the protein-evidence alignment stage.",
-                "That maps to the registered protein_evidence_alignment workflow.",
-            ),
-            analysis_goal="Run the registered protein-evidence alignment workflow.",
-        )
-
-    if "transcript evidence" in normalized_request:
-        return TypedPlanningGoal(
-            name="transcript_evidence_generation",
-            outcome="registered_workflow",
-            target_entry_names=("transcript_evidence_generation",),
-            required_planner_types=("ReferenceGenome", "ReadSet"),
-            produced_planner_types=("TranscriptEvidenceSet",),
-            rationale=(
-                "The prompt asks for transcript evidence generation.",
-                "That maps to the registered transcript_evidence_generation workflow when reads and genome resolve.",
-            ),
-            analysis_goal="Run the registered transcript-evidence generation workflow.",
-        )
-
-    if matched_name is not None:
+def _typed_goal_for_target(biological_goal: str, target_name: str) -> TypedPlanningGoal | None:
+    """Resolve one structured target name into a typed planning goal."""
+    del biological_goal
+    if target_name == "repeat_filter_then_busco_qc":
+        return _repeat_filter_then_busco_goal()
+    if target_name == "consensus_annotation_from_registered_stages":
+        return _consensus_annotation_goal()
+    try:
+        entry = get_entry(target_name)
+    except KeyError:
         return None
+    return _registered_goal_for_entry(entry)
 
-    # Try registry-based composition when the prompt is broader than the direct matches.
-    composition_goal = _try_composition_fallback(request, normalized_request)
-    if composition_goal is not None:
-        return composition_goal
 
-    return None
+def _target_name_advisories(biological_goal: str, target_name: str) -> tuple[str, ...]:
+    """Return soft advisories when target_name overrides a different stage label."""
+    if target_name in {"repeat_filter_then_busco_qc", "consensus_annotation_from_registered_stages"}:
+        return ()
+    try:
+        entry = get_entry(target_name)
+    except KeyError:
+        return ()
+
+    normalized_goal = _normalize(biological_goal)
+    stage_name = entry.compatibility.biological_stage or entry.name
+    if normalized_goal in {"", _normalize(stage_name), _normalize(entry.name)}:
+        return ()
+    return (
+        f"target_name `{entry.name}` overrides biological_goal `{biological_goal}`; the registered stage label is `{stage_name}`.",
+    )
 
 
 def _try_composition_fallback(request: str, normalized_request: str) -> TypedPlanningGoal | None:
@@ -1785,140 +1223,95 @@ def _find_close_target_matches(request: str) -> list[str]:
     return list(seen.keys())[:3]
 
 
-def _unsupported_typed_plan(request: str, reason: str, rationale: tuple[str, ...]) -> dict[str, object]:
-    """Build an honest typed-planning decline without falling back to guessing.
+def _default_recovery_steps() -> tuple[str, ...]:
+    """Return the standard recovery channels for structured planning declines."""
+    return (
+        "Supply target_name=<name> to disambiguate or bypass free-text matching.",
+        "Or restate biological_goal to match one entry's biological_stage exactly.",
+        "Or call list_entries(category=..., pipeline_family=...) to browse the candidates.",
+    )
 
-    Args:
-        request: The natural-language prompt that could not be typed-planned.
-        reason: Short explanation for the decline.
-        rationale: Supporting reasoning that should be returned to the caller.
 
-    Returns:
-        A metadata-only decline payload for the typed planner path.
-"""
+def _unsupported_typed_plan(
+    request: str,
+    reason: str,
+    rationale: tuple[str, ...],
+    *,
+    biological_goal: str | None = None,
+    matched_entry_names: Sequence[str] = (),
+    candidate_outcome: TypedPlanningOutcome | None = None,
+    required_planner_types: Sequence[str] = (),
+    produced_planner_types: Sequence[str] = (),
+    limitations: Sequence[str] = (),
+    next_steps: Sequence[str] = (),
+) -> dict[str, object]:
+    """Build one honest typed-planning decline without guessing or parsing prose."""
     close_matches = _find_close_target_matches(request)
     suggestions = (
-        [f"Did you mean one of: {', '.join(f'`{m}`' for m in close_matches)}?"]
+        [f"Did you mean one of: {', '.join(f'`{match}`' for match in close_matches)}?"]
         if close_matches
         else []
     )
+    decline_limitations = list(limitations) or [reason, *suggestions]
     return {
         "supported": False,
         "original_request": request,
         "planning_outcome": "declined",
-        "biological_goal": None,
-        "matched_entry_names": [],
-        "required_planner_types": [],
-        "produced_planner_types": [],
+        "candidate_outcome": candidate_outcome,
+        "biological_goal": biological_goal,
+        "matched_entry_names": list(matched_entry_names),
+        "required_planner_types": list(required_planner_types),
+        "produced_planner_types": list(produced_planner_types),
         "resolved_inputs": {},
         "missing_requirements": [reason, *suggestions],
         "runtime_requirements": [],
+        "execution_profile": None,
+        "resource_spec": None,
+        "runtime_image": None,
+        "runtime_images": {},
+        "tool_databases": {},
+        "env_vars": {},
+        "resolved_environment": {
+            "runtime_images": {},
+            "tool_databases": {},
+            "module_loads": [],
+            "env_vars": {},
+        },
         "assumptions": [
-            "Typed planning is additive in Milestone 5 and does not replace the narrow showcase planner yet.",
+            "Free-text planning no longer extracts local file paths, execution profiles, or runtime images from prose.",
         ],
         "rationale": list(rationale),
-        "candidate_outcome": None,
         "workflow_spec": None,
         "binding_plan": None,
         "metadata_only": True,
+        "requires_user_approval": False,
+        "limitations": decline_limitations,
+        "suggested_bundles": [],
+        "suggested_prior_runs": [],
+        "next_steps": list(next_steps or _default_recovery_steps()),
     }
 
 
-def _unsupported_day_one_typed_plan(request: str) -> dict[str, object] | None:
-    """Build a decline for recognized day-one targets missing prompt paths.
-
-    Args:
-        request: The natural-language prompt that may be missing explicit paths.
-
-    Returns:
-        A decline payload when a known target is missing required prompt inputs.
-"""
-    normalized_request = _normalize(request)
-    matched_name, _, rationale = _classify_target(normalized_request)
-    if matched_name is None:
-        return None
-    prompt_paths = _extract_prompt_paths(request)
-    if matched_name == SUPPORTED_WORKFLOW_NAME:
-        extracted_inputs = _extract_braker_workflow_inputs(request, prompt_paths)
-    elif matched_name == SUPPORTED_PROTEIN_WORKFLOW_NAME:
-        extracted_inputs = _extract_protein_workflow_inputs(request, prompt_paths)
-    else:
-        extracted_inputs = _extract_task_inputs(request, prompt_paths)
-    missing_inputs = _missing_required_inputs(matched_name, extracted_inputs)
-    if not missing_inputs:
-        return None
-    entry = get_entry(matched_name)
-    candidate_outcome = "registered_task" if entry.category == "task" else "registered_workflow"
-    return {
-        "supported": False,
-        "original_request": request,
-        "planning_outcome": "declined",
-        "biological_goal": matched_name,
-        "matched_entry_names": [matched_name],
-        "required_planner_types": [],
-        "produced_planner_types": list(entry.compatibility.produced_planner_types or tuple(field.type for field in entry.outputs)),
-        "resolved_inputs": {},
-        "missing_requirements": [
-            f"The prompt is missing explicit required inputs for `{matched_name}`: {', '.join(missing_inputs)}."
-        ],
-        "runtime_requirements": [],
-        "assumptions": [
-            "Day-one MCP recipe execution freezes prompt-contained local paths into runtime bindings.",
-        ],
-        "rationale": list(rationale),
-        "candidate_outcome": candidate_outcome,
-        "workflow_spec": None,
-        "binding_plan": None,
-        "metadata_only": True,
-    }
-
-
-def plan_typed_request(
-    request: str,
+def _typed_plan_from_goal(
+    goal: TypedPlanningGoal,
     *,
-    explicit_bindings: Mapping[str, Any] | None = None,
-    manifest_sources: Sequence[Path | Mapping[str, Any]] = (),
-    result_bundles: Sequence[Any] = (),
-    runtime_bindings: Mapping[str, Any] | None = None,
-    resource_request: Mapping[str, Any] | ResourceSpec | None = None,
-    execution_profile: str | None = None,
-    runtime_image: Mapping[str, Any] | RuntimeImageSpec | str | None = None,
-    runtime_images: Mapping[str, Any] | None = None,
-    tool_databases: Mapping[str, Any] | None = None,
-    bundle_overrides: Mapping[str, Any] | None = None,
-    resolver: AssetResolver | None = None,
+    original_request: str,
+    source_prompt: str,
+    explicit_bindings: Mapping[str, Any] | None,
+    manifest_sources: Sequence[Path | Mapping[str, Any]],
+    result_bundles: Sequence[Any],
+    scalar_inputs: Mapping[str, Any] | None,
+    runtime_bindings: Mapping[str, Any] | None,
+    resource_request: Mapping[str, Any] | ResourceSpec | None,
+    execution_profile: str | None,
+    runtime_image: Mapping[str, Any] | RuntimeImageSpec | str | None,
+    runtime_images: Mapping[str, Any] | None,
+    tool_databases: Mapping[str, Any] | None,
+    bundle_overrides: Mapping[str, Any] | None,
+    resolver: AssetResolver | None,
+    limitations: Sequence[str] = (),
 ) -> dict[str, object]:
-    """Plan a prompt through the Milestone 5 typed resolver and registry path.
-
-    Args:
-        request: The natural-language prompt being planned.
-        explicit_bindings: Planner values already supplied by the caller.
-        manifest_sources: Manifest sources available for resolution.
-        result_bundles: Result bundles available for resolution.
-        runtime_bindings: Frozen runtime overrides to carry into the recipe.
-        resource_request: Caller-supplied compute resource policy or override.
-        execution_profile: Caller-supplied execution profile.
-        runtime_image: Caller-supplied runtime image policy or override.
-        runtime_images: Caller-supplied named runtime-image overrides.
-        tool_databases: Caller-supplied tool-database overrides.
-        bundle_overrides: Bundle-level environment overrides layered over the entry defaults.
-        resolver: Optional resolver implementation to use for typed inputs.
-
-    Returns:
-        A metadata-only typed planning payload ready for freezing or decline reporting.
-"""
-    goal = _planning_goal_for_typed_request(request)
-    if goal is None:
-        if day_one_decline := _unsupported_day_one_typed_plan(request):
-            return day_one_decline
-        return _unsupported_typed_plan(
-            request,
-            reason="The request does not map to a supported typed biology goal, so the planner declines instead of inventing steps.",
-            rationale=(
-                "Milestone 5 only recognizes a small set of registered workflow and registered-stage planning goals.",
-            ),
-        )
-
+    """Resolve planner inputs and execution policy for one typed goal."""
     resolver = resolver or LocalManifestAssetResolver()
     resolved_inputs, source_labels, missing_requirements, assumptions = _resolve_typed_goal_inputs(
         goal,
@@ -1936,19 +1329,17 @@ def plan_typed_request(
         selected_env_vars,
         resource_requirements,
         resource_assumptions,
-    ) = (
-        _select_execution_policy(
-            goal,
-            request=request,
-            resource_request=resource_request,
-            execution_profile=execution_profile,
-            runtime_image=runtime_image,
-            runtime_images=runtime_images,
-            tool_databases=tool_databases,
-            bundle_overrides=bundle_overrides,
-        )
+    ) = _select_execution_policy(
+        goal,
+        resource_request=resource_request,
+        execution_profile=execution_profile,
+        runtime_image=runtime_image,
+        runtime_images=runtime_images,
+        tool_databases=tool_databases,
+        bundle_overrides=bundle_overrides,
     )
     merged_runtime_bindings = dict(goal.runtime_bindings)
+    merged_runtime_bindings.update(scalar_inputs or {})
     merged_runtime_bindings.update(runtime_bindings or {})
     goal = replace(
         goal,
@@ -1960,7 +1351,7 @@ def plan_typed_request(
         tool_databases=selected_tool_databases,
         env_vars=selected_env_vars,
     )
-    workflow_spec = _workflow_spec_for_typed_goal(goal, source_prompt=request)
+    workflow_spec = _workflow_spec_for_typed_goal(goal, source_prompt=source_prompt)
     binding_plan = _binding_plan_for_typed_goal(
         goal,
         resolved_inputs=resolved_inputs,
@@ -1976,9 +1367,15 @@ def plan_typed_request(
 
     supported = not missing_requirements and not resource_requirements
     requires_composition_approval = goal.outcome == "generated_workflow_spec" and goal.name.startswith("composition_")
+    plan_limitations = list(limitations)
+    if source_prompt == "":
+        plan_limitations.append(
+            "No source_prompt was supplied; replay metadata will not preserve original natural-language provenance."
+        )
+
     return {
         "supported": supported,
-        "original_request": request,
+        "original_request": original_request,
         "planning_outcome": goal.outcome if supported else "declined",
         "candidate_outcome": goal.outcome,
         "biological_goal": goal.name,
@@ -2006,133 +1403,151 @@ def plan_typed_request(
         "binding_plan": binding_plan.to_dict(),
         "metadata_only": True,
         "requires_user_approval": requires_composition_approval,
+        "limitations": plan_limitations,
+        "suggested_bundles": [],
+        "suggested_prior_runs": [],
+        "next_steps": [],
     }
 
 
-def _assumptions_for_target(name: str) -> tuple[str, ...]:
-    """Return assumptions for the matched supported entry.
-
-    Args:
-        name: The supported entry name whose assumptions should be returned.
-
-    Returns:
-        The assumptions that explain how the planner will interpret the request.
-"""
-    if name == SUPPORTED_WORKFLOW_NAME:
-        return (
-            "This prompt maps to the BRAKER3 ab initio stage only, not end-to-end annotation.",
-            "BRAKER3 still needs `genome` plus at least one evidence input in practice: `rnaseq_bam_path`, `protein_fasta_path`, or both.",
-            "Prompt paths are taken literally from the request text and are not auto-discovered.",
-        )
-    if name == SUPPORTED_PROTEIN_WORKFLOW_NAME:
-        return (
-            "This prompt maps to the protein-evidence alignment workflow only, not downstream EVM or later annotation stages.",
-            "Protein FASTA inputs must be written explicitly in the prompt and are passed through in the order they appear.",
-            "Prompt paths are taken literally from the request text and are not auto-discovered.",
-        )
-    if name == SUPPORTED_TASK_NAME:
-        return (
-            "This prompt maps to one Exonerate chunk-alignment task for ad hoc experimentation, not a full protein-evidence workflow.",
-            "Prompt paths are taken literally from the request text and are not auto-discovered.",
-            "The default Exonerate model remains `protein2genome` unless the prompt provides a different explicit model.",
-        )
-    raise KeyError(f"Unsupported showcase entry: {name}")
-
-
-def _unsupported_plan(
-    request: str,
-    reason: str,
-    rationale: tuple[str, ...],
-    declined_stages: tuple[str, ...] = (),
+def plan_typed_request(
+    *,
+    biological_goal: str,
+    target_name: str,
+    source_prompt: str = "",
+    explicit_bindings: Mapping[str, Any] | None = None,
+    manifest_sources: Sequence[Path | Mapping[str, Any]] = (),
+    result_bundles: Sequence[Any] = (),
+    scalar_inputs: Mapping[str, Any] | None = None,
+    runtime_bindings: Mapping[str, Any] | None = None,
+    resource_request: Mapping[str, Any] | ResourceSpec | None = None,
+    execution_profile: str | None = None,
+    runtime_image: Mapping[str, Any] | RuntimeImageSpec | str | None = None,
+    runtime_images: Mapping[str, Any] | None = None,
+    tool_databases: Mapping[str, Any] | None = None,
+    bundle_overrides: Mapping[str, Any] | None = None,
+    resolver: AssetResolver | None = None,
 ) -> dict[str, object]:
-    """Build the stable decline payload for unsupported or out-of-scope prompts.
+    """Plan one structured biological goal against one explicit target name."""
+    goal = _typed_goal_for_target(biological_goal, target_name)
+    if goal is None:
+        return _unsupported_typed_plan(
+            source_prompt,
+            reason=f"The structured target `{target_name}` is not a supported typed planning target.",
+            rationale=(
+                "Structured typed planning requires one explicit registered target name or one reviewed generated-spec target.",
+            ),
+            biological_goal=biological_goal or None,
+        )
+    return _typed_plan_from_goal(
+        goal,
+        original_request=source_prompt,
+        source_prompt=source_prompt,
+        explicit_bindings=explicit_bindings,
+        manifest_sources=manifest_sources,
+        result_bundles=result_bundles,
+        scalar_inputs=scalar_inputs,
+        runtime_bindings=runtime_bindings,
+        resource_request=resource_request,
+        execution_profile=execution_profile,
+        runtime_image=runtime_image,
+        runtime_images=runtime_images,
+        tool_databases=tool_databases,
+        bundle_overrides=bundle_overrides,
+        resolver=resolver,
+        limitations=_target_name_advisories(biological_goal, target_name),
+    )
 
-    Args:
-        request: The natural-language prompt that could not be mapped.
-        reason: Short explanation for the decline.
-        rationale: Supporting reasoning returned to the caller.
-        declined_stages: Any downstream stages that were intentionally not selected.
 
-    Returns:
-        A stable decline payload for the current narrow showcase surface.
-"""
-    return {
-        "supported": False,
-        "original_request": request,
-        "matched_entry_name": None,
-        "matched_entry_category": None,
-        "matched_entry_description": None,
-        "required_inputs": [],
-        "optional_inputs": [],
-        "extracted_inputs": {},
-        "missing_required_inputs": [],
-        "declined_downstream_stages": list(declined_stages),
-        "assumptions": [
-            "Only the showcase workflows and task are exposed through this server-first prompt interface.",
-        ],
-        "limitations": [reason, *showcase_limitations()],
-        "confidence": 0.0,
-        "rationale": list(rationale),
-    }
-
-
-def plan_request(request: str) -> dict[str, object]:
-    """Plan one prompt for the narrow workflow-or-task showcase.
-
-    Args:
-        request: The natural-language prompt being mapped to a showcase entry.
-
-    Returns:
-        A stable planning payload describing the matched showcase entry or decline.
-"""
-    matched_name, confidence, rationale = _classify_target(request)
-    if matched_name is None:
-        return _unsupported_plan(
+def plan_request(
+    request: str,
+    *,
+    explicit_bindings: Mapping[str, Any] | None = None,
+    manifest_sources: Sequence[Path | Mapping[str, Any]] = (),
+    result_bundles: Sequence[Any] = (),
+    scalar_inputs: Mapping[str, Any] | None = None,
+    runtime_bindings: Mapping[str, Any] | None = None,
+    resource_request: Mapping[str, Any] | ResourceSpec | None = None,
+    execution_profile: str | None = None,
+    runtime_image: Mapping[str, Any] | RuntimeImageSpec | str | None = None,
+    runtime_images: Mapping[str, Any] | None = None,
+    tool_databases: Mapping[str, Any] | None = None,
+    bundle_overrides: Mapping[str, Any] | None = None,
+    resolver: AssetResolver | None = None,
+) -> dict[str, object]:
+    """Plan one free-text request through structured matching and composition fallback."""
+    matched = _match_target(request, _showcase_registry_entries())
+    if isinstance(matched, RegistryEntry):
+        return plan_typed_request(
+            biological_goal=request,
+            target_name=matched.name,
+            source_prompt=request,
+            explicit_bindings=explicit_bindings,
+            manifest_sources=manifest_sources,
+            result_bundles=result_bundles,
+            scalar_inputs=scalar_inputs,
+            runtime_bindings=runtime_bindings,
+            resource_request=resource_request,
+            execution_profile=execution_profile,
+            runtime_image=runtime_image,
+            runtime_images=runtime_images,
+            tool_databases=tool_databases,
+            bundle_overrides=bundle_overrides,
+            resolver=resolver,
+        )
+    if isinstance(matched, AmbiguousMatch):
+        names = [entry.name for entry in matched.entries]
+        return _unsupported_typed_plan(
             request,
-            reason="The request does not clearly map to the supported workflow or task, so the showcase declines instead of guessing.",
-            rationale=rationale,
+            reason=f"Ambiguous target: biological_goal resolved to {len(names)} entries: {names}.",
+            rationale=(
+                "Deterministic matching found multiple registered entries even after workflow and stage-order tiebreakers.",
+            ),
+            biological_goal=request,
+            matched_entry_names=names,
+            limitations=(f"Ambiguous target: biological_goal resolved to {len(names)} entries: {names}.",),
+            next_steps=_default_recovery_steps(),
         )
 
-    entry = _supported_entry(matched_name)
-    required_inputs, optional_inputs = split_entry_inputs(matched_name)
-    prompt_paths = _extract_prompt_paths(request)
-    if matched_name == SUPPORTED_WORKFLOW_NAME:
-        extracted_inputs = _extract_braker_workflow_inputs(request, prompt_paths)
-    elif matched_name == SUPPORTED_PROTEIN_WORKFLOW_NAME:
-        extracted_inputs = _extract_protein_workflow_inputs(request, prompt_paths)
-    else:
-        extracted_inputs = _extract_task_inputs(request, prompt_paths)
-
-    missing_inputs = _missing_required_inputs(matched_name, extracted_inputs)
-    limitations = list(showcase_limitations())
-    if matched_name == SUPPORTED_WORKFLOW_NAME:
-        limitations.insert(0, "This match covers only the BRAKER3 ab initio annotation stage.")
-    elif matched_name == SUPPORTED_PROTEIN_WORKFLOW_NAME:
-        limitations.insert(0, "This match covers only the protein-evidence alignment workflow stage.")
-    else:
-        limitations.insert(0, "This match covers only one Exonerate chunk-alignment task invocation.")
-    if missing_inputs:
-        limitations.insert(
-            0,
-            f"The prompt is missing explicit required inputs for `{matched_name}`: {', '.join(missing_inputs)}.",
+    normalized_request = _normalize(request)
+    if any(keyword in normalized_request for keyword in ("variant calling", "snv", "snp", "vcf")):
+        return _unsupported_typed_plan(
+            request,
+            reason="The request does not map to a supported typed biology goal, so the planner declines instead of inventing steps.",
+            rationale=(
+                "The current showcase planner does not expose variant-calling workflows through the MCP recipe path.",
+            ),
+            biological_goal=request,
         )
 
-    return {
-        "supported": not missing_inputs,
-        "original_request": request,
-        "matched_entry_name": entry.name,
-        "matched_entry_category": entry.category,
-        "matched_entry_description": entry.description,
-        "required_inputs": [asdict(field) for field in required_inputs],
-        "optional_inputs": [asdict(field) for field in optional_inputs],
-        "extracted_inputs": extracted_inputs,
-        "missing_required_inputs": missing_inputs,
-        "declined_downstream_stages": [],
-        "assumptions": list(_assumptions_for_target(matched_name)),
-        "limitations": limitations,
-        "confidence": confidence,
-        "rationale": list(rationale),
-    }
+    composition_goal = _try_composition_fallback(request, normalized_request)
+    if composition_goal is not None:
+        return _typed_plan_from_goal(
+            composition_goal,
+            original_request=request,
+            source_prompt=request,
+            explicit_bindings=explicit_bindings,
+            manifest_sources=manifest_sources,
+            result_bundles=result_bundles,
+            scalar_inputs=scalar_inputs,
+            runtime_bindings=runtime_bindings,
+            resource_request=resource_request,
+            execution_profile=execution_profile,
+            runtime_image=runtime_image,
+            runtime_images=runtime_images,
+            tool_databases=tool_databases,
+            bundle_overrides=bundle_overrides,
+            resolver=resolver,
+        )
+
+    return _unsupported_typed_plan(
+        request,
+        reason="The request does not map to a supported typed biology goal, so the planner declines instead of inventing steps.",
+        rationale=(
+            "Free-text planning only supports exact biological_stage or entry-name matches plus reviewed composition fallback.",
+        ),
+        biological_goal=request,
+    )
 
 
 def main() -> None:

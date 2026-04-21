@@ -139,6 +139,29 @@ def _patched_planning_entry(entry_name: str, execution_defaults: dict[str, objec
     return patch("flytetest.planning.get_entry", side_effect=_patched_get_entry)
 
 
+def _typed_plan(
+    target_name: str,
+    *,
+    biological_goal: str | None = None,
+    source_prompt: str = "",
+    **kwargs: object,
+) -> dict[str, object]:
+    """Build one structured typed plan in the Step 16 shape."""
+    if biological_goal is None:
+        try:
+            entry = get_entry(target_name)
+        except KeyError:
+            biological_goal = target_name
+        else:
+            biological_goal = entry.compatibility.biological_stage or target_name
+    return plan_typed_request(
+        biological_goal=biological_goal,
+        target_name=target_name,
+        source_prompt=source_prompt,
+        **kwargs,
+    )
+
+
 class PlanningTests(TestCase):
     """Compatibility checks for the current planner-facing showcase behavior.
 
@@ -156,8 +179,8 @@ class PlanningTests(TestCase):
             source_protein_fastas=(Path("data/braker3/protein_data/fastas/proteins.fa"),),
         )
 
-        payload = plan_typed_request(
-            "Run protein evidence alignment for this genome.",
+        payload = _typed_plan(
+            "protein_evidence_alignment",
             explicit_bindings={
                 "ReferenceGenome": reference_genome,
                 "ProteinEvidenceSet": protein_evidence,
@@ -194,8 +217,8 @@ class PlanningTests(TestCase):
             ab_initio_predictions_gff3_path=Path("results/braker/braker.gff3"),
         )
 
-        payload = plan_typed_request(
-            "Create a consensus annotation with EVM.",
+        payload = _typed_plan(
+            "consensus_annotation_from_registered_stages",
             explicit_bindings={
                 "TranscriptEvidenceSet": transcript_evidence,
                 "ProteinEvidenceSet": protein_evidence,
@@ -224,8 +247,8 @@ class PlanningTests(TestCase):
             annotation_gff3_path=Path("results/evm/evm.out.gff3"),
         )
 
-        payload = plan_typed_request(
-            "Create a generated WorkflowSpec for repeat filtering and BUSCO QC.",
+        payload = _typed_plan(
+            "repeat_filter_then_busco_qc",
             explicit_bindings={"ConsensusAnnotation": consensus_annotation},
         )
 
@@ -253,8 +276,8 @@ class PlanningTests(TestCase):
             proteins_fasta_path=Path("results/repeat_filter_20260407_120000/all_repeats_removed.proteins.fa"),
         )
 
-        payload = plan_typed_request(
-            "Run BUSCO quality assessment on the annotation.",
+        payload = _typed_plan(
+            "annotation_qc_busco",
             explicit_bindings={"QualityAssessmentTarget": target.to_dict()},
             runtime_bindings={
                 "busco_lineages_text": "embryophyta_odb10",
@@ -289,8 +312,8 @@ class PlanningTests(TestCase):
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path, "repeat_filter_results")
 
-            payload = plan_typed_request(
-                "Run BUSCO quality assessment on the annotation.",
+            payload = _typed_plan(
+                "annotation_qc_busco",
                 manifest_sources=(result_dir,),
                 runtime_bindings={
                     "busco_lineages_text": "embryophyta_odb10",
@@ -325,11 +348,11 @@ class PlanningTests(TestCase):
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path, "repeat_filter_results")
 
-            payload = plan_typed_request(
-                "Run BUSCO quality assessment on the annotation with 12 CPUs, memory 48Gi, queue short, walltime 02:00:00.",
+            payload = _typed_plan(
+                "annotation_qc_busco",
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
-                resource_request={"memory": "64Gi"},
+                resource_request={"cpu": "12", "memory": "64Gi", "queue": "short", "walltime": "02:00:00"},
                 execution_profile="local",
                 runtime_image={"apptainer_image": "busco.sif"},
             )
@@ -354,10 +377,12 @@ class PlanningTests(TestCase):
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path, "repeat_filter_results")
 
-            payload = plan_typed_request(
-                "Run BUSCO quality assessment on the annotation using execution profile slurm on queue batch.",
+            payload = _typed_plan(
+                "annotation_qc_busco",
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                resource_request={"queue": "batch"},
+                execution_profile="slurm",
             )
 
         self.assertTrue(payload["supported"])
@@ -370,12 +395,25 @@ class PlanningTests(TestCase):
 
     def test_typed_plan_prepares_m18_busco_fixture_task(self) -> None:
         """Freeze the M18 BUSCO fixture as a registered task recipe."""
-        payload = plan_typed_request(
-            (
-                "Run the Milestone 18 BUSCO eukaryota fixture on Slurm with "
-                "BUSCO_SIF data/images/busco_v6.0.0_cv1.sif, busco_cpu 2, "
-                "2 CPUs, account rcc-staff, queue caslake, memory 8Gi, walltime 00:10:00."
-            )
+        payload = _typed_plan(
+            "busco_assess_proteins",
+            explicit_bindings={},
+            runtime_bindings={
+                "proteins_fasta": "data/busco/test_data/eukaryota/genome.fna",
+                "lineage_dataset": "auto-lineage",
+                "busco_mode": "geno",
+                "busco_cpu": 2,
+                "busco_sif": "data/images/busco_v6.0.0_cv1.sif",
+            },
+            resource_request={
+                "cpu": "2",
+                "account": "rcc-staff",
+                "queue": "caslake",
+                "memory": "8Gi",
+                "walltime": "00:10:00",
+            },
+            execution_profile="slurm",
+            runtime_image={"apptainer_image": "data/images/busco_v6.0.0_cv1.sif"},
         )
 
         self.assertTrue(payload["supported"])
@@ -396,8 +434,8 @@ class PlanningTests(TestCase):
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path, "repeat_filter_results")
 
-            payload = plan_typed_request(
-                "Run BUSCO quality assessment on the annotation.",
+            payload = _typed_plan(
+                "annotation_qc_busco",
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "eukaryota_odb10"},
             )
@@ -445,8 +483,8 @@ class PlanningTests(TestCase):
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path, "repeat_filter_results")
             with _patched_planning_entry("annotation_qc_busco", execution_defaults):
-                payload = plan_typed_request(
-                    "Run BUSCO quality assessment on the annotation.",
+                payload = _typed_plan(
+                    "annotation_qc_busco",
                     manifest_sources=(result_dir,),
                     runtime_bindings={"busco_lineages_text": "eukaryota_odb10"},
                     bundle_overrides=bundle_overrides,
@@ -480,8 +518,8 @@ class PlanningTests(TestCase):
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path, "repeat_filter_results")
             with _patched_planning_entry("annotation_qc_busco", execution_defaults):
-                payload = plan_typed_request(
-                    "Run BUSCO quality assessment on the annotation.",
+                payload = _typed_plan(
+                    "annotation_qc_busco",
                     manifest_sources=(result_dir,),
                     runtime_bindings={"busco_lineages_text": "eukaryota_odb10"},
                     bundle_overrides=bundle_overrides,
@@ -517,8 +555,8 @@ class PlanningTests(TestCase):
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path, "repeat_filter_results")
             with _patched_planning_entry("annotation_qc_busco", execution_defaults):
-                payload = plan_typed_request(
-                    "Run BUSCO quality assessment on the annotation.",
+                payload = _typed_plan(
+                    "annotation_qc_busco",
                     manifest_sources=(result_dir,),
                     runtime_bindings={"busco_lineages_text": "eukaryota_odb10"},
                     bundle_overrides=bundle_overrides,
@@ -553,8 +591,8 @@ class PlanningTests(TestCase):
                 _repeat_filter_manifest_dir(tmp_path, "repeat_filter_results_b"),
             )
 
-            payload = plan_typed_request(
-                "Run BUSCO quality assessment on the annotation.",
+            payload = _typed_plan(
+                "annotation_qc_busco",
                 manifest_sources=result_dirs,
             )
 
@@ -587,8 +625,8 @@ class PlanningTests(TestCase):
                 )
             )
 
-            payload = plan_typed_request(
-                "Run EggNOG functional annotation on the repeat-filtered proteins.",
+            payload = _typed_plan(
+                "annotation_functional_eggnog",
                 manifest_sources=(busco_dir,),
                 runtime_bindings={"eggnog_data_dir": "/db/eggnog", "eggnog_database": "Diptera"},
             )
@@ -614,13 +652,13 @@ class PlanningTests(TestCase):
             eggnog_dir = _eggnog_manifest_dir(tmp_path, "eggnog_results")
             conversion_dir = _agat_conversion_manifest_dir(tmp_path, "agat_conversion_results")
 
-            conversion = plan_typed_request(
-                "Run AGAT conversion on the EggNOG-annotated GFF3.",
+            conversion = _typed_plan(
+                "annotation_postprocess_agat_conversion",
                 manifest_sources=(eggnog_dir,),
                 runtime_bindings={"agat_sif": "agat.sif"},
             )
-            cleanup = plan_typed_request(
-                "Run AGAT cleanup on the converted GFF3.",
+            cleanup = _typed_plan(
+                "annotation_postprocess_agat_cleanup",
                 manifest_sources=(conversion_dir,),
             )
 
@@ -647,8 +685,8 @@ class PlanningTests(TestCase):
             proteins_fasta_path=Path("results/repeat_filter/all_repeats_removed.proteins.fa"),
         )
 
-        payload = plan_typed_request(
-            "Run EggNOG functional annotation on the repeat-filtered proteins.",
+        payload = _typed_plan(
+            "annotation_functional_eggnog",
             explicit_bindings={"QualityAssessmentTarget": target},
         )
 
@@ -669,8 +707,8 @@ class PlanningTests(TestCase):
             annotation_gff3_path=Path("results/eggnog/all_repeats_removed.eggnog.gff3"),
         )
 
-        payload = plan_typed_request(
-            "Run AGAT statistics on the EggNOG-annotated GFF3.",
+        payload = _typed_plan(
+            "annotation_postprocess_agat",
             explicit_bindings={"QualityAssessmentTarget": target},
         )
 
@@ -691,8 +729,8 @@ class PlanningTests(TestCase):
             annotation_gff3_path=Path("results/eggnog/all_repeats_removed.eggnog.gff3"),
         )
 
-        payload = plan_typed_request(
-            "Run AGAT conversion on the EggNOG-annotated GFF3.",
+        payload = _typed_plan(
+            "annotation_postprocess_agat_conversion",
             explicit_bindings={"QualityAssessmentTarget": target},
         )
 
@@ -713,8 +751,8 @@ class PlanningTests(TestCase):
             annotation_gff3_path=Path("results/agat/all_repeats_removed.agat.gff3"),
         )
 
-        payload = plan_typed_request(
-            "Run AGAT cleanup on the converted GFF3.",
+        payload = _typed_plan(
+            "annotation_postprocess_agat_cleanup",
             explicit_bindings={"QualityAssessmentTarget": target},
         )
 
@@ -731,7 +769,7 @@ class PlanningTests(TestCase):
 
     This test keeps the current contract explicit and guards the documented behavior against regression.
 """
-        payload = plan_typed_request("Run BUSCO quality assessment on the annotation.")
+        payload = _typed_plan("annotation_qc_busco")
 
         self.assertFalse(payload["supported"])
         self.assertEqual(payload["planning_outcome"], "declined")
@@ -739,12 +777,18 @@ class PlanningTests(TestCase):
         self.assertEqual(payload["required_planner_types"], ["QualityAssessmentTarget"])
         self.assertIn("No QualityAssessmentTarget", payload["missing_requirements"][0])
 
+    def test_typed_plan_warns_when_source_prompt_is_empty(self) -> None:
+        """Structured planning should flag when no original prompt provenance is supplied."""
+        payload = _typed_plan("annotation_qc_busco")
+
+        self.assertIn("No source_prompt was supplied", payload["limitations"][0])
+
     def test_typed_plan_declines_unsupported_biology(self) -> None:
         """Reject unsupported biology instead of inventing registry entries.
 
     This test keeps the current contract explicit and guards the documented behavior against regression.
 """
-        payload = plan_typed_request("Run SNP variant calling and emit a VCF.")
+        payload = plan_request("Run SNP variant calling and emit a VCF.")
 
         self.assertFalse(payload["supported"])
         self.assertEqual(payload["planning_outcome"], "declined")
@@ -782,68 +826,37 @@ class PlanningTests(TestCase):
             ["proteins_per_chunk", "exonerate_sif", "exonerate_model"],
         )
 
-    def test_plan_request_keeps_current_supported_payload_shape(self) -> None:
-        """Return the stable planning payload for a supported protein-evidence prompt.
+    def test_plan_request_matches_exact_biological_stage_with_structured_inputs(self) -> None:
+        """Free-text preview still works when the request matches one biological_stage exactly."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result_dir = _repeat_filter_manifest_dir(tmp_path, "repeat_filter_results")
 
-    This test keeps the current contract explicit and guards the documented behavior against regression.
-"""
-        prompt = (
-            "Run protein evidence alignment with genome data/braker3/reference/genome.fa and "
-            "protein evidence data/braker3/protein_data/fastas/proteins.fa"
-        )
+            payload = plan_request(
+                "BUSCO annotation quality assessment",
+                manifest_sources=(result_dir,),
+                runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+            )
 
-        payload = plan_request(prompt)
-
-        self.assertEqual(
-            set(payload),
-            {
-                "supported",
-                "original_request",
-                "matched_entry_name",
-                "matched_entry_category",
-                "matched_entry_description",
-                "required_inputs",
-                "optional_inputs",
-                "extracted_inputs",
-                "missing_required_inputs",
-                "declined_downstream_stages",
-                "assumptions",
-                "limitations",
-                "confidence",
-                "rationale",
-            },
-        )
         self.assertTrue(payload["supported"])
-        self.assertEqual(payload["matched_entry_name"], "protein_evidence_alignment")
-        self.assertEqual(payload["matched_entry_category"], "workflow")
+        self.assertEqual(payload["matched_entry_names"], ["annotation_qc_busco"])
+        self.assertEqual(payload["candidate_outcome"], "registered_workflow")
         self.assertEqual(
-            payload["extracted_inputs"],
-            {
-                "genome": "data/braker3/reference/genome.fa",
-                "protein_fastas": ["data/braker3/protein_data/fastas/proteins.fa"],
-            },
-        )
-        self.assertEqual(payload["missing_required_inputs"], [])
-        self.assertEqual(payload["declined_downstream_stages"], [])
-        self.assertEqual(
-            [field["name"] for field in payload["required_inputs"]],
-            ["genome", "protein_fastas"],
+            payload["resolved_inputs"]["QualityAssessmentTarget"]["source_result_dir"],
+            str(result_dir),
         )
         self.assertEqual(
-            [field["name"] for field in payload["optional_inputs"]],
-            ["proteins_per_chunk", "exonerate_sif", "exonerate_model"],
+            payload["binding_plan"]["runtime_bindings"],
+            {"busco_lineages_text": "embryophyta_odb10"},
         )
 
-    def test_plan_request_no_longer_blocks_downstream_terms(self) -> None:
-        """Keep prompt-path planning available without the old MCP downstream blocklist.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
-"""
+    def test_plan_request_declines_old_prompt_path_flow_cleanly(self) -> None:
+        """Free-text preview no longer extracts local paths or downstream intent from prose."""
         payload = plan_request(
-            "Run protein evidence alignment with genome data/braker3/reference/genome.fa and protein evidence "
-            "data/braker3/protein_data/fastas/proteins.fa, then continue into EVM and BUSCO."
+            "Run protein evidence alignment with genome /tmp/genome.fa and protein evidence /tmp/proteins.fa."
         )
 
-        self.assertTrue(payload["supported"])
-        self.assertEqual(payload["matched_entry_name"], "protein_evidence_alignment")
-        self.assertEqual(payload["declined_downstream_stages"], [])
+        self.assertFalse(payload["supported"])
+        self.assertEqual(payload["planning_outcome"], "declined")
+        self.assertEqual(payload["matched_entry_names"], [])
+        self.assertIn("does not map to a supported typed biology goal", payload["missing_requirements"][0])

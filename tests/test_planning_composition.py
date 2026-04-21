@@ -21,7 +21,7 @@ from flyte_stub import install_flyte_stub
 
 install_flyte_stub()
 
-from flytetest.planning import plan_typed_request
+from flytetest.planning import plan_request
 
 
 class TestCompositionFallbackIntegration(TestCase):
@@ -29,19 +29,19 @@ class TestCompositionFallbackIntegration(TestCase):
 
     def test_composition_fallback_tries_synthesis_eligible_stages(self) -> None:
         """Broader prompts should still be checked against the composition route."""
-        plan = plan_typed_request("Do something annotation-related that isn't a known pattern.")
+        plan = plan_request("Do something annotation-related that isn't a known pattern.")
         self.assertIsNotNone(plan.get("supported", None))
 
     def test_hardcoded_pattern_has_priority_over_composition(self) -> None:
         """Direct workflow matches should still win before composition is tried."""
-        plan = plan_typed_request("Run BUSCO quality assessment on my annotation.")
+        plan = plan_request("BUSCO annotation quality assessment")
         self.assertEqual(plan.get("biological_goal"), "annotation_qc_busco")
         self.assertFalse(plan.get("requires_user_approval", False))
         self.assertIn("annotation_qc_busco", plan.get("matched_entry_names", []))
 
     def test_composition_response_includes_all_required_contract_keys(self) -> None:
         """Planning responses should keep the same contract fields."""
-        plan = plan_typed_request("I want anannotation workflow.")
+        plan = plan_request("I want anannotation workflow.")
         expected_keys = {
             "supported",
             "original_request",
@@ -63,7 +63,7 @@ class TestCompositionFallbackIntegration(TestCase):
 
     def test_composition_fallback_declines_non_biology_prompts(self) -> None:
         """Unrelated prompts should decline without trying to compose workflows."""
-        plan = plan_typed_request("Summarize the repository status for me.")
+        plan = plan_request("Summarize the repository status for me.")
 
         self.assertFalse(plan["supported"])
         self.assertEqual(plan["planning_outcome"], "declined")
@@ -72,16 +72,16 @@ class TestCompositionFallbackIntegration(TestCase):
 
     def test_composition_fallback_preserves_day_one_missing_input_decline(self) -> None:
         """Known targets with missing inputs should stay on the direct path."""
-        plan = plan_typed_request("Experiment with Exonerate protein-to-genome alignment on this genome.")
+        plan = plan_request("protein evidence alignment")
 
         self.assertFalse(plan["supported"])
         self.assertEqual(plan["planning_outcome"], "declined")
-        self.assertEqual(plan["candidate_outcome"], "registered_task")
-        self.assertEqual(plan["matched_entry_names"], ["exonerate_align_chunk"])
+        self.assertEqual(plan["candidate_outcome"], "registered_workflow")
+        self.assertEqual(plan["matched_entry_names"], ["protein_evidence_alignment"])
 
     def test_composition_goal_naming_convention(self) -> None:
         """Composition-derived goals should use the composition_ prefix."""
-        goal = plan_typed_request("Repeat filter and assess quality of annotation.")
+        goal = plan_request("Repeat filter and assess quality of annotation.")
 
         if goal.get("supported", False) and goal.get("candidate_outcome") == "generated_workflow_spec":
             biological_goal = goal.get("biological_goal", "")

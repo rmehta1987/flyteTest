@@ -76,7 +76,7 @@ from flytetest.pipeline_tracker import (
     get_pipeline_summary,
 )
 from flytetest.planning import (
-    plan_typed_request,
+    plan_request as preview_plan_request,
     showcase_limitations,
     supported_entry_parameters,
 )
@@ -854,7 +854,7 @@ def _typed_planning_preview(prompt: str) -> dict[str, object]:
     Args:
         prompt: Natural-language request being converted into a typed plan.
 """
-    return plan_typed_request(prompt)
+    return preview_plan_request(prompt)
 
 
 def plan_request(prompt: str) -> dict[str, object]:
@@ -1333,6 +1333,9 @@ def _limitations_from_typed_plan(plan: dict[str, object]) -> list[str]:
     Args:
         plan: Typed planning result being summarized.
 """
+    limitations = plan.get("limitations", [])
+    if isinstance(limitations, list) and limitations:
+        return [str(item) for item in limitations]
     missing = plan.get("missing_requirements", [])
     if isinstance(missing, list) and missing:
         return [str(item) for item in missing]
@@ -1514,7 +1517,7 @@ def _prepare_run_recipe_impl(
             "limitations": list(limitations),
         }
 
-    typed_plan = plan_typed_request(
+    typed_plan = preview_plan_request(
         prompt,
         explicit_bindings=explicit_bindings or {},
         manifest_sources=normalized_manifest_sources,

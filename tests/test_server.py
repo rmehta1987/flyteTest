@@ -117,6 +117,9 @@ from flytetest.spec_executor import (
 
 EXPECTED_TARGET_NAMES = list(SUPPORTED_TARGET_NAMES)
 EXPECTED_RUNNABLE_TARGETS = supported_runnable_targets_payload()
+BUSCO_GOAL_PROMPT = "BUSCO annotation quality assessment"
+PROTEIN_GOAL_PROMPT = "protein evidence alignment"
+BRAKER_GOAL_PROMPT = "BRAKER3 ab initio annotation"
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,6 +188,64 @@ def _agat_conversion_manifest_dir(tmp_path: Path) -> Path:
         )
     )
     return result_dir
+
+
+def _protein_workflow_bindings(*extra_fastas: str) -> dict[str, object]:
+    """Return structured planner bindings for the protein-evidence workflow."""
+    reference_genome = planner_types_module.ReferenceGenome(
+        fasta_path=Path("data/braker3/reference/genome.fa")
+    )
+    protein_evidence = planner_types_module.ProteinEvidenceSet(
+        reference_genome=reference_genome,
+        source_protein_fastas=(
+            Path("data/braker3/protein_data/fastas/proteins.fa"),
+            *(Path(path) for path in extra_fastas),
+        ),
+    )
+    return {
+        "ReferenceGenome": reference_genome,
+        "ProteinEvidenceSet": protein_evidence,
+    }
+
+
+def _protein_runtime_inputs(*extra_fastas: str) -> dict[str, object]:
+    """Return concrete runtime inputs for the protein-evidence workflow."""
+    return {
+        "genome": "data/braker3/reference/genome.fa",
+        "protein_fastas": [
+            "data/braker3/protein_data/fastas/proteins.fa",
+            *extra_fastas,
+        ],
+    }
+
+
+def _braker_workflow_bindings() -> dict[str, object]:
+    """Return structured planner bindings for the BRAKER3 workflow."""
+    reference_genome = planner_types_module.ReferenceGenome(
+        fasta_path=Path("data/braker3/reference/genome.fa")
+    )
+    transcript_evidence = planner_types_module.TranscriptEvidenceSet(
+        reference_genome=reference_genome,
+        merged_bam_path=Path("data/braker3/rnaseq/RNAseq.bam"),
+    )
+    protein_evidence = planner_types_module.ProteinEvidenceSet(
+        reference_genome=reference_genome,
+        source_protein_fastas=(Path("data/braker3/protein_data/fastas/proteins.fa"),),
+    )
+    return {
+        "ReferenceGenome": reference_genome,
+        "TranscriptEvidenceSet": transcript_evidence,
+        "ProteinEvidenceSet": protein_evidence,
+    }
+
+
+def _braker_runtime_inputs() -> dict[str, object]:
+    """Return concrete runtime inputs for the BRAKER3 workflow."""
+    return {
+        "genome": "data/braker3/reference/genome.fa",
+        "rnaseq_bam_path": "data/braker3/rnaseq/RNAseq.bam",
+        "protein_fasta_path": "data/braker3/protein_data/fastas/proteins.fa",
+    }
 
 
 class FakeFastMCP:
@@ -409,76 +470,48 @@ class ServerTests(TestCase):
         self.assertIn("artifact_path", payload["result_summary_fields"])
         self.assertIn("workflow_spec", payload["typed_planning_fields"])
 
-    def test_plan_request_builds_workflow_recipe_plan_from_prompt_paths(self) -> None:
-        """Classify the BRAKER3 prompt and freeze explicit local paths.
+    def test_plan_request_matches_exact_registered_stage_name(self) -> None:
+        """Free-text preview now matches exact registered stages instead of parsing paths.
 
     This test keeps the current contract explicit and guards the documented behavior against regression.
 """
-        prompt = (
-            "Annotate the genome sequence of a small eukaryote using BRAKER3 "
-            "with genome data/braker3/reference/genome.fa, RNA-seq evidence data/braker3/rnaseq/RNAseq.bam, "
-            "and protein evidence data/braker3/protein_data/fastas/proteins.fa"
-        )
+        payload = plan_request(BRAKER_GOAL_PROMPT)
 
-        payload = plan_request(prompt)
-
-        self.assertTrue(payload["supported"])
+        self.assertFalse(payload["supported"])
         self.assertEqual(payload["matched_entry_names"], [SUPPORTED_WORKFLOW_NAME])
-        self.assertEqual(
-            payload["binding_plan"]["runtime_bindings"],
-            {
-                "genome": "data/braker3/reference/genome.fa",
-                "rnaseq_bam_path": "data/braker3/rnaseq/RNAseq.bam",
-                "protein_fasta_path": "data/braker3/protein_data/fastas/proteins.fa",
-            },
-        )
+        self.assertEqual(payload["candidate_outcome"], "registered_workflow")
+        self.assertIn("ReferenceGenome", payload["required_planner_types"])
 
     def test_plan_request_still_reports_broader_typed_specs(self) -> None:
         """Expose broader typed planning data without executing it.
 
     This test keeps the current contract explicit and guards the documented behavior against regression.
 """
-        payload = plan_request("Create a generated WorkflowSpec for repeat filtering and BUSCO QC.")
+        payload = plan_request("Process annotation workflow data.")
 
         self.assertFalse(payload["supported"])
         self.assertEqual(payload["candidate_outcome"], "generated_workflow_spec")
-        self.assertEqual(payload["biological_goal"], "repeat_filter_then_busco_qc")
+        self.assertTrue(payload["requires_user_approval"])
         self.assertIsNotNone(payload["workflow_spec"])
 
-    def test_plan_request_builds_protein_workflow_recipe_plan(self) -> None:
-        """Classify the protein-evidence prompt and preserve protein FASTA order.
+    def test_plan_request_matches_exact_entry_name_without_parsing_paths(self) -> None:
+        """Free-text preview can still resolve an exact entry name.
 
     This test keeps the current contract explicit and guards the documented behavior against regression.
 """
-        prompt = (
-            "Run protein evidence alignment with genome data/braker3/reference/genome.fa, "
-            "protein evidence data/braker3/protein_data/fastas/proteins.fa, and protein evidence data/braker3/protein_data/fastas/proteins_extra.fa"
-        )
+        payload = plan_request("protein_evidence_alignment")
 
-        payload = plan_request(prompt)
-
-        self.assertTrue(payload["supported"])
+        self.assertFalse(payload["supported"])
         self.assertEqual(payload["matched_entry_names"], [SUPPORTED_PROTEIN_WORKFLOW_NAME])
-        self.assertEqual(
-            payload["binding_plan"]["runtime_bindings"],
-            {
-                "genome": "data/braker3/reference/genome.fa",
-                "protein_fastas": [
-                    "data/braker3/protein_data/fastas/proteins.fa",
-                    "data/braker3/protein_data/fastas/proteins_extra.fa",
-                ],
-            },
-        )
+        self.assertEqual(payload["candidate_outcome"], "registered_workflow")
+        self.assertEqual(payload["required_planner_types"], ["ReferenceGenome", "ProteinEvidenceSet"])
 
     def test_prepare_and_run_local_recipe_round_trips_saved_artifact(self) -> None:
         """Prepare a frozen recipe and execute it through explicit local handlers.
 
     This test keeps the current contract explicit and guards the documented behavior against regression.
 """
-        prompt = (
-            "Run protein evidence alignment with genome data/braker3/reference/genome.fa and "
-            "protein evidence data/braker3/protein_data/fastas/proteins.fa"
-        )
+        prompt = PROTEIN_GOAL_PROMPT
         calls: list[dict[str, object]] = []
 
         def handler(request):  # type: ignore[no-untyped-def]
@@ -487,7 +520,12 @@ class ServerTests(TestCase):
             return {"results_dir": "/tmp/protein_evidence_results"}
 
         with tempfile.TemporaryDirectory() as tmp:
-            prepared = _prepare_run_recipe_impl(prompt, recipe_dir=Path(tmp))
+            prepared = _prepare_run_recipe_impl(
+                prompt,
+                explicit_bindings=_protein_workflow_bindings(),
+                runtime_bindings=_protein_runtime_inputs(),
+                recipe_dir=Path(tmp),
+            )
             self.assertTrue(prepared["supported"])
             self.assertTrue(Path(str(prepared["artifact_path"])).exists())
 
@@ -506,7 +544,7 @@ class ServerTests(TestCase):
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path)
             prepared = _prepare_run_recipe_impl(
-                "Run BUSCO quality assessment on the annotation.",
+                BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
                 recipe_dir=tmp_path,
@@ -580,7 +618,7 @@ class ServerTests(TestCase):
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path)
             prepared = _prepare_run_recipe_impl(
-                "Run BUSCO quality assessment on the annotation.",
+                BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
                 resource_request={"cpu": 12, "memory": "48Gi", "queue": "batch", "walltime": "02:00:00"},
@@ -618,7 +656,7 @@ class ServerTests(TestCase):
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path)
             prepared = _prepare_run_recipe_impl(
-                "Run BUSCO quality assessment on the annotation.",
+                BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
                 execution_profile="slurm",
@@ -666,7 +704,8 @@ class ServerTests(TestCase):
 """
         with tempfile.TemporaryDirectory() as tmp:
             prepared = _prepare_run_recipe_impl(
-                "Run protein evidence alignment with genome data/braker3/reference/genome.fa and protein evidence data/braker3/protein_data/fastas/proteins.fa",
+                PROTEIN_GOAL_PROMPT,
+                explicit_bindings=_protein_workflow_bindings(),
                 recipe_dir=Path(tmp),
             )
             submitted = _run_slurm_recipe_impl(
@@ -685,7 +724,7 @@ class ServerTests(TestCase):
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path)
             prepared = _prepare_run_recipe_impl(
-                "Run BUSCO quality assessment on the annotation.",
+                BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
                 execution_profile="slurm",
@@ -762,14 +801,15 @@ class ServerTests(TestCase):
             tmp_path = Path(tmp)
             busco_result_dir = _repeat_filter_manifest_dir(tmp_path)
             busco_recipe = _prepare_run_recipe_impl(
-                "Run BUSCO quality assessment on the annotation.",
+                BUSCO_GOAL_PROMPT,
                 manifest_sources=(busco_result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
                 execution_profile="slurm",
                 recipe_dir=tmp_path,
             )
             protein_recipe = _prepare_run_recipe_impl(
-                "Run protein evidence alignment with genome data/braker3/reference/genome.fa and protein evidence data/braker3/protein_data/fastas/proteins.fa using execution profile slurm.",
+                PROTEIN_GOAL_PROMPT,
+                explicit_bindings=_protein_workflow_bindings(),
                 execution_profile="slurm",
                 recipe_dir=tmp_path,
             )
@@ -868,7 +908,7 @@ class ServerTests(TestCase):
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path)
             prepared = _prepare_run_recipe_impl(
-                "Run BUSCO quality assessment on the annotation.",
+                BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
                 resource_request={"cpu": 12, "memory": "48Gi", "queue": "batch"},
@@ -923,7 +963,7 @@ class ServerTests(TestCase):
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path)
             prepared = _prepare_run_recipe_impl(
-                "Run BUSCO quality assessment on the annotation.",
+                BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
                 execution_profile="slurm",
@@ -967,7 +1007,7 @@ class ServerTests(TestCase):
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path)
             prepared = _prepare_run_recipe_impl(
-                "Run BUSCO quality assessment on the annotation.",
+                BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
                 execution_profile="slurm",
@@ -1025,7 +1065,7 @@ class ServerTests(TestCase):
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path)
             prepared = _prepare_run_recipe_impl(
-                "Run BUSCO quality assessment on the annotation.",
+                BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
                 execution_profile="slurm",
@@ -1086,7 +1126,7 @@ class ServerTests(TestCase):
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path)
             prepared = _prepare_run_recipe_impl(
-                "Run BUSCO quality assessment on the annotation.",
+                BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
                 execution_profile="slurm",
@@ -1111,7 +1151,7 @@ class ServerTests(TestCase):
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path)
             prepared = _prepare_run_recipe_impl(
-                "Run BUSCO quality assessment on the annotation.",
+                BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
                 execution_profile="slurm",
@@ -1147,7 +1187,7 @@ class ServerTests(TestCase):
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path)
             prepared = _prepare_run_recipe_impl(
-                "Run BUSCO quality assessment on the annotation.",
+                BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={
                     "busco_lineages_text": "embryophyta_odb10",
@@ -1194,7 +1234,8 @@ class ServerTests(TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             prepared = _prepare_run_recipe_impl(
-                "Run protein evidence alignment with genome data/braker3/reference/genome.fa and protein evidence data/braker3/protein_data/fastas/proteins.fa",
+                PROTEIN_GOAL_PROMPT,
+                explicit_bindings=_protein_workflow_bindings(),
                 runtime_bindings={"exonerate_sif": "data/images/exonerate_2.2.0--1.sif"},
                 resource_request={
                     "account": "rcc-staff",
@@ -1225,7 +1266,8 @@ class ServerTests(TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             prepared = _prepare_run_recipe_impl(
-                "Run protein evidence alignment with genome data/braker3/reference/genome.fa and protein evidence data/braker3/protein_data/fastas/proteins.fa",
+                PROTEIN_GOAL_PROMPT,
+                explicit_bindings=_protein_workflow_bindings(),
                 runtime_bindings={"exonerate_sif": "data/images/exonerate_2.2.0--1.sif"},
                 resource_request={
                     "account": "rcc-staff",
@@ -1248,11 +1290,22 @@ class ServerTests(TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             prepared = _prepare_run_recipe_impl(
-                (
-                    "Run the Milestone 18 BUSCO eukaryota fixture using execution profile slurm "
-                    "with BUSCO_SIF data/images/busco_v6.0.0_cv1.sif, busco_cpu 2, "
-                    "2 CPUs, memory 8Gi, queue caslake, account rcc-staff, walltime 00:10:00."
-                ),
+                SUPPORTED_BUSCO_FIXTURE_TASK_NAME,
+                runtime_bindings={
+                    "proteins_fasta": "data/busco/test_data/eukaryota/genome.fna",
+                    "lineage_dataset": "auto-lineage",
+                    "busco_mode": "geno",
+                    "busco_cpu": 2,
+                    "busco_sif": "data/images/busco_v6.0.0_cv1.sif",
+                },
+                resource_request={
+                    "cpu": 2,
+                    "memory": "8Gi",
+                    "queue": "caslake",
+                    "account": "rcc-staff",
+                    "walltime": "00:10:00",
+                },
+                execution_profile="slurm",
                 recipe_dir=tmp_path,
             )
             artifact = load_workflow_spec_artifact(Path(str(prepared["artifact_path"])))
@@ -1279,7 +1332,7 @@ class ServerTests(TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             prepared = _prepare_run_recipe_impl(
-                "Run BUSCO quality assessment on the annotation.",
+                BUSCO_GOAL_PROMPT,
                 manifest_sources=(tmp_path / "missing",),
                 recipe_dir=tmp_path,
             )
@@ -1294,7 +1347,7 @@ class ServerTests(TestCase):
 
     This test keeps the current contract explicit and guards the documented behavior against regression.
 """
-        prompt = "Run BUSCO quality assessment on the annotation."
+        prompt = BUSCO_GOAL_PROMPT
         captured: dict[str, object] = {}
 
         def fake_workflow_runner(workflow_name: str, inputs: dict[str, object]) -> dict[str, object]:
@@ -1371,7 +1424,7 @@ class ServerTests(TestCase):
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path)
             prepared = _prepare_run_recipe_impl(
-                "Run EggNOG functional annotation on the repeat-filtered proteins.",
+                "annotation_functional_eggnog",
                 manifest_sources=(result_dir,),
                 runtime_bindings={
                     "eggnog_data_dir": "/db/eggnog",
@@ -1409,19 +1462,19 @@ class ServerTests(TestCase):
             eggnog_dir = _eggnog_manifest_dir(tmp_path)
             conversion_dir = _agat_conversion_manifest_dir(tmp_path)
             stats = _prepare_run_recipe_impl(
-                "Run AGAT statistics on the EggNOG-annotated GFF3.",
+                "annotation_postprocess_agat",
                 manifest_sources=(eggnog_dir,),
                 runtime_bindings={"annotation_fasta_path": "data/braker3/reference/genome.fa", "agat_sif": "agat.sif"},
                 recipe_dir=tmp_path,
             )
             conversion = _prepare_run_recipe_impl(
-                "Run AGAT conversion on the EggNOG-annotated GFF3.",
+                "annotation_postprocess_agat_conversion",
                 manifest_sources=(eggnog_dir,),
                 runtime_bindings={"agat_sif": "agat.sif"},
                 recipe_dir=tmp_path,
             )
             cleanup = _prepare_run_recipe_impl(
-                "Run AGAT cleanup on the converted GFF3.",
+                "annotation_postprocess_agat_cleanup",
                 manifest_sources=(conversion_dir,),
                 recipe_dir=tmp_path,
             )
@@ -1452,7 +1505,7 @@ class ServerTests(TestCase):
             first = _eggnog_manifest_dir(tmp_path, "eggnog_results_a")
             second = _eggnog_manifest_dir(tmp_path, "eggnog_results_b")
             prepared = _prepare_run_recipe_impl(
-                "Run AGAT conversion on the EggNOG-annotated GFF3.",
+                "annotation_postprocess_agat_conversion",
                 manifest_sources=(first, second),
                 runtime_bindings={"agat_sif": "agat.sif"},
                 recipe_dir=tmp_path,
@@ -1489,7 +1542,7 @@ class ServerTests(TestCase):
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path)
             payload = _prompt_and_run_impl(
-                "Run EggNOG functional annotation on the repeat-filtered proteins.",
+                "annotation_functional_eggnog",
                 workflow_runner=fake_workflow_runner,
                 manifest_sources=(result_dir,),
                 runtime_bindings={
@@ -1543,7 +1596,7 @@ class ServerTests(TestCase):
             tmp_path = Path(tmp)
             conversion_dir = _agat_conversion_manifest_dir(tmp_path)
             payload = _prompt_and_run_impl(
-                "Run AGAT cleanup on the converted GFF3.",
+                "annotation_postprocess_agat_cleanup",
                 workflow_runner=fake_workflow_runner,
                 manifest_sources=(conversion_dir,),
                 recipe_dir=tmp_path,
@@ -1562,11 +1615,7 @@ class ServerTests(TestCase):
 
     This test keeps the current contract explicit and guards the documented behavior against regression.
 """
-        prompt = (
-            "Annotate the genome sequence of a small eukaryote using BRAKER3 "
-            "with genome data/braker3/reference/genome.fa, RNA-seq evidence data/braker3/rnaseq/RNAseq.bam, "
-            "and protein evidence data/braker3/protein_data/fastas/proteins.fa"
-        )
+        prompt = BRAKER_GOAL_PROMPT
         captured: dict[str, object] = {}
 
         def fake_workflow_runner(workflow_name: str, inputs: dict[str, object]) -> dict[str, object]:
@@ -1589,6 +1638,8 @@ class ServerTests(TestCase):
             payload = _prompt_and_run_impl(
                 prompt,
                 workflow_runner=fake_workflow_runner,
+                explicit_bindings=_braker_workflow_bindings(),
+                runtime_bindings=_braker_runtime_inputs(),
                 recipe_dir=Path(tmp),
             )
             artifact_exists = Path(str(payload["artifact_path"])).exists()
@@ -1629,7 +1680,7 @@ class ServerTests(TestCase):
 
     This test keeps the current contract explicit and guards the documented behavior against regression.
 """
-        payload = prompt_and_run("Create a generated WorkflowSpec for repeat filtering and BUSCO QC.")
+        payload = prompt_and_run("Process annotation workflow data.")
 
         self.assertFalse(payload["supported"])
         self.assertFalse(payload["execution_attempted"])
@@ -1643,10 +1694,7 @@ class ServerTests(TestCase):
 
     This test keeps the current contract explicit and guards the documented behavior against regression.
 """
-        prompt = (
-            "Run protein evidence alignment with genome data/braker3/reference/genome.fa and "
-            "protein evidence data/braker3/protein_data/fastas/proteins.fa"
-        )
+        prompt = PROTEIN_GOAL_PROMPT
         captured: dict[str, object] = {}
 
         def fake_workflow_runner(workflow_name: str, inputs: dict[str, object]) -> dict[str, object]:
@@ -1669,6 +1717,8 @@ class ServerTests(TestCase):
             payload = _prompt_and_run_impl(
                 prompt,
                 workflow_runner=fake_workflow_runner,
+                explicit_bindings=_protein_workflow_bindings(),
+                runtime_bindings=_protein_runtime_inputs(),
                 recipe_dir=Path(tmp),
             )
             artifact_exists = Path(str(payload["artifact_path"])).exists()
@@ -1702,10 +1752,7 @@ class ServerTests(TestCase):
 
     This test keeps the current contract explicit and guards the documented behavior against regression.
 """
-        prompt = (
-            "Experiment with Exonerate protein-to-genome alignment using genome "
-            "data/braker3/reference/genome.fa and protein chunk data/braker3/protein_data/fastas/proteins.fa"
-        )
+        prompt = SUPPORTED_TASK_NAME
         captured: dict[str, object] = {}
 
         def fake_task_runner(task_name: str, inputs: dict[str, object]) -> dict[str, object]:
@@ -1728,6 +1775,10 @@ class ServerTests(TestCase):
             payload = _prompt_and_run_impl(
                 prompt,
                 task_runner=fake_task_runner,
+                runtime_bindings={
+                    "genome": "data/braker3/reference/genome.fa",
+                    "protein_chunk": "data/braker3/protein_data/fastas/proteins.fa",
+                },
                 recipe_dir=Path(tmp),
             )
             artifact_exists = Path(str(payload["artifact_path"])).exists()
@@ -1830,28 +1881,27 @@ class ServerTests(TestCase):
                 recipe_dir=Path(tmp),
             )
 
-        self.assertTrue(payload["supported"])
-        self.assertTrue(payload["execution_attempted"])
-        self.assertEqual(payload["result_summary"]["status"], "succeeded")
-        self.assertEqual(payload["result_summary"]["target_name"], SUPPORTED_PROTEIN_WORKFLOW_NAME)
+        self.assertFalse(payload["supported"])
+        self.assertFalse(payload["execution_attempted"])
+        self.assertEqual(payload["result_summary"]["status"], "declined")
 
     def test_prompt_and_run_declines_missing_inputs(self) -> None:
         """Decline supported language when the prompt omits explicit runnable paths.
 
     This test keeps the current contract explicit and guards the documented behavior against regression.
 """
-        prompt = "Experiment with Exonerate protein-to-genome alignment on this genome."
+        prompt = PROTEIN_GOAL_PROMPT
 
         payload = prompt_and_run(prompt)
 
         self.assertFalse(payload["supported"])
         self.assertFalse(payload["execution_attempted"])
-        self.assertEqual(payload["plan"]["matched_entry_names"], [SUPPORTED_TASK_NAME])
-        self.assertIn("genome", payload["plan"]["missing_requirements"][0])
+        self.assertEqual(payload["plan"]["matched_entry_names"], [SUPPORTED_PROTEIN_WORKFLOW_NAME])
+        self.assertIn("ReferenceGenome", payload["plan"]["missing_requirements"][0])
         self.assertEqual(payload["result_summary"]["status"], "declined")
         self.assertEqual(payload["result_summary"]["result_code"], "declined_missing_inputs")
         self.assertEqual(payload["result_summary"]["reason_code"], "missing_required_inputs")
-        self.assertEqual(payload["result_summary"]["target_name"], SUPPORTED_TASK_NAME)
+        self.assertEqual(payload["result_summary"]["target_name"], SUPPORTED_PROTEIN_WORKFLOW_NAME)
 
     def test_prompt_and_run_declines_unsupported_request_with_codes(self) -> None:
         """Return stable unsupported-request codes when the prompt does not map cleanly.
@@ -1872,10 +1922,7 @@ class ServerTests(TestCase):
 
     This test keeps the current contract explicit and guards the documented behavior against regression.
 """
-        prompt = (
-            "Annotate the genome sequence using BRAKER3 "
-            "with genome data/braker3/reference/genome.fa and protein evidence data/braker3/protein_data/fastas/proteins.fa"
-        )
+        prompt = BRAKER_GOAL_PROMPT
 
         def fake_workflow_runner(workflow_name: str, inputs: dict[str, object]) -> dict[str, object]:
             """Capture workflow invocations from the compatibility path."""
@@ -1905,6 +1952,11 @@ class ServerTests(TestCase):
             payload = _prompt_and_run_impl(
                 prompt,
                 workflow_runner=fake_workflow_runner,
+                    explicit_bindings=_braker_workflow_bindings(),
+                    runtime_bindings={
+                        "genome": "data/braker3/reference/genome.fa",
+                        "protein_fasta_path": "data/braker3/protein_data/fastas/proteins.fa",
+                    },
                 recipe_dir=Path(tmp),
             )
 
@@ -2074,7 +2126,7 @@ class ServerTests(TestCase):
         """
         result_dir = _repeat_filter_manifest_dir(tmp_path)
         prepared = _prepare_run_recipe_impl(
-            "Run BUSCO quality assessment on the annotation.",
+            BUSCO_GOAL_PROMPT,
             manifest_sources=(result_dir,),
             runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
             resource_request={
@@ -2454,7 +2506,7 @@ class ServerTests(TestCase):
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path)
             prepared = _prepare_run_recipe_impl(
-                "Run BUSCO quality assessment on the annotation.",
+                BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
                 resource_request={
@@ -2538,7 +2590,7 @@ class ServerTests(TestCase):
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path)
             prepared = _prepare_run_recipe_impl(
-                "Run BUSCO quality assessment on the annotation.",
+                BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
                 execution_profile="slurm",
@@ -2636,7 +2688,7 @@ class ServerTests(TestCase):
             tmp_path = Path(tmp)
             result_dir = _repeat_filter_manifest_dir(tmp_path)
             prepared = _prepare_run_recipe_impl(
-                "Run BUSCO quality assessment on the annotation.",
+                BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
                 execution_profile="slurm",

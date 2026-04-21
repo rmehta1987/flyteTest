@@ -36,6 +36,24 @@ from flytetest.spec_artifacts import (
 )
 
 
+def _typed_plan(
+    target_name: str,
+    *,
+    source_prompt: str = "",
+    biological_goal: str | None = None,
+    **kwargs: object,
+) -> dict[str, object]:
+    """Build one structured typed plan for artifact tests."""
+    if biological_goal is None:
+        biological_goal = target_name
+    return plan_typed_request(
+        biological_goal=biological_goal,
+        target_name=target_name,
+        source_prompt=source_prompt,
+        **kwargs,
+    )
+
+
 class SpecArtifactTests(TestCase):
     """Checks for saving and reloading typed planning artifacts.
 
@@ -53,8 +71,9 @@ class SpecArtifactTests(TestCase):
             annotation_gff3_path=Path("results/evm/evm.out.gff3"),
         )
         prompt = "Create a generated WorkflowSpec for repeat filtering and BUSCO QC."
-        typed_plan = plan_typed_request(
-            prompt,
+        typed_plan = _typed_plan(
+            "repeat_filter_then_busco_qc",
+            source_prompt=prompt,
             explicit_bindings={"ConsensusAnnotation": consensus_annotation},
         )
 
@@ -87,8 +106,9 @@ class SpecArtifactTests(TestCase):
             reference_genome=reference_genome,
             annotation_gff3_path=Path("results/evm/evm.out.gff3"),
         )
-        typed_plan = plan_typed_request(
-            "Create a generated WorkflowSpec for repeat filtering and BUSCO QC.",
+        typed_plan = _typed_plan(
+            "repeat_filter_then_busco_qc",
+            source_prompt="Create a generated WorkflowSpec for repeat filtering and BUSCO QC.",
             explicit_bindings={"ConsensusAnnotation": consensus_annotation},
         )
         artifact = artifact_from_typed_plan(typed_plan, created_at="2026-04-07T12:00:00Z")
@@ -112,8 +132,9 @@ class SpecArtifactTests(TestCase):
             reference_genome=reference_genome,
             annotation_gff3_path=Path("results/evm/evm.out.gff3"),
         )
-        typed_plan = plan_typed_request(
-            "Create a generated WorkflowSpec for repeat filtering and BUSCO QC.",
+        typed_plan = _typed_plan(
+            "repeat_filter_then_busco_qc",
+            source_prompt="Create a generated WorkflowSpec for repeat filtering and BUSCO QC.",
             explicit_bindings={"ConsensusAnnotation": consensus_annotation},
         )
         artifact = artifact_from_typed_plan(typed_plan, created_at="2026-04-07T12:00:00Z")
@@ -131,7 +152,10 @@ class SpecArtifactTests(TestCase):
 
     This test keeps the current contract explicit and guards the documented behavior against regression.
 """
-        typed_plan = plan_typed_request("Run SNP variant calling and emit a VCF.")
+        typed_plan = plan_typed_request(
+            biological_goal="variant calling",
+            target_name="variant_calling",
+        )
 
         with self.assertRaises(ValueError):
             artifact_from_typed_plan(typed_plan, created_at="2026-04-07T12:00:00Z")
@@ -316,8 +340,9 @@ class ToolDatabasesTests(TestCase):
             reference_genome=reference_genome,
             annotation_gff3_path=Path("results/evm/evm.out.gff3"),
         )
-        typed_plan = plan_typed_request(
-            "Create a generated WorkflowSpec for repeat filtering and BUSCO QC.",
+        typed_plan = _typed_plan(
+            "repeat_filter_then_busco_qc",
+            source_prompt="Create a generated WorkflowSpec for repeat filtering and BUSCO QC.",
             explicit_bindings={"ConsensusAnnotation": consensus_annotation},
         )
         # Inject tool_databases into the workflow_spec sub-dict (simulates Step 21/22
@@ -339,8 +364,9 @@ class ToolDatabasesTests(TestCase):
             reference_genome=reference_genome,
             annotation_gff3_path=Path("results/evm/evm.out.gff3"),
         )
-        typed_plan = plan_typed_request(
-            "Create a generated WorkflowSpec for repeat filtering and BUSCO QC.",
+        typed_plan = _typed_plan(
+            "repeat_filter_then_busco_qc",
+            source_prompt="Create a generated WorkflowSpec for repeat filtering and BUSCO QC.",
             explicit_bindings={"ConsensusAnnotation": consensus_annotation},
         )
         # Remove from workflow_spec (simulate old plan format), put at top level.

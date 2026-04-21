@@ -62,6 +62,9 @@ from flytetest.server import (
 )
 
 
+BUSCO_GOAL_PROMPT = "BUSCO annotation quality assessment"
+
+
 # ---------------------------------------------------------------------------
 # Minimal FastMCP stand-in (same contract as in test_server.py)
 # ---------------------------------------------------------------------------
@@ -336,7 +339,7 @@ class SlurmMcpPromptFlowTests(TestCase):
             with ctx as server:
                 # Phase 1: prepare — resource_request arrives as a plain dict from JSON.
                 prepared = server.tools["prepare_run_recipe"](
-                    prompt="Run BUSCO quality assessment on the annotation.",
+                    prompt=BUSCO_GOAL_PROMPT,
                     manifest_sources=[str(manifest_dir)],
                     runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
                     resource_request={
@@ -422,7 +425,7 @@ class SlurmMcpPromptFlowTests(TestCase):
             with ctx as server:
                 # Prepare + submit the parent job.
                 prepared = server.tools["prepare_run_recipe"](
-                    prompt="Run BUSCO quality assessment on the annotation.",
+                    prompt=BUSCO_GOAL_PROMPT,
                     manifest_sources=[str(manifest_dir)],
                     runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
                     resource_request={
@@ -515,7 +518,7 @@ class SlurmMcpPromptFlowTests(TestCase):
             with ctx as server:
                 # Prepare + submit.
                 prepared = server.tools["prepare_run_recipe"](
-                    prompt="Run BUSCO quality assessment on the annotation.",
+                    prompt=BUSCO_GOAL_PROMPT,
                     manifest_sources=[str(manifest_dir)],
                     runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
                     resource_request={
@@ -583,7 +586,7 @@ class SlurmMcpPromptFlowTests(TestCase):
             )
             with ctx as server:
                 prepared = server.tools["prepare_run_recipe"](
-                    prompt="Run BUSCO quality assessment on the annotation.",
+                    prompt=BUSCO_GOAL_PROMPT,
                     manifest_sources=[str(manifest_dir)],
                     runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
                     resource_request={
@@ -632,7 +635,7 @@ class SlurmMcpPromptFlowTests(TestCase):
             )
             with ctx as server:
                 prepared = server.tools["prepare_run_recipe"](
-                    prompt="Run BUSCO quality assessment on the annotation.",
+                    prompt=BUSCO_GOAL_PROMPT,
                     manifest_sources=[str(manifest_dir)],
                     runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
                     resource_request={
@@ -694,7 +697,7 @@ class SlurmMcpPromptFlowTests(TestCase):
             with ctx as server:
                 # Prepare + submit the parent job.
                 prepared = server.tools["prepare_run_recipe"](
-                    prompt="Run BUSCO quality assessment on the annotation.",
+                    prompt=BUSCO_GOAL_PROMPT,
                     manifest_sources=[str(manifest_dir)],
                     runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
                     resource_request={

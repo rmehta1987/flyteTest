@@ -32,6 +32,13 @@ Entry template:
 
 ## Unreleased
 
+### MCP Reshape Step 16 — Structured Planning Only (2026-04-20)
+
+- [x] 2026-04-20 removed the prose-parsing helpers from `src/flytetest/planning.py`, including prompt-path extraction, execution-profile/runtime-image regex parsing, and the keyword-scored `_classify_target` route.
+- [x] 2026-04-20 reshaped `plan_typed_request` into a structured-only entrypoint keyed by `biological_goal`, `target_name`, and explicit structured inputs, while `plan_request` now does deterministic free-text matching against exact `biological_stage` / entry-name values before composition fallback.
+- [x] 2026-04-20 preserved composition fallback and approval gating, added the empty-`source_prompt` advisory to structured planning replies, and widened decline replies with `limitations`, `next_steps`, and the other structured recovery fields expected by the reshape plan.
+- [x] 2026-04-20 migrated planning, server, artifact, executor, approval, and MCP prompt-flow coverage away from prose path parsing toward exact-stage prompts or explicit structured bindings/runtime inputs, then verified with `/home/rmeht/Projects/flyteTest/.venv/bin/python -m compileall src/flytetest/planning.py`, the deleted-helper `rg` check, and `/home/rmeht/Projects/flyteTest/.venv/bin/python -m pytest tests/` (596 passed, 1 skipped, 38 subtests passed).
+
 ### Open TODOs
 
 - [ ] **Confirm AUGUSTUS_CONFIG_PATH fix for BRAKER3 container runs** — `.runtime/augustus_config/`

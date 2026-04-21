@@ -33,6 +33,24 @@ from flytetest.spec_artifacts import artifact_from_typed_plan
 from flytetest.planner_types import ConsensusAnnotation, ReferenceGenome
 
 
+def _typed_plan(
+    target_name: str,
+    *,
+    source_prompt: str = "",
+    biological_goal: str | None = None,
+    **kwargs: object,
+) -> dict[str, object]:
+    """Build one structured typed plan for approval tests."""
+    if biological_goal is None:
+        biological_goal = target_name
+    return plan_typed_request(
+        biological_goal=biological_goal,
+        target_name=target_name,
+        source_prompt=source_prompt,
+        **kwargs,
+    )
+
+
 def _composed_artifact(tmp_path: Path):
     """Build a generated (composed) workflow artifact for approval tests.
 
@@ -44,8 +62,9 @@ def _composed_artifact(tmp_path: Path):
         reference_genome=reference_genome,
         annotation_gff3_path=Path("results/evm/evm.out.gff3"),
     )
-    typed_plan = plan_typed_request(
-        "Create a generated WorkflowSpec for repeat filtering and BUSCO QC.",
+    typed_plan = _typed_plan(
+        "repeat_filter_then_busco_qc",
+        source_prompt="Create a generated WorkflowSpec for repeat filtering and BUSCO QC.",
         explicit_bindings={"ConsensusAnnotation": consensus_annotation},
     )
     artifact = artifact_from_typed_plan(typed_plan, created_at="2026-04-12T12:00:00Z")
