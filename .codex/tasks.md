@@ -186,6 +186,54 @@ Keep the FLyteTest design philosophy visible in the pseudocode:
 - `run_tool(...)` for local/container parity
 - stable outputs, not opaque scratch trees
 
+## Bindings vs Scalar Inputs at the MCP Boundary
+
+The reshaped `run_task` / `run_workflow` surface splits a task's arguments
+into two channels:
+
+- **`bindings`** — keyed by the planner-type name (`ReferenceGenome`,
+  `QualityAssessmentTarget`, etc.) and carrying either a raw Path-field dict,
+  a `$manifest` reference, or a `$ref` durable-reuse reference.  The resolver
+  materializes each binding into the typed planner object the task signature
+  actually consumes.  Everything that a typed dataclass can describe belongs
+  here.
+- **`inputs`** — a flat scalar dict for parameters that stay outside the
+  typed-asset layer: CPU counts, thread counts, lineage names, database
+  selectors, chunk sizes.  These correspond to the task's `TASK_PARAMETERS`
+  entries once typed bindings have absorbed the asset-shaped arguments.
+
+Concretely, if a task signature is
+`busco_assess_proteins(repeat_filter_results: Dir, busco_lineages_text: str,
+busco_sif: str = "")`, the reshaped call splits it as:
+
+```python
+run_task(
+    "busco_assess_proteins",
+    bindings={
+        "QualityAssessmentTarget": {
+            "$manifest": "/path/to/repeat_filter_results_.../run_manifest.json",
+            "output_name": "repeat_filter_results",
+        },
+    },
+    inputs={"busco_lineages_text": "eukaryota_odb10"},
+    resources={"execution_profile": "local"},
+    source_prompt="Assess repeat-filtered proteins with BUSCO",
+)
+```
+
+When you add or edit a task:
+
+- The task signature stays `File`/`Dir` + scalars — do not rewrite it to
+  receive a planner dataclass directly.  The resolver does the translation.
+- Register accurate `accepted_planner_types` / `produced_planner_types` in
+  the registry entry so the resolver knows which typed binding materializes
+  into which signature position.
+- Enumerate only the scalar parameters in `TASK_PARAMETERS` (in `server.py`).
+  Anything already covered by a typed binding is pruned from
+  `_scalar_params_for_task(...)` at planning time.
+- Export `MANIFEST_OUTPUT_KEYS` at module level; the registry-manifest
+  contract test asserts the task's declared registry outputs are a subset.
+
 ## Typed Asset Guidance
 
 Use the typed asset layer where it improves clarity or collected provenance.

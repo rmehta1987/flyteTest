@@ -107,6 +107,67 @@ All of the following continue to work via `from flytetest.registry import ...`:
    python3 -c "from flytetest.registry import REGISTRY_ENTRIES, get_pipeline_stages; print(len(REGISTRY_ENTRIES))"
    ```
 
+## Adding a Pipeline Family (End-to-End Walkthrough)
+
+**Family-extensibility contract:** plugging in a new pipeline family must be
+a self-contained change that lands under `src/flytetest/registry/_<family>.py`
+plus `planner_types.py` plus `src/flytetest/tasks/` plus
+`src/flytetest/workflows/` plus (optionally) `src/flytetest/bundles.py`.
+Nothing in `mcp_contract.py`, `server.py`, or `planning.py` should need to
+grow a branch for the new family.  If a family proposal wants an MCP-layer
+edit, treat that as a sign the planner-type or registry model is missing a
+generalization — push the fix there instead.
+
+Worked example: the GATK4 variant-calling placeholder entry in
+`_gatk.py` (`gatk_haplotype_caller`, `showcase_module=""`).  It is the
+canonical catalog-only shape that a real family implementation extends.
+
+Steps to add a new family (`<family>`):
+
+1. **Planner types.**  Add typed dataclasses to
+   `src/flytetest/planner_types.py` that name the biology concepts the family
+   produces and consumes (e.g. `AlignedReadSet`, `VariantCallSet`).  Reuse an
+   existing type whenever the biology already has one; only introduce a new
+   type when the biological meaning is genuinely new.
+2. **Tasks.**  Add `src/flytetest/tasks/<family>.py` following `.codex/tasks.md`.
+   Tasks must expose `MANIFEST_OUTPUT_KEYS` at module level so the
+   registry-manifest contract test can validate them.
+3. **Workflows.**  Add `src/flytetest/workflows/<family>.py` following
+   `.codex/workflows.md`.  Workflows consume scalar `inputs` and typed
+   `bindings` only at the MCP boundary; internal stage assembly stays inside
+   the workflow.
+4. **Registry family file.**  Add `src/flytetest/registry/_<family>.py` and
+   re-export `<FAMILY>_ENTRIES` through `registry/__init__.py` per the section
+   above.  For each entry:
+   - Set `accepted_planner_types` and `produced_planner_types` to the exact
+     dataclass names from step 1.
+   - Set `pipeline_family=<family>` and `pipeline_stage_order` leaving gaps
+     for later insertion.
+   - Seed `execution_defaults` with `runtime_images`, `tool_databases`, and
+     `slurm_resource_hints` if the family has real container / database /
+     resource defaults.  `queue` and `account` MUST NOT be seeded — those
+     always come from the user.
+   - Set `showcase_module` to the implementation module path only when the
+     entry has a handler in `_local_node_handlers()`.  Leave it empty for
+     catalog-only placeholders (GATK pattern).
+5. **Optional bundle.**  If the family has a turn-key starter fixture set,
+   append a `ResourceBundle(...)` to `BUNDLES` in
+   `src/flytetest/bundles.py`.  Bundle availability is checked at call time
+   (not at import), so a bundle whose backing data is missing from disk does
+   not prevent server startup.
+6. **Verify.**
+   ```bash
+   python3 -m compileall src/flytetest/ -q
+   python3 -c "from flytetest.registry import REGISTRY_ENTRIES, get_pipeline_stages; \
+     print(len(REGISTRY_ENTRIES), get_pipeline_stages('<family>'))"
+   pytest tests/test_registry_manifest_contract.py tests/test_bundles.py
+   ```
+
+If the walkthrough starts pushing edits into `mcp_contract.py`, `server.py`,
+or `planning.py` to handle the new family, stop — that is the signal to
+generalize a planner type or a registry field rather than branching the MCP
+layer.
+
 ## How `showcase_module` Controls MCP Exposure
 
 `mcp_contract.py` derives `SHOWCASE_TARGETS` by iterating `REGISTRY_ENTRIES` and

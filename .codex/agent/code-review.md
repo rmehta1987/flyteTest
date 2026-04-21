@@ -52,6 +52,17 @@ You are responsible for catching:
 - `run_manifest.json` truthfulness
 - README or DESIGN language that overclaims target-state behavior
 
+## MCP-Layer Branch-Free Rule
+
+Any PR that adds a family-specific conditional to `src/flytetest/server.py`,
+`src/flytetest/mcp_contract.py`, or `src/flytetest/planning.py` is a
+**Block** finding.  Pipeline families live in `registry/_<family>.py`,
+`tasks/`, `workflows/`, and optional `bundles.py`.  Redirect the fix to the
+registry / planner-type / tasks / workflows surface, or treat it as a
+signal to generalize `RegistryCompatibilityMetadata`, `planner_types.py`,
+or `ResourceBundle` instead of branching the MCP layer.  See
+`.codex/code-review.md` → "MCP-Layer Branch-Free Rule".
+
 ## Severity Levels
 
 Assign every finding one of three severities:

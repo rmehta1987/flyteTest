@@ -73,6 +73,11 @@ original prompt and input data. Dynamic planning happens before execution; once
 the run recipe is created, execution follows that frozen record so the
 resulting pipelines remain transparent and reproducible.
 
+New pipeline families should plug into the system without MCP-layer edits:
+appending a `registry/_<family>.py` with planner types, tasks, workflows, and
+an optional bundle entry should be enough to make a family's registered
+entries visible through `list_entries`, `run_task`, and `run_workflow`.
+
 To achieve this, the architecture is built on three core pillars:
 
 ### 1. Dynamic, Strongly Typed Composition From Registered Building Blocks
@@ -650,17 +655,29 @@ should return a clear decline or missing-input report instead of inventing steps
 ### 6.2 MCP Tool Surface
 
 The MCP interface should expose the system in small steps rather than one opaque
-"do everything" call.
+"do everything" call.  The primary scientist entrypoint is an experiment loop:
+`list_entries → list_bundles → load_bundle → run_task` or `run_workflow`, with
+`prepare_*` / `validate_run_recipe` / `run_local_recipe` / `run_slurm_recipe`
+available as inspect-before-execute power tools for audit, reuse, or staged
+submission of a frozen artifact.
 
 Target tools:
 
 - `list_entries`: list registered tasks and workflows.
+- `list_bundles`: list curated starter bundles (typed bindings + scalar inputs +
+  container images keyed on planner types) grouped by pipeline family.
+- `load_bundle`: return one bundle's payload so it can spread directly into
+  `run_task(**bundle)` or `run_workflow(**bundle)`.
 - `plan_request`: convert natural language into a structured plan.
 - `run_task`: run one explicitly supported registered task for bounded ad hoc
   experimentation when the request is stage-scoped rather than workflow-scoped.
-- `prepare_run_recipe`: save an inspectable run recipe from a supported plan.
+- `run_workflow`: run one explicitly supported registered workflow on the same
+  typed `bindings + inputs + resources + execution_profile + runtime_images +
+  tool_databases + source_prompt + dry_run` surface as `run_task`.
+- `prepare_run_recipe`: save an inspectable run recipe from a supported plan
+  (power tool — use when the experiment-loop path needs an audit stop).
 - `validate_run_recipe`: check inputs, outputs, containers, resources, and
-  offline-compute assumptions.
+  offline-compute assumptions on a saved artifact without submitting.
 - `run_local_recipe`: execute a saved run recipe locally when supported.
 - `prepare_slurm_recipe`: convert a saved run recipe into a Slurm-backed Flyte
   execution plan.
@@ -669,8 +686,16 @@ Target tools:
 - `monitor_slurm_job`: inspect scheduler state, logs, and job IDs.
 - `inspect_result`: read result manifests and summarize produced outputs.
 
+Frozen run recipes use `recipe_id` format `<YYYYMMDDThhmmss.mmm>Z-<target_name>`
+(millisecond-precision UTC timestamp plus the registered target name); composed
+novel DAGs fall back to `composed-<first_stage>_to_<last_stage>` when no single
+target name applies.
+
 The tool surface should remain stable and machine-readable. New tools should be
-additive unless an intentional compatibility migration is documented.
+additive unless an intentional compatibility migration is documented.  New
+pipeline families plug in by appending a `registry/_<family>.py` plus planner
+types / tasks / workflows / optional bundle entry — no MCP-layer edits should
+be required.
 Ad hoc task execution should remain a bounded, explicit surface and should not
 replace saved recipe generation for multi-stage reproducible workflow runs.
 
@@ -782,8 +807,8 @@ Many HPC systems allow internet access on login nodes but not compute nodes.
 FLyteTest should treat this as a normal deployment shape rather than an
 exception.
 
-Before a Slurm-backed run is submitted, the system should verify that the
-compute job can run offline:
+Before a Slurm-backed run is submitted, `check_offline_staging` in
+`src/flytetest/staging.py` verifies that the compute job can run offline:
 
 - input files are on filesystems visible to compute nodes
 - container images are staged and readable
@@ -792,8 +817,15 @@ compute job can run offline:
 - output and log directories are writable
 - no task expects to download data during compute-node execution
 
-If a required dependency is missing, the system should fail before submission
-with a clear report of what must be staged.
+`SlurmWorkflowSpecExecutor.submit` calls `check_offline_staging` before any
+`sbatch` invocation and short-circuits submission with a structured finding
+list when a dependency is missing, rather than letting the offline compute job
+fail silently.  `validate_run_recipe` calls the same helper in dry-run mode so
+scientists can surface staging findings without submitting.  The shared-FS
+enforcement is conservative: when `execution_profile="slurm"` and the caller
+declares explicit `shared_fs_roots`, every staged path must resolve under one
+of those roots; an empty roots list flags all local paths as
+`not_on_shared_fs` (no false negatives).
 
 ### 7.6 Execution Records
 

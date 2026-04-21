@@ -49,11 +49,15 @@ Registry package — `src/flytetest/registry/`
 - `__init__.py` — `REGISTRY_ENTRIES`, query functions, public re-exports
 
 Core concepts
-- `mcp_contract.py` — `SHOWCASE_TARGETS` (derived from `showcase_module`), policy constants, MCP surface contract
-- `planning.py` — intent classification, typed plan construction, decline handling
-- `server.py` — FastMCP tool implementations, `_local_node_handlers()`, `TASK_PARAMETERS`
-- `spec_artifacts.py` — frozen run recipes (WorkflowSpec), sidecar I/O
-- `spec_executor.py` — local and Slurm executors, run records
+- `mcp_contract.py` — `SHOWCASE_TARGETS` (derived from `showcase_module`), `TOOL_DESCRIPTIONS`, grouped `MCP_TOOL_NAMES`, policy constants, MCP surface contract
+- `mcp_replies.py` — typed reply dataclasses (`RunReply`, `DryRunReply`, `PlanDecline`, `ValidateRecipeReply`) — single source of truth for the reshaped MCP wire format
+- `errors.py` — typed `PlannerResolutionError` hierarchy (`UnknownRunIdError`, `UnknownOutputNameError`, `ManifestNotFoundError`, `BindingPathMissingError`, `BindingTypeMismatchError`) that drives the exception-to-decline translator
+- `bundles.py` — curated `ResourceBundle` catalog + `list_bundles` / `load_bundle`; availability is checked at call time so new family bundles are a one-line append
+- `staging.py` — `check_offline_staging` preflight that verifies container images, tool databases, and resolved input paths are reachable from compute nodes before `sbatch`
+- `planning.py` — structured intent classification, typed plan construction (`plan_typed_request` / `plan_request`), decline handling routed through bundles / prior runs / next-step suggestions
+- `server.py` — FastMCP tool implementations including `run_task`, `run_workflow`, `list_bundles`, `load_bundle`, `validate_run_recipe`; `_local_node_handlers()`, `TASK_PARAMETERS`, `_execute_run_tool` exception translator
+- `spec_artifacts.py` — frozen run recipes (WorkflowSpec), sidecar I/O; `recipe_id` format is `<YYYYMMDDThhmmss.mmm>Z-<target_name>`
+- `spec_executor.py` — local and Slurm executors, run records; `SlurmWorkflowSpecExecutor.submit` runs `check_offline_staging` before any `sbatch` call
 - `serialization.py` — canonical serialization helpers for biology dataclasses
 
 Tasks — `src/flytetest/tasks/`
@@ -111,6 +115,17 @@ Types — `src/flytetest/planner_types.py`, `src/flytetest/types/`
 - Treat prompts as requests for supported workflows, not permission to invent runtime behavior.
 - Freeze plans into saved run recipes before execution.
 - Keep MCP responses structured and machine-readable.
+- Scientist's experiment loop: `list_entries → list_bundles → load_bundle → run_task` / `run_workflow`;
+  `prepare_run_recipe`, `validate_run_recipe`, `run_local_recipe`, and `run_slurm_recipe` are
+  inspect-before-execute power tools for when the scientist needs to audit or reuse a
+  frozen artifact before submission.
+- Run tools accept a typed `bindings + inputs + resources + execution_profile + runtime_images + tool_databases + source_prompt + dry_run` surface;
+  bundle-shaped dicts from `load_bundle` spread directly into either `run_task(**bundle)` or `run_workflow(**bundle)`.
+  Declines arrive as structured `PlanDecline` payloads with `suggested_bundles`, `suggested_prior_runs`, and `next_steps`.
+- Preflight staging invariant: before any `sbatch`, `check_offline_staging` verifies that
+  containers, tool databases, and resolved input paths are reachable from compute nodes
+  on the shared filesystem; failures short-circuit submission with structured findings
+  instead of letting the compute job silently fail offline.
 - Submit Slurm jobs only from frozen run records with `sbatch`; observe with
   `squeue`, `scontrol show job`, and `sacct`; cancel with `scancel`.
 - Record job ID, stdout/stderr paths, lifecycle state, final scheduler state,

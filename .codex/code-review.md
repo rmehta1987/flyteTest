@@ -57,6 +57,22 @@ Common FLyteTest review targets:
 - helper scripts for local installs and container checks
 - current-scope statements in `README.md`
 
+## MCP-Layer Branch-Free Rule
+
+Changes that touch `src/flytetest/mcp_contract.py`, `src/flytetest/server.py`,
+or `src/flytetest/planning.py` MUST NOT introduce family-specific branches
+(e.g. `if pipeline_family == "annotation": ...`, `if target_name.startswith(
+"braker3_"): ...`, prompt substring sniffing).  Pipeline families live in
+`src/flytetest/registry/_<family>.py`, `src/flytetest/tasks/`,
+`src/flytetest/workflows/`, and optionally `src/flytetest/bundles.py`.  The
+MCP layer should remain generic across families.
+
+Block any PR that proposes a family-specific conditional at the MCP layer and
+redirect the fix to the registry / planner-type / tasks / workflows surface.
+If the family genuinely needs behavior that the current registry model cannot
+express, treat it as a signal to generalize `RegistryCompatibilityMetadata`,
+`planner_types.py`, or `ResourceBundle` — not to branch the MCP layer.
+
 ## Findings Format
 
 A good review finding should include:

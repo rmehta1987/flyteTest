@@ -38,11 +38,21 @@ You are responsible for:
 
 1. One task, one biological action or deterministic transformation.
 2. Keep current Flyte `File` and `Dir` signatures unless the task explicitly
-   belongs to a later compatibility-safe migration slice.
+   belongs to a later compatibility-safe migration slice.  The task signature
+   stays `File`/`Dir` + scalars even when the reshaped MCP `run_task`
+   surface accepts typed `bindings` from the caller — the resolver
+   translates between the two shapes.
 3. Use the typed asset layer for manifests and provenance when useful, not as a
    forced runtime boundary.
 4. Keep local/container parity through `run_tool(...)` and repo helpers.
 5. Do not hide major stage changes in a task implementation.
+6. Scalar parameters registered in `TASK_PARAMETERS` (in `server.py`) must
+   correspond to `inputs={...}` entries at the MCP boundary; everything
+   asset-shaped should move to typed `bindings` declared via the registry
+   entry's `accepted_planner_types`.
+7. Export `MANIFEST_OUTPUT_KEYS` at module level so the registry-manifest
+   contract test can validate that every declared registry output name is
+   emitted.
 
 ## Repo Truths
 

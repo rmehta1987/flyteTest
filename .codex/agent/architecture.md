@@ -47,6 +47,22 @@ Your job is to:
    architecture.
 5. Keep plans decision-complete enough that a worker can implement them without
    guessing.
+6. **Scientist's experiment loop is load-bearing.** The primary MCP path is
+   `list_entries → list_bundles → load_bundle → run_task` / `run_workflow`
+   on the typed `bindings + inputs + resources + execution_profile +
+   runtime_images + tool_databases + source_prompt + dry_run` surface.
+   `prepare_*` / `validate_run_recipe` / `run_local_recipe` /
+   `run_slurm_recipe` are inspect-before-execute power tools, not the
+   primary path.  Architecture changes that erode the loop (e.g.
+   reintroducing prose-parsing heuristics, collapsing the bundle-spread
+   contract, or making the power tools mandatory) are a regression.
+7. **Family-extensibility is load-bearing.** New pipeline families plug in
+   by adding `registry/_<family>.py` + `planner_types.py` entries +
+   `tasks/<family>.py` + `workflows/<family>.py` + optional
+   `bundles.py` — the MCP layer stays family-agnostic.  If a proposal
+   requires touching `mcp_contract.py`, `server.py`, or `planning.py` to
+   land a new family, the proposal needs revision — generalize a planner
+   type or a registry field instead.
 
 ## What Good Architecture Work Looks Like
 
@@ -81,10 +97,21 @@ Pay special attention to:
 When planning or reviewing changes to the MCP surface, treat these as a unit:
 
 - `src/flytetest/server.py` — tool names, argument shapes, and response fields
-- `src/flytetest/mcp_contract.py` — machine-readable server contract
+- `src/flytetest/mcp_contract.py` — machine-readable server contract, grouped
+  `MCP_TOOL_NAMES` (experiment-loop / inspect / lifecycle), `TOOL_DESCRIPTIONS`
+- `src/flytetest/mcp_replies.py` — typed reply dataclasses (`RunReply`,
+  `DryRunReply`, `PlanDecline`, `ValidateRecipeReply`) — the single source of
+  truth for the reshaped MCP wire format
+- `src/flytetest/errors.py` — `PlannerResolutionError` hierarchy feeding the
+  exception-to-decline translator in `_execute_run_tool`
+- `src/flytetest/bundles.py` — curated `ResourceBundle` catalog;
+  availability is checked at call time so new family bundles are a one-line
+  append
+- `src/flytetest/staging.py` — `check_offline_staging` preflight
 - `src/flytetest/planning.py` — typed plan output consumed by recipe preparation
 - `src/flytetest/specs.py` — `WorkflowSpec` and `BindingPlan` frozen before execution
-- `src/flytetest/spec_executor.py` — local handler dispatch
+- `src/flytetest/spec_executor.py` — local handler dispatch; Slurm `submit`
+  runs `check_offline_staging` before any `sbatch` invocation
 - `src/flytetest/slurm_monitor.py` — Slurm polling loop and run-record lifecycle
 
 Key rules for MCP changes:

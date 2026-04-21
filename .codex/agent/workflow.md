@@ -41,6 +41,13 @@ You are responsible for:
 4. Preserve collector-stage and manifest semantics.
 5. If the work is part of the `realtime` refactor, keep current workflows as the
    stable baseline while adding new metadata or composition layers around them.
+6. Workflows receive scalar `inputs` and typed-binding-materialized
+   `File`/`Dir` arguments only at the MCP boundary.  Workflow bodies own
+   their own stage assembly; they do not receive planner dataclasses
+   directly and they do not branch on prompt text.
+7. Family-specific behavior belongs inside the workflow or its tasks.
+   Never add a family-specific conditional to `server.py`,
+   `mcp_contract.py`, or `planning.py` to make a workflow run correctly.
 
 ## Compatibility-Critical Surfaces
 

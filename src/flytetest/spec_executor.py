@@ -2037,14 +2037,19 @@ class SlurmWorkflowSpecExecutor:
         The full sequence is:
 
         1. Load and validate the frozen recipe artifact.
-        2. Gate on ``execution_profile == "slurm"`` and ``sbatch`` availability;
-           return ``supported=False`` if either check fails.
-        3. Optionally validate and import completed-node state from a prior
+        2. Optionally validate and import completed-node state from a prior
            local run record so the cluster job can skip already-done stages.
-        4. Allocate a unique run directory under ``run_root``.
-        5. Render the submission script and write it to the run directory.
-        6. Call ``sbatch`` and parse the accepted Slurm job ID from its output.
-        7. Write a :class:`SlurmRunRecord` immediately so the job is trackable
+        3. Gate on ``execution_profile == "slurm"`` (DESIGN §7.5).
+        4. Run :func:`check_offline_staging` when *shared_fs_roots* is
+           non-empty; any finding short-circuits with ``supported=False`` so
+           unreachable containers, tool databases, or inputs never reach the
+           queue.
+        5. Gate on ``sbatch`` availability; return ``supported=False`` when
+           the command is missing.
+        6. Allocate a unique run directory under ``run_root``.
+        7. Render the submission script and write it to the run directory.
+        8. Call ``sbatch`` and parse the accepted Slurm job ID from its output.
+        9. Write a :class:`SlurmRunRecord` immediately so the job is trackable
            before the first status poll arrives.
 
         Submission assumes FLyteTest is running inside an already-authenticated
@@ -2064,6 +2069,10 @@ class SlurmWorkflowSpecExecutor:
                 ``node_completion_state`` is embedded in the Slurm script,
                 letting the cluster job skip stages that already succeeded
                 locally.
+            shared_fs_roots: Filesystem prefixes visible to compute nodes; an
+                empty tuple disables the preflight staging check.  When set,
+                every runtime image, tool database, and input path is
+                required to sit inside one of the declared roots.
 
         Returns:
             A :class:`SlurmSpecExecutionResult` with ``supported=True`` and

@@ -150,6 +150,32 @@ Keep the FLyteTest design philosophy visible in the pseudocode:
 - collection happens at the end in a deterministic manifest-bearing bundle
 - unsupported downstream stages remain out of scope until their own milestone
 
+## Scalar Inputs at the MCP Boundary Only
+
+The reshaped `run_workflow` surface accepts typed `bindings` plus a flat
+scalar `inputs` dict (see `.codex/tasks.md` → "Bindings vs Scalar Inputs at
+the MCP Boundary").  The workflow body owns its internal stage assembly and
+wiring — it still receives plain `File`/`Dir` arguments plus scalars at
+function-call time.  The resolver in `src/flytetest/resolver.py` materializes
+each typed binding into the concrete Path-field arguments the workflow
+signature expects, so the MCP layer and the workflow body talk different
+shapes by design.
+
+Consequences for workflow authors:
+
+- Do not rewrite a workflow signature to accept a planner dataclass directly.
+  Keep `File`/`Dir` inputs and let the resolver translate.
+- Do not branch on prompt text or perform heuristic classification inside a
+  workflow.  Prompt interpretation lives in `planning.py`; by the time the
+  workflow runs, the plan is frozen.
+- The workflow's scalar parameters (thread counts, lineage selectors,
+  `*_sif` overrides, etc.) are what the MCP `inputs={...}` channel passes.
+  Anything asset-shaped should be registered as an `accepted_planner_types`
+  binding instead.
+- If a family-specific behavior is needed for a workflow to run correctly,
+  implement it inside the workflow or its tasks — never by growing a branch
+  in `server.py`, `mcp_contract.py`, or `planning.py`.
+
 ## Registry and Compatibility
 
 Workflow work is incomplete until these stay aligned:

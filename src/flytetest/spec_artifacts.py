@@ -263,6 +263,14 @@ def artifact_from_typed_plan(
         :func:`save_workflow_spec_artifact`.  The artifact carries the full
         workflow shape, binding plan, and prompt provenance so any later
         execution can be traced back to the original planning decision.
+
+    Notes:
+        ``tool_databases`` and ``runtime_images`` are merged per the §3c / §8
+        resolution order: a value carried inside ``workflow_spec`` wins, with
+        the top-level plan keys filling gaps only when the spec was built
+        before those fields existed.  The ``recipe_id`` is assigned later by
+        :func:`make_recipe_id` (``<YYYYMMDDThhmmss.mmm>Z-<target_name>``,
+        §3h) — it is not set on the artifact returned here.
     """
     if not typed_plan.get("supported"):
         raise ValueError("Only supported typed plans can be saved as replayable workflow spec artifacts.")

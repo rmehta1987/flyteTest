@@ -34,6 +34,114 @@ Entry template:
 
 ## Unreleased
 
+### MCP Reshape Step 28 — Docs and agent-context refresh (2026-04-21)
+
+Closes the MCP Surface Reshape milestone (Steps 1–28; tracker:
+`docs/mcp_reshape/checklist.md`).  This entry consolidates the scientist-
+facing changes that landed across Steps 16–27 so downstream callers can find
+the BC break and recovery path in one place, and records the Step 28 docs
+refresh itself.
+
+**BC break — `run_task` / `run_workflow` input shape.** The old flat `inputs=`
+dict is gone.  Both tools now accept a typed surface and bundle-shaped dicts
+from `load_bundle` spread directly into either:
+
+```python
+# Before (M21-era)
+run_task(
+    task_name="busco_assess_proteins",
+    task_inputs={
+        "repeat_filter_results": "/path/to/results/repeat_filter_results_...",
+        "busco_lineages_text": "eukaryota_odb10",
+    },
+)
+
+# After (M28)
+run_task(
+    "busco_assess_proteins",
+    bindings={
+        "QualityAssessmentTarget": {
+            "$manifest": "/path/to/results/repeat_filter_results_.../run_manifest.json",
+            "output_name": "repeat_filter_results",
+        },
+    },
+    inputs={"busco_lineages_text": "eukaryota_odb10"},
+    resources={"execution_profile": "local"},
+    source_prompt="Assess repeat-filtered proteins with BUSCO",
+)
+```
+
+Declines now arrive as structured `PlanDecline` payloads with
+`suggested_bundles`, `suggested_prior_runs`, and `next_steps` channels instead
+of bare error strings; successes return `RunReply` / `DryRunReply` dataclasses
+(`src/flytetest/mcp_replies.py`).  No compatibility shim is provided — callers
+using the old shape must migrate.
+
+Milestone highlights rolled up:
+
+- [x] 2026-04-20 removed prose-parsing heuristics from `planning.py`
+  (`_extract_prompt_paths`, `_classify_target`, execution-profile regex parsing)
+  — structured planning is now the only entrypoint (Step 16).
+- [x] 2026-04-20 reshaped `run_task` and `run_workflow` onto the typed
+  `bindings + inputs + resources + execution_profile + runtime_images +
+  tool_databases + source_prompt + dry_run` surface (Steps 21, 22).
+- [x] 2026-04-20 added the `$ref` binding grammar (durable reuse of prior-run
+  outputs) alongside the existing `$manifest` and raw-path forms, with
+  exact-name type compatibility checks in `_materialize_bindings` (Steps 13, 14).
+- [x] 2026-04-21 added `bundles.py` with `ResourceBundle` + `list_bundles` /
+  `load_bundle` MCP tools; availability is checked at call time so new family
+  bundles are a one-line append (Steps 4, 25).
+- [x] 2026-04-21 added `staging.py::check_offline_staging` and wired it into
+  `SlurmWorkflowSpecExecutor.submit` as a preflight gate; unreachable
+  containers, tool databases, or input paths short-circuit submission with
+  structured findings instead of silent offline failures (Steps 5, 23).
+- [x] 2026-04-21 added `validate_run_recipe(artifact_path, execution_profile,
+  shared_fs_roots)` as an inspect-before-execute MCP tool (Step 24).
+- [x] 2026-04-21 reframed `server.py` decline routing through
+  `suggested_bundles` / `suggested_prior_runs` / `next_steps` and wired an
+  exception-to-decline translator in `_execute_run_tool` (Steps 19, 20).
+- [x] 2026-04-21 documented the resource-hint handoff: registry
+  `execution_defaults` may seed `slurm_resource_hints`, but `queue` and
+  `account` must always come from the user (Step 27; `QUEUE_ACCOUNT_HANDOFF`
+  policy constant in `mcp_contract.py`).
+- [x] 2026-04-20 changed `recipe_id` format to
+  `<YYYYMMDDThhmmss.mmm>Z-<target_name>` (Step 7); composed novel DAGs fall
+  back to `composed-<first_stage>_to_<last_stage>`.
+
+Step 28 docs refresh — files touched:
+
+- [x] 2026-04-21 updated `AGENTS.md` Project Structure (added `bundles.py`,
+  `staging.py`, `errors.py`, `mcp_replies.py` and the `validate_run_recipe` /
+  `run_workflow` / `list_bundles` / `load_bundle` tool surface) and the
+  Prompt/MCP/Slurm section (experiment loop + preflight staging invariant +
+  bundle-spread recovery path).
+- [x] 2026-04-21 updated `DESIGN.md` Overview (family-pluggability sentence),
+  §6.2 (added `list_bundles`, `load_bundle`, `run_workflow`, marked `prepare_*`
+  as power tools, added recipe_id format note), and §7.5 (referenced
+  `check_offline_staging` by name and documented the shared-FS enforcement
+  posture).
+- [x] 2026-04-21 refreshed `README.md` Current Status so the experiment loop
+  is the primary scientist entrypoint and `prepare_*` / `validate_run_recipe`
+  are called out as inspect-before-execute power tools.
+- [x] 2026-04-21 refreshed `.codex/registry.md`, `.codex/tasks.md`,
+  `.codex/workflows.md`, `.codex/testing.md`, and `.codex/code-review.md`
+  (Adding-a-Pipeline-Family walkthrough, bindings-vs-inputs split, scalar-
+  inputs-only-at-MCP-boundary contract, new test patterns for bundle
+  availability / `$ref` resolution / type-compat declines / staging findings /
+  decline-to-bundles shape, MCP-layer-branch-free review rule).
+- [x] 2026-04-21 mirrored those updates into `.codex/agent/registry.md`,
+  `.codex/agent/task.md`, `.codex/agent/workflow.md`, `.codex/agent/test.md`,
+  `.codex/agent/code-review.md`, and `.codex/agent/architecture.md`.
+- [x] 2026-04-21 ticked Milestone 22 in `docs/realtime_refactor_checklist.md`
+  (registry-driven pipeline tracker — subsumed by the registry restructure +
+  `pipeline_family` / `pipeline_stage_order` fields that shipped in the MCP
+  reshape sweep).
+- [x] 2026-04-21 verified: `rg -n 'run_task\(|run_workflow\(|plan_typed_request\(|_extract_prompt_paths|_classify_target' docs/ .codex/ AGENTS.md CLAUDE.md DESIGN.md`
+  returned zero stale hits; `rg -n 'inputs\s*=\s*\{' docs/ .codex/` cross-
+  checked against call-site snippets returned zero stale old-shape executable
+  examples; `rg -n '_validate_bundles' docs/ .codex/` returned zero hits;
+  `python -m compileall src/flytetest/` succeeded.
+
 ### MCP Reshape Step 27 — Reframe tool descriptions around the experiment loop (2026-04-21)
 
 - [x] 2026-04-21 rewrote all 22 MCP tool descriptions in `src/flytetest/mcp_contract.py` using a `[group] verb-phrase` structure where group is one of `[experiment-loop]`, `[inspect-before-execute]`, or `[lifecycle]`; old ad-hoc one-liners replaced with experiment-oriented framings that cue LLM clients on when each tool fits the workflow.

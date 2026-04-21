@@ -47,10 +47,22 @@ artifact upload semantics.
   that gate is landed and validated on RCC through the approval-gate smoke,
   the local-to-Slurm resume smoke, and a real protein-evidence Slurm workflow
   probe
+- Scientist-centered MCP surface (MCP Reshape milestone, Steps 1–28): the
+  primary scientist entrypoint is the experiment loop `list_entries →
+  list_bundles → load_bundle → run_task` / `run_workflow` on the typed
+  `bindings + inputs + resources + execution_profile + runtime_images +
+  tool_databases + source_prompt + dry_run` surface.  `prepare_run_recipe`,
+  `validate_run_recipe`, `run_local_recipe`, and `run_slurm_recipe` are
+  inspect-before-execute power tools for auditing or reusing a frozen
+  artifact before submission.  Declines carry structured
+  `suggested_bundles` / `suggested_prior_runs` / `next_steps` recovery
+  hints, and `SlurmWorkflowSpecExecutor.submit` runs
+  `check_offline_staging` as a preflight gate before any `sbatch`.
 - Active biological milestone: `AGAT post-processing after EggNOG`
 - Active architecture milestone: `realtime` refactor Milestones 0 through 26
   are complete; the generic biology-facing asset surface is now complete for
-  all current stage boundaries (M23–M26)
+  all current stage boundaries (M23–M26); the MCP Reshape milestone
+  (scientist-centered surface) is complete through Step 28
 
 ### Deferred
 
@@ -306,23 +318,37 @@ targets:
 - workflow: `annotation_postprocess_agat_cleanup`
 - workflow: `annotation_postprocess_table2asn`
 
-Supported tools:
+Supported tools (grouped by role):
+
+Experiment loop (scientist's primary path):
 
 - `list_entries`
+- `list_bundles`
+- `load_bundle`
 - `plan_request`
+- `run_task`
+- `run_workflow`
+- `list_available_bindings`
+
+Inspect-before-execute power tools (audit or reuse a frozen artifact):
+
 - `prepare_run_recipe`
+- `validate_run_recipe`
 - `run_local_recipe`
 - `run_slurm_recipe`
+- `prompt_and_run`
+
+Lifecycle (Slurm-capable environments):
+
 - `monitor_slurm_job`
 - `retry_slurm_job`
 - `cancel_slurm_job`
-- `prompt_and_run`
-- `run_task`
-- `list_available_bindings`
-- `get_run_summary`
-- `inspect_run_result`
 - `fetch_job_log`
 - `wait_for_slurm_job`
+- `list_slurm_run_history`
+- `get_pipeline_status`
+- `get_run_summary`
+- `inspect_run_result`
 
 The Slurm tools are supported only when the MCP server is running inside an
 already-authenticated scheduler-capable environment with `sbatch`, `squeue`,

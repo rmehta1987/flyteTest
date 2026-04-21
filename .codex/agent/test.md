@@ -53,6 +53,25 @@ Focus first on:
 - new synthetic tests for planner-facing types, resolver behavior,
   `WorkflowSpec`, and local spec execution
 
+## MCP Reshape Test Patterns
+
+See `.codex/testing.md` → "MCP Reshape Patterns" for the canonical shapes:
+
+- Bundle availability with `tmp_path`-rooted fixtures (runtime, not import-
+  time).  A missing backing path means `available=False` with a structured
+  reason — never a raise at import.
+- `$ref` / `$manifest` resolution plus the three type-compatibility decline
+  paths (`UnknownRunIdError`, `UnknownOutputNameError`,
+  `BindingTypeMismatchError`).  Raw-path bindings remain the deliberate
+  type-check escape hatch.
+- Preflight staging findings (`container` / `tool_database` / `input_path` ×
+  `not_found` / `not_readable` / `not_on_shared_fs`) short-circuiting
+  `sbatch` with `RunReply(execution_status="failed", ...)`; the artifact
+  must stay on disk so the caller can fix and replay.
+- Decline-to-bundles shape: a `PlanDecline` with populated
+  `suggested_bundles`, `suggested_prior_runs`, and `next_steps` — a bare
+  error string is a test failure.
+
 ## Good Test Outputs
 
 Good test work should make it easy to answer:

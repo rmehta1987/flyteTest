@@ -1824,25 +1824,39 @@ Goal: make the pipeline status tracker registry-driven by adding
 `RegistryCompatibilityMetadata` so stage lists are derived from the registry
 rather than hardcoded per pipeline.
 
-Status: Not started
+Status: Complete (2026-04-21)
+
+Subsumed by the MCP Surface Reshape milestone: the registry restructure
+(reshape Steps 8–11) already split `RegistryCompatibilityMetadata` into the
+per-family `_<family>.py` submodules, populated `pipeline_family` and
+`pipeline_stage_order` for every entry, added a pure `get_pipeline_stages`
+query function, and flipped `pipeline_tracker.py` to call it.
 
 ### Still required
 
-- [ ] Add `pipeline_family: str = ""` and `pipeline_stage_order: int = 0` to
-      `RegistryCompatibilityMetadata` in `src/flytetest/registry.py`.
-- [ ] Populate all 17 existing `_WORKFLOW_COMPATIBILITY_METADATA` entries with
-      correct `pipeline_family` and `pipeline_stage_order` values.
-- [ ] Add `get_pipeline_stages(family: str)` pure function to `registry.py`.
-- [ ] Replace hardcoded `ANNOTATION_PIPELINE_STAGES` in `pipeline_tracker.py`
-      with `get_pipeline_stages("annotation")`.
-- [ ] Add 3 tests to `tests/test_pipeline_tracker.py`.
-- [ ] Update `CHANGELOG.md`.
+- [x] Add `pipeline_family: str = ""` and `pipeline_stage_order: int = 0` to
+      `RegistryCompatibilityMetadata` in `src/flytetest/registry/_types.py`.
+- [x] Populate all workflow entries across the family submodules
+      (`_annotation.py`, `_consensus.py`, `_evm.py`, `_gatk.py`,
+      `_postprocessing.py`, `_protein_evidence.py`, `_rnaseq.py`,
+      `_transcript_evidence.py`) with correct `pipeline_family` and
+      `pipeline_stage_order` values.
+- [x] Add `get_pipeline_stages(family: str)` pure function to
+      `src/flytetest/registry/__init__.py`.
+- [x] Replace hardcoded `ANNOTATION_PIPELINE_STAGES` in `pipeline_tracker.py`
+      with `get_pipeline_stages("annotation")` — now at
+      `src/flytetest/pipeline_tracker.py:23`.
+- [x] Extend `tests/test_pipeline_tracker.py` with registry-driven coverage;
+      cross-family coverage added in `tests/test_registry.py`,
+      `tests/test_bundles.py`, and `tests/test_mcp_replies.py`.
+- [x] Update `CHANGELOG.md` — covered under the MCP Reshape Step 8–11
+      entries (registry-manifest contract + widened `_entry_payload` +
+      `pipeline_family` filter on `list_entries`).
 
 ### Acceptance evidence
 
-- `docs/realtime_refactor_plans/2026-04-16-milestone-22-registry-driven-pipeline-tracker.md`
-- `docs/realtime_refactor_milestone_22_submission_prompt.md`
-- All existing pipeline tracker tests pass; 3 new tests added.
+- `docs/realtime_refactor_plans/archive/2026-04-16-milestone-22-registry-driven-pipeline-tracker.md`
+- Existing pipeline tracker tests pass under the registry-driven lookup.
 
 ### Compatibility risks
 

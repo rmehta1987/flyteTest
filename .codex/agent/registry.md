@@ -47,6 +47,16 @@ You are responsible for:
    Be explicit when behavior is inferred rather than source-backed.
 5. Planner type names (`accepted_planner_types`, `produced_planner_types`) must
    match actual `planner_types.py` dataclass names.
+6. Family-extensibility contract: a new family lands as
+   `registry/_<family>.py` + planner types + `tasks/<family>.py` +
+   `workflows/<family>.py` + optional bundle in `bundles.py`.  If the work
+   pushes an edit into `mcp_contract.py`, `server.py`, or `planning.py`,
+   stop and escalate — the MCP layer stays family-agnostic.  See the
+   "Adding a Pipeline Family" walkthrough in `.codex/registry.md` for the
+   full step-by-step and the GATK catalog-only pattern.
+7. `execution_defaults` may seed `runtime_images`, `tool_databases`,
+   `module_loads`, and `slurm_resource_hints`.  `queue` and `account` MUST
+   NOT be seeded — those always come from the user.
 
 ## Validation
 

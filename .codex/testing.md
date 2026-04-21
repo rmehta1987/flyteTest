@@ -115,6 +115,74 @@ If the change touched docs, mention whether the README, DESIGN, or change logs w
 
 Be explicit. “Untested” is better than implied confidence.
 
+## MCP Reshape Patterns
+
+The reshaped MCP surface has a small set of recurring test shapes that should
+be used consistently when touching `run_task` / `run_workflow` / bundles /
+`$ref` resolution / staging.
+
+### Bundle availability (`bundles.py`)
+
+`_check_bundle_availability` and `list_bundles` must resolve paths at call
+time, not at import time.  Tests should build fixture trees under
+`tmp_path` and point the bundle's `backing_data` entries at those paths, not
+at `data/`.  A bundle whose backing data is missing should return
+`supported=False` with a structured reason — never raise at import.
+
+```python
+def test_bundle_available_when_fixtures_present(tmp_path):
+    genome = tmp_path / "genome.fa"
+    genome.write_text(">chr1\nACGT\n")
+    bundle = ResourceBundle(
+        name="example",
+        ...,
+        backing_data={"genome": genome},
+    )
+    result = _check_bundle_availability(bundle)
+    assert result.available is True
+```
+
+### `$ref` resolution and type-compatibility declines
+
+Typed-binding tests should cover the three binding forms — raw path,
+`$manifest`, and `$ref` — plus the type-mismatch paths:
+
+- Unknown `run_id` → `UnknownRunIdError` → `PlanDecline` with
+  `list_available_bindings` / durable-asset-index hints.
+- Unknown `output_name` → `UnknownOutputNameError` listing the known outputs.
+- `$ref`/`$manifest` produced type mismatches `accepted_planner_types` →
+  `BindingTypeMismatchError` pointing at `produced_planner_types` plus the
+  raw-path escape hatch.
+
+Use exact-name comparisons against `accepted_planner_types`, not structural
+equality.  Raw-path bindings are the deliberate type-check escape hatch —
+they must keep passing when type compatibility would otherwise reject them.
+
+### Preflight staging findings and failed-run replies
+
+`check_offline_staging` returns `StagingFinding` lists; tests should cover
+`container` / `tool_database` / `input_path` finding kinds, each with
+`not_found` / `not_readable` / `not_on_shared_fs` reasons.  The executor-
+level test should verify that a staging failure short-circuits `sbatch`
+(no subprocess call) and returns
+`RunReply(execution_status="failed", ...)` with the finding list in
+`limitations` — the artifact must stay on disk so the caller can fix the
+path and replay.
+
+### Decline-to-bundles shape
+
+When a run tool declines because the resolver could not materialize a
+binding, the reply must be a `PlanDecline` carrying:
+
+- `suggested_bundles: tuple[SuggestedBundle, ...]` — curated starter bundles
+  whose `applies_to` overlaps the missing planner type.
+- `suggested_prior_runs: tuple[SuggestedPriorRun, ...]` — durable-index
+  entries whose `produced_type` matches.
+- `next_steps: tuple[str, ...]` — concrete recovery actions
+  (e.g. `"Call list_bundles(pipeline_family='annotation') to browse ..."`).
+
+A decline that returns only a bare error string is a test failure.
+
 ## Common Risks To Check
 
 - task/workflow signature drift from registry entries
