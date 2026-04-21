@@ -71,7 +71,7 @@ call sites and documentation.
 | 21 | Reshape `run_task` (bindings + dry_run + RunReply) | §2 / §3b / §3g / §3i | `prompts/step_21_run_task_reshape.md` | Complete |
 | 22 | Reshape `run_workflow` (symmetric with `run_task`) | §3 / §3b / §3g / §3i | `prompts/step_22_run_workflow_reshape.md` | Complete |
 | 23 | Wire `check_offline_staging` into `SlurmWorkflowSpecExecutor.submit` | §8 (executor) | `prompts/step_23_staging_preflight_slurm_submit.md` | Complete |
-| 24 | Add `validate_run_recipe` MCP tool | §11 | `prompts/step_24_validate_run_recipe.md` | Not started |
+| 24 | Add `validate_run_recipe` MCP tool | §11 | `prompts/step_24_validate_run_recipe.md` | Complete |
 | 25 | Register `list_bundles` / `load_bundle` on the server | §4 (server) | `prompts/step_25_bundle_tools_server.md` | Not started |
 
 ### Sweep + docs

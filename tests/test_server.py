@@ -108,12 +108,13 @@ from flytetest.server import (
     run_slurm_recipe,
     run_task,
     run_workflow,
+    validate_run_recipe,
     _execute_workflow_direct,
     wait_for_slurm_job,
 )
 from flytetest.planning import plan_typed_request
 from flytetest.registry import InterfaceField, RegistryCompatibilityMetadata, RegistryEntry, get_entry
-from flytetest.spec_artifacts import load_workflow_spec_artifact, artifact_from_typed_plan, save_workflow_spec_artifact
+from flytetest.spec_artifacts import load_workflow_spec_artifact, artifact_from_typed_plan, save_workflow_spec_artifact, SavedWorkflowSpecArtifact
 from flytetest.spec_executor import (
     DEFAULT_LOCAL_RUN_RECORD_FILENAME,
     DEFAULT_SLURM_RUN_RECORD_FILENAME,
@@ -4323,3 +4324,247 @@ class StagingPreflightServerTests(TestCase):
 
         self.assertTrue(result_2["supported"])
         self.assertEqual(len(sbatch_calls), 1, "sbatch must be called exactly once after the path is fixed")
+
+
+class ValidateRunRecipeTests(TestCase):
+    """Step 24: validate_run_recipe MCP tool (inspect-before-execute).
+
+    These tests keep the current contract explicit and guard the documented
+    behavior against regression.
+"""
+
+    def _build_artifact(
+        self,
+        tmp_path: Path,
+        *,
+        runtime_images: dict[str, str],
+        tool_databases: dict[str, str],
+    ) -> "SavedWorkflowSpecArtifact":
+        """Build a minimal BUSCO Slurm artifact with controlled staging paths."""
+        result_dir = tmp_path / "repeat_filter_results_validate"
+        result_dir.mkdir(exist_ok=True)
+        # Create the output files so binding validation (path-existence check) passes.
+        gff3_path = result_dir / "all_repeats_removed.gff3"
+        proteins_path = result_dir / "all_repeats_removed.proteins.fa"
+        gff3_path.write_text("##gff-version 3\n")
+        proteins_path.write_text(">seq\nACGT\n")
+        (result_dir / "run_manifest.json").write_text(
+            json.dumps({
+                "workflow": "annotation_repeat_filtering",
+                "assumptions": [],
+                "inputs": {"reference_genome": "data/braker3/reference/genome.fa"},
+                "outputs": {
+                    "all_repeats_removed_gff3": str(gff3_path),
+                    "final_proteins_fasta": str(proteins_path),
+                },
+            }, indent=2)
+        )
+        typed_plan = plan_typed_request(
+            biological_goal="annotation_qc_busco",
+            target_name="annotation_qc_busco",
+            source_prompt="validate_run_recipe test",
+            manifest_sources=(result_dir,),
+            runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+            resource_request={"cpu": 4, "memory": "16Gi", "queue": "batch", "walltime": "01:00:00"},
+            execution_profile="slurm",
+            runtime_images=runtime_images,
+            tool_databases=tool_databases,
+        )
+        return artifact_from_typed_plan(typed_plan, created_at="2026-04-21T00:00:00Z")
+
+    def test_happy_path_returns_supported_true_with_empty_findings(self) -> None:
+        """When all bindings resolve and staging is clean, validate returns supported=True.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            sif_path = tmp_path / "busco.sif"
+            sif_path.write_bytes(b"fake-sif")
+            db_path = tmp_path / "busco_db"
+            db_path.mkdir()
+            artifact = self._build_artifact(
+                tmp_path,
+                runtime_images={"busco_sif": str(sif_path)},
+                tool_databases={"busco_lineage_dir": str(db_path)},
+            )
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+            result = validate_run_recipe(
+                str(artifact_path),
+                execution_profile="slurm",
+                shared_fs_roots=[str(tmp_path)],
+            )
+
+        self.assertTrue(result["supported"], f"unexpected findings: {result['findings']}")
+        self.assertEqual(len(result["findings"]), 0, "happy path must produce no findings")
+        self.assertEqual(result["execution_profile"], "slurm")
+        self.assertEqual(result["recipe_id"], artifact_path.stem)
+
+    def test_ref_to_unknown_run_id_returns_binding_finding(self) -> None:
+        """A $ref binding pointing at a non-existent run_id produces a binding finding.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            sif_path = tmp_path / "busco.sif"
+            sif_path.write_bytes(b"fake-sif")
+            db_path = tmp_path / "busco_db"
+            db_path.mkdir()
+            artifact = self._build_artifact(
+                tmp_path,
+                runtime_images={"busco_sif": str(sif_path)},
+                tool_databases={"busco_lineage_dir": str(db_path)},
+            )
+            # Inject a $ref binding that references an unknown run_id.
+            artifact_with_ref = replace(
+                artifact,
+                binding_plan=replace(
+                    artifact.binding_plan,
+                    explicit_user_bindings={
+                        **dict(artifact.binding_plan.explicit_user_bindings),
+                        "ReferenceGenome": {"$ref": {"run_id": "nonexistent_run_xyz", "output_name": "reference"}},
+                    },
+                ),
+            )
+            artifact_path = save_workflow_spec_artifact(artifact_with_ref, tmp_path / "recipe.json")
+            result = validate_run_recipe(
+                str(artifact_path),
+                execution_profile="local",
+            )
+
+        self.assertFalse(result["supported"])
+        binding_findings = [f for f in result["findings"] if f["kind"] == "binding"]
+        self.assertEqual(len(binding_findings), 1)
+        self.assertEqual(binding_findings[0]["key"], "ReferenceGenome")
+        self.assertIn("nonexistent_run_xyz", binding_findings[0]["reason"])
+
+    def test_unreachable_container_returns_container_finding(self) -> None:
+        """An artifact with a non-existent container image path returns a container finding.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            db_path = tmp_path / "busco_db"
+            db_path.mkdir()
+            artifact = self._build_artifact(
+                tmp_path,
+                runtime_images={"busco_sif": "/nonexistent/path/busco.sif"},
+                tool_databases={"busco_lineage_dir": str(db_path)},
+            )
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+            result = validate_run_recipe(
+                str(artifact_path),
+                execution_profile="local",
+            )
+
+        self.assertFalse(result["supported"])
+        container_findings = [f for f in result["findings"] if f["kind"] == "container"]
+        self.assertEqual(len(container_findings), 1)
+        self.assertEqual(container_findings[0]["key"], "busco_sif")
+        self.assertIn("/nonexistent/path/busco.sif", container_findings[0]["path"])
+
+    def test_missing_tool_database_returns_tool_database_finding(self) -> None:
+        """An artifact with a non-existent tool_database path returns a tool_database finding.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            sif_path = tmp_path / "busco.sif"
+            sif_path.write_bytes(b"fake-sif")
+            artifact = self._build_artifact(
+                tmp_path,
+                runtime_images={"busco_sif": str(sif_path)},
+                tool_databases={"busco_lineage_dir": str(tmp_path / "missing_db")},
+            )
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+            result = validate_run_recipe(
+                str(artifact_path),
+                execution_profile="local",
+            )
+
+        self.assertFalse(result["supported"])
+        db_findings = [f for f in result["findings"] if f["kind"] == "tool_database"]
+        self.assertEqual(len(db_findings), 1)
+        self.assertEqual(db_findings[0]["key"], "busco_lineage_dir")
+
+    def test_idempotent_two_calls_return_identical_findings(self) -> None:
+        """Calling validate_run_recipe twice on the same artifact yields identical findings.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            sif_path = tmp_path / "busco.sif"
+            sif_path.write_bytes(b"fake-sif")
+            artifact = self._build_artifact(
+                tmp_path,
+                runtime_images={"busco_sif": str(sif_path)},
+                tool_databases={"busco_lineage_dir": str(tmp_path / "missing_db")},
+            )
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+            result_1 = validate_run_recipe(str(artifact_path), execution_profile="local")
+            result_2 = validate_run_recipe(str(artifact_path), execution_profile="local")
+
+        self.assertEqual(result_1["findings"], result_2["findings"], "repeated calls must be idempotent")
+
+    def test_local_profile_no_shared_fs_roots_flags_missing_but_not_shared_fs(self) -> None:
+        """local profile without shared_fs_roots flags missing paths but not on-shared-fs issues.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            sif_path = tmp_path / "busco.sif"
+            sif_path.write_bytes(b"fake-sif")
+            # tool_database does not exist — should produce not_found
+            artifact = self._build_artifact(
+                tmp_path,
+                runtime_images={"busco_sif": str(sif_path)},
+                tool_databases={"busco_lineage_dir": str(tmp_path / "missing_db")},
+            )
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+            # No shared_fs_roots — local profile
+            result = validate_run_recipe(str(artifact_path), execution_profile="local")
+
+        self.assertFalse(result["supported"])
+        reasons = [f["reason"] for f in result["findings"]]
+        # Missing path IS flagged
+        self.assertIn("not_found", reasons)
+        # Shared-FS membership NOT flagged
+        self.assertNotIn("not_on_shared_fs", reasons)
+
+    def test_slurm_profile_empty_shared_fs_roots_flags_staged_paths(self) -> None:
+        """slurm profile with empty shared_fs_roots flags every staged path (no false negatives).
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            sif_path = tmp_path / "busco.sif"
+            sif_path.write_bytes(b"fake-sif")
+            db_path = tmp_path / "busco_db"
+            db_path.mkdir()
+            # Both paths exist on local FS but are NOT on any declared shared root.
+            artifact = self._build_artifact(
+                tmp_path,
+                runtime_images={"busco_sif": str(sif_path)},
+                tool_databases={"busco_lineage_dir": str(db_path)},
+            )
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+            # Explicit empty list — no shared roots declared for slurm.
+            result = validate_run_recipe(
+                str(artifact_path),
+                execution_profile="slurm",
+                shared_fs_roots=[],
+            )
+
+        self.assertFalse(result["supported"])
+        reasons = [f["reason"] for f in result["findings"]]
+        self.assertIn("not_on_shared_fs", reasons, "existing staged paths must be flagged when no roots declared")
+        # Both container and tool_database should be flagged
+        kinds = {f["kind"] for f in result["findings"]}
+        self.assertIn("container", kinds)
+        self.assertIn("tool_database", kinds)

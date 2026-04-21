@@ -41,6 +41,7 @@ from flytetest.mcp_replies import (
     RunReply,
     SuggestedBundle,
     SuggestedPriorRun,
+    ValidateRecipeReply,
 )
 from flytetest.mcp_contract import (
     DECLINE_CATEGORY_CODES,
@@ -130,6 +131,7 @@ from flytetest.spec_executor import (
     load_local_run_record,
     load_slurm_run_record,
 )
+from flytetest.staging import check_offline_staging
 from flytetest.specs import ResourceSpec, RuntimeImageSpec
 
 
@@ -2688,6 +2690,86 @@ def run_slurm_recipe(artifact_path: str) -> dict[str, object]:
     return _run_slurm_recipe_impl(artifact_path)
 
 
+def validate_run_recipe(
+    artifact_path: str,
+    execution_profile: str = "local",
+    shared_fs_roots: list[str] | None = None,
+) -> dict[str, object]:
+    """Validate a frozen recipe without executing it.
+
+    Runs the same preflight checks a real execution would: inputs resolve
+    through the manifest + durable asset index, containers and tool databases
+    exist, and (for slurm) every staged path sits on a compute-visible root.
+    Safe to call repeatedly — never submits, never writes, never mutates.
+
+    Args:
+        artifact_path: Path to the frozen ``WorkflowSpec`` artifact to validate.
+        execution_profile: ``"local"`` or ``"slurm"``.  Determines whether
+            shared-FS membership is enforced on staged paths.
+        shared_fs_roots: Filesystem prefixes visible to compute nodes (Slurm
+            only).  When ``None`` (default), the shared-FS check is skipped.
+            When an explicit empty list is provided with ``execution_profile=
+            "slurm"``, every staged path that exists locally is flagged as
+            ``not_on_shared_fs`` — no false negatives.
+
+    Returns:
+        ``asdict(ValidateRecipeReply)`` with ``supported``, ``recipe_id``,
+        ``execution_profile``, and ``findings`` (list of finding dicts each
+        with ``kind``, ``key``, optional ``path``, and ``reason``).
+    """
+    artifact = load_workflow_spec_artifact(Path(artifact_path))
+    try:
+        durable_refs = load_durable_asset_index(DEFAULT_RUN_DIR)
+    except (OSError, ValueError):
+        durable_refs = ()
+
+    findings: list[dict[str, str]] = []
+
+    # Re-validate each explicit binding to catch paths that have disappeared
+    # or $ref bindings that can no longer be satisfied.
+    for key, value in artifact.binding_plan.explicit_user_bindings.items():
+        if not isinstance(value, Mapping):
+            continue
+        try:
+            _materialize_bindings({key: value}, durable_index=durable_refs)
+        except Exception as exc:
+            findings.append({"kind": "binding", "key": key, "reason": str(exc)})
+
+    roots = tuple(Path(r) for r in (shared_fs_roots or []))
+
+    if execution_profile == "slurm" and shared_fs_roots is not None and not roots:
+        # No shared roots declared for slurm profile: conservatively flag
+        # every existing staged path as not_on_shared_fs — no false negatives.
+        ws = artifact.workflow_spec
+        for attr, kind in (("runtime_images", "container"), ("tool_databases", "tool_database")):
+            for key, path in (getattr(ws, attr, {}) or {}).items():
+                p = Path(path)
+                if p.exists():
+                    findings.append({"kind": kind, "key": key, "path": path, "reason": "not_on_shared_fs"})
+                else:
+                    try:
+                        p.lstat()
+                        reason = "not_readable"
+                    except OSError:
+                        reason = "not_found"
+                    findings.append({"kind": kind, "key": key, "path": path, "reason": reason})
+    else:
+        for sf in check_offline_staging(
+            artifact.workflow_spec,
+            roots,
+            execution_profile=execution_profile,
+        ):
+            findings.append({"kind": sf.kind, "key": sf.key, "path": sf.path, "reason": sf.reason})
+
+    recipe_id = Path(artifact_path).stem
+    return asdict(ValidateRecipeReply(
+        supported=not findings,
+        recipe_id=recipe_id,
+        execution_profile=execution_profile,
+        findings=tuple(findings),
+    ))
+
+
 # ---------------------------------------------------------------------------
 # Slurm log-tail helper
 # ---------------------------------------------------------------------------
@@ -4082,6 +4164,7 @@ def create_mcp_server(fastmcp_cls: Any | None = None) -> Any:
     mcp.tool()(prepare_run_recipe)
     mcp.tool()(run_local_recipe)
     mcp.tool()(run_slurm_recipe)
+    mcp.tool()(validate_run_recipe)
     mcp.tool()(list_slurm_run_history)
     mcp.tool()(monitor_slurm_job)
     mcp.tool()(retry_slurm_job)

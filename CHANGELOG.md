@@ -32,6 +32,13 @@ Entry template:
 
 ## Unreleased
 
+### MCP Reshape Step 24 — Add `validate_run_recipe` MCP tool (inspect-before-execute) (2026-04-21)
+
+- [x] 2026-04-21 added `validate_run_recipe(artifact_path, execution_profile, shared_fs_roots)` to `src/flytetest/server.py`: loads the frozen artifact, re-validates each `explicit_user_bindings` entry via `_materialize_bindings` (catching all exceptions into `findings` with `kind="binding"`), then runs `check_offline_staging` for staging findings; returns `asdict(ValidateRecipeReply(...))` with `supported`, `recipe_id` (artifact path stem), `execution_profile`, and `findings`. Never submits, writes, or mutates — safe to call repeatedly.
+- [x] 2026-04-21 added conservative no-roots-declared logic: when `execution_profile="slurm"` and `shared_fs_roots=[]` (explicitly empty, not None), every staged path that exists locally is flagged as `not_on_shared_fs` (no false negatives); `shared_fs_roots=None` (default) skips the shared-FS check for both profiles.
+- [x] 2026-04-21 imported `ValidateRecipeReply` from `flytetest.mcp_replies` and `check_offline_staging` from `flytetest.staging` in `server.py`; added `VALIDATE_RUN_RECIPE_TOOL_NAME = "validate_run_recipe"` to `mcp_contract.py` and appended it to `MCP_TOOL_NAMES`; registered `mcp.tool()(validate_run_recipe)` in `create_mcp_server()`.
+- [x] 2026-04-21 added `ValidateRunRecipeTests` (7 tests) in `tests/test_server.py` covering: happy path (all bindings + staging clean → `supported=True`), `$ref` to unknown run_id (`kind="binding"`, run_id in reason), unreachable container (`kind="container"`), missing tool_database (`kind="tool_database"`), idempotency (two calls → identical findings), local profile without shared roots (flags missing paths, not shared-fs), slurm with empty roots (flags staged paths as `not_on_shared_fs`); verified with `python -m compileall` and `python -m pytest tests/test_server.py::ValidateRunRecipeTests` (7 passed).
+
 ### MCP Reshape Step 23 — Staging preflight gate for Slurm submit (2026-04-21)
 
 - [x] 2026-04-21 added `runtime_images: dict[str, str] = field(default_factory=dict)` to `WorkflowSpec` in `src/flytetest/specs.py` so the executor can inspect container-image paths; updated `artifact_from_typed_plan` in `src/flytetest/spec_artifacts.py` to propagate the plan-level `runtime_images` into the frozen `WorkflowSpec` dict when the spec's own field is empty (same §8 resolution order as `tool_databases`).
