@@ -32,6 +32,13 @@ Entry template:
 
 ## Unreleased
 
+### MCP Reshape Step 26 — Call-site sweep for `run_task` / `run_workflow` BC migration (2026-04-21)
+
+- [x] 2026-04-21 removed three deleted alias types (`AnnotationRefinementResultBundle`, `ConsensusAnnotationResultBundle`, `ProteinAlignmentChunkResult`) from `src/flytetest/tasks/pasa.py`, `src/flytetest/tasks/consensus.py`, and `src/flytetest/tasks/protein_evidence.py`: all three were empty subclasses that were merged back into their parent classes (`PasaGeneModelUpdateResultBundle`, `EvmConsensusResultBundle`, `ExonerateChunkAlignmentResult`) in the working-tree `types/assets.py` refactor; call sites in each task module now use the parent class directly.
+- [x] 2026-04-21 removed three test methods that tested the deleted aliases (`AnnotationRefinementResultBundleTests.test_*_is_subtype_of_*`, `ProteinAlignmentChunkResultTests.test_*_is_subtype_of_*`, `ConsensusAnnotationResultBundleTests.test_*_is_subtype_of_*`) from `tests/test_pasa_update.py`, `tests/test_protein_evidence.py`, and `tests/test_consensus.py`; the containing test classes remain with their other test methods intact.
+- [x] 2026-04-21 updated both `run_task` example snippets in `docs/mcp_showcase.md` from the old `task_name=` / `task_inputs=` kwargs to the new positional-name + `inputs=` / `source_prompt=` shape.
+- [x] 2026-04-21 verified: `rg -n 'task_name=|task_inputs=' docs/` → zero hits in `run_task` contexts; `rg -n 'inputs=\{' tests/ | grep run_task` → one surviving hit (valid: `run_task("fastqc", inputs={"left":…})` is a "missing required input" decline test using the correct new shape); `pytest tests/` → 649 passed, 1 skipped, 38 subtests passed.
+
 ### MCP Reshape Step 25 — Register `list_bundles` / `load_bundle` MCP tools (2026-04-21)
 
 - [x] 2026-04-21 added `list_bundles(pipeline_family=None)` and `load_bundle(name)` to `src/flytetest/server.py` as thin wrappers over `flytetest.bundles`: `list_bundles` delegates to `bundles.list_bundles` and returns structured availability entries; `load_bundle` delegates to `bundles.load_bundle`, converting raw `KeyError` for unknown bundle names into a structured decline (`supported=False`, `next_steps=["Call list_bundles() ..."]`) instead of propagating an uncaught exception.

@@ -497,19 +497,6 @@ class ProteinEvidenceWorkflowTests(TestCase):
 class ProteinAlignmentChunkResultTests(TestCase):
     """Tests for the biology-facing ProteinAlignmentChunkResult generic sibling type."""
 
-    def test_protein_alignment_chunk_result_is_subtype_of_exonerate_chunk_alignment_result(self):
-        """ProteinAlignmentChunkResult must satisfy isinstance checks against the tool-branded type."""
-        from flytetest.types import ExonerateChunkAlignmentResult, ProteinAlignmentChunkResult
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp)
-            asset = ProteinAlignmentChunkResult(
-                chunk_label="chunk_0001",
-                output_dir=tmp_path,
-                protein_chunk_fasta_path=tmp_path / "chunk_0001.fa",
-                raw_output_path=tmp_path / "chunk_0001.exonerate.out",
-            )
-            self.assertIsInstance(asset, ExonerateChunkAlignmentResult)
-
     def test_collect_results_emits_generic_raw_alignment_chunks_dir_key(self):
         """New manifests must include the generic 'raw_alignment_chunks_dir' output key."""
         with tempfile.TemporaryDirectory() as tmp:

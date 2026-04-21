@@ -39,7 +39,6 @@ from flytetest.manifest_io import (
     write_json as _write_json,
 )
 from flytetest.types import (
-    AnnotationRefinementResultBundle,
     AssetToolProvenance,
     CleanedTranscriptDataset,
     CombinedTrinityTranscriptAsset,
@@ -1320,7 +1319,7 @@ def collect_pasa_update_results(
             )
         )
 
-    result_bundle = AnnotationRefinementResultBundle(
+    result_bundle = PasaGeneModelUpdateResultBundle(
         result_dir=out_dir,
         staged_inputs_dir=copied_staged_inputs_dir,
         load_round_root=copied_load_root,

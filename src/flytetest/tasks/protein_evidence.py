@@ -33,7 +33,6 @@ from flytetest.types import (
     ChunkedProteinFastaAsset,
     EvmProteinEvidenceGff3Asset,
     ExonerateChunkAlignmentResult,
-    ProteinAlignmentChunkResult,
     ProteinEvidenceResultBundle,
     ProteinReferenceDatasetAsset,
     ReferenceGenome,
@@ -684,7 +683,7 @@ def exonerate_concat_results(
         raw_output_path = _raw_exonerate_output(copied_raw_dir)
         chunk_label = raw_output_path.name.removesuffix(".exonerate.out")
         raw_chunk_assets.append(
-            ProteinAlignmentChunkResult(
+            ExonerateChunkAlignmentResult(
                 chunk_label=chunk_label,
                 output_dir=copied_raw_dir,
                 protein_chunk_fasta_path=chunk_assets_by_label[chunk_label].chunk_fasta_path,

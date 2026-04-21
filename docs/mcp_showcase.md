@@ -885,11 +885,12 @@ Example — run FastQC on paired-end reads:
 
 ```
 run_task(
-  task_name="fastqc",
-  task_inputs={
+  "fastqc",
+  inputs={
     "left": "data/transcriptomics/sample_R1.fastq.gz",
     "right": "data/transcriptomics/sample_R2.fastq.gz",
-  }
+  },
+  source_prompt="Run FastQC on paired-end reads.",
 )
 ```
 
@@ -897,11 +898,12 @@ Example — extract proteins with gffread:
 
 ```
 run_task(
-  task_name="gffread_proteins",
-  task_inputs={
+  "gffread_proteins",
+  inputs={
     "annotation_gff3": "results/braker3_results_20260331/braker.gff3",
     "genome_fasta": "data/reference/genome.fa",
-  }
+  },
+  source_prompt="Extract proteins from gene models.",
 )
 ```
 

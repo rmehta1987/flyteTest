@@ -847,29 +847,6 @@ class ConsensusEvmWorkflowTests(TestCase):
 class ConsensusAnnotationResultBundleTests(TestCase):
     """Tests for the biology-facing ConsensusAnnotationResultBundle generic sibling type."""
 
-    def test_consensus_annotation_result_bundle_is_subtype_of_evm_consensus_result_bundle(self):
-        """ConsensusAnnotationResultBundle must satisfy isinstance checks against the tool-branded type."""
-        from flytetest.types import ConsensusAnnotationResultBundle, EvmConsensusResultBundle
-
-        with tempfile.TemporaryDirectory() as tmp:
-            p = Path(tmp)
-            asset = ConsensusAnnotationResultBundle(
-                result_dir=p,
-                pre_evm_bundle_dir=p,
-                execution_input_dir=p,
-                partition_dir=p,
-                command_dir=p,
-                execution_dir=p,
-                recombined_dir=p,
-                weights_path=p / "evm.weights",
-                partition_listing_path=p / "partition_list.txt",
-                commands_path=p / "commands.list",
-                concatenated_gff3_path=p / "EVM.all.gff3",
-                blank_lines_removed_gff3_path=p / "EVM.all.removed.gff3",
-                sorted_gff3_path=p / "EVM.all.sort.gff3",
-            )
-            self.assertIsInstance(asset, EvmConsensusResultBundle)
-
     def test_collect_evm_results_emits_generic_consensus_annotation_result_bundle_key(self):
         """New manifests must include the generic 'consensus_annotation_result_bundle' asset key."""
         with tempfile.TemporaryDirectory() as tmp:

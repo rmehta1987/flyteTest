@@ -406,25 +406,6 @@ class PasaUpdateWorkflowTests(TestCase):
 class AnnotationRefinementResultBundleTests(TestCase):
     """Tests for the biology-facing AnnotationRefinementResultBundle generic sibling type."""
 
-    def test_annotation_refinement_result_bundle_is_subtype_of_pasa_gene_model_update_result_bundle(self):
-        """AnnotationRefinementResultBundle must satisfy isinstance checks against the tool-branded type."""
-        from flytetest.types import AnnotationRefinementResultBundle, PasaGeneModelUpdateResultBundle
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp)
-            gff = tmp_path / "out.gff3"
-            gff.write_text("##gff-version 3\n")
-            asset = AnnotationRefinementResultBundle(
-                result_dir=tmp_path,
-                staged_inputs_dir=tmp_path / "staged",
-                load_round_root=tmp_path / "load",
-                update_round_root=tmp_path / "update",
-                finalized_dir=tmp_path / "finalized",
-                final_updated_gff3_path=gff,
-                final_removed_gff3_path=gff,
-                final_sorted_gff3_path=gff,
-            )
-            self.assertIsInstance(asset, PasaGeneModelUpdateResultBundle)
-
     def test_collect_pasa_update_results_emits_generic_annotation_refinement_bundle_key(self):
         """New manifests must include the generic 'annotation_refinement_bundle' asset key."""
         with tempfile.TemporaryDirectory() as tmp:
