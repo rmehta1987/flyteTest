@@ -6,7 +6,6 @@
 
 from flytetest.types.assets import (
     AbInitioResultBundle,
-    AnnotationRefinementResultBundle,
     AssetToolProvenance,
     Braker3InputBundleAsset,
     Braker3NormalizedGff3Asset,
@@ -17,7 +16,6 @@ from flytetest.types.assets import (
     ChunkedProteinFastaAsset,
     EvmBraker3InputBundle,
     EvmCommandSetAsset,
-    ConsensusAnnotationResultBundle,
     EvmConsensusResultBundle,
     EvmExecutionInputBundleAsset,
     EvmInputPreparationBundle,
@@ -30,7 +28,6 @@ from flytetest.types.assets import (
     EvmTranscriptInputBundleAsset,
     EvmProteinEvidenceGff3Asset,
     ExonerateChunkAlignmentResult,
-    ProteinAlignmentChunkResult,
     ManifestSerializable,
     MergedBamAsset,
     PasaAlignmentAssemblyResult,
@@ -59,7 +56,6 @@ from flytetest.types.assets import (
 
 __all__ = [
     "AbInitioResultBundle",
-    "AnnotationRefinementResultBundle",
     "AssetToolProvenance",
     "Braker3InputBundleAsset",
     "Braker3NormalizedGff3Asset",
@@ -67,7 +63,6 @@ __all__ = [
     "Braker3ResultBundle",
     "CleanedTranscriptDataset",
     "EvmBraker3InputBundle",
-    "ConsensusAnnotationResultBundle",
     "EvmCommandSetAsset",
     "EvmConsensusResultBundle",
     "EvmExecutionInputBundleAsset",
@@ -83,7 +78,6 @@ __all__ = [
     "ChunkedProteinFastaAsset",
     "EvmProteinEvidenceGff3Asset",
     "ExonerateChunkAlignmentResult",
-    "ProteinAlignmentChunkResult",
     "ManifestSerializable",
     "MergedBamAsset",
     "PasaAlignmentAssemblyResult",
