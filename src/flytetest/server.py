@@ -1772,10 +1772,13 @@ def run_task(
             "slurm" if execution_profile == "slurm" else "local"
         )
         if profile_value == "slurm":
+            _shared_fs = tuple(
+                Path(r) for r in ((resources or {}).get("shared_fs_roots") or [])
+            )
             slurm_result = SlurmWorkflowSpecExecutor(
                 run_root=DEFAULT_RUN_DIR,
                 repo_root=REPO_ROOT,
-            ).submit(Path(artifact_path))
+            ).submit(Path(artifact_path), shared_fs_roots=_shared_fs)
             run_record_path_str = (
                 str(slurm_result.run_record.run_record_path)
                 if slurm_result.run_record is not None
@@ -2051,10 +2054,13 @@ def run_workflow(
             "slurm" if execution_profile == "slurm" else "local"
         )
         if profile_value == "slurm":
+            _shared_fs = tuple(
+                Path(r) for r in ((resources or {}).get("shared_fs_roots") or [])
+            )
             slurm_result = SlurmWorkflowSpecExecutor(
                 run_root=DEFAULT_RUN_DIR,
                 repo_root=REPO_ROOT,
-            ).submit(Path(artifact_path))
+            ).submit(Path(artifact_path), shared_fs_roots=_shared_fs)
             run_record_path_str = (
                 str(slurm_result.run_record.run_record_path)
                 if slurm_result.run_record is not None

@@ -175,6 +175,7 @@ class WorkflowSpec(SpecSerializable):
     default_execution_profile: str | None = None
     replay_metadata: dict[str, Any] = field(default_factory=dict)
     tool_databases: dict[str, str] = field(default_factory=dict)
+    runtime_images: dict[str, str] = field(default_factory=dict)
     generated_entity_record: GeneratedEntityRecord | None = None
     metadata_only: bool = True
 

@@ -52,6 +52,7 @@ from flytetest.spec_executor import (
     save_slurm_run_record,
     SlurmRunRecord,
 )
+from flytetest.staging import StagingFinding, check_offline_staging
 
 
 def _typed_plan(
@@ -2131,4 +2132,271 @@ class DurableAssetIndexIntegrationTests(TestCase):
 
         self.assertEqual(loaded_record.run_id, "legacy-run-001")
         self.assertEqual(loaded_refs, [])
+
+
+def _build_slurm_staging_artifact(
+    tmp_path: Path,
+    *,
+    runtime_images: dict[str, str] | None = None,
+    tool_databases: dict[str, str] | None = None,
+):
+    """Build one Slurm-profile artifact with configurable staging paths for preflight tests."""
+    result_dir = tmp_path / "repeat_filter_results_staging"
+    result_dir.mkdir(exist_ok=True)
+    (result_dir / "run_manifest.json").write_text(
+        json.dumps(
+            {
+                "workflow": "annotation_repeat_filtering",
+                "assumptions": [],
+                "inputs": {"reference_genome": "data/braker3/reference/genome.fa"},
+                "outputs": {
+                    "all_repeats_removed_gff3": str(result_dir / "all_repeats_removed.gff3"),
+                    "final_proteins_fasta": str(result_dir / "all_repeats_removed.proteins.fa"),
+                },
+            },
+            indent=2,
+        )
+    )
+    typed_plan = _typed_plan(
+        "annotation_qc_busco",
+        source_prompt="staging preflight test",
+        manifest_sources=(result_dir,),
+        runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+        resource_request={"cpu": 4, "memory": "16Gi", "queue": "batch", "walltime": "01:00:00"},
+        execution_profile="slurm",
+        runtime_images=runtime_images if runtime_images is not None else {},
+        tool_databases=tool_databases if tool_databases is not None else {},
+    )
+    return artifact_from_typed_plan(typed_plan, created_at="2026-04-21T00:00:00Z")
+
+
+class StagingPreflightTests(TestCase):
+    """Step 23: SlurmWorkflowSpecExecutor gates sbatch on check_offline_staging.
+
+    These tests keep the current contract explicit and document the pre-submission
+    staging gate introduced in Step 23.
+"""
+
+    def _fake_sbatch(self, calls: list[list[str]]):
+        """Return a fake sbatch runner that records its invocations."""
+        def runner(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            calls.append(list(args))
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 99001\n", stderr="")
+        return runner
+
+    def test_unreachable_container_blocks_sbatch(self) -> None:
+        """An artifact with a non-existent container image path must block sbatch.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
+        sbatch_calls: list[list[str]] = []
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            valid_db = tmp_path / "busco_db"
+            valid_db.mkdir()
+            # Override registry defaults: bad container path, valid tool_database.
+            artifact = _build_slurm_staging_artifact(
+                tmp_path,
+                runtime_images={"busco_sif": "/nonexistent/busco.sif"},
+                tool_databases={"busco_lineage_dir": str(valid_db)},
+            )
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+            result = SlurmWorkflowSpecExecutor(
+                run_root=tmp_path / "runs",
+                repo_root=tmp_path,
+                sbatch_runner=self._fake_sbatch(sbatch_calls),
+                command_available=lambda cmd: cmd == "sbatch",
+            ).submit(artifact_path, shared_fs_roots=(tmp_path,))
+
+        self.assertFalse(result.supported)
+        self.assertEqual(sbatch_calls, [], "sbatch must not be called when staging fails")
+        self.assertEqual(len(result.limitations), 1)
+        finding_str = result.limitations[0]
+        self.assertIn("container", finding_str)
+        self.assertIn("busco_sif", finding_str)
+        self.assertIn("not_found", finding_str)
+        self.assertIsNone(result.run_record, "no run record must be created for a staging failure")
+
+    def test_unreachable_tool_database_blocks_sbatch(self) -> None:
+        """An artifact with a non-existent tool_database path must block sbatch.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
+        sbatch_calls: list[list[str]] = []
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            valid_sif = tmp_path / "busco.sif"
+            valid_sif.write_bytes(b"fake-sif")
+            # Override registry defaults: valid container path, bad tool_database.
+            artifact = _build_slurm_staging_artifact(
+                tmp_path,
+                runtime_images={"busco_sif": str(valid_sif)},
+                tool_databases={"busco_lineage_dir": str(tmp_path / "missing_busco_db")},
+            )
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+            result = SlurmWorkflowSpecExecutor(
+                run_root=tmp_path / "runs",
+                repo_root=tmp_path,
+                sbatch_runner=self._fake_sbatch(sbatch_calls),
+                command_available=lambda cmd: cmd == "sbatch",
+            ).submit(artifact_path, shared_fs_roots=(tmp_path,))
+
+        self.assertFalse(result.supported)
+        self.assertEqual(sbatch_calls, [], "sbatch must not be called when staging fails")
+        self.assertEqual(len(result.limitations), 1)
+        finding_str = result.limitations[0]
+        self.assertIn("tool_database", finding_str)
+        self.assertIn("busco_lineage_dir", finding_str)
+        self.assertIn("not_found", finding_str)
+
+    def test_happy_path_on_shared_fs_root_calls_sbatch(self) -> None:
+        """When all paths exist under the shared FS root, sbatch must be called.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
+        sbatch_calls: list[list[str]] = []
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            sif_path = tmp_path / "busco.sif"
+            sif_path.write_bytes(b"fake-sif")
+            db_path = tmp_path / "busco_db"
+            db_path.mkdir()
+            # Override both registry defaults with existing paths under tmp_path (shared root).
+            artifact = _build_slurm_staging_artifact(
+                tmp_path,
+                runtime_images={"busco_sif": str(sif_path)},
+                tool_databases={"busco_lineage_dir": str(db_path)},
+            )
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+            result = SlurmWorkflowSpecExecutor(
+                run_root=tmp_path / "runs",
+                repo_root=tmp_path,
+                sbatch_runner=self._fake_sbatch(sbatch_calls),
+                command_available=lambda cmd: cmd == "sbatch",
+            ).submit(artifact_path, shared_fs_roots=(tmp_path,))
+
+        self.assertTrue(result.supported)
+        self.assertEqual(len(sbatch_calls), 1, "sbatch must be called exactly once for a clean staging check")
+        self.assertIsNotNone(result.run_record)
+
+    def test_broken_symlink_surfaces_as_not_readable(self) -> None:
+        """A symlink whose target is absent must yield reason='not_readable'.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
+        sbatch_calls: list[list[str]] = []
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            valid_sif = tmp_path / "busco.sif"
+            valid_sif.write_bytes(b"fake-sif")
+            link = tmp_path / "link_db"
+            link.symlink_to(tmp_path / "nonexistent_target")
+            # Override both registry defaults; tool_database is a broken symlink.
+            artifact = _build_slurm_staging_artifact(
+                tmp_path,
+                runtime_images={"busco_sif": str(valid_sif)},
+                tool_databases={"busco_lineage_dir": str(link)},
+            )
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+            result = SlurmWorkflowSpecExecutor(
+                run_root=tmp_path / "runs",
+                repo_root=tmp_path,
+                sbatch_runner=self._fake_sbatch(sbatch_calls),
+                command_available=lambda cmd: cmd == "sbatch",
+            ).submit(artifact_path, shared_fs_roots=(tmp_path,))
+
+        self.assertFalse(result.supported)
+        self.assertEqual(sbatch_calls, [])
+        self.assertEqual(len(result.limitations), 1)
+        self.assertIn("not_readable", result.limitations[0])
+
+    def test_symlink_pointing_inside_root_passes(self) -> None:
+        """A symlink that resolves inside the shared FS root must pass staging.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
+        sbatch_calls: list[list[str]] = []
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            valid_sif = tmp_path / "busco.sif"
+            valid_sif.write_bytes(b"fake-sif")
+            real_db = tmp_path / "real_db"
+            real_db.mkdir()
+            link = tmp_path / "link_db"
+            link.symlink_to(real_db)
+            # Override both registry defaults; symlink resolves inside tmp_path (shared root).
+            artifact = _build_slurm_staging_artifact(
+                tmp_path,
+                runtime_images={"busco_sif": str(valid_sif)},
+                tool_databases={"busco_lineage_dir": str(link)},
+            )
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+            result = SlurmWorkflowSpecExecutor(
+                run_root=tmp_path / "runs",
+                repo_root=tmp_path,
+                sbatch_runner=self._fake_sbatch(sbatch_calls),
+                command_available=lambda cmd: cmd == "sbatch",
+            ).submit(artifact_path, shared_fs_roots=(tmp_path,))
+
+        self.assertTrue(result.supported)
+        self.assertEqual(len(sbatch_calls), 1, "sbatch must be called when symlink resolves inside root")
+
+    def test_symlink_pointing_outside_root_is_blocked(self) -> None:
+        """A symlink that resolves outside every shared FS root must fail staging.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
+        sbatch_calls: list[list[str]] = []
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as outside_tmp:
+            tmp_path = Path(tmp)
+            valid_sif = tmp_path / "busco.sif"
+            valid_sif.write_bytes(b"fake-sif")
+            outside_dir = Path(outside_tmp) / "external_db"
+            outside_dir.mkdir()
+            link = tmp_path / "link_outside"
+            link.symlink_to(outside_dir)
+            # Override both registry defaults; symlink resolves outside tmp_path (shared root).
+            artifact = _build_slurm_staging_artifact(
+                tmp_path,
+                runtime_images={"busco_sif": str(valid_sif)},
+                tool_databases={"busco_lineage_dir": str(link)},
+            )
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+            result = SlurmWorkflowSpecExecutor(
+                run_root=tmp_path / "runs",
+                repo_root=tmp_path,
+                sbatch_runner=self._fake_sbatch(sbatch_calls),
+                command_available=lambda cmd: cmd == "sbatch",
+            ).submit(artifact_path, shared_fs_roots=(tmp_path,))
+
+        self.assertFalse(result.supported)
+        self.assertEqual(sbatch_calls, [])
+        self.assertIn("not_on_shared_fs", result.limitations[0])
+
+    def test_local_profile_skips_shared_fs_check(self) -> None:
+        """check_offline_staging with execution_profile='local' must skip the
+        shared-FS check even when a path does not lie under any shared root.
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
+        with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as other_tmp:
+            tmp_path = Path(tmp)
+            other_path = Path(other_tmp)
+            local_db = other_path / "local_db"
+            local_db.mkdir()
+
+            class _FakeWorkflowSpec:
+                runtime_images: dict[str, str] = {}
+                tool_databases = {"mydb": str(local_db)}
+                resolved_input_paths: dict[str, str] = {}
+
+            # shared root is tmp_path, but local_db is under other_path (different root)
+            # execution_profile="local" must skip the shared-FS membership check
+            findings = check_offline_staging(
+                _FakeWorkflowSpec(),
+                (tmp_path,),
+                execution_profile="local",
+            )
+
+        self.assertEqual(findings, [], "local profile must not flag paths off the shared root")
 

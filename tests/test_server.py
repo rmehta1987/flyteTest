@@ -111,8 +111,9 @@ from flytetest.server import (
     _execute_workflow_direct,
     wait_for_slurm_job,
 )
+from flytetest.planning import plan_typed_request
 from flytetest.registry import InterfaceField, RegistryCompatibilityMetadata, RegistryEntry, get_entry
-from flytetest.spec_artifacts import load_workflow_spec_artifact
+from flytetest.spec_artifacts import load_workflow_spec_artifact, artifact_from_typed_plan, save_workflow_spec_artifact
 from flytetest.spec_executor import (
     DEFAULT_LOCAL_RUN_RECORD_FILENAME,
     DEFAULT_SLURM_RUN_RECORD_FILENAME,
@@ -4235,3 +4236,90 @@ class RunWorkflowReshapeTests(TestCase):
             )
         self.assertTrue(payload["supported"])
         self.assertEqual(payload["execution_status"], "failed")
+
+
+class StagingPreflightServerTests(TestCase):
+    """Step 23: server-level staging preflight — replay after staging failure.
+
+    These tests keep the current contract explicit and document the pre-submission
+    staging gate as observed through the server's run_slurm_recipe surface.
+"""
+
+    def test_staging_failure_leaves_artifact_on_disk_for_replay(self) -> None:
+        """After a staging-failure rejection the frozen artifact must stay on
+        disk so the scientist can fix the missing path and replay via
+        run_slurm_recipe(artifact_path=...).
+
+    This test keeps the current contract explicit and guards the documented behavior against regression.
+"""
+        sbatch_calls: list[list[str]] = []
+
+        def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            sbatch_calls.append(list(args))
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 88001\n", stderr="")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            missing_db = tmp_path / "missing_busco_db"
+            valid_sif = tmp_path / "busco.sif"
+            valid_sif.write_bytes(b"fake-sif")
+
+            # Build a Slurm artifact pointing at a non-existent tool_database.
+            # BUSCO requires manifest_sources (result bundle) and runtime_bindings.
+            result_dir = tmp_path / "repeat_filter_results_staging"
+            result_dir.mkdir()
+            (result_dir / "run_manifest.json").write_text(
+                json.dumps({
+                    "workflow": "annotation_repeat_filtering",
+                    "assumptions": [],
+                    "inputs": {"reference_genome": "data/braker3/reference/genome.fa"},
+                    "outputs": {
+                        "all_repeats_removed_gff3": str(result_dir / "all_repeats_removed.gff3"),
+                        "final_proteins_fasta": str(result_dir / "all_repeats_removed.proteins.fa"),
+                    },
+                }, indent=2)
+            )
+            typed_plan = plan_typed_request(
+                biological_goal="annotation_qc_busco",
+                target_name="annotation_qc_busco",
+                source_prompt="staging replay test",
+                manifest_sources=(result_dir,),
+                runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                resource_request={"cpu": 4, "memory": "16Gi", "queue": "batch", "walltime": "01:00:00"},
+                execution_profile="slurm",
+                # Override both registry defaults: bad db path, valid sif path.
+                runtime_images={"busco_sif": str(valid_sif)},
+                tool_databases={"busco_lineage_dir": str(missing_db)},
+            )
+            artifact = artifact_from_typed_plan(typed_plan, created_at="2026-04-21T00:00:00Z")
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+
+            # First submission: staging fails because the path doesn't exist.
+            # Provide shared_fs_roots to trigger the staging gate.
+            from flytetest.spec_executor import SlurmWorkflowSpecExecutor as _Exec
+            staged_result = _Exec(
+                run_root=tmp_path / "runs",
+                repo_root=tmp_path,
+                sbatch_runner=fake_sbatch,
+                command_available=lambda cmd: cmd == "sbatch",
+            ).submit(artifact_path, shared_fs_roots=(tmp_path,))
+
+            self.assertFalse(staged_result.supported)
+            self.assertEqual(sbatch_calls, [], "sbatch must not be called when staging fails")
+            self.assertIn("busco_lineage_dir", str(staged_result.limitations))
+            # Frozen artifact must still exist so the scientist can replay.
+            self.assertTrue(artifact_path.exists(), "artifact must remain on disk after staging failure")
+
+            # Fix the path by creating the missing directory.
+            missing_db.mkdir()
+
+            # Replay via run_slurm_recipe (no shared_fs_roots → staging skipped → sbatch called).
+            result_2 = _run_slurm_recipe_impl(
+                str(artifact_path),
+                run_dir=tmp_path / "runs2",
+                sbatch_runner=fake_sbatch,
+                command_available=lambda cmd: cmd == "sbatch",
+            )
+
+        self.assertTrue(result_2["supported"])
+        self.assertEqual(len(sbatch_calls), 1, "sbatch must be called exactly once after the path is fixed")

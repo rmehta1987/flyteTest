@@ -28,6 +28,7 @@ from flytetest.resolver import AssetResolver, LocalManifestAssetResolver, Resolu
 from flytetest.planner_types import QualityAssessmentTarget
 from flytetest.spec_artifacts import SavedWorkflowSpecArtifact, load_workflow_spec_artifact, DurableAssetRef, DURABLE_ASSET_INDEX_SCHEMA_VERSION, save_durable_asset_index, _write_json_atomically
 from flytetest.specs import ResourceSpec, RuntimeImageSpec, SpecSerializable, WorkflowNodeSpec
+from flytetest.staging import StagingFinding, check_offline_staging
 
 
 _LOG = logging.getLogger(__name__)
@@ -2028,6 +2029,7 @@ class SlurmWorkflowSpecExecutor:
         retry_parent: SlurmRunRecord | None = None,
         resume_from_local_record: Path | None = None,
         resource_overrides: ResourceSpec | None = None,
+        shared_fs_roots: tuple[Path, ...] = (),
     ) -> SlurmSpecExecutionResult:
         """Render a Slurm script, submit it via sbatch, and save the run record.
 
@@ -2099,6 +2101,29 @@ class SlurmWorkflowSpecExecutor:
                 runtime_image=binding_plan.runtime_image,
                 limitations=("Slurm submission requires a frozen recipe with execution_profile `slurm`.",),
             )
+
+        # Preflight staging check — must run before sbatch so unreachable paths
+        # are caught before the job is queued (DESIGN §7.5 offline-compute invariant).
+        # The check is only enforced when the caller declares shared FS roots; without
+        # declared roots there is no shared-FS membership criterion to evaluate.
+        if shared_fs_roots:
+            staging_findings = check_offline_staging(
+                artifact.workflow_spec,
+                shared_fs_roots,
+                execution_profile="slurm",
+            )
+            if staging_findings:
+                return SlurmSpecExecutionResult(
+                    supported=False,
+                    workflow_name=workflow_spec.name,
+                    execution_profile=binding_plan.execution_profile,
+                    resource_spec=binding_plan.resource_spec,
+                    runtime_image=binding_plan.runtime_image,
+                    limitations=tuple(
+                        f"{f.kind} '{f.key}' at {f.path}: {f.reason}"
+                        for f in staging_findings
+                    ),
+                )
 
         missing_commands = self._missing_commands(("sbatch",))
         if missing_commands:
@@ -2287,6 +2312,7 @@ class SlurmWorkflowSpecExecutor:
         artifact_source: SavedWorkflowSpecArtifact | Path,
         *,
         resume_from_local_record: Path | None = None,
+        shared_fs_roots: tuple[Path, ...] = (),
     ) -> SlurmSpecExecutionResult:
         """Render, submit, and persist a durable record for one Slurm recipe."""
         artifact_path = _artifact_path_from_source(artifact_source)
@@ -2303,6 +2329,7 @@ class SlurmWorkflowSpecExecutor:
         return self._submit_saved_artifact(
             artifact_path,
             resume_from_local_record=resume_from_local_record,
+            shared_fs_roots=shared_fs_roots,
         )
 
     def reconcile(self, run_record_source: Path) -> SlurmLifecycleResult:

@@ -276,6 +276,10 @@ def artifact_from_typed_plan(
     workflow_spec_dict = dict(typed_plan["workflow_spec"])
     if "tool_databases" not in workflow_spec_dict:
         workflow_spec_dict["tool_databases"] = typed_plan.get("tool_databases") or {}
+    # Merge top-level runtime_images from the plan into the workflow_spec dict
+    # by the same §8 resolution order: the value inside workflow_spec wins.
+    if not workflow_spec_dict.get("runtime_images"):
+        workflow_spec_dict["runtime_images"] = typed_plan.get("runtime_images") or {}
     workflow_spec = WorkflowSpec.from_dict(workflow_spec_dict)
     binding_plan = BindingPlan.from_dict(typed_plan["binding_plan"])
     return SavedWorkflowSpecArtifact(
