@@ -10,6 +10,7 @@ from __future__ import annotations
 import difflib
 import inspect
 from importlib import import_module
+import json
 import logging
 import os
 import time
@@ -34,7 +35,13 @@ from flytetest.errors import (
     UnknownOutputNameError,
     UnknownRunIdError,
 )
-from flytetest.mcp_replies import PlanDecline, SuggestedBundle, SuggestedPriorRun
+from flytetest.mcp_replies import (
+    DryRunReply,
+    PlanDecline,
+    RunReply,
+    SuggestedBundle,
+    SuggestedPriorRun,
+)
 from flytetest.mcp_contract import (
     DECLINE_CATEGORY_CODES,
     EXAMPLE_PROMPT_REQUIREMENTS,
@@ -87,11 +94,13 @@ from flytetest.pipeline_tracker import (
 from flytetest.planning import (
     plan_request as preview_plan_request,
     plan_request_reshape,
+    plan_typed_request,
     showcase_limitations,
     supported_entry_parameters,
 )
 from flytetest.registry import RegistryEntry, get_entry
 from flytetest.registry import list_entries as registry_list_entries
+from flytetest.resolver import _materialize_bindings
 from flytetest.spec_artifacts import (
     DEFAULT_DURABLE_ASSET_INDEX_FILENAME,
     artifact_from_typed_plan,
@@ -1285,16 +1294,17 @@ def run_workflow(
     }
 
 
-def run_task(task_name: str, inputs: dict[str, object]) -> dict[str, object]:
+def _execute_task_direct(task_name: str, inputs: dict[str, object]) -> dict[str, object]:
     """Execute one supported direct task through a Python call.
+
+    This is the low-level task dispatcher shared by the reshaped
+    :func:`run_task` (post-freeze) and the local-executor handler path. It
+    accepts flat scalar inputs that the :class:`LocalWorkflowSpecExecutor`
+    has already resolved from the frozen :class:`BindingPlan`.
 
     Supported task names: ``exonerate_align_chunk``, ``busco_assess_proteins``,
     ``fastqc``, and ``gffread_proteins``.
-
-    Args:
-        task_name: Registered task name selected by the caller.
-        inputs: Task inputs forwarded from the MCP request.
-"""
+    """
     if task_name not in set(SUPPORTED_TASK_NAMES):
         return {
             "supported": False,
@@ -1504,6 +1514,351 @@ def run_task(task_name: str, inputs: dict[str, object]) -> dict[str, object]:
         }
 
 
+# ---------------------------------------------------------------------------
+# Reshaped run_task (Step 21 — MCP reshape plan §2 / §3b / §3g / §3i)
+# ---------------------------------------------------------------------------
+
+
+_EMPTY_PROMPT_ADVISORY = (
+    "No source_prompt was supplied; replay metadata will not preserve original "
+    "natural-language provenance."
+)
+
+
+def _scalar_params_for_task(
+    task_name: str,
+    bindings: Mapping[str, Mapping[str, Any]],
+) -> list[tuple[str, bool]]:
+    """Return ``TASK_PARAMETERS`` entries not already covered by typed bindings."""
+    bound_field_names: set[str] = set()
+    for field_dict in bindings.values():
+        if isinstance(field_dict, Mapping):
+            bound_field_names.update(field_dict.keys())
+    return [
+        (name, required)
+        for (name, required) in TASK_PARAMETERS[task_name]
+        if name not in bound_field_names
+    ]
+
+
+def _load_json(path: Path) -> dict[str, Any] | None:
+    """Return the JSON payload at *path*, or ``None`` when unreadable."""
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def _collect_named_outputs(
+    entry: RegistryEntry,
+    run_record_path: Path | None,
+) -> tuple[dict[str, str], list[str]]:
+    """Project node manifest outputs onto ``entry.outputs[*].name`` keys (§3b).
+
+    Missing outputs surface as empty-string values with a prominent advisory
+    for required fields and a softer advisory for optional ones. Undeclared
+    manifest keys remain on disk in the manifest but do not surface here so
+    the registry stays the public contract for outputs.
+    """
+    outputs: dict[str, str] = {}
+    limitations: list[str] = []
+    produced: dict[str, Any] = {}
+    final_outputs: dict[str, Any] = {}
+
+    if run_record_path is not None and run_record_path.exists():
+        record_payload = _load_json(run_record_path) or {}
+        final_outputs = dict(record_payload.get("final_outputs") or {})
+        manifest_payload: dict[str, Any] | None = None
+        for node_result in record_payload.get("node_results") or ():
+            if not isinstance(node_result, Mapping):
+                continue
+            manifest_paths = node_result.get("manifest_paths") or {}
+            if not isinstance(manifest_paths, Mapping):
+                continue
+            for manifest_str in manifest_paths.values():
+                candidate = _load_json(Path(str(manifest_str)))
+                if candidate is not None:
+                    manifest_payload = candidate
+                    break
+            if manifest_payload is not None:
+                break
+        if isinstance(manifest_payload, Mapping):
+            raw_outputs = manifest_payload.get("outputs") or {}
+            if isinstance(raw_outputs, Mapping):
+                produced = dict(raw_outputs)
+
+    for field in entry.outputs:
+        value = produced.get(field.name)
+        if value in (None, ""):
+            value = final_outputs.get(field.name)
+        if value in (None, ""):
+            outputs[field.name] = ""
+            if getattr(field, "required", True):
+                limitations.append(
+                    f"Required output {field.name!r} was not produced by "
+                    f"{entry.name}; the task may not have completed successfully."
+                )
+            else:
+                limitations.append(
+                    f"Optional output {field.name!r} was not produced by "
+                    f"{entry.name}; this may be expected depending on inputs."
+                )
+        else:
+            outputs[field.name] = str(value)
+    return outputs, limitations
+
+
+def _resolved_bindings_projection(
+    bindings: Mapping[str, Mapping[str, Any]],
+    materialized: Mapping[str, Any],
+) -> dict[str, dict[str, str]]:
+    """Project materialized planner objects onto a ``{type: {field: str}}`` dict."""
+    projection: dict[str, dict[str, str]] = {}
+    for type_name, raw in bindings.items():
+        instance = materialized.get(type_name)
+        inner: dict[str, str] = {}
+        if instance is not None and hasattr(instance, "to_dict"):
+            data = instance.to_dict()
+            if isinstance(data, Mapping):
+                inner = {
+                    key: str(value)
+                    for key, value in data.items()
+                    if not isinstance(value, (dict, list))
+                }
+        if not inner and isinstance(raw, Mapping):
+            inner = {
+                str(key): str(value)
+                for key, value in raw.items()
+                if key not in ("$ref", "$manifest") and not isinstance(value, (dict, list))
+            }
+        projection[type_name] = inner
+    return projection
+
+
+def run_task(
+    task_name: str,
+    bindings: Mapping[str, Mapping[str, Any]] | None = None,
+    inputs: Mapping[str, Any] | None = None,
+    resources: Mapping[str, Any] | None = None,
+    execution_profile: str = "local",
+    runtime_images: Mapping[str, str] | None = None,
+    tool_databases: Mapping[str, str] | None = None,
+    source_prompt: str = "",
+    dry_run: bool = False,
+) -> dict[str, object]:
+    """Run one registered task against typed biological bindings.
+
+    Use this for stage-scoped experimentation (e.g. tuning Exonerate on one
+    chunk). The run is frozen into a :class:`WorkflowSpec` artifact before
+    execution, so the experiment is reproducible later from the returned
+    ``recipe_id``. When *dry_run* is ``True`` the artifact is still written
+    to disk but executor dispatch is skipped so the caller can inspect the
+    fully-resolved state and later chain
+    :func:`run_local_recipe` / :func:`run_slurm_recipe` against
+    ``artifact_path`` without re-resolution.
+    """
+    if task_name not in set(SUPPORTED_TASK_NAMES):
+        return asdict(
+            _unsupported_target_reply(task_name, SUPPORTED_TASK_NAMES, kind="task")
+        )
+    entry = get_entry(task_name)
+    pipeline_family = entry.compatibility.pipeline_family
+    bindings_in: dict[str, dict[str, Any]] = {
+        str(key): dict(value) if isinstance(value, Mapping) else {}
+        for key, value in (bindings or {}).items()
+    }
+    inputs_in: dict[str, Any] = dict(inputs or {})
+
+    accepted = set(entry.compatibility.accepted_planner_types)
+    unknown_types = sorted(set(bindings_in) - accepted)
+    if unknown_types:
+        accepted_list = (
+            ", ".join(sorted(accepted)) if accepted else "(none declared)"
+        )
+        return asdict(
+            _limitation_reply(
+                task_name,
+                f"Unknown binding types: {unknown_types}. Accepted: {accepted_list}.",
+                pipeline_family=pipeline_family,
+            )
+        )
+
+    scalar_params = _scalar_params_for_task(task_name, bindings_in)
+    allowed_scalars = {name for name, _ in scalar_params}
+    unknown_scalars = sorted(set(inputs_in) - allowed_scalars)
+    if unknown_scalars:
+        return asdict(
+            _limitation_reply(
+                task_name,
+                f"Unknown scalar inputs: {unknown_scalars}.",
+                pipeline_family=pipeline_family,
+            )
+        )
+    missing_required = [
+        name
+        for name, required in scalar_params
+        if required and inputs_in.get(name) in (None, "")
+    ]
+    if missing_required:
+        return asdict(
+            _limitation_reply(
+                task_name,
+                f"Missing required inputs: {missing_required}.",
+                pipeline_family=pipeline_family,
+            )
+        )
+
+    def _body() -> dict[str, object]:
+        try:
+            durable_refs = load_durable_asset_index(DEFAULT_RUN_DIR)
+        except (OSError, ValueError):
+            durable_refs = ()
+        explicit_bindings = _materialize_bindings(
+            bindings_in,
+            durable_index=durable_refs,
+        )
+
+        plan = plan_typed_request(
+            biological_goal=entry.compatibility.biological_stage or task_name,
+            target_name=task_name,
+            source_prompt=source_prompt,
+            explicit_bindings=explicit_bindings,
+            scalar_inputs=inputs_in,
+            resource_request=resources,
+            execution_profile=execution_profile,
+            runtime_images=dict(runtime_images or {}),
+            tool_databases=dict(tool_databases or {}),
+        )
+        if not plan.get("supported"):
+            plan.setdefault("target", task_name)
+            plan.setdefault("pipeline_family", pipeline_family)
+            return plan
+
+        artifact = artifact_from_typed_plan(plan, created_at=_created_at())
+        artifact_path = save_workflow_spec_artifact(
+            artifact,
+            _recipe_artifact_destination(task_name, recipe_dir=DEFAULT_RECIPE_DIR),
+        )
+
+        plan_limitations = tuple(str(item) for item in plan.get("limitations") or ())
+        if not source_prompt and _EMPTY_PROMPT_ADVISORY not in plan_limitations:
+            plan_limitations = plan_limitations + (_EMPTY_PROMPT_ADVISORY,)
+
+        if dry_run:
+            return asdict(
+                DryRunReply(
+                    supported=True,
+                    recipe_id=Path(artifact_path).stem,
+                    artifact_path=str(artifact_path),
+                    execution_profile=(
+                        "slurm" if execution_profile == "slurm" else "local"
+                    ),
+                    resolved_bindings=_resolved_bindings_projection(
+                        bindings_in, explicit_bindings
+                    ),
+                    resolved_environment=dict(plan.get("resolved_environment") or {}),
+                    staging_findings=(),
+                    limitations=plan_limitations,
+                    task_name=task_name,
+                )
+            )
+
+        profile_value = (
+            "slurm" if execution_profile == "slurm" else "local"
+        )
+        if profile_value == "slurm":
+            slurm_result = SlurmWorkflowSpecExecutor(
+                run_root=DEFAULT_RUN_DIR,
+                repo_root=REPO_ROOT,
+            ).submit(Path(artifact_path))
+            run_record_path_str = (
+                str(slurm_result.run_record.run_record_path)
+                if slurm_result.run_record is not None
+                else ""
+            )
+            if slurm_result.run_record is not None:
+                _write_latest_slurm_submission_pointers(
+                    DEFAULT_RUN_DIR,
+                    artifact_path=Path(artifact_path),
+                    run_record_path=slurm_result.run_record.run_record_path,
+                )
+            outputs_map, output_limits = _collect_named_outputs(entry, None)
+            combined_limits = (
+                plan_limitations
+                + tuple(str(item) for item in slurm_result.limitations)
+                + tuple(output_limits)
+            )
+            return asdict(
+                RunReply(
+                    supported=True,
+                    recipe_id=Path(artifact_path).stem,
+                    run_record_path=run_record_path_str,
+                    artifact_path=str(artifact_path),
+                    execution_profile="slurm",
+                    execution_status="success" if slurm_result.supported else "failed",
+                    exit_status=None,
+                    outputs=outputs_map,
+                    limitations=combined_limits,
+                    task_name=task_name,
+                )
+            )
+
+        local_executor = LocalWorkflowSpecExecutor(
+            _local_node_handlers(),
+            run_root=DEFAULT_RUN_DIR,
+        )
+        failure_reason: str | None = None
+        try:
+            local_result = local_executor.execute(Path(artifact_path))
+        except RuntimeError as exc:
+            local_result = None  # type: ignore[assignment]
+            failure_reason = str(exc)
+        run_record_path: Path | None = None
+        exit_status: int | None = None
+        if local_result is not None and local_result.supported and local_result.node_results:
+            # Derive the durable run-record path by scanning the run_root for
+            # the most recently written local record that matches this workflow.
+            candidates = sorted(
+                DEFAULT_RUN_DIR.rglob(DEFAULT_LOCAL_RUN_RECORD_FILENAME),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            if candidates:
+                run_record_path = candidates[0]
+            exit_status = 0
+        if local_result is None or not local_result.supported:
+            exit_status = 1
+            execution_status: str = "failed"
+            executor_limits: tuple[str, ...]
+            if failure_reason is not None:
+                executor_limits = (failure_reason,)
+            else:
+                executor_limits = tuple(
+                    str(item) for item in local_result.limitations  # type: ignore[union-attr]
+                )
+        else:
+            execution_status = "success"
+            executor_limits = tuple(str(item) for item in local_result.limitations)
+        outputs_map, output_limits = _collect_named_outputs(entry, run_record_path)
+        combined_limits = plan_limitations + executor_limits + tuple(output_limits)
+        return asdict(
+            RunReply(
+                supported=True,
+                recipe_id=Path(artifact_path).stem,
+                run_record_path=str(run_record_path) if run_record_path else "",
+                artifact_path=str(artifact_path),
+                execution_profile="local",
+                execution_status=execution_status,  # type: ignore[arg-type]
+                exit_status=exit_status,
+                outputs=outputs_map,
+                limitations=combined_limits,
+                task_name=task_name,
+            )
+        )
+
+    return _execute_run_tool(_body, target_name=task_name, pipeline_family=pipeline_family)
+
+
 def _jsonable(value: Any) -> Any:
     """Convert paths and nested containers into JSON-compatible values.
 
@@ -1536,7 +1891,7 @@ def _first_output_path(execution_result: dict[str, object]) -> str:
 def _local_node_handlers(
     *,
     workflow_runner: Any = run_workflow,
-    task_runner: Any = run_task,
+    task_runner: Any = _execute_task_direct,
 ) -> dict[str, Any]:
     """Build explicit node handlers for the supported local execution targets.
 

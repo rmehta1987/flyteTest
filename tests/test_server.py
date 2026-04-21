@@ -1824,16 +1824,15 @@ class ServerTests(TestCase):
         self.assertEqual(payload["result_summary"]["output_paths"], ["/tmp/exonerate_results"])
 
     def test_run_task_supports_busco_fixture_task(self) -> None:
-        """Dispatch the M18 BUSCO fixture task through the direct task runner.
+        """Dispatch the M18 BUSCO fixture task through the reshaped run_task.
 
-    This test keeps the current contract explicit and guards the documented behavior against regression.
-"""
+        The reshaped ``run_task`` freezes a WorkflowSpec artifact and then
+        dispatches through :class:`LocalWorkflowSpecExecutor`; the underlying
+        BUSCO Python entry point is still the ``busco_assess_proteins`` task.
+        """
 
         class _Result:
-            """Small fake Flyte directory result used by the BUSCO task runner.
-
-    This test class keeps the current contract explicit and documents the current boundary behavior.
-"""
+            """Small fake Flyte directory result used by the BUSCO task runner."""
 
             def download_sync(self) -> str:
                 """Return the synthetic BUSCO output path."""
@@ -1849,17 +1848,19 @@ class ServerTests(TestCase):
         with patch("flytetest.tasks.functional.busco_assess_proteins", side_effect=fake_busco_assess_proteins):
             payload = run_task(
                 "busco_assess_proteins",
-                {
+                inputs={
                     "proteins_fasta": "data/busco/test_data/eukaryota/genome.fna",
                     "lineage_dataset": "auto-lineage",
                     "busco_cpu": 2,
                     "busco_mode": "geno",
                 },
+                source_prompt="BUSCO fixture smoke via reshaped run_task.",
             )
 
         self.assertTrue(payload["supported"])
+        self.assertEqual(payload["execution_profile"], "local")
+        self.assertEqual(payload["execution_status"], "success")
         self.assertEqual(payload["exit_status"], 0)
-        self.assertEqual(payload["output_paths"], ["/tmp/busco_fixture_results"])
         self.assertEqual(captured["lineage_dataset"], "auto-lineage")
         self.assertEqual(captured["busco_cpu"], 2)
         self.assertEqual(captured["busco_mode"], "geno")
@@ -2985,50 +2986,49 @@ class ServerTests(TestCase):
     def test_run_task_declines_unknown_task_name(self) -> None:
         """Unknown task name returns supported=False from run_task.
 
-        T1: Guards the eligibility gate so only explicit ShowcaseTarget entries
-        can be dispatched through the ad hoc execution surface.
+        T1: Guards the eligibility gate so only supported task entries can be
+        dispatched through the reshaped ad hoc execution surface.
         """
-        payload = run_task("nonexistent_task", {})
+        payload = run_task("nonexistent_task")
         self.assertFalse(payload["supported"])
-        self.assertEqual(payload["task_name"], "nonexistent_task")
+        self.assertEqual(payload["target"], "nonexistent_task")
         limitation = payload["limitations"][0]
-        self.assertIn("Only", limitation)
-        for name in SUPPORTED_TASK_NAMES:
-            self.assertIn(f"`{name}`", limitation)
+        self.assertIn("not a supported task", limitation)
 
     def test_run_task_declines_missing_required_inputs(self) -> None:
-        """Missing required input for a known task returns supported=False.
+        """Missing required input for a known task returns a structured decline.
 
-        T2: Validates that parameter validation fires before any handler is
-        reached when a required input is absent.
+        T2: Validates that scalar-input validation fires before the plan is
+        frozen when a required input is absent.
         """
-        payload = run_task("fastqc", {})
+        payload = run_task("fastqc")
         self.assertFalse(payload["supported"])
-        self.assertIn("Missing required task inputs", payload["limitations"][0])
+        self.assertIn("Missing required inputs", payload["limitations"][0])
 
     def test_run_task_declines_unknown_input_keys(self) -> None:
-        """Extra input key for a known task returns supported=False.
+        """Extra input key for a known task returns a structured decline.
 
-        T3: Prevents callers from silently passing unrecognised keys that would
-        be ignored and cause unexpected behaviour.
+        T3: Prevents callers from silently passing unrecognised scalar keys
+        that would otherwise be ignored and cause unexpected behaviour.
         """
         payload = run_task(
             "gffread_proteins",
-            {
+            inputs={
                 "annotation_gff3": "a.gff3",
                 "genome_fasta": "g.fa",
                 "bogus_extra_key": "should_not_be_here",
             },
         )
         self.assertFalse(payload["supported"])
-        self.assertIn("Unknown task inputs", payload["limitations"][0])
+        self.assertIn("Unknown scalar inputs", payload["limitations"][0])
         self.assertIn("bogus_extra_key", payload["limitations"][0])
 
     def test_run_task_routes_all_supported_tasks_with_synthetic_handler(self) -> None:
         """Each SUPPORTED_TASK_NAMES entry reaches the handler when inputs are valid.
 
-        T4: Demonstrates that run_task passes validation and dispatches every
-        supported task name; uses module-level patches so no real tools run.
+        T4: Demonstrates that the reshaped run_task freezes a recipe and the
+        local executor dispatches every supported task name; uses module-level
+        patches so no real tools run.
         """
         valid_inputs: dict[str, dict[str, object]] = {
             "exonerate_align_chunk": {
@@ -3074,7 +3074,7 @@ class ServerTests(TestCase):
 
             module_path, fn_name = module_map[task_name]
             with patch(f"{module_path}.{fn_name}", side_effect=_make_fake(task_name)):
-                payload = run_task(task_name, valid_inputs[task_name])
+                payload = run_task(task_name, inputs=valid_inputs[task_name])
 
             self.assertTrue(payload.get("supported"), f"run_task({task_name!r}) should be supported")
             self.assertEqual(len(reached), 1, f"Handler not reached for task {task_name!r}")
@@ -3500,7 +3500,7 @@ class ServerTests(TestCase):
         T19: Validates that the ad hoc task surface does not expose the
         table2asn step.
         """
-        result = run_task("table2asn_submission", {})
+        result = run_task("table2asn_submission")
         self.assertFalse(result.get("supported"))
 
     def test_list_entries_includes_table2asn_workflow(self) -> None:
@@ -3875,3 +3875,129 @@ class ServerTests(TestCase):
         self.assertEqual(decline.suggested_prior_runs, ())
         joined = " | ".join(decline.next_steps)
         self.assertIn("list_entries", joined)
+
+
+class RunTaskReshapeTests(TestCase):
+    """Tests for the Step 21 reshape of ``run_task`` (§2 / §3b / §3g / §3i)."""
+
+    def _valid_fastqc_call(self, **kw: object) -> dict[str, object]:
+        return run_task(
+            "fastqc",
+            inputs={"left": "R1.fastq.gz", "right": "R2.fastq.gz"},
+            source_prompt="FastQC smoke via run_task reshape.",
+            **kw,
+        )
+
+    def test_bundle_spread_call_succeeds(self) -> None:
+        """A bundle-style spread with typed bindings and scalar inputs succeeds."""
+
+        class _FakeResult:
+            def download_sync(self) -> str:
+                return "/tmp/fake_result"
+
+        bundle_like = {
+            "bindings": {},
+            "inputs": {"annotation_gff3": "ann.gff3", "genome_fasta": "g.fa"},
+        }
+        with patch(
+            "flytetest.tasks.filtering.gffread_proteins",
+            return_value=_FakeResult(),
+        ):
+            payload = run_task(
+                "gffread_proteins",
+                source_prompt="Spread bundle into run_task.",
+                **bundle_like,
+            )
+        self.assertTrue(payload["supported"])
+        self.assertEqual(payload["task_name"], "gffread_proteins")
+
+    def test_unknown_binding_type_declines(self) -> None:
+        payload = run_task(
+            "fastqc",
+            bindings={"NotARealType": {}},
+        )
+        self.assertFalse(payload["supported"])
+        self.assertIn("Unknown binding types", payload["limitations"][0])
+
+    def test_missing_scalar_declines(self) -> None:
+        payload = run_task("fastqc", inputs={"left": "R1.fastq.gz"})
+        self.assertFalse(payload["supported"])
+        self.assertIn("Missing required inputs", payload["limitations"][0])
+
+    def test_freeze_writes_artifact_file(self) -> None:
+        """Every reshaped run_task call freezes a WorkflowSpec artifact first."""
+        payload = self._valid_fastqc_call(dry_run=True)
+        self.assertTrue(payload["supported"])
+        artifact_path = Path(payload["artifact_path"])
+        self.assertTrue(artifact_path.exists(), f"artifact missing: {artifact_path}")
+        self.assertTrue(artifact_path.name.endswith(".json"))
+        self.assertTrue(payload["recipe_id"].endswith("-fastqc"))
+
+    def test_outputs_dict_keyed_by_registry_names(self) -> None:
+        """Outputs reply is a named dict — no positional ``output_paths`` list."""
+
+        class _FakeResult:
+            def download_sync(self) -> str:
+                return "/tmp/fake_fastqc_dir"
+
+        with patch("flytetest.tasks.qc.fastqc", return_value=_FakeResult()):
+            payload = self._valid_fastqc_call()
+        self.assertTrue(payload["supported"])
+        self.assertIsInstance(payload["outputs"], dict)
+        self.assertIn("qc_dir", payload["outputs"])
+        self.assertNotIn("output_paths", payload)
+
+    def test_empty_source_prompt_appends_advisory(self) -> None:
+        payload = run_task(
+            "fastqc",
+            inputs={"left": "R1.fastq.gz", "right": "R2.fastq.gz"},
+            source_prompt="",
+            dry_run=True,
+        )
+        self.assertTrue(payload["supported"])
+        joined = " | ".join(payload["limitations"])
+        self.assertIn("No source_prompt", joined)
+
+    def test_dry_run_writes_artifact_but_skips_execution(self) -> None:
+        """``dry_run=True`` returns a DryRunReply and writes no run_record."""
+        payload = self._valid_fastqc_call(dry_run=True)
+        self.assertTrue(payload["supported"])
+        self.assertIn("resolved_environment", payload)
+        self.assertNotIn("run_record_path", payload)
+        artifact_path = Path(payload["artifact_path"])
+        self.assertTrue(artifact_path.exists())
+        # No run_record is produced for dry_run.
+        run_record_candidates = list(artifact_path.parent.rglob("local_run_record.json"))
+        recipe_id = payload["recipe_id"]
+        for candidate in run_record_candidates:
+            self.assertNotIn(recipe_id, str(candidate))
+
+    def test_dry_run_artifact_chains_to_run_local_recipe(self) -> None:
+        """The frozen artifact from a dry-run call can be executed unchanged."""
+        from flytetest.server import _run_local_recipe_impl
+
+        dry_reply = self._valid_fastqc_call(dry_run=True)
+        artifact_path = Path(dry_reply["artifact_path"])
+        bytes_before = artifact_path.read_bytes()
+
+        class _FakeResult:
+            def download_sync(self) -> str:
+                return "/tmp/chained_fastqc"
+
+        with patch("flytetest.tasks.qc.fastqc", return_value=_FakeResult()):
+            chained = _run_local_recipe_impl(str(artifact_path))
+
+        self.assertTrue(chained["supported"])
+        # The artifact was not rewritten by the chained execution.
+        self.assertEqual(bytes_before, artifact_path.read_bytes())
+
+    def test_local_executor_non_zero_exit_surfaces_as_failed(self) -> None:
+        """A task handler that raises surfaces as supported=True, status=failed."""
+
+        def _boom(**_kw: object) -> object:
+            raise RuntimeError("synthetic tool failure")
+
+        with patch("flytetest.tasks.qc.fastqc", side_effect=_boom):
+            payload = self._valid_fastqc_call()
+        self.assertTrue(payload["supported"])
+        self.assertEqual(payload["execution_status"], "failed")
