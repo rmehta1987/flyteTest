@@ -24,15 +24,23 @@ from flyte_stub import install_flyte_stub
 
 install_flyte_stub()
 
+from flytetest.mcp_replies import PlanDecline, PlanSuccess
 from flytetest.planner_types import (
     AnnotationEvidenceSet,
     ConsensusAnnotation,
     ProteinEvidenceSet,
     QualityAssessmentTarget,
+    ReadSet,
     ReferenceGenome,
     TranscriptEvidenceSet,
 )
-from flytetest.planning import plan_request, plan_typed_request, split_entry_inputs, supported_entry_parameters
+from flytetest.planning import (
+    plan_request,
+    plan_request_reshape,
+    plan_typed_request,
+    split_entry_inputs,
+    supported_entry_parameters,
+)
 from flytetest.registry import get_entry
 
 
@@ -860,3 +868,89 @@ class PlanningTests(TestCase):
         self.assertEqual(payload["planning_outcome"], "declined")
         self.assertEqual(payload["matched_entry_names"], [])
         self.assertIn("does not map to a supported typed biology goal", payload["missing_requirements"][0])
+
+    def test_plan_request_reshape_single_entry_match_skips_freeze(self) -> None:
+        """Single-entry matches return a no-freeze PlanSuccess that re-issues run_workflow."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result_dir = _repeat_filter_manifest_dir(tmp_path, "repeat_filter_results")
+            recipe_dir = tmp_path / "specs"
+
+            reply = plan_request_reshape(
+                "BUSCO annotation quality assessment",
+                manifest_sources=(result_dir,),
+                runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                recipe_dir=recipe_dir,
+            )
+
+            self.assertIsInstance(reply, PlanSuccess)
+            assert isinstance(reply, PlanSuccess)  # narrow for mypy/tests
+            self.assertTrue(reply.supported)
+            self.assertEqual(reply.target, "annotation_qc_busco")
+            self.assertFalse(reply.requires_user_approval)
+            self.assertEqual(reply.composition_stages, ())
+            self.assertEqual(reply.artifact_path, "")
+            self.assertFalse(recipe_dir.exists())
+
+            suggested = reply.suggested_next_call
+            self.assertEqual(suggested["tool"], "run_workflow")
+            kwargs = suggested["kwargs"]
+            self.assertEqual(kwargs["workflow_name"], "annotation_qc_busco")
+            self.assertEqual(kwargs["source_prompt"], "BUSCO annotation quality assessment")
+            self.assertIn("QualityAssessmentTarget", kwargs["bindings"])
+            self.assertEqual(kwargs["inputs"]["busco_lineages_text"], "embryophyta_odb10")
+
+    def test_plan_request_reshape_composed_request_freezes_artifact(self) -> None:
+        """Composed DAGs freeze a WorkflowSpec artifact and point at approve_composed_recipe."""
+        reference_genome = ReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa"))
+        reads = ReadSet(
+            sample_id="sample1",
+            left_reads_path=Path("data/reads/r1.fastq.gz"),
+            right_reads_path=Path("data/reads/r2.fastq.gz"),
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            recipe_dir = Path(tmp) / "specs"
+            reply = plan_request_reshape(
+                "chain annotation repeat filtering with BUSCO quality workflow processing",
+                explicit_bindings={"ReferenceGenome": reference_genome, "ReadSet": reads},
+                recipe_dir=recipe_dir,
+                created_at="2026-04-20T00:00:00Z",
+            )
+
+            self.assertIsInstance(reply, PlanSuccess)
+            assert isinstance(reply, PlanSuccess)
+            self.assertTrue(reply.supported)
+            self.assertTrue(reply.requires_user_approval)
+            self.assertTrue(reply.target.startswith("composed-"))
+            self.assertGreaterEqual(len(reply.composition_stages), 2)
+
+            artifact_path = reply.artifact_path
+            self.assertNotEqual(artifact_path, "")
+            frozen = Path(artifact_path)
+            self.assertTrue(frozen.exists())
+            self.assertEqual(frozen.parent, recipe_dir)
+
+            suggested = reply.suggested_next_call
+            self.assertEqual(suggested["tool"], "approve_composed_recipe")
+            self.assertEqual(suggested["kwargs"], {"artifact_path": artifact_path})
+            self.assertTrue(any("approve_composed_recipe" in line for line in reply.limitations))
+
+    def test_plan_request_reshape_unsupported_request_returns_plan_decline(self) -> None:
+        """Requests the planner cannot route return a PlanDecline with §10 recovery channels."""
+        with tempfile.TemporaryDirectory() as tmp:
+            recipe_dir = Path(tmp) / "specs"
+            reply = plan_request_reshape(
+                "Run variant calling for SNV detection on these reads.",
+                recipe_dir=recipe_dir,
+            )
+
+            self.assertIsInstance(reply, PlanDecline)
+            assert isinstance(reply, PlanDecline)
+            self.assertFalse(reply.supported)
+            self.assertFalse(recipe_dir.exists())
+            self.assertGreater(len(reply.suggested_bundles), 0)
+            for bundle in reply.suggested_bundles:
+                self.assertTrue(bundle.available)
+            self.assertEqual(reply.suggested_prior_runs, ())
+            self.assertGreater(len(reply.next_steps), 0)

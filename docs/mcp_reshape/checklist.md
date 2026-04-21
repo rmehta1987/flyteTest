@@ -59,7 +59,7 @@ call sites and documentation.
 | # | Step | Plan section | Prompt | Status |
 |---|------|--------------|--------|--------|
 | 16 | Remove prose heuristics from `planning.py` | §5 | `prompts/step_16_remove_prose_heuristics.md` | Complete |
-| 17 | `plan_request` asymmetric freeze (single-entry vs composed) | §3j | `prompts/step_17_plan_request_asymmetric_freeze.md` | Not started |
+| 17 | `plan_request` asymmetric freeze (single-entry vs composed) | §3j | `prompts/step_17_plan_request_asymmetric_freeze.md` | Complete |
 
 ### Server reshape (BC break — coordinated)
 

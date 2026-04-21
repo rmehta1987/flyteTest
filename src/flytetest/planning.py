@@ -24,6 +24,7 @@ import json
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime
 from importlib import import_module
 from pathlib import Path
 from typing import Any, Literal
@@ -39,8 +40,14 @@ from flytetest.mcp_contract import (
     SUPPORTED_TASK_NAME,
     SUPPORTED_WORKFLOW_NAME,
 )
+from flytetest.mcp_replies import PlanDecline, PlanSuccess, SuggestedBundle
 from flytetest.registry import InterfaceField, RegistryEntry, get_entry
 from flytetest.resolver import AssetResolver, LocalManifestAssetResolver, ResolutionResult
+from flytetest.spec_artifacts import (
+    artifact_from_typed_plan,
+    make_recipe_id,
+    save_workflow_spec_artifact,
+)
 from flytetest.specs import (
     BindingPlan,
     GeneratedEntityRecord,
@@ -52,6 +59,9 @@ from flytetest.specs import (
     WorkflowOutputBinding,
     WorkflowSpec,
 )
+
+
+DEFAULT_RECIPE_DIR = Path(__file__).resolve().parents[2] / ".runtime" / "specs"
 
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
@@ -1548,6 +1558,296 @@ def plan_request(
         ),
         biological_goal=request,
     )
+
+
+def _composition_target_name(goal: TypedPlanningGoal) -> str:
+    """Return the ``composed-<first>_to_<last>`` target stem for one composed goal."""
+    names = goal.target_entry_names
+    if len(names) >= 2:
+        return f"composed-{names[0]}_to_{names[-1]}"
+    if names:
+        return f"composed-{names[0]}"
+    return "composed"
+
+
+def _pipeline_family_for_goal(goal: TypedPlanningGoal) -> str:
+    """Return the first composed stage's pipeline family so declines can route by family."""
+    for name in goal.target_entry_names:
+        try:
+            return get_entry(name).compatibility.pipeline_family
+        except KeyError:
+            continue
+    return ""
+
+
+def _current_plan_timestamp() -> str:
+    """Return a stable UTC timestamp for composed-recipe artifacts frozen by plan_request."""
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _suggested_bundles_for_target(entry_name: str | None) -> tuple[SuggestedBundle, ...]:
+    """Return §10 `suggested_bundles` filtered to available bundles that apply to the target."""
+    from flytetest.bundles import BUNDLES, _check_bundle_availability
+
+    suggestions: list[SuggestedBundle] = []
+    for bundle in BUNDLES.values():
+        status = _check_bundle_availability(bundle)
+        if not status.available:
+            continue
+        if entry_name is not None and entry_name not in bundle.applies_to:
+            continue
+        suggestions.append(
+            SuggestedBundle(
+                name=bundle.name,
+                description=bundle.description,
+                applies_to=tuple(bundle.applies_to),
+                available=status.available,
+            )
+        )
+    return tuple(suggestions)
+
+
+def _decline_reason_from_typed_plan(typed_plan: Mapping[str, object]) -> str:
+    """Return one short decline reason pulled from a typed_plan payload."""
+    missing = typed_plan.get("missing_requirements")
+    if isinstance(missing, list) and missing:
+        return str(missing[0])
+    limitations = typed_plan.get("limitations")
+    if isinstance(limitations, list) and limitations:
+        return str(limitations[0])
+    return "The typed plan could not be resolved into a runnable recipe."
+
+
+def _plan_decline(
+    *,
+    target: str = "",
+    pipeline_family: str = "",
+    reason: str,
+    extra_limitations: Sequence[str] = (),
+    next_steps: Sequence[str] | None = None,
+    suggested_for_entry: str | None = None,
+) -> PlanDecline:
+    """Build one §10-shaped PlanDecline with available-bundle and next-step channels."""
+    return PlanDecline(
+        supported=False,
+        target=target,
+        pipeline_family=pipeline_family,
+        limitations=(reason, *tuple(str(item) for item in extra_limitations)),
+        suggested_bundles=_suggested_bundles_for_target(suggested_for_entry),
+        suggested_prior_runs=(),
+        next_steps=tuple(next_steps or _default_recovery_steps()),
+    )
+
+
+def _plan_success_single_entry(
+    entry: RegistryEntry,
+    typed_plan: Mapping[str, object],
+    *,
+    request: str,
+) -> PlanSuccess:
+    """Build a no-freeze PlanSuccess that re-issues `run_task`/`run_workflow` with typed kwargs."""
+    tool_name = "run_task" if entry.category == "task" else "run_workflow"
+    kwarg_name = "task_name" if entry.category == "task" else "workflow_name"
+    bindings = dict(typed_plan.get("resolved_inputs") or {})
+    binding_plan = typed_plan.get("binding_plan") or {}
+    runtime_bindings = (
+        dict(binding_plan.get("runtime_bindings") or {})
+        if isinstance(binding_plan, Mapping)
+        else {}
+    )
+    kwargs: dict[str, object] = {
+        kwarg_name: entry.name,
+        "bindings": bindings,
+        "inputs": runtime_bindings,
+        "source_prompt": request,
+    }
+    limitations = tuple(str(item) for item in typed_plan.get("limitations") or ())
+    return PlanSuccess(
+        supported=True,
+        target=entry.name,
+        pipeline_family=entry.compatibility.pipeline_family,
+        biological_goal=str(typed_plan.get("biological_goal") or entry.name),
+        requires_user_approval=False,
+        bindings=bindings,
+        scalar_inputs=runtime_bindings,
+        composition_stages=(),
+        artifact_path="",
+        suggested_next_call={"tool": tool_name, "kwargs": kwargs},
+        limitations=limitations,
+    )
+
+
+def _plan_success_composed(
+    goal: TypedPlanningGoal,
+    typed_plan: Mapping[str, object],
+    *,
+    artifact_path: Path,
+) -> PlanSuccess:
+    """Build a freeze-and-approve PlanSuccess for a planner-composed novel DAG."""
+    bindings = dict(typed_plan.get("resolved_inputs") or {})
+    binding_plan = typed_plan.get("binding_plan") or {}
+    runtime_bindings = (
+        dict(binding_plan.get("runtime_bindings") or {})
+        if isinstance(binding_plan, Mapping)
+        else {}
+    )
+    existing = tuple(str(item) for item in typed_plan.get("limitations") or ())
+    advisory = (
+        "This is a planner-composed novel DAG; requires_user_approval=True. "
+        "Call approve_composed_recipe(artifact_path=...) before run_local_recipe / run_slurm_recipe."
+    )
+    return PlanSuccess(
+        supported=True,
+        target=_composition_target_name(goal),
+        pipeline_family=_pipeline_family_for_goal(goal),
+        biological_goal=str(typed_plan.get("biological_goal") or goal.name),
+        requires_user_approval=True,
+        bindings=bindings,
+        scalar_inputs=runtime_bindings,
+        composition_stages=tuple(goal.target_entry_names),
+        artifact_path=str(artifact_path),
+        suggested_next_call={
+            "tool": "approve_composed_recipe",
+            "kwargs": {"artifact_path": str(artifact_path)},
+        },
+        limitations=existing + (advisory,),
+    )
+
+
+def plan_request_reshape(
+    request: str,
+    *,
+    explicit_bindings: Mapping[str, Any] | None = None,
+    manifest_sources: Sequence[Path | Mapping[str, Any]] = (),
+    result_bundles: Sequence[Any] = (),
+    scalar_inputs: Mapping[str, Any] | None = None,
+    runtime_bindings: Mapping[str, Any] | None = None,
+    resource_request: Mapping[str, Any] | ResourceSpec | None = None,
+    execution_profile: str | None = None,
+    runtime_image: Mapping[str, Any] | RuntimeImageSpec | str | None = None,
+    runtime_images: Mapping[str, Any] | None = None,
+    tool_databases: Mapping[str, Any] | None = None,
+    bundle_overrides: Mapping[str, Any] | None = None,
+    resolver: AssetResolver | None = None,
+    recipe_dir: Path | None = None,
+    created_at: str | None = None,
+) -> PlanSuccess | PlanDecline:
+    """Plan one free-text request with asymmetric freeze semantics (§3j).
+
+    Single-entry deterministic matches return a :class:`PlanSuccess` without
+    touching the filesystem; ``artifact_path`` is empty and
+    ``suggested_next_call`` re-issues the matching ``run_task`` / ``run_workflow``
+    call so the freeze happens once, at commit time, with the final inputs.
+
+    Composition fallback freezes a :class:`WorkflowSpec` artifact to
+    ``recipe_dir`` because the composed DAG has no single structured call; the
+    returned :class:`PlanSuccess` carries the artifact path and points at
+    ``approve_composed_recipe`` per the M15 P2 approval gate.
+
+    Declines return a :class:`PlanDecline` with §10 recovery channels populated:
+    available bundles, durable prior runs (empty here), and next-step hints.
+
+    Args:
+        request: Natural-language biological request from the scientist.
+        recipe_dir: Directory for composed-recipe artifacts. Defaults to
+            ``.runtime/specs`` under the repository root; tests should pass a
+            temporary directory to keep the repo free of leftover previews.
+        created_at: Frozen UTC timestamp injected into composed artifacts;
+            defaults to the current moment. Tests may set this for
+            deterministic diffs.
+    """
+    matched = _match_target(request, _showcase_registry_entries())
+
+    if isinstance(matched, RegistryEntry):
+        typed_plan = plan_typed_request(
+            biological_goal=request,
+            target_name=matched.name,
+            source_prompt=request,
+            explicit_bindings=explicit_bindings,
+            manifest_sources=manifest_sources,
+            result_bundles=result_bundles,
+            scalar_inputs=scalar_inputs,
+            runtime_bindings=runtime_bindings,
+            resource_request=resource_request,
+            execution_profile=execution_profile,
+            runtime_image=runtime_image,
+            runtime_images=runtime_images,
+            tool_databases=tool_databases,
+            bundle_overrides=bundle_overrides,
+            resolver=resolver,
+        )
+        if not typed_plan.get("supported"):
+            return _plan_decline(
+                target=matched.name,
+                pipeline_family=matched.compatibility.pipeline_family,
+                reason=_decline_reason_from_typed_plan(typed_plan),
+                suggested_for_entry=matched.name,
+            )
+        return _plan_success_single_entry(matched, typed_plan, request=request)
+
+    if isinstance(matched, AmbiguousMatch):
+        names = [entry.name for entry in matched.entries]
+        pipeline_family = (
+            matched.entries[0].compatibility.pipeline_family if matched.entries else ""
+        )
+        return _plan_decline(
+            reason=f"Ambiguous target: biological_goal resolved to {len(names)} entries: {names}.",
+            pipeline_family=pipeline_family,
+        )
+
+    normalized_request = _normalize(request)
+    if any(keyword in normalized_request for keyword in ("variant calling", "snv", "snp", "vcf")):
+        return _plan_decline(
+            reason=(
+                "The request does not map to a supported typed biology goal, "
+                "so the planner declines instead of inventing steps."
+            ),
+        )
+
+    composition_goal = _try_composition_fallback(request, normalized_request)
+    if composition_goal is None:
+        return _plan_decline(
+            reason=(
+                "The request does not map to a supported typed biology goal, "
+                "so the planner declines instead of inventing steps."
+            ),
+        )
+
+    typed_plan = _typed_plan_from_goal(
+        composition_goal,
+        original_request=request,
+        source_prompt=request,
+        explicit_bindings=explicit_bindings,
+        manifest_sources=manifest_sources,
+        result_bundles=result_bundles,
+        scalar_inputs=scalar_inputs,
+        runtime_bindings=runtime_bindings,
+        resource_request=resource_request,
+        execution_profile=execution_profile,
+        runtime_image=runtime_image,
+        runtime_images=runtime_images,
+        tool_databases=tool_databases,
+        bundle_overrides=bundle_overrides,
+        resolver=resolver,
+    )
+    if not typed_plan.get("supported"):
+        missing = [str(item) for item in typed_plan.get("missing_requirements") or ()]
+        return _plan_decline(
+            reason=_decline_reason_from_typed_plan(typed_plan),
+            pipeline_family=_pipeline_family_for_goal(composition_goal),
+            extra_limitations=missing[:3],
+        )
+
+    target_stem = _composition_target_name(composition_goal)
+    destination_dir = recipe_dir or DEFAULT_RECIPE_DIR
+    destination = destination_dir / f"{make_recipe_id(target_stem)}.json"
+    artifact = artifact_from_typed_plan(
+        typed_plan,
+        created_at=created_at or _current_plan_timestamp(),
+        replay_metadata={"mcp_tool": "plan_request"},
+    )
+    saved_path = save_workflow_spec_artifact(artifact, destination)
+    return _plan_success_composed(composition_goal, typed_plan, artifact_path=saved_path)
 
 
 def main() -> None:
