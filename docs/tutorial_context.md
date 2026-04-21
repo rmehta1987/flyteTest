@@ -79,6 +79,202 @@ provenance. Prefer the stage-local paths listed below unless a prompt
 explicitly needs another stage-local tutorial asset from the same stage
 family.
 
+## Typed Binding Templates
+
+Use this section when you want a copy-paste starting point for the
+`bindings={...}` argument to `run_task` / `run_workflow`.  One entry per
+supported planner type.  Each template shows the raw-path form and
+points to the `$manifest` and `$ref` alternatives documented in
+[docs/mcp_showcase.md → Binding Grammar](mcp_showcase.md#binding-grammar).
+
+All three forms are accepted anywhere a binding value appears:
+
+- raw path — literal paths on local disk
+- `$manifest` — point at a result folder's `run_manifest.json` and let
+  the resolver pick the output matching the planner type (`output_name`
+  required when more than one output matches)
+- `$ref` — name a prior run's output by `recipe_id`, chaining two runs
+  without touching any paths
+
+### ReferenceGenome
+
+The main genome description used during planning.
+
+```text
+bindings:
+  ReferenceGenome:
+    fasta_path: "data/braker3/reference/genome.fa"
+    # Optional: organism_name, assembly_name, taxonomy_id,
+    # softmasked_fasta_path, annotation_gff3_path
+```
+
+Alternatives:
+
+```text
+# Reuse a reference emitted by a prior repeat-filtering run.
+bindings:
+  ReferenceGenome:
+    $manifest: "results/repeat_filter_results_20260420/run_manifest.json"
+    output_name: "softmasked_genome"
+```
+
+```text
+# Reuse the reference locked into an earlier BRAKER3 run.
+bindings:
+  ReferenceGenome:
+    $ref:
+      run_id:      "20260420T101500.000Z-ab_initio_annotation_braker3"
+      output_name: "reference_genome"
+```
+
+### ReadSet
+
+Paired-end RNA-seq reads for transcript-evidence generation.
+
+```text
+bindings:
+  ReadSet:
+    sample_id:         "demo"
+    left_reads_path:   "data/braker3/rnaseq/reads_1.fq.gz"
+    right_reads_path:  "data/braker3/rnaseq/reads_2.fq.gz"
+    # Optional: platform, strandedness, condition, replicate_label
+```
+
+`$manifest` and `$ref` forms are available when a prior run recorded
+the read set — e.g., reusing the same RNA-seq sample across BRAKER3
+and transcript-evidence workflows.
+
+### TranscriptEvidenceSet
+
+The transcript-evidence boundary spanning reads, BAMs, and assemblies.
+
+```text
+bindings:
+  TranscriptEvidenceSet:
+    reference_genome:
+      fasta_path: "data/braker3/reference/genome.fa"
+    # Optional: read_sets, de_novo_transcripts_path,
+    # genome_guided_transcripts_path, stringtie_gtf_path,
+    # merged_bam_path, pasa_assemblies_gff3_path
+```
+
+Typical `$ref` use: pull the merged BAM and StringTie GTF from an
+earlier transcript-evidence run into BRAKER3 without re-running STAR.
+
+### ProteinEvidenceSet
+
+Protein evidence — raw FASTA, aligned evidence, or both.
+
+```text
+bindings:
+  ProteinEvidenceSet:
+    source_protein_fastas:
+      - "data/braker3/protein_data/fastas/proteins.fa"
+    # Optional: reference_genome, evm_ready_gff3_path,
+    # raw_alignment_path
+```
+
+Use `$ref` to pick up `evm_ready_gff3_path` from a prior
+`protein_evidence_alignment` run when feeding EVM.
+
+### AnnotationEvidenceSet
+
+The evidence bundle for consensus-annotation (EVM) steps.
+
+```text
+bindings:
+  AnnotationEvidenceSet:
+    reference_genome:
+      fasta_path: "data/braker3/reference/genome.fa"
+    # Optional: transcript_evidence, protein_evidence,
+    # transcript_alignments_gff3_path, protein_alignments_gff3_path,
+    # ab_initio_predictions_gff3_path, combined_predictions_gff3_path
+```
+
+Canonical chain: `ab_initio_annotation_braker3` →
+`consensus_annotation_evm_prep` via
+`$ref` bindings on `ab_initio_predictions_gff3_path` and
+`protein_alignments_gff3_path`.
+
+### ConsensusAnnotation
+
+The consensus annotation boundary for downstream refinement and QC.
+
+```text
+bindings:
+  ConsensusAnnotation:
+    reference_genome:
+      fasta_path: "data/braker3/reference/genome.fa"
+    annotation_gff3_path: "results/evm_results_20260420/annotation.gff3"
+    # Optional: weights_path, supporting_evidence,
+    # protein_fasta_path
+```
+
+`$ref` into `ConsensusAnnotation` is the common pattern for PASA
+refinement, BUSCO QC, and AGAT post-processing.
+
+### QualityAssessmentTarget
+
+The QC target used by BUSCO, functional annotation, and review stages.
+
+```text
+bindings:
+  QualityAssessmentTarget:
+    proteins_fasta_path: "data/busco/fixtures/proteins.fa"
+    # Optional: reference_genome, consensus_annotation,
+    # annotation_gff3_path
+```
+
+### `$ref` cross-run reuse — the conversation
+
+The continuity between replies is the point of `recipe_id`.  Here is
+the exact conversation that chains a BRAKER3 run into BUSCO QC without
+re-specifying any paths.
+
+**Turn 1 — run BRAKER3:**
+
+```text
+Call run_workflow with:
+  workflow_name: "ab_initio_annotation_braker3"
+  bindings:       <bundle.bindings from load_bundle("braker3_small_eukaryote")>
+  inputs:         <bundle.inputs>
+  runtime_images: <bundle.runtime_images>
+  source_prompt:  "Annotate the small-eukaryote starter kit."
+```
+
+**Reply — the `recipe_id` is the durable handle:**
+
+```text
+supported:    true
+recipe_id:    "20260421T090000.000Z-ab_initio_annotation_braker3"
+outputs:      {"annotation_gff": "results/braker3_results_20260421/braker.gff3",
+               "reference_genome": "data/braker3/reference/genome.fa"}
+run_record_path: "…"
+```
+
+**Turn 2 — feed that `recipe_id` straight into the next call's `$ref`:**
+
+```text
+Call run_workflow with:
+  workflow_name: "annotation_qc_busco"
+  bindings:
+    QualityAssessmentTarget:
+      $ref:
+        run_id:      "20260421T090000.000Z-ab_initio_annotation_braker3"
+        output_name: "annotation_gff"
+  inputs:
+    lineage_dataset: "eukaryota_odb10"
+    busco_mode:      "proteins"
+  source_prompt: "QC the BRAKER3 annotation against eukaryota_odb10."
+```
+
+The resolver reads `.runtime/durable_asset_index.json`, looks up
+`annotation_gff` under the cited `run_id`, type-checks it against
+`QualityAssessmentTarget`, and materializes the path.  Unknown run IDs,
+unknown output names, and type mismatches all return a structured
+`PlanDecline` with populated `suggested_bundles`, `suggested_prior_runs`,
+and `next_steps`.
+
 ## Stage Mapping
 
 Use the Galaxy Tutorial Test Matrix in `README.md` as the high-level map from

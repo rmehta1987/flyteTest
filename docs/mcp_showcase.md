@@ -1,16 +1,20 @@
 # MCP Tool Guide
 
-This page explains the MCP tools FLyteTest exposes over standard input and
-standard output. It is a tool interface, not a chat bot, and it only covers
-the workflow targets that are available today.
+This page is the end-user walkthrough for the FLyteTest MCP surface.  The
+primary path is the scientist's **experiment loop**:
 
-Your MCP client controls the conversation. FLyteTest gives the client tools to
-check what can run, turn a prompt into a saved recipe, run that recipe locally,
-or submit a frozen Slurm recipe.
+```
+list_entries  →  list_bundles  →  load_bundle  →  run_task / run_workflow
+```
 
-Use this page as the general user guide for the MCP surface. It explains what
-the tools do, how to start the server from a client, what the read-only
-resources mean, and how to use the local and Slurm paths without guesswork.
+Pick a registered target, load a curated starter bundle (bindings + scalar
+inputs + container images + tool databases), and hand it straight to
+`run_task` or `run_workflow`.  Every run is frozen into a replayable
+recipe under `.runtime/specs/` before execution, so the returned
+`recipe_id` is a permanent handle to the experiment.
+
+Your MCP client controls the conversation.  FLyteTest provides the tools;
+the client composes them into experiments.
 
 ## Contents
 
@@ -19,20 +23,18 @@ resources mean, and how to use the local and Slurm paths without guesswork.
 - [Tools And Resources](#tools-and-resources)
 - [Server And Client Setup](#server-and-client-setup)
 - [Key Concepts](#key-concepts)
-- [First Successful Session](#first-successful-session)
-- [Prompt And Input Rules](#prompt-and-input-rules)
-- [Recipe Flow](#recipe-flow)
-- [Local Walkthrough](#local-walkthrough)
-- [Validated Slurm Walkthrough](#validated-slurm-walkthrough)
-  - [Slurm Prerequisites](#slurm-prerequisites)
-  - [Phase 1: Prepare](#phase-1-prepare-a-slurm-recipe)
-  - [Phase 2: Submit](#phase-2-submit-the-saved-artifact)
-  - [Phase 3: Monitor](#phase-3-monitor-the-job)
-  - [Phase 4: On completion](#phase-4-on-successful-completion)
-  - [Phase 5: On failure](#phase-5-on-failure--retry-or-re-prepare)
-  - [Phase 6: Cancel](#phase-6-cancel-a-running-or-pending-job)
+- [The Experiment Loop](#the-experiment-loop)
+  - [Worked example 1: BRAKER3 end to end](#worked-example-1-braker3-end-to-end)
+  - [Worked example 2: one task from list_entries](#worked-example-2-one-task-from-list_entries)
+  - [Worked example 3: $ref cross-run reuse](#worked-example-3-ref-cross-run-reuse)
+- [Binding Grammar](#binding-grammar)
+- [Adding a Pipeline Family](#adding-a-pipeline-family)
+- [Appendix: Inspect-Before-Execute](#appendix-inspect-before-execute)
+  - [prepare_run_recipe](#prepare_run_recipe)
+  - [validate_run_recipe](#validate_run_recipe)
+  - [run_local_recipe / run_slurm_recipe](#run_local_recipe--run_slurm_recipe)
+  - [Slurm lifecycle: monitor / retry / cancel](#slurm-lifecycle-monitor--retry--cancel)
 - [Common Failure Modes](#common-failure-modes)
-- [Result Summary](#result-summary)
 - [Scope Boundary](#scope-boundary)
 
 ## What This Doc Is For
@@ -41,13 +43,14 @@ Use this page when you want to:
 
 - see what FLyteTest can run right now
 - connect a client such as Codex CLI or OpenCode
-- choose between a local run and a Slurm run
-- copy a known-good prompt or recipe call
-- spot common client setup issues before assuming the workflow broke
+- run your first workflow end-to-end from a curated bundle
+- chain two runs together by referring to a prior run's output
+- understand when to reach for `prepare_run_recipe` and friends instead
+  of the direct run tools
 
-This page is not the architecture source of truth. For architecture and longer
-term design direction, use [DESIGN.md](../DESIGN.md).
-For the machine-readable contract, use
+This page is not the architecture source of truth.  For architecture and
+longer-term design direction, see [DESIGN.md](../DESIGN.md).  For the
+machine-readable contract, see
 [mcp_contract.py](../src/flytetest/mcp_contract.py).
 
 ## Runnable Targets
@@ -56,93 +59,84 @@ The local recipe runner can currently handle:
 
 - workflow: `ab_initio_annotation_braker3`
 - workflow: `protein_evidence_alignment`
-- task: `exonerate_align_chunk`
-- task: `busco_assess_proteins`
 - workflow: `annotation_qc_busco`
 - workflow: `annotation_functional_eggnog`
 - workflow: `annotation_postprocess_agat`
 - workflow: `annotation_postprocess_agat_conversion`
 - workflow: `annotation_postprocess_agat_cleanup`
 - workflow: `annotation_postprocess_table2asn`
+- task: `exonerate_align_chunk`
+- task: `busco_assess_proteins`
+- task: `fastqc`
+- task: `gffread_proteins`
 
-Other registered workflows may still show up in the registry and typed planner,
-but they need explicit local node handlers before they can be run through this
-MCP surface.
+Other registered entries still show up in the registry and typed planner,
+but they need explicit local node handlers before they can be run through
+this MCP surface.  Call `list_entries` or `list_entries(pipeline_family=
+"annotation")` to see the exact runnable set at any time.
 
 ## Tools And Resources
 
-- `list_entries`
-- `plan_request`
-- `prepare_run_recipe`
-- `run_local_recipe`
-- `run_slurm_recipe`
-- `monitor_slurm_job`
-- `retry_slurm_job`
-- `cancel_slurm_job`
-- `prompt_and_run`
+The tools are grouped by the role they play in the experiment loop.
 
-Read-only resources:
+**Experiment loop (primary path):**
 
-- `flytetest://scope`
-- `flytetest://supported-targets`
-- `flytetest://example-prompts`
-- `flytetest://prompt-and-run-contract`
+- `list_entries` — registered tasks and workflows, with their accepted
+  planner-type bindings, scalar parameters, and supported execution
+  profiles.  Filter by `pipeline_family=...` to scope to one family.
+- `list_bundles` — curated `ResourceBundle` catalog.  Each entry is
+  reported with an `available` flag plus a `reasons` list; missing
+  bundles are surfaced, never hidden.
+- `load_bundle` — materialize one bundle into `bindings`, `inputs`,
+  `runtime_images`, and `tool_databases` dicts ready to spread into a
+  run tool.
+- `run_task` — run one registered task against typed bindings; returns
+  a `RunReply` with `recipe_id`, `run_record_path`, `artifact_path`,
+  `execution_status`, and an `outputs` dict.
+- `run_workflow` — same shape as `run_task` for a registered workflow.
+  A bundle dict spreads identically into either tool.
+- `list_available_bindings` — discover candidate input paths for one
+  task (extension-based scan with a `typed_bindings` hint for planner
+  types).
 
-What the tools do:
+**Inspect-before-execute (power tools):**
 
-- `list_entries`
-  - shows the currently runnable targets and their inputs and outputs
-  - includes `supported_execution_profiles` so clients can distinguish
-    local-only targets from targets that can be frozen and submitted through
-    Slurm
-- `plan_request`
-  - makes a plan without saving it yet
-- `prepare_run_recipe`
-  - turns a supported plan into a saved recipe under `.runtime/specs/`
-- `run_local_recipe`
-  - runs a previously saved local recipe
-- `run_slurm_recipe`
-  - submits a previously saved Slurm recipe and writes a run record
-- `monitor_slurm_job`
-  - checks a Slurm run record against the live scheduler state
-- `retry_slurm_job`
-  - resubmits a terminal Slurm run record from its original frozen recipe unchanged; if the failure was resource-related, prepare a new recipe with updated `resource_request` instead
-- `cancel_slurm_job`
-  - records that a scheduler cancellation was requested
-- `prompt_and_run`
-  - shortcut for older clients that prepares and then runs locally in one step
+- `prepare_run_recipe` — freeze a plan into a `.runtime/specs/` artifact
+  without dispatching.  Use when you want to review the fully-resolved
+  state before running.
+- `validate_run_recipe` — re-run the same preflight checks a real
+  execution would, against a frozen artifact.  Never submits, never
+  mutates.
+- `run_local_recipe` — execute a previously frozen local artifact.
+- `run_slurm_recipe` — submit a previously frozen Slurm artifact.
 
-What the resources are for:
+**Slurm lifecycle:**
 
-- `flytetest://scope`
-  - a plain-language summary of the MCP boundary
-- `flytetest://supported-targets`
-  - the exact runnable targets and their shape
-- `flytetest://example-prompts`
-  - small known-good prompt examples
-- `flytetest://prompt-and-run-contract`
-  - stable fields, result codes, and client-facing contract details
+- `monitor_slurm_job` — reconcile a durable run record against
+  `squeue` / `scontrol` / `sacct`.
+- `wait_for_slurm_job` — poll `monitor_slurm_job` until terminal.
+- `fetch_job_log` — tail the `slurm-<jobid>.out` / `.err` files.
+- `retry_slurm_job` — resubmit from the original frozen recipe; accepts
+  `resource_overrides` for OOM/TIMEOUT escalation.
+- `cancel_slurm_job` — record a `scancel` request.
+- `list_slurm_run_history` — durable run records from `.runtime/runs/`
+  without contacting the scheduler.
+- `get_run_summary` / `inspect_run_result` — offline dashboard views.
 
-When to read the resources:
+**Read-only resources:**
 
-- read `flytetest://scope` when you are starting a new client session
-- read `flytetest://supported-targets` before choosing a workflow or task
-- read `flytetest://example-prompts` if you want a prompt to adapt
-- read `flytetest://prompt-and-run-contract` if you are building a client or
-  need to inspect returned fields in code
+- `flytetest://scope` — plain-language MCP boundary summary
+- `flytetest://supported-targets` — runnable target shapes
+- `flytetest://example-prompts` — small known-good prompt examples
+- `flytetest://prompt-and-run-contract` — stable fields and result
+  codes for client authors
+- `flytetest://run-recipes/{path}` — raw JSON of a saved recipe
+- `flytetest://result-manifests/{path}` — `run_manifest.json` from a
+  result directory
 
 ## Server And Client Setup
 
-This section covers both pieces of the MCP connection:
-
-- start the FLyteTest server so it can listen over standard input and standard
-  output
-- point your MCP client at that server so the client can send tool requests
-
-### Start the server
-
-Run this when a client needs to talk to FLyteTest over standard input and
-standard output.
+Start the FLyteTest server over standard input/output:
 
 ```bash
 env PYTHONPATH=src .venv/bin/python -m flytetest.server
@@ -154,16 +148,10 @@ Minimal generic client configuration:
 - args: `-m flytetest.server`
 - env: `PYTHONPATH=src`
 
-### Connect a client
+Checked-in example configs:
 
-This is how to connect your MCP client to FLyteTest. A client setup tells the
-client where the server is, which config file to use, and what environment
-variables it needs.
-
-Checked-in example:
-
-- [docs/mcp_client_config.example.json](docs/mcp_client_config.example.json)
-- [docs/opencode.config.example.json](docs/opencode.config.example.json)
+- [docs/mcp_client_config.example.json](mcp_client_config.example.json)
+- [docs/opencode.config.example.json](opencode.config.example.json)
 
 ### OpenCode
 
@@ -177,39 +165,20 @@ export PATH="$HOME/.local/bin:$PATH"
 opencode --version
 ```
 
-Default config location:
-
-- `~/.config/opencode/opencode.json`
-
-Optional repo-local config location:
-
-- `/path/to/flyteTest/.config/opencode/opencode.json`
-
-If you keep an OpenCode config in a non-default location, launch it with:
+Default config location: `~/.config/opencode/opencode.json`.  Keep a
+repo-local config at `/path/to/flyteTest/.config/opencode/opencode.json`
+and launch with:
 
 ```bash
 export OPENCODE_CONFIG=/path/to/flyteTest/.config/opencode/opencode.json
 opencode
 ```
 
-Example HPC shell setup:
-
-```bash
-export PATH="$HOME/.local/bin:$PATH"
-export OPENCODE_CONFIG=/scratch/midway3/$USER/flyteTest/.config/opencode/opencode.json
-opencode
-```
-
 ### Codex CLI
 
-Example Codex CLI registration:
-
 ```bash
-# Tell Codex where this repo lives.
 export FLYTETEST_REPO_ROOT=/path/to/flyteTest
-# Let Python import the local package code.
 export PYTHONPATH=/path/to/flyteTest/src
-# Register the FLyteTest MCP server with Codex.
 codex mcp add flytetest \
   --env FLYTETEST_REPO_ROOT="$FLYTETEST_REPO_ROOT" \
   --env PYTHONPATH="$PYTHONPATH" \
@@ -218,332 +187,240 @@ codex mcp add flytetest \
 
 ## Key Concepts
 
-These terms show up often in the tool responses:
+Terms that show up in every run reply:
 
-- artifact
-  - the saved recipe JSON under `.runtime/specs/`
-- binding plan
-  - the saved execution plan, including inputs, runtime settings, execution
-    profile, and resource choices
-- manifest source
-  - either a `run_manifest.json` file or a result directory that contains one
-- runtime bindings
-  - explicit runtime values such as `exonerate_sif` or `busco_lineages_text`
-- resource request / resource spec
-  - structured CPU, memory, queue, account, and walltime settings
-- run record
-  - the durable Slurm run record under `.runtime/runs/`
+- **bundle** — a named, typed snapshot of `bindings + inputs +
+  runtime_images + tool_databases` pointing at existing fixtures under
+  `data/`.  Loadable with `load_bundle(name)`; enumerated with
+  `list_bundles()`.
+- **binding** — a typed biological input mapped by planner-type name
+  (`ReferenceGenome`, `ReadSet`, `ProteinEvidenceSet`, etc.).  Three
+  forms: raw path, `$manifest`, `$ref` — see
+  [Binding Grammar](#binding-grammar).
+- **scalar input** — a non-asset parameter (thread count, lineage
+  selector, container override).  Lives in the `inputs={...}` kwarg and
+  corresponds to the task's `TASK_PARAMETERS` entries.
+- **recipe_id** — a stable handle of the form
+  `<YYYYMMDDThhmmss.mmm>Z-<target_name>`.  Every run reply includes one.
+  Use it as the `run_id` in a later `$ref` binding.
+- **artifact** — the frozen recipe JSON under `.runtime/specs/`.
+  Recreated identically on every run, so the experiment is replayable.
+- **run record** — the durable execution record under `.runtime/runs/`.
+  Slurm monitoring, retry, and cancel all read from this file.
 
-## First Successful Session
+## The Experiment Loop
 
-For your first session with a new MCP client, this order is the safest:
+These three examples cover the same primary path from different angles:
+load a bundle, run a task from the registry, and chain two runs via
+`$ref`.
 
-1. Read `flytetest://scope`.
-2. Call `list_entries`.
-3. Read `flytetest://example-prompts`.
-4. Run `prepare_run_recipe` for one supported target.
-5. Inspect the returned `typed_plan` before executing anything.
-6. Use `run_local_recipe` for local profile artifacts or `run_slurm_recipe` for
-   verified Slurm profile artifacts.
+### Worked example 1: BRAKER3 end to end
 
-Example resource reads:
-
-```text
-Use the flytetest MCP server and read the resource flytetest://scope.
-```
+One call reads the catalog; a second loads a bundle; a third runs the
+workflow and returns a `recipe_id` plus an `outputs` dict.
 
 ```text
-Use the flytetest MCP server and read the resource flytetest://supported-targets.
+Use the flytetest MCP server.
+
+Call list_bundles with exactly: pipeline_family: "annotation"
+Then print each entry's name, available, and applies_to.
 ```
+
+Pick `braker3_small_eukaryote` (the small-eukaryote starter kit) and
+hand it to the workflow:
 
 ```text
-Use the flytetest MCP server and read the resource flytetest://example-prompts.
+Use the flytetest MCP server.
+
+Call load_bundle with exactly: name: "braker3_small_eukaryote"
+Then call run_workflow with:
+  workflow_name: "ab_initio_annotation_braker3"
+  bindings:        <bundle.bindings>
+  inputs:          <bundle.inputs>
+  runtime_images:  <bundle.runtime_images>
+  tool_databases:  <bundle.tool_databases>
+  source_prompt:   "Annotate the small-eukaryote starter kit with BRAKER3."
+
+Then print exactly:
+- supported
+- recipe_id
+- execution_status
+- outputs
+- run_record_path
+- limitations
 ```
 
-## Prompt And Input Rules
+Equivalent Python pseudocode when the client has structured object
+support:
 
-Prompts can include explicit local file paths. The recipe tools also accept
-manifest sources, saved planner bindings, and runtime bindings. The current MCP
-surface does not guess paths, search remote storage, orchestrate arbitrary
-workflows, or manage the Slurm job lifecycle end to end.
+```python
+bundle = load_bundle(name="braker3_small_eukaryote")
+reply = run_workflow(
+    "ab_initio_annotation_braker3",
+    **bundle,  # bindings, inputs, runtime_images, tool_databases
+    source_prompt="Annotate the small-eukaryote starter kit with BRAKER3.",
+)
+# reply["recipe_id"] → "20260421T090000.000Z-ab_initio_annotation_braker3"
+# reply["outputs"]   → {"annotation_gff": "results/.../braker.gff3", ...}
+```
 
-Manifest sources must be either:
+The `recipe_id` is the permanent handle to this experiment.  Save it —
+you'll feed it into Example 3.
 
-- a `run_manifest.json` path
-- a result directory containing `run_manifest.json`
+### Worked example 2: one task from list_entries
 
-For BUSCO and EggNOG recipe preparation, the caller can either supply a
-serialized `QualityAssessmentTarget` directly or point the resolver at a
-repeat-filtering or compatible QC result manifest. BUSCO and EggNOG runtime
-bindings stay explicit and are frozen into the saved recipe.
-
-For AGAT statistics and conversion, the caller supplies an EggNOG result
-manifest or serialized `QualityAssessmentTarget`. For AGAT cleanup, the caller
-supplies an AGAT conversion result manifest or serialized
-`QualityAssessmentTarget`. The resolver refuses to choose when more than one
-compatible manifest source is supplied.
-
-Example BRAKER3 workflow prompt:
+For stage-scoped experiments (e.g., tuning Exonerate on one chunk), use
+`list_entries` to pick a task directly, then call `run_task`.
 
 ```text
-Annotate the genome sequence of a small eukaryote using BRAKER3 with genome data/braker3/reference/genome.fa, RNA-seq evidence data/braker3/rnaseq/RNAseq.bam, and protein evidence data/braker3/protein_data/fastas/proteins.fa
+Use the flytetest MCP server.
+
+Call list_entries with exactly: pipeline_family: "annotation"
+Pick a task entry (category == "task"), for example exonerate_align_chunk.
+Read its accepted_planner_types and scalar parameters.
 ```
 
-Example protein-evidence workflow prompt:
+Call the task with explicit raw-path bindings and one scalar input:
 
 ```text
-Run protein evidence alignment with genome data/braker3/reference/genome.fa and protein evidence data/braker3/protein_data/fastas/proteins.fa
+Call run_task with:
+  task_name: "exonerate_align_chunk"
+  bindings:
+    ReferenceGenome:
+      fasta_path: "data/braker3/reference/genome.fa"
+    ProteinEvidenceSet:
+      protein_fasta_path: "data/braker3/protein_data/fastas/proteins.fa"
+  inputs:
+    exonerate_sif: "data/images/exonerate_2.2.0--1.sif"
+  source_prompt: "Experiment with Exonerate on the starter-kit fixture."
+
+Then print exactly:
+- supported
+- recipe_id
+- execution_status
+- outputs
+- limitations
 ```
 
-Example Exonerate task prompt:
+Symmetry with Example 1: a bundle dict spreads identically into
+`run_task`, so `run_task("exonerate_align_chunk",
+**load_bundle("protein_evidence_demo"), source_prompt="...")` reads the
+same way.
+
+### Worked example 3: $ref cross-run reuse
+
+Chain two experiments together without re-specifying any paths.  After
+Example 1 returns a `recipe_id`, feed it into the next call's `$ref`
+binding so the downstream workflow picks up the previous run's outputs
+by name.
 
 ```text
-Experiment with Exonerate protein-to-genome alignment using genome data/braker3/reference/genome.fa and protein chunk data/braker3/protein_data/fastas/proteins.fa
+Use the flytetest MCP server.
+
+Call run_workflow with:
+  workflow_name: "annotation_qc_busco"
+  bindings:
+    QualityAssessmentTarget:
+      $ref:
+        run_id: "20260421T090000.000Z-ab_initio_annotation_braker3"
+        output_name: "annotation_gff"
+  inputs:
+    lineage_dataset: "eukaryota_odb10"
+    busco_mode:      "proteins"
+  source_prompt: "QC the BRAKER3 annotation against eukaryota_odb10."
+
+Then print exactly:
+- supported
+- recipe_id
+- outputs
+- limitations
 ```
 
-Example M18 BUSCO fixture prompt:
+The resolver reads `.runtime/durable_asset_index.json`, looks up the
+named output under the cited `run_id`, type-checks it against
+`QualityAssessmentTarget`, and materializes it as the QC target.  If
+the run ID is unknown, the output name is wrong, or the type doesn't
+match, you get a structured `PlanDecline` with populated
+`suggested_bundles`, `suggested_prior_runs`, and `next_steps` — never a
+silent failure.
+
+## Binding Grammar
+
+Every typed binding follows one of three shapes.  Use the one that
+matches how you know the input.
 
 ```text
-Run the Milestone 18 BUSCO eukaryota fixture using execution profile slurm with BUSCO_SIF data/images/busco_v6.0.0_cv1.sif, busco_cpu 2, 2 CPUs, memory 8Gi, queue caslake, account rcc-staff, and walltime 00:10:00.
+bindings:
+  ReferenceGenome:
+    # Form 1 — raw path: you have a local file and know where it lives.
+    fasta_path: "data/braker3/reference/genome.fa"
+
+  ProteinEvidenceSet:
+    # Form 2 — $manifest: point at a result folder's run_manifest.json
+    # and let the resolver pick the right output file for this type.
+    $manifest: "results/protein_evidence_results_20260420/run_manifest.json"
+    output_name: "evm_ready_gff3"  # required when >1 output matches the type
+
+  AnnotationEvidenceSet:
+    # Form 3 — $ref: name a prior run's output by recipe_id.  This is
+    # how you chain "BRAKER3 → EVM" without touching any paths.
+    $ref:
+      run_id: "20260421T090000.000Z-ab_initio_annotation_braker3"
+      output_name: "annotation_gff"
 ```
 
-## Recipe Flow
+Mixing forms inside one call is fine — one binding can be a raw path
+while another is a `$ref`.  Durable chaining via `$ref` is the feature
+that makes the experiment loop iterative: yesterday's `recipe_id`
+becomes today's input.
 
-`prepare_run_recipe(prompt, manifest_sources=[], explicit_bindings={}, runtime_bindings={}, resource_request={}, execution_profile="local", runtime_image={})`
-returns the typed plan plus the absolute path to a saved recipe artifact under
-`.runtime/specs/`. The saved `BindingPlan` records the execution profile,
-structured `ResourceSpec`, optional `RuntimeImageSpec`, and runtime bindings
+For the authoritative grammar, see DESIGN §7.
+
+## Adding a Pipeline Family
+
+New pipeline families plug in without MCP-layer edits.  The recipe:
+
+1. Planner types → `src/flytetest/planner_types.py`
+2. Narrow Flyte tasks → `src/flytetest/tasks/<family>.py`
+3. Biology-ordered workflows → `src/flytetest/workflows/<family>.py`
+4. Registry entries → `src/flytetest/registry/_<family>.py`
+5. Optional curated bundle → `src/flytetest/bundles.py`
+
+No edits to `server.py`, `mcp_contract.py`, or `planning.py` are
+required.  See [`.codex/registry.md`](../.codex/registry.md) for the
+full walkthrough, including the queue/account handoff rule and the
+worked GATK example.
+
+## Appendix: Inspect-Before-Execute
+
+The run tools freeze a recipe and execute it in the same call.  When
+you want to review the fully-resolved state before dispatch — or
+resubmit an existing artifact — use the inspect-before-execute tools
+instead.
+
+### prepare_run_recipe
+
+```
+prepare_run_recipe(prompt, manifest_sources=[], explicit_bindings={},
+                   runtime_bindings={}, resource_request={},
+                   execution_profile="local", runtime_image={})
+```
+
+Returns the typed plan plus an `artifact_path` under `.runtime/specs/`.
+The saved `BindingPlan` records the execution profile, structured
+`ResourceSpec`, optional `RuntimeImageSpec`, and runtime bindings
 before any execution starts.
 
-Plain-English input guide:
-
-- `prompt`
-  - the natural-language request that says what you want to run
-- `manifest_sources`
-  - one or more existing result folders or `run_manifest.json` files to reuse
-    as inputs
-- `explicit_bindings`
-  - direct input values for the planner when you already know exactly what to
-    pass
-  - example:
-
-    ```json
-    {
-      "ReferenceGenome": {
-        "fasta_path": "data/braker3/reference/genome.fa"
-      }
-    }
-    ```
-  - use this when the prompt alone is not enough and you already have the exact
-    planner input object
-- `runtime_bindings`
-  - runtime settings for the chosen workflow, such as input file paths or tool
-    options like `exonerate_sif`
-  - example:
-
-    ```json
-    {
-      "exonerate_sif": "data/images/exonerate_2.2.0--1.sif"
-    }
-    ```
-  - use this for runtime inputs that point to files, including Apptainer
-    container images stored as `.sif` files
-- `resource_request`
-  - compute settings such as CPU, memory, queue, account, and walltime
-  - example:
-
-    ```json
-    {
-      "cpu": 8,
-      "memory": "32Gi",
-      "queue": "caslake",
-      "account": "rcc-staff",
-      "walltime": "02:00:00"
-    }
-    ```
-  - when unsure what to use, call `list_entries` and read
-    `compatibility.execution_defaults.slurm_resource_hints` for the target
-    workflow — it provides advisory cpu, memory, and walltime sized for a
-    typical small-to-medium eukaryote genome; queue and account are
-    cluster-specific and must always be supplied by the caller
-  - these fields can also be embedded in the prompt text as a fallback for LLM
-    clients that drop optional tool arguments
-- `execution_profile`
-  - where the recipe should run, usually `local` or `slurm`
-- `runtime_image`
-  - container or image metadata to freeze into the saved recipe when needed
-
-When a client calls `prepare_run_recipe` or `prompt_and_run` directly, the
-structured arguments must be real JSON/object mappings. For example, pass
-`{"exonerate_sif":"data/images/exonerate_2.2.0--1.sif"}` rather than a
-stringified pseudo-dict such as `{exonerate_sif:data/images/exonerate_2.2.0--1.sif}`.
-For Slurm preparation, also verify that the returned `typed_plan.execution_profile`
-and `typed_plan.binding_plan.execution_profile` are both `slurm` before passing
-the saved artifact to `run_slurm_recipe`.
-For the M18 BUSCO fixture, verify that
-`typed_plan.binding_plan.runtime_bindings` contains
-`proteins_fasta=data/busco/test_data/eukaryota/genome.fna`,
-`lineage_dataset=auto-lineage`, `busco_mode=geno`, and the intended
-`busco_sif` before submission.
-If an LLM-driven client does not preserve optional tool arguments reliably,
-encode the execution profile and resource choices directly in the prompt text,
-then verify the frozen recipe before submission.
-
-`run_local_recipe(artifact_path)` loads that artifact and executes it through
-`LocalWorkflowSpecExecutor` with the server's explicit handler map.
-
-`run_slurm_recipe(artifact_path)` loads a saved artifact whose execution profile
-is `slurm`, renders a deterministic `sbatch` script under `.runtime/runs/`,
-submits it with `sbatch`, and records the accepted Slurm job ID in
-`slurm_run_record.json`. The generated `sbatch` script is saved alongside the
-run record under `.runtime/runs/<run_id>/` and can be inspected before or after
-submission to verify directives. On the RCC cluster the frozen recipe also
-carries the Slurm account setting into the generated script so manual
-`sbatch --account=...` overrides are not required for submission. This path is
-supported only when the MCP server is running inside an already-authenticated
-scheduler-capable environment where `sbatch` is available on `PATH`.
-
-`monitor_slurm_job(run_record_path)` reloads that durable record and reconciles
-it with `squeue`, `scontrol show job`, and `sacct`. When Slurm returns concrete
-state, the record is updated with scheduler state, stdout/stderr paths, exit
-code, and final state when terminal. If the server is started outside that
-scheduler boundary, monitoring returns an explicit unsupported-environment
-limitation instead of guessing.
-
-`cancel_slurm_job(run_record_path)` reloads the same durable record, requests
-`scancel <job-id>`, and records that cancellation was requested. Final cancelled
-state is confirmed by a later `monitor_slurm_job` reconciliation. Cancellation
-likewise requires the same already-authenticated scheduler environment.
-
-`prompt_and_run(prompt, manifest_sources=[], explicit_bindings={}, runtime_bindings={}, resource_request={}, execution_profile="local", runtime_image={})`
-remains available for existing clients. It performs the same prepare-then-run
-sequence and returns the artifact path alongside the execution summary.
-
-Resource choices are frozen before execution. CPU, memory, queue, walltime, and
-runtime image settings are recorded for review and replay. Local execution uses
-the explicit handler map, while Slurm execution uses the saved profile and
-resource spec to render `sbatch` directives.
-
-## Local Walkthrough
-
-The local path is the simplest way to prove that prompt interpretation and
-saved-recipe execution are both working before adding scheduler behavior.
-
-Quick sanity check:
-
-```text
-Use the flytetest MCP server and call list_entries.
-```
-
-Prepare a local recipe:
+Example — prepare a Slurm-profile BRAKER3 recipe:
 
 ```text
 Use the flytetest MCP server.
 
 Call prepare_run_recipe with exactly these arguments:
-- prompt: "Run protein evidence alignment with genome data/braker3/reference/genome.fa and protein evidence data/braker3/protein_data/fastas/proteins.fa."
-- runtime_bindings: {"exonerate_sif":"data/images/exonerate_2.2.0--1.sif"}
+- prompt: "Annotate the genome sequence of a small eukaryote using BRAKER3 with genome data/braker3/reference/genome.fa, RNA-seq evidence data/braker3/rnaseq/RNAseq.bam, and protein evidence data/braker3/protein_data/fastas/proteins.fa using execution profile slurm on account rcc-staff, queue caslake, with 8 CPUs, memory 32Gi, and walltime 02:00:00."
 
 Then print exactly:
 - supported
-- typed_plan.execution_profile
-- typed_plan.binding_plan.execution_profile
-- typed_plan.binding_plan.runtime_bindings
-- artifact_path
-- limitations
-```
-
-Run the saved local artifact:
-
-```text
-Use the flytetest MCP server.
-
-Call run_local_recipe with the artifact_path from the last successful prepare_run_recipe call.
-
-Then print exactly:
-- supported
-- execution_result.execution_profile
-- execution_result.output_paths
-- limitations
-```
-
-## Validated Slurm Walkthrough
-
-The following prompt sequence was validated on the RCC cluster with an
-authenticated scheduler session. For the step-by-step live-cluster scenarios
-and pass criteria that mirror this walkthrough, see
-[the live-cluster prompt tests](mcp_cluster_prompt_tests.md).
-
-### Slurm Prerequisites
-
-All Slurm tools require the MCP server to be running inside an
-already-authenticated HPC login session. The RCC cluster uses 2FA and does not
-allow SSH key pairing, so the server must run from within an interactive session
-on a login node rather than connecting to the scheduler remotely.
-
-Before using any Slurm tool, confirm:
-
-- The MCP server process is running on a login node inside an active
-  authenticated session (tmux, screen, or equivalent)
-- `sbatch`, `squeue`, `scontrol`, `sacct`, and `scancel` are visible on `PATH`
-
-If any of these commands are missing, `run_slurm_recipe`, `monitor_slurm_job`,
-`retry_slurm_job`, and `cancel_slurm_job` will return an
-`unsupported_environment` limitation.
-
-Quick sanity check:
-
-```text
-Use the flytetest MCP server and call list_entries.
-```
-
-To list only targets that can be submitted through Slurm, ask the client:
-
-```text
-Use the flytetest MCP server and call list_entries.
-
-Print only entries where supported_execution_profiles contains "slurm".
-For each one, print:
-- name
-- category
-- default_execution_profile
-- supported_execution_profiles
-```
-
-### Phase 1: Prepare a Slurm recipe
-
-Protein evidence alignment with explicit resource settings:
-
-```text
-Use the flytetest MCP server.
-
-Call prepare_run_recipe with exactly these arguments:
-- prompt: "Run protein evidence alignment with genome data/braker3/reference/genome.fa and protein evidence data/braker3/protein_data/fastas/proteins.fa using execution profile slurm on account rcc-staff, queue caslake, with 8 CPUs, memory 32Gi, and walltime 02:00:00."
-- runtime_bindings: {"exonerate_sif":"data/images/exonerate_2.2.0--1.sif"}
-
-Then print exactly:
-- supported
-- typed_plan.execution_profile
-- typed_plan.binding_plan.execution_profile
-- typed_plan.binding_plan.runtime_bindings
-- typed_plan.resource_spec
-- typed_plan.binding_plan.resource_spec
-- artifact_path
-- limitations
-```
-
-BUSCO fixture with explicit resource settings:
-
-```text
-Use the flytetest MCP server.
-
-Call prepare_run_recipe with exactly these arguments:
-- prompt: "Run the Milestone 18 BUSCO eukaryota fixture using execution profile slurm with BUSCO_SIF data/images/busco_v6.0.0_cv1.sif, busco_cpu 2, 2 CPUs, memory 8Gi, queue caslake, account rcc-staff, and walltime 00:10:00."
-
-Then print exactly:
-- supported
-- typed_plan.biological_goal
-- typed_plan.candidate_outcome
 - typed_plan.execution_profile
 - typed_plan.binding_plan.execution_profile
 - typed_plan.binding_plan.runtime_bindings
@@ -552,243 +429,118 @@ Then print exactly:
 - limitations
 ```
 
-Before submitting, verify that both `typed_plan.execution_profile` and
-`typed_plan.binding_plan.execution_profile` are `slurm`. If either reads
-`local`, the client dropped the execution profile argument — re-run with the
-profile embedded in the prompt text.
+When `list_entries` shows `supported_execution_profiles` containing
+`"slurm"`, the workflow's `compatibility.execution_defaults.slurm_resource_hints`
+carries advisory CPU/memory/walltime defaults sized for a
+small-to-medium eukaryote; `queue` and `account` are cluster-specific
+and must always come from the caller (never seeded server-side).
 
-### Phase 2: Submit the saved artifact
+### validate_run_recipe
+
+Re-runs the same preflight checks a real execution would — inputs
+resolve through the manifest + durable asset index, containers and
+tool databases exist, and (for Slurm) every staged path sits on a
+compute-visible root.  Never submits, never writes, never mutates.
 
 ```text
-Use the flytetest MCP server.
-
-Call run_slurm_recipe with the artifact_path from the last successful prepare_run_recipe call.
+Call validate_run_recipe with:
+  artifact_path: <path from prepare_run_recipe>
+  execution_profile: "slurm"
+  shared_fs_roots: ["/scratch/midway3", "/project/rcc"]
 
 Then print exactly:
 - supported
-- job_id
-- run_record_path
-- limitations
+- recipe_id
+- execution_profile
+- findings
 ```
 
-The `run_record_path` is the path to the durable run record. Save it — every
-subsequent monitoring, retry, and cancel call needs it. The generated `sbatch`
-script is also saved under `.runtime/runs/<run_id>/` and can be inspected to
-verify the directives that were submitted.
+Each finding carries `kind` (`container` / `tool_database` /
+`input_path` / `binding`), `key`, optional `path`, and a `reason`
+(`not_found` / `not_readable` / `not_on_shared_fs` / free-form).
 
-For direct MCP submissions, the server also refreshes the generic latest-run
-pointer files `.runtime/runs/latest_slurm_run_record.txt` and
-`.runtime/runs/latest_slurm_artifact.txt`. Use those pointers when you need a
-shell-side watcher to follow the newest accepted Slurm submission without
-copy/pasting the returned path each time.
+### run_local_recipe / run_slurm_recipe
 
-If you want a filesystem-only history view before you reconcile or cancel a
-run, list the recent durable records directly:
-
-```text
-Use the flytetest MCP server.
-
-Call list_slurm_run_history with exactly these arguments:
-- limit: 5
-- workflow_name: "<workflow_name from a previous history entry>"
-- active_only: true
-
-Then print exactly:
-- supported
-- filters
-- latest_run_record_path
-- latest_artifact_path
-- returned_count
-- matched_count
-- total_count
-- limitations
-- entries
+```
+run_local_recipe(artifact_path)
+run_slurm_recipe(artifact_path)
 ```
 
-This tool reads `.runtime/runs/` only. It does not call `squeue`, `sacct`, or
-`scontrol`, so it still works when you only need the durable submission
-history and not live scheduler reconciliation. `active_only` and
-`terminal_only` are mutually exclusive; omit both when you want the unfiltered
-history view. The `workflow_name` filter matches the durable run-record field,
-which may be a frozen workflow-spec name such as `select_annotation_qc_busco`
-rather than the higher-level showcase target alias.
+Both load a previously frozen artifact and execute it with no
+re-planning.  `run_slurm_recipe` runs the same preflight staging check
+as `validate_run_recipe`; unreachable containers, tool databases, or
+input paths short-circuit with `supported=False` rather than queuing a
+job that will fail offline.
 
-### Phase 3: Monitor the job
+**Slurm prerequisites.**  All Slurm tools require the MCP server to be
+running inside an already-authenticated HPC login session; the RCC
+cluster uses 2FA and does not allow SSH key pairing.  Before using any
+Slurm tool, confirm that `sbatch`, `squeue`, `scontrol`, `sacct`, and
+`scancel` are visible on `PATH`.  If any are missing, the Slurm tools
+return an `unsupported_environment` limitation instead of guessing.
 
-Call `monitor_slurm_job` with the `run_record_path` from Phase 2 and repeat
-until `final_scheduler_state` is non-null. A non-null `final_scheduler_state`
-means the job has reached a terminal state.
+### Slurm lifecycle: monitor / retry / cancel
+
+After `run_slurm_recipe` returns a `run_record_path`:
 
 ```text
-Use the flytetest MCP server.
-
 Call monitor_slurm_job with the run_record_path from run_slurm_recipe.
-
-Then print exactly:
-- supported
-- scheduler_state
-- final_scheduler_state
-- stdout_path
-- stderr_path
-- run_record_path
-- limitations
+Repeat until final_scheduler_state is non-null.
 ```
-
-Scheduler state reference:
 
 | `scheduler_state` | Meaning | What to do |
 |---|---|---|
 | `PENDING` | Queued, not yet started | Poll again later |
 | `RUNNING` | Active on compute node | Poll again; `stdout_path` available for live output |
-| `COMPLETED` | Finished successfully | Retrieve outputs — see Phase 4 |
-| `FAILED` | Non-zero exit code | Check `stderr_path`; see Phase 5 |
-| `TIMEOUT` | Exceeded walltime | See Phase 5 — retry requires a new recipe with longer `walltime` |
-| `OUT_OF_MEMORY` | OOM kill | See Phase 5 — retry requires a new recipe with more `memory` |
+| `COMPLETED` | Finished successfully | Retrieve outputs |
+| `FAILED` | Non-zero exit code | Check `stderr_path`; retry or re-prepare |
+| `TIMEOUT` | Exceeded walltime | Retry with `resource_overrides={"walltime": ...}` |
+| `OUT_OF_MEMORY` | OOM kill | Retry with `resource_overrides={"memory": ...}` |
 | `CANCELLED` | Cancelled by user or admin | No retry path |
 
-### Phase 4: On successful completion
-
-When `scheduler_state = COMPLETED` and `final_scheduler_state` is non-null,
-the job finished successfully. The `stdout_path` and `stderr_path` fields point
-to the job output files on the shared filesystem.
+Escalation retry for OOM:
 
 ```text
-Use the flytetest MCP server.
-
-Call monitor_slurm_job with the run_record_path.
-
-Then print exactly:
-- supported
-- scheduler_state         (expect: COMPLETED)
-- final_scheduler_state   (expect: COMPLETED)
-- stdout_path
-- stderr_path
-- run_record_path
-- limitations
-```
-
-### Phase 5: On failure — retry or re-prepare
-
-If the job reached a terminal failure state (`FAILED`, `TIMEOUT`,
-`OUT_OF_MEMORY`, `DEADLINE`), decide whether to retry, escalate, or re-prepare:
-
-- **Transient failure (`FAILED`, `NODE_FAIL`):** call `retry_slurm_job` to
-  resubmit from the same frozen recipe. No extra arguments needed.
-- **Resource failure (`OUT_OF_MEMORY`):** pass `resource_overrides` to
-  `retry_slurm_job` with the new memory value and optionally other fields.
-  The executor resubmits using those new limits and records both the original
-  `resource_spec` and the override in the child run record. Valid keys:
-  `cpu`, `memory`, `walltime`, `queue`, `account`, `gpu`.
-- **Soft time limit (`TIMEOUT`):** same as `OUT_OF_MEMORY` — pass
-  `resource_overrides` with a new `walltime` to `retry_slurm_job`.
-- **Policy-level deadline (`DEADLINE`):** `DEADLINE` is a scheduler-enforced
-  policy rejection, not a soft resource limit. `retry_slurm_job` with a
-  `walltime` override will be declined. You must call `prepare_run_recipe`
-  again with a new recipe that fits within the scheduler's policy limits.
-
-Escalation retry example (OOM with more memory):
-
-```text
-Use the flytetest MCP server.
-
 Call retry_slurm_job with:
   run_record_path: <path from the terminal run>
   resource_overrides: {"memory": "64Gi"}
 
-Then print exactly:
-- supported
-- job_id
-- retry_run_record_path
-- limitations
+Then print supported, job_id, retry_run_record_path, limitations.
 ```
 
-Simple retry for a transient failure:
+`DEADLINE` is a scheduler-enforced policy rejection, not a soft
+resource limit; `retry_slurm_job` with a `walltime` override is
+declined.  Prepare a new recipe that fits within the scheduler's
+policy limits.
+
+Cancellation:
 
 ```text
-Use the flytetest MCP server.
-
-Call retry_slurm_job with the run_record_path from the terminal run.
-
-Then print exactly:
-- supported
-- job_id
-- retry_run_record_path
-- limitations
-```
-
-The response returns a new `job_id` and a new `retry_run_record_path` for the
-child run. Use the new `retry_run_record_path` for all subsequent monitoring
-calls.
-
-When monitoring a terminal job, the response now also includes `stdout_tail`
-and `stderr_tail` fields with the last 50 lines (default) of the scheduler
-output logs. Pass `tail_lines=N` to `monitor_slurm_job` to control the count
-(0 to disable, capped at 500).
-
-### Phase 6: Cancel a running or pending job
-
-```text
-Use the flytetest MCP server.
-
 Call cancel_slurm_job with the run_record_path from run_slurm_recipe.
-
-Then print exactly:
-- supported
-- job_id
-- run_record_path
-- limitations
-- run_record.scheduler_state
-- run_record.final_scheduler_state
-```
-
-Cancellation is recorded immediately, but the final cancelled state is
-confirmed by a subsequent `monitor_slurm_job` call:
-
-```text
-Use the flytetest MCP server.
-
-Call monitor_slurm_job with the same run_record_path after cancellation.
-
-Then print exactly:
-- supported
-- scheduler_state
-- final_scheduler_state
-- run_record_path
-- limitations
+Then re-call monitor_slurm_job to confirm final_scheduler_state.
 ```
 
 ## Common Failure Modes
 
-These are the most common ways a session can go wrong even when the workflow
-code itself is fine.
-
 ### The client dropped optional tool arguments
 
-Symptom:
+Symptom: `run_task` / `run_workflow` ran with defaults, or
+`prepare_run_recipe` returns `typed_plan.execution_profile = local`
+when you asked for Slurm.
 
-- `prepare_run_recipe` returns `typed_plan.execution_profile = local` even
-  though you intended `slurm`
+Cause: the LLM-driven client did not preserve an optional tool argument
+such as `execution_profile` or `resource_request`.
 
-What it usually means:
-
-- the LLM-driven client did not preserve an optional tool argument such as
-  `execution_profile` or `resource_request`
-
-What to do:
-
-- put `execution profile slurm` and resource choices directly in the prompt text
-- then verify the returned `typed_plan.execution_profile` and
-  `typed_plan.binding_plan.execution_profile` before submission
+Fix: put the profile and resource choices directly in the prompt text,
+then verify the returned fields before submission.
 
 ### Structured mappings were sent as pseudo-dicts
 
-Symptom:
+Symptom: tool validation rejects a field like `bindings` or
+`runtime_images`.
 
-- tool validation rejects a field like `runtime_bindings`
-
-What it usually means:
-
-- the client sent a string that looks like a dict instead of a real JSON/object mapping
+Cause: the client sent a string that looks like a dict instead of a
+real JSON/object mapping.
 
 Use:
 
@@ -796,7 +548,7 @@ Use:
 {"exonerate_sif":"data/images/exonerate_2.2.0--1.sif"}
 ```
 
-Do not use:
+Not:
 
 ```text
 {exonerate_sif:data/images/exonerate_2.2.0--1.sif}
@@ -804,214 +556,58 @@ Do not use:
 
 ### The server was started outside the scheduler boundary
 
-Symptom:
+Symptom: `run_slurm_recipe`, `monitor_slurm_job`, `retry_slurm_job`, or
+`cancel_slurm_job` return an `unsupported_environment` limitation.
 
-- `run_slurm_recipe`, `monitor_slurm_job`, `retry_slurm_job`, or
-  `cancel_slurm_job` return an `unsupported_environment` limitation
+Fix: start the MCP server from inside an authenticated HPC login
+session (tmux / screen) where `sbatch`, `squeue`, `scontrol`, `sacct`,
+and `scancel` are on `PATH`.
 
-What to do:
+### A $ref binding can't be resolved
 
-- see [Slurm Prerequisites](#slurm-prerequisites) above for the full setup
-  checklist
-- confirm `sbatch`, `squeue`, `scontrol`, `sacct`, and `scancel` are visible
-  on `PATH` inside the session where the server is running
+Symptom: a `PlanDecline` with `UnknownRunIdError`,
+`UnknownOutputNameError`, or `BindingTypeMismatchError`.
+
+Fix: the decline carries `suggested_bundles`, `suggested_prior_runs`,
+and `next_steps` — read the `next_steps` list.  Typical recoveries:
+call `list_available_bindings(<target>)` to confirm the `run_id`,
+inspect `.runtime/durable_asset_index.json` for indexed runs, or
+re-run the producing workflow to regenerate the output.
+
+### A bundle says `available=False`
+
+Symptom: `list_bundles` returns `available: false` with a `reasons`
+list (`ReferenceGenome.fasta_path missing: ...`, `runtime_image
+'busco_sif' missing: ...`).
+
+Fix: resolve the missing paths under `data/` and retry, or choose a
+different bundle that is available in your environment.  Server boot
+never depends on bundle availability.
 
 ### The artifact was prepared for the wrong execution profile
 
-Symptom:
+Symptom: `run_slurm_recipe` says the frozen recipe must have
+`execution_profile slurm`, but the artifact was frozen as `local`.
 
-- `run_slurm_recipe` says the frozen recipe must have `execution_profile slurm`
-
-What it means:
-
-- the artifact you passed was frozen as `local`
-
-What to do:
-
-- re-run `prepare_run_recipe`
-- verify the returned profile fields
-- only then pass the new `artifact_path` to `run_slurm_recipe`
-
-## Result Summary
-
-`prompt_and_run` returns the planning and execution payload plus a compact
-`result_summary` block for client display. Stable fields include:
-
-- `status`
-- `result_code`
-- `reason_code`
-- `target_name`
-- `execution_attempted`
-- `used_inputs`
-- `output_paths`
-- `typed_planning_available`
-- `artifact_path`
-- `execution_profile`
-- `resource_spec`
-- `runtime_image`
-- `message`
-
-Important result-code categories:
-
-- `succeeded`
-- `declined_missing_inputs`
-- `declined_unsupported_request`
-- `failed_execution`
-
-For the exact machine-readable contract, see
-[src/flytetest/mcp_contract.py](../src/flytetest/mcp_contract.py).
+Fix: re-run `prepare_run_recipe` with the profile embedded in the
+prompt text, verify the returned profile fields, then pass the new
+`artifact_path` to `run_slurm_recipe`.
 
 ## Scope Boundary
 
-The MCP server only executes targets that have explicit local node handlers.
-The handler map covers the original three runnable targets, BUSCO QC, EggNOG,
-the three individual AGAT post-processing slices, `fastqc`, and `gffread_proteins`.
-Broader registered stages such as EVM, PASA refinement, repeat filtering,
-`table2asn`, Slurm retry/resubmission, and composed downstream pipelines should be
-enabled only after their recipe inputs, runtime bindings, and local handlers
-are made explicit.
+The MCP server only executes targets that have explicit local node
+handlers.  The handler map covers the original runnable targets, BUSCO
+QC, EggNOG, the three individual AGAT post-processing slices, `fastqc`,
+and `gffread_proteins`.  Broader registered stages (EVM, PASA
+refinement, repeat filtering, `table2asn`, composed downstream
+pipelines) are enabled only after their recipe inputs, runtime
+bindings, and local handlers are made explicit.
 
-## Ad Hoc Task Execution (M21)
+Resource choices are frozen into the saved `BindingPlan` before any
+execution starts: CPU, memory, queue, walltime, and runtime image
+settings are recorded for review and replay.  Local execution uses the
+explicit handler map; Slurm execution uses the saved profile and
+resource spec to render `sbatch` directives.
 
-### run_task for fastqc and gffread_proteins
-
-`run_task` now supports four tasks: `exonerate_align_chunk`, `busco_assess_proteins`,
-`fastqc`, and `gffread_proteins`.  Eligibility is controlled by explicit
-`ShowcaseTarget(category="task")` entries in `mcp_contract.py` — not by
-`synthesis_eligible`.  Unknown task names, missing required inputs, and extra
-input keys all return structured `supported=False` declines.
-
-Example — run FastQC on paired-end reads:
-
-```
-run_task(
-  "fastqc",
-  inputs={
-    "left": "data/transcriptomics/sample_R1.fastq.gz",
-    "right": "data/transcriptomics/sample_R2.fastq.gz",
-  },
-  source_prompt="Run FastQC on paired-end reads.",
-)
-```
-
-Example — extract proteins with gffread:
-
-```
-run_task(
-  "gffread_proteins",
-  inputs={
-    "annotation_gff3": "results/braker3_results_20260331/braker.gff3",
-    "genome_fasta": "data/reference/genome.fa",
-  },
-  source_prompt="Extract proteins from gene models.",
-)
-```
-
-### list_available_bindings
-
-Discover candidate input files for a task without running it.
-
-```
-list_available_bindings(
-  task_name="gffread_proteins",
-  search_root="results/"
-)
-```
-
-Response structure:
-
-- `supported` — `true` when the task name is recognized
-- `task_name` — echoed back
-- `bindings` — dict mapping each parameter to either a list of matching file
-  paths (for File/Dir parameters) or a scalar hint string (for string/int parameters)
-
-The scan walks up to 3 directory levels under `search_root` and uses extension
-heuristics (`.fasta`/`.fa`/`.fna` for genome/protein parameters, `.gff`/`.gff3`
-for annotation parameters, `.fastq`/`.fastq.gz` for read parameters).
-
-### get_run_summary
-
-Scan persisted run records and return a dashboard view without hitting the scheduler.
-
-```
-get_run_summary(run_dir="results/", limit=20)
-```
-
-Response fields:
-
-- `supported` — always `true`
-- `total_scanned` — number of run directories examined
-- `by_state` — dict mapping scheduler/lifecycle state to count (e.g. `{"COMPLETED": 3, "FAILED": 1}`)
-- `recent` — list of up to `limit` summaries, each with `kind` (`"slurm"` or `"local"`),
-  `state`, `workflow_name`, `run_id`, and `run_record_path`
-
-### inspect_run_result
-
-Load a single run record and return its full structured summary.
-
-```
-inspect_run_result(run_record_path="results/busco_qc_results_20260405/slurm_run_record.json")
-```
-
-The response includes scheduler state (for Slurm records), node completion
-state, output paths, and the original recipe inputs.  No scheduler calls are
-made — the response is derived entirely from the persisted record.
-
-## HPC Observability (M21b)
-
-### fetch_job_log
-
-Retrieve the tail of a Slurm scheduler log (stdout or stderr) for a submitted
-job.  The path must resolve inside the default run directory to prevent
-path-traversal reads.
-
-```
-fetch_job_log(
-    log_path="results/.runtime/runs/run_abc123/slurm-99001.out",
-    tail_lines=100
-)
-```
-
-Response fields:
-
-- `supported` — `true` when the log file was found inside the run directory
-- `log_path` — echoed back for reference
-- `content` — last `tail_lines` lines joined into a single string, or `null`
-- `tail_lines` — effective cap applied (min of request and `MAX_MONITOR_TAIL_LINES`)
-- `limitations` — non-empty list if the file was not found or is outside the run directory
-
-### wait_for_slurm_job
-
-Block (poll) until a Slurm job reaches a terminal scheduler state or a timeout
-expires.  Calls `monitor_slurm_job` at *poll_interval_s* second intervals.
-
-```
-wait_for_slurm_job(
-    run_record_path=".runtime/runs/run_abc123/slurm_run_record.json",
-    timeout_s=300,
-    poll_interval_s=15
-)
-```
-
-Response shape is identical to `monitor_slurm_job` with one additional key:
-
-- `timed_out` — `true` if the timeout expired before a terminal state was reached
-
-### Resource: flytetest://run-recipes/{path}
-
-Retrieve the raw JSON of a saved run-recipe file.  The *path* must resolve
-inside the repository root.
-
-```
-flytetest://run-recipes/.runtime/runs/run_abc123/recipe.json
-```
-
-### Resource: flytetest://result-manifests/{path}
-
-Retrieve the `run_manifest.json` from a result directory.  Supply either a
-directory path (the manifest is looked up automatically) or a direct path to
-the `run_manifest.json` file.
-
-```
-flytetest://result-manifests/results/braker3_results_20260402_090000
-```
+For the machine-readable contract, see
+[src/flytetest/mcp_contract.py](../src/flytetest/mcp_contract.py).

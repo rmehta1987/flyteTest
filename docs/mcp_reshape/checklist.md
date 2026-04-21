@@ -81,7 +81,7 @@ call sites and documentation.
 | 26 | Call-site sweep for the BC migration | §12 | `prompts/step_26_call_site_sweep.md` | Complete |
 | 27 | `mcp_contract.py` tool descriptions reframe | §6 | `prompts/step_27_mcp_contract_descriptions.md` | Complete |
 | 28 | AGENTS / DESIGN / CHANGELOG / README + `.codex/` sweep | §14 / §15 | `prompts/step_28_docs_and_agent_context.md` | Complete |
-| 29 | `docs/mcp_showcase.md` + `docs/tutorial_context.md` rewrite | §14 | `prompts/step_29_user_docs_rewrite.md` | Not started |
+| 29 | `docs/mcp_showcase.md` + `docs/tutorial_context.md` rewrite | §14 | `prompts/step_29_user_docs_rewrite.md` | Complete |
 | 30 | Seed-bundle tool-DB reality check + audit | §13 | `prompts/step_30_seed_bundle_audit.md` | Not started |
 
 ## Verification Gates
