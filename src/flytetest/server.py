@@ -1168,12 +1168,17 @@ def _execute_run_tool(
         raise
 
 
-def run_workflow(
+def _execute_workflow_direct(
     workflow_name: str,
     inputs: dict[str, object],
     runner: Any = subprocess.run,
 ) -> dict[str, object]:
     """Execute one supported workflow through `flyte run` or direct Python.
+
+    This is the low-level workflow dispatcher shared by the reshaped
+    :func:`run_workflow` (post-freeze) and the local-executor handler path.
+    It accepts flat scalar inputs that the :class:`LocalWorkflowSpecExecutor`
+    has already resolved from the frozen :class:`BindingPlan`.
 
     Args:
         workflow_name: Registered workflow name selected by the caller.
@@ -1859,6 +1864,283 @@ def run_task(
     return _execute_run_tool(_body, target_name=task_name, pipeline_family=pipeline_family)
 
 
+def _scalar_params_for_workflow(
+    workflow_name: str,
+    bindings: Mapping[str, Mapping[str, Any]],
+) -> list[tuple[str, bool]]:
+    """Return workflow scalar parameters not already covered by typed bindings."""
+    bound_field_names: set[str] = set()
+    for field_dict in bindings.values():
+        if isinstance(field_dict, Mapping):
+            bound_field_names.update(field_dict.keys())
+    return [
+        (parameter.name, parameter.required)
+        for parameter in supported_entry_parameters(workflow_name)
+        if parameter.name not in bound_field_names
+    ]
+
+
+def _braker_has_evidence(
+    bindings: Mapping[str, Mapping[str, Any]],
+    inputs: Mapping[str, Any],
+) -> bool:
+    """Return True when a BRAKER3 call has at least one evidence source.
+
+    BRAKER3 requires RNA-seq BAM or protein FASTA evidence in practice. This
+    guard accepts satisfaction from either the legacy scalar form
+    (``inputs.rnaseq_bam_path`` / ``inputs.protein_fasta_path``) or the typed
+    binding form (``bindings.ProteinEvidenceSet`` / ``bindings.ReadSet``) so a
+    bundle that fills either shape keeps working after the Step 22 reshape.
+    """
+    if inputs.get("rnaseq_bam_path") not in (None, ""):
+        return True
+    if inputs.get("protein_fasta_path") not in (None, ""):
+        return True
+    if bindings.get("ProteinEvidenceSet"):
+        return True
+    if bindings.get("ReadSet"):
+        return True
+    return False
+
+
+def run_workflow(
+    workflow_name: str,
+    bindings: Mapping[str, Mapping[str, Any]] | None = None,
+    inputs: Mapping[str, Any] | None = None,
+    resources: Mapping[str, Any] | None = None,
+    execution_profile: str = "local",
+    runtime_images: Mapping[str, str] | None = None,
+    tool_databases: Mapping[str, str] | None = None,
+    source_prompt: str = "",
+    dry_run: bool = False,
+) -> dict[str, object]:
+    """Run one registered workflow against typed biological bindings.
+
+    Symmetric with :func:`run_task`: a bundle dict spreads identically into
+    either tool. The run is frozen into a :class:`WorkflowSpec` artifact before
+    execution so the experiment is reproducible from the returned
+    ``recipe_id``. When *dry_run* is ``True`` the artifact is written to disk
+    but executor dispatch is skipped so the caller can inspect the fully
+    resolved state and chain :func:`run_local_recipe` / :func:`run_slurm_recipe`
+    against ``artifact_path`` later without re-resolution.
+    """
+    if workflow_name not in set(SUPPORTED_WORKFLOW_NAMES):
+        return asdict(
+            _unsupported_target_reply(
+                workflow_name, SUPPORTED_WORKFLOW_NAMES, kind="workflow"
+            )
+        )
+    entry = get_entry(workflow_name)
+    pipeline_family = entry.compatibility.pipeline_family
+    bindings_in: dict[str, dict[str, Any]] = {
+        str(key): dict(value) if isinstance(value, Mapping) else {}
+        for key, value in (bindings or {}).items()
+    }
+    inputs_in: dict[str, Any] = dict(inputs or {})
+
+    accepted = set(entry.compatibility.accepted_planner_types)
+    unknown_types = sorted(set(bindings_in) - accepted)
+    if unknown_types:
+        accepted_list = (
+            ", ".join(sorted(accepted)) if accepted else "(none declared)"
+        )
+        return asdict(
+            _limitation_reply(
+                workflow_name,
+                f"Unknown binding types: {unknown_types}. Accepted: {accepted_list}.",
+                pipeline_family=pipeline_family,
+            )
+        )
+
+    scalar_params = _scalar_params_for_workflow(workflow_name, bindings_in)
+    allowed_scalars = {name for name, _ in scalar_params}
+    unknown_scalars = sorted(set(inputs_in) - allowed_scalars)
+    if unknown_scalars:
+        return asdict(
+            _limitation_reply(
+                workflow_name,
+                f"Unknown scalar inputs: {unknown_scalars}.",
+                pipeline_family=pipeline_family,
+            )
+        )
+    missing_required = [
+        name
+        for name, required in scalar_params
+        if required and inputs_in.get(name) in (None, "")
+    ]
+    if missing_required:
+        return asdict(
+            _limitation_reply(
+                workflow_name,
+                f"Missing required inputs: {missing_required}.",
+                pipeline_family=pipeline_family,
+            )
+        )
+
+    if workflow_name == SUPPORTED_WORKFLOW_NAME and not _braker_has_evidence(
+        bindings_in, inputs_in
+    ):
+        return asdict(
+            _limitation_reply(
+                workflow_name,
+                (
+                    "BRAKER3 requires at least one evidence input in practice: "
+                    "`rnaseq_bam_path`, `protein_fasta_path`, "
+                    "`bindings.ReadSet`, or `bindings.ProteinEvidenceSet`."
+                ),
+                pipeline_family=pipeline_family,
+            )
+        )
+
+    def _body() -> dict[str, object]:
+        try:
+            durable_refs = load_durable_asset_index(DEFAULT_RUN_DIR)
+        except (OSError, ValueError):
+            durable_refs = ()
+        explicit_bindings = _materialize_bindings(
+            bindings_in,
+            durable_index=durable_refs,
+        )
+
+        plan = plan_typed_request(
+            biological_goal=entry.compatibility.biological_stage or workflow_name,
+            target_name=workflow_name,
+            source_prompt=source_prompt,
+            explicit_bindings=explicit_bindings,
+            scalar_inputs=inputs_in,
+            resource_request=resources,
+            execution_profile=execution_profile,
+            runtime_images=dict(runtime_images or {}),
+            tool_databases=dict(tool_databases or {}),
+        )
+        if not plan.get("supported"):
+            plan.setdefault("target", workflow_name)
+            plan.setdefault("pipeline_family", pipeline_family)
+            return plan
+
+        artifact = artifact_from_typed_plan(plan, created_at=_created_at())
+        artifact_path = save_workflow_spec_artifact(
+            artifact,
+            _recipe_artifact_destination(workflow_name, recipe_dir=DEFAULT_RECIPE_DIR),
+        )
+
+        plan_limitations = tuple(str(item) for item in plan.get("limitations") or ())
+        if not source_prompt and _EMPTY_PROMPT_ADVISORY not in plan_limitations:
+            plan_limitations = plan_limitations + (_EMPTY_PROMPT_ADVISORY,)
+
+        if dry_run:
+            return asdict(
+                DryRunReply(
+                    supported=True,
+                    recipe_id=Path(artifact_path).stem,
+                    artifact_path=str(artifact_path),
+                    execution_profile=(
+                        "slurm" if execution_profile == "slurm" else "local"
+                    ),
+                    resolved_bindings=_resolved_bindings_projection(
+                        bindings_in, explicit_bindings
+                    ),
+                    resolved_environment=dict(plan.get("resolved_environment") or {}),
+                    staging_findings=(),
+                    limitations=plan_limitations,
+                    workflow_name=workflow_name,
+                )
+            )
+
+        profile_value = (
+            "slurm" if execution_profile == "slurm" else "local"
+        )
+        if profile_value == "slurm":
+            slurm_result = SlurmWorkflowSpecExecutor(
+                run_root=DEFAULT_RUN_DIR,
+                repo_root=REPO_ROOT,
+            ).submit(Path(artifact_path))
+            run_record_path_str = (
+                str(slurm_result.run_record.run_record_path)
+                if slurm_result.run_record is not None
+                else ""
+            )
+            if slurm_result.run_record is not None:
+                _write_latest_slurm_submission_pointers(
+                    DEFAULT_RUN_DIR,
+                    artifact_path=Path(artifact_path),
+                    run_record_path=slurm_result.run_record.run_record_path,
+                )
+            outputs_map, output_limits = _collect_named_outputs(entry, None)
+            combined_limits = (
+                plan_limitations
+                + tuple(str(item) for item in slurm_result.limitations)
+                + tuple(output_limits)
+            )
+            return asdict(
+                RunReply(
+                    supported=True,
+                    recipe_id=Path(artifact_path).stem,
+                    run_record_path=run_record_path_str,
+                    artifact_path=str(artifact_path),
+                    execution_profile="slurm",
+                    execution_status="success" if slurm_result.supported else "failed",
+                    exit_status=None,
+                    outputs=outputs_map,
+                    limitations=combined_limits,
+                    workflow_name=workflow_name,
+                )
+            )
+
+        local_executor = LocalWorkflowSpecExecutor(
+            _local_node_handlers(),
+            run_root=DEFAULT_RUN_DIR,
+        )
+        failure_reason: str | None = None
+        try:
+            local_result = local_executor.execute(Path(artifact_path))
+        except RuntimeError as exc:
+            local_result = None  # type: ignore[assignment]
+            failure_reason = str(exc)
+        run_record_path: Path | None = None
+        exit_status: int | None = None
+        if local_result is not None and local_result.supported and local_result.node_results:
+            candidates = sorted(
+                DEFAULT_RUN_DIR.rglob(DEFAULT_LOCAL_RUN_RECORD_FILENAME),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            if candidates:
+                run_record_path = candidates[0]
+            exit_status = 0
+        if local_result is None or not local_result.supported:
+            exit_status = 1
+            execution_status: str = "failed"
+            executor_limits: tuple[str, ...]
+            if failure_reason is not None:
+                executor_limits = (failure_reason,)
+            else:
+                executor_limits = tuple(
+                    str(item) for item in local_result.limitations  # type: ignore[union-attr]
+                )
+        else:
+            execution_status = "success"
+            executor_limits = tuple(str(item) for item in local_result.limitations)
+        outputs_map, output_limits = _collect_named_outputs(entry, run_record_path)
+        combined_limits = plan_limitations + executor_limits + tuple(output_limits)
+        return asdict(
+            RunReply(
+                supported=True,
+                recipe_id=Path(artifact_path).stem,
+                run_record_path=str(run_record_path) if run_record_path else "",
+                artifact_path=str(artifact_path),
+                execution_profile="local",
+                execution_status=execution_status,  # type: ignore[arg-type]
+                exit_status=exit_status,
+                outputs=outputs_map,
+                limitations=combined_limits,
+                workflow_name=workflow_name,
+            )
+        )
+
+    return _execute_run_tool(_body, target_name=workflow_name, pipeline_family=pipeline_family)
+
+
 def _jsonable(value: Any) -> Any:
     """Convert paths and nested containers into JSON-compatible values.
 
@@ -1890,7 +2172,7 @@ def _first_output_path(execution_result: dict[str, object]) -> str:
 
 def _local_node_handlers(
     *,
-    workflow_runner: Any = run_workflow,
+    workflow_runner: Any = _execute_workflow_direct,
     task_runner: Any = _execute_task_direct,
 ) -> dict[str, Any]:
     """Build explicit node handlers for the supported local execution targets.

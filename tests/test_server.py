@@ -108,6 +108,7 @@ from flytetest.server import (
     run_slurm_recipe,
     run_task,
     run_workflow,
+    _execute_workflow_direct,
     wait_for_slurm_job,
 )
 from flytetest.registry import InterfaceField, RegistryCompatibilityMetadata, RegistryEntry, get_entry
@@ -2009,7 +2010,7 @@ class ServerTests(TestCase):
                 stderr="",
             )
 
-        response = run_workflow(
+        response = _execute_workflow_direct(
             workflow_name=SUPPORTED_WORKFLOW_NAME,
             inputs={
                 "genome": "data/braker3/reference/genome.fa",
@@ -2086,7 +2087,7 @@ class ServerTests(TestCase):
             }
 
         with patch("flytetest.server._run_workflow_direct", side_effect=fake_direct) as direct_runner:
-            response = run_workflow(
+            response = _execute_workflow_direct(
                 workflow_name=SUPPORTED_PROTEIN_WORKFLOW_NAME,
                 inputs={
                     "genome": "data/braker3/reference/genome.fa",
@@ -3999,5 +4000,238 @@ class RunTaskReshapeTests(TestCase):
 
         with patch("flytetest.tasks.qc.fastqc", side_effect=_boom):
             payload = self._valid_fastqc_call()
+        self.assertTrue(payload["supported"])
+        self.assertEqual(payload["execution_status"], "failed")
+
+
+class RunWorkflowReshapeTests(TestCase):
+    """Tests for the Step 22 reshape of ``run_workflow`` (§3 / §3b / §3g / §3i)."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        tmp_root = Path(self._tmp.name)
+        self._genome_path = tmp_root / "genome.fa"
+        self._genome_path.write_text(">chr1\nACGT\n")
+        self._protein_path = tmp_root / "proteins.fa"
+        self._protein_path.write_text(">prot1\nMK\n")
+        self._BRAKER_MINIMAL_INPUTS = {
+            "genome": str(self._genome_path),
+            "braker_species": "small_eukaryote",
+        }
+        self._PROTEIN_INPUTS = {
+            "genome": str(self._genome_path),
+            "protein_fastas": [str(self._protein_path)],
+            "proteins_per_chunk": 250,
+        }
+        self._REF_BINDING = {"fasta_path": str(self._genome_path)}
+        self._PROTEIN_BINDING = {
+            "source_protein_fastas": [str(self._protein_path)],
+        }
+        self._TRANSCRIPT_BINDING = {
+            "reference_genome": dict(self._REF_BINDING),
+        }
+        self._BRAKER_BINDINGS = {
+            "ReferenceGenome": dict(self._REF_BINDING),
+            "ProteinEvidenceSet": dict(self._PROTEIN_BINDING),
+            "TranscriptEvidenceSet": dict(self._TRANSCRIPT_BINDING),
+        }
+
+    @staticmethod
+    def _fake_direct() -> object:
+        """Return a fake ``_run_workflow_direct`` returning a successful payload."""
+
+        def _runner(workflow_name: str, inputs: dict[str, object]) -> dict[str, object]:
+            return {
+                "supported": True,
+                "entry_name": workflow_name,
+                "entry_category": "workflow",
+                "execution_mode": "direct-python-call",
+                "command": [],
+                "command_text": "",
+                "exit_status": 0,
+                "stdout": "",
+                "stderr": "",
+                "output_paths": ["/tmp/fake_protein_results"],
+                "limitations": [],
+            }
+
+        return _runner
+
+    def _protein_bindings(self) -> dict[str, dict[str, object]]:
+        return {
+            "ReferenceGenome": dict(self._REF_BINDING),
+            "ProteinEvidenceSet": dict(self._PROTEIN_BINDING),
+        }
+
+    # -- Bundle spread symmetry -------------------------------------------------
+
+    def test_bundle_spread_call_succeeds(self) -> None:
+        """A bundle-shaped dict spreads into run_workflow exactly like run_task."""
+        bundle_like = {
+            "bindings": dict(self._BRAKER_BINDINGS),
+            "inputs": {
+                **self._BRAKER_MINIMAL_INPUTS,
+                "protein_fasta_path": str(self._protein_path),
+            },
+        }
+        payload = run_workflow(
+            SUPPORTED_WORKFLOW_NAME,
+            source_prompt="Bundle spread into run_workflow.",
+            dry_run=True,
+            **bundle_like,
+        )
+        self.assertTrue(payload["supported"], msg=payload.get("limitations"))
+        self.assertEqual(payload["workflow_name"], SUPPORTED_WORKFLOW_NAME)
+
+    # -- BRAKER3 evidence guard -------------------------------------------------
+
+    def test_braker3_accepts_typed_protein_evidence_binding(self) -> None:
+        payload = run_workflow(
+            SUPPORTED_WORKFLOW_NAME,
+            bindings=dict(self._BRAKER_BINDINGS),
+            inputs=self._BRAKER_MINIMAL_INPUTS,
+            source_prompt="BRAKER3 via typed ProteinEvidenceSet binding.",
+            dry_run=True,
+        )
+        self.assertTrue(payload["supported"], msg=payload.get("limitations"))
+
+    def test_braker3_accepts_legacy_scalar_protein_fasta_path(self) -> None:
+        payload = run_workflow(
+            SUPPORTED_WORKFLOW_NAME,
+            bindings=dict(self._BRAKER_BINDINGS),
+            inputs={
+                **self._BRAKER_MINIMAL_INPUTS,
+                "protein_fasta_path": str(self._protein_path),
+            },
+            source_prompt="BRAKER3 via legacy scalar protein_fasta_path.",
+            dry_run=True,
+        )
+        self.assertTrue(payload["supported"], msg=payload.get("limitations"))
+
+    def test_braker3_without_evidence_declines(self) -> None:
+        payload = run_workflow(
+            SUPPORTED_WORKFLOW_NAME,
+            inputs=self._BRAKER_MINIMAL_INPUTS,
+            source_prompt="BRAKER3 with no evidence.",
+        )
+        self.assertFalse(payload["supported"])
+        self.assertIn(
+            "BRAKER3 requires at least one evidence input",
+            payload["limitations"][0],
+        )
+
+    # -- Validation declines ----------------------------------------------------
+
+    def test_unknown_binding_type_declines(self) -> None:
+        payload = run_workflow(
+            SUPPORTED_PROTEIN_WORKFLOW_NAME,
+            bindings={"NotARealType": {}},
+            inputs=self._PROTEIN_INPUTS,
+        )
+        self.assertFalse(payload["supported"])
+        self.assertIn("Unknown binding types", payload["limitations"][0])
+
+    # -- Freeze + named outputs + advisories ------------------------------------
+
+    def test_freeze_writes_artifact_file(self) -> None:
+        payload = run_workflow(
+            SUPPORTED_PROTEIN_WORKFLOW_NAME,
+            bindings=self._protein_bindings(),
+            inputs=self._PROTEIN_INPUTS,
+            source_prompt="Protein evidence dry-run freeze check.",
+            dry_run=True,
+        )
+        self.assertTrue(payload["supported"], msg=payload.get("limitations"))
+        artifact_path = Path(payload["artifact_path"])
+        self.assertTrue(artifact_path.exists(), f"artifact missing: {artifact_path}")
+        self.assertTrue(
+            payload["recipe_id"].endswith(f"-{SUPPORTED_PROTEIN_WORKFLOW_NAME}")
+        )
+
+    def test_outputs_dict_keyed_by_registry_names(self) -> None:
+        with patch(
+            "flytetest.server._run_workflow_direct",
+            side_effect=self._fake_direct(),
+        ):
+            payload = run_workflow(
+                SUPPORTED_PROTEIN_WORKFLOW_NAME,
+                bindings=self._protein_bindings(),
+                inputs=self._PROTEIN_INPUTS,
+                source_prompt="Protein evidence named-outputs check.",
+            )
+        self.assertTrue(payload["supported"], msg=payload.get("limitations"))
+        self.assertIsInstance(payload["outputs"], dict)
+        self.assertIn("results_dir", payload["outputs"])
+        self.assertNotIn("output_paths", payload)
+
+    def test_empty_source_prompt_appends_advisory(self) -> None:
+        payload = run_workflow(
+            SUPPORTED_PROTEIN_WORKFLOW_NAME,
+            bindings=self._protein_bindings(),
+            inputs=self._PROTEIN_INPUTS,
+            source_prompt="",
+            dry_run=True,
+        )
+        self.assertTrue(payload["supported"])
+        joined = " | ".join(payload["limitations"])
+        self.assertIn("No source_prompt", joined)
+
+    # -- dry_run + chained execution --------------------------------------------
+
+    def test_dry_run_writes_artifact_but_skips_execution(self) -> None:
+        payload = run_workflow(
+            SUPPORTED_PROTEIN_WORKFLOW_NAME,
+            bindings=self._protein_bindings(),
+            inputs=self._PROTEIN_INPUTS,
+            source_prompt="dry-run skip-exec check.",
+            dry_run=True,
+        )
+        self.assertTrue(payload["supported"])
+        self.assertIn("resolved_environment", payload)
+        self.assertNotIn("run_record_path", payload)
+        artifact_path = Path(payload["artifact_path"])
+        self.assertTrue(artifact_path.exists())
+        recipe_id = payload["recipe_id"]
+        for candidate in artifact_path.parent.rglob("local_run_record.json"):
+            self.assertNotIn(recipe_id, str(candidate))
+
+    def test_dry_run_artifact_chains_to_run_local_recipe(self) -> None:
+        """Frozen artifact from a dry-run call executes unchanged through run_local_recipe."""
+        from flytetest.server import _run_local_recipe_impl
+
+        dry_reply = run_workflow(
+            SUPPORTED_PROTEIN_WORKFLOW_NAME,
+            bindings=self._protein_bindings(),
+            inputs=self._PROTEIN_INPUTS,
+            source_prompt="Chained dry-run then run_local_recipe.",
+            dry_run=True,
+        )
+        self.assertTrue(dry_reply["supported"], msg=dry_reply.get("limitations"))
+        artifact_path = Path(dry_reply["artifact_path"])
+        bytes_before = artifact_path.read_bytes()
+
+        with patch(
+            "flytetest.server._run_workflow_direct",
+            side_effect=self._fake_direct(),
+        ):
+            chained = _run_local_recipe_impl(str(artifact_path))
+
+        self.assertTrue(chained["supported"])
+        self.assertEqual(bytes_before, artifact_path.read_bytes())
+
+    # -- Local non-zero exit ----------------------------------------------------
+
+    def test_local_executor_non_zero_exit_surfaces_as_failed(self) -> None:
+        def _boom(workflow_name: str, inputs: dict[str, object]) -> dict[str, object]:
+            raise RuntimeError("synthetic workflow failure")
+
+        with patch("flytetest.server._run_workflow_direct", side_effect=_boom):
+            payload = run_workflow(
+                SUPPORTED_PROTEIN_WORKFLOW_NAME,
+                bindings=self._protein_bindings(),
+                inputs=self._PROTEIN_INPUTS,
+                source_prompt="Workflow local failure.",
+            )
         self.assertTrue(payload["supported"])
         self.assertEqual(payload["execution_status"], "failed")
