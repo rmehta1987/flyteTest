@@ -78,7 +78,7 @@ class _FakeFastMCP:
         self.tools: dict[str, object] = {}
         self.resources: dict[str, object] = {}
 
-    def tool(self):  # type: ignore[no-untyped-def]
+    def tool(self, *, description: str | None = None, **_kw):  # type: ignore[no-untyped-def]
         def decorator(fn):  # type: ignore[no-untyped-def]
             self.tools[fn.__name__] = fn
             return fn

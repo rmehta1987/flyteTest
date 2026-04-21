@@ -44,49 +44,59 @@ from flytetest.mcp_replies import (
     ValidateRecipeReply,
 )
 from flytetest.mcp_contract import (
+    APPROVE_COMPOSED_RECIPE_TOOL_NAME,
+    CANCEL_SLURM_JOB_TOOL_NAME,
     DECLINE_CATEGORY_CODES,
     EXAMPLE_PROMPT_REQUIREMENTS,
     FETCH_JOB_LOG_TOOL_NAME,
+    GET_PIPELINE_STATUS_TOOL_NAME,
     GET_RUN_SUMMARY_TOOL_NAME,
     INSPECT_RUN_RESULT_TOOL_NAME,
     LIST_AVAILABLE_BINDINGS_TOOL_NAME,
     LIST_BUNDLES_TOOL_NAME,
-    LOAD_BUNDLE_TOOL_NAME,
     LIST_ENTRIES_LIMITATIONS,
+    LIST_SLURM_RUN_HISTORY_TOOL_NAME,
+    LOAD_BUNDLE_TOOL_NAME,
     MCP_RESOURCE_URIS,
     MCP_TOOL_NAMES,
-    RECIPE_INPUT_BINDING_RULES,
-    RECIPE_INPUT_CONTEXT_FIELDS,
-    RECIPE_INPUT_MANIFEST_RULES,
-    RECIPE_INPUT_RUNTIME_RULES,
+    MONITOR_SLURM_JOB_TOOL_NAME,
+    PREPARE_RECIPE_TOOL_NAME,
     PRIMARY_TOOL_NAME,
     PROMPT_REQUIREMENTS,
     PROTEIN_WORKFLOW_EXAMPLE_PROMPT,
-    RESULT_MANIFEST_RESOURCE_URI_PREFIX,
-    RETRY_SLURM_JOB_TOOL_NAME,
-    RUN_RECIPE_RESOURCE_URI_PREFIX,
-    RUN_SLURM_RECIPE_TOOL_NAME,
-    WAIT_FOR_SLURM_JOB_TOOL_NAME,
-    GET_PIPELINE_STATUS_TOOL_NAME,
-    RESULT_CODE_DECLINED_MISSING_INPUTS,
-    RESULT_CODE_DECLINED_UNSUPPORTED_REQUEST,
-    RESULT_CODE_DEFINITIONS,
-    RESULT_CODE_FAILED_EXECUTION,
-    RESULT_CODE_SUCCEEDED,
-    RESULT_SUMMARY_FIELDS,
     REASON_CODE_COMPLETED,
     REASON_CODE_MISSING_REQUIRED_INPUTS,
     REASON_CODE_NONZERO_EXIT_STATUS,
     REASON_CODE_UNSUPPORTED_EXECUTION_TARGET,
     REASON_CODE_UNSUPPORTED_OR_AMBIGUOUS_REQUEST,
+    RECIPE_INPUT_BINDING_RULES,
+    RECIPE_INPUT_CONTEXT_FIELDS,
+    RECIPE_INPUT_MANIFEST_RULES,
+    RECIPE_INPUT_RUNTIME_RULES,
+    RESULT_CODE_DECLINED_MISSING_INPUTS,
+    RESULT_CODE_DECLINED_UNSUPPORTED_REQUEST,
+    RESULT_CODE_DEFINITIONS,
+    RESULT_CODE_FAILED_EXECUTION,
+    RESULT_CODE_SUCCEEDED,
+    RESULT_MANIFEST_RESOURCE_URI_PREFIX,
+    RESULT_SUMMARY_FIELDS,
+    RETRY_SLURM_JOB_TOOL_NAME,
+    RUN_RECIPE_RESOURCE_URI_PREFIX,
+    RUN_RECIPE_TOOL_NAME,
+    RUN_SLURM_RECIPE_TOOL_NAME,
+    RUN_TASK_TOOL_NAME,
+    RUN_WORKFLOW_TOOL_NAME,
     SHOWCASE_SERVER_NAME,
     SUPPORTED_PROTEIN_WORKFLOW_NAME,
     SUPPORTED_TARGET_NAMES,
     SUPPORTED_TASK_NAME,
     SUPPORTED_TASK_NAMES,
-    SUPPORTED_WORKFLOW_NAMES,
     SUPPORTED_WORKFLOW_NAME,
+    SUPPORTED_WORKFLOW_NAMES,
     TASK_EXAMPLE_PROMPT,
+    TOOL_DESCRIPTIONS,
+    VALIDATE_RUN_RECIPE_TOOL_NAME,
+    WAIT_FOR_SLURM_JOB_TOOL_NAME,
     WORKFLOW_EXAMPLE_PROMPT,
     supported_runnable_targets_payload,
 )
@@ -4208,26 +4218,28 @@ def create_mcp_server(fastmcp_cls: Any | None = None) -> Any:
     fastmcp = _load_fastmcp() if fastmcp_cls is None else fastmcp_cls
     mcp = fastmcp(SHOWCASE_SERVER_NAME)
 
-    mcp.tool()(list_entries)
-    mcp.tool()(plan_request)
-    mcp.tool()(prepare_run_recipe)
-    mcp.tool()(run_local_recipe)
-    mcp.tool()(run_slurm_recipe)
-    mcp.tool()(validate_run_recipe)
-    mcp.tool()(list_slurm_run_history)
-    mcp.tool()(monitor_slurm_job)
-    mcp.tool()(retry_slurm_job)
-    mcp.tool()(cancel_slurm_job)
-    mcp.tool()(approve_composed_recipe)
-    mcp.tool()(prompt_and_run)
-    mcp.tool()(list_available_bindings)
-    mcp.tool()(list_bundles)
-    mcp.tool()(load_bundle)
-    mcp.tool()(get_run_summary)
-    mcp.tool()(inspect_run_result)
-    mcp.tool()(fetch_job_log)
-    mcp.tool()(wait_for_slurm_job)
-    mcp.tool()(get_pipeline_status)
+    mcp.tool(description=TOOL_DESCRIPTIONS["list_entries"])(list_entries)
+    mcp.tool(description=TOOL_DESCRIPTIONS["plan_request"])(plan_request)
+    mcp.tool(description=TOOL_DESCRIPTIONS[PREPARE_RECIPE_TOOL_NAME])(prepare_run_recipe)
+    mcp.tool(description=TOOL_DESCRIPTIONS[RUN_RECIPE_TOOL_NAME])(run_local_recipe)
+    mcp.tool(description=TOOL_DESCRIPTIONS[RUN_SLURM_RECIPE_TOOL_NAME])(run_slurm_recipe)
+    mcp.tool(description=TOOL_DESCRIPTIONS[VALIDATE_RUN_RECIPE_TOOL_NAME])(validate_run_recipe)
+    mcp.tool(description=TOOL_DESCRIPTIONS[LIST_SLURM_RUN_HISTORY_TOOL_NAME])(list_slurm_run_history)
+    mcp.tool(description=TOOL_DESCRIPTIONS[MONITOR_SLURM_JOB_TOOL_NAME])(monitor_slurm_job)
+    mcp.tool(description=TOOL_DESCRIPTIONS[RETRY_SLURM_JOB_TOOL_NAME])(retry_slurm_job)
+    mcp.tool(description=TOOL_DESCRIPTIONS[CANCEL_SLURM_JOB_TOOL_NAME])(cancel_slurm_job)
+    mcp.tool(description=TOOL_DESCRIPTIONS[APPROVE_COMPOSED_RECIPE_TOOL_NAME])(approve_composed_recipe)
+    mcp.tool(description=TOOL_DESCRIPTIONS[PRIMARY_TOOL_NAME])(prompt_and_run)
+    mcp.tool(description=TOOL_DESCRIPTIONS[LIST_AVAILABLE_BINDINGS_TOOL_NAME])(list_available_bindings)
+    mcp.tool(description=TOOL_DESCRIPTIONS[LIST_BUNDLES_TOOL_NAME])(list_bundles)
+    mcp.tool(description=TOOL_DESCRIPTIONS[LOAD_BUNDLE_TOOL_NAME])(load_bundle)
+    mcp.tool(description=TOOL_DESCRIPTIONS[RUN_TASK_TOOL_NAME])(run_task)
+    mcp.tool(description=TOOL_DESCRIPTIONS[RUN_WORKFLOW_TOOL_NAME])(run_workflow)
+    mcp.tool(description=TOOL_DESCRIPTIONS[GET_RUN_SUMMARY_TOOL_NAME])(get_run_summary)
+    mcp.tool(description=TOOL_DESCRIPTIONS[INSPECT_RUN_RESULT_TOOL_NAME])(inspect_run_result)
+    mcp.tool(description=TOOL_DESCRIPTIONS[FETCH_JOB_LOG_TOOL_NAME])(fetch_job_log)
+    mcp.tool(description=TOOL_DESCRIPTIONS[WAIT_FOR_SLURM_JOB_TOOL_NAME])(wait_for_slurm_job)
+    mcp.tool(description=TOOL_DESCRIPTIONS[GET_PIPELINE_STATUS_TOOL_NAME])(get_pipeline_status)
     mcp.resource(SERVER_RESOURCE_URIS[0])(resource_scope)
     mcp.resource(SERVER_RESOURCE_URIS[1])(resource_supported_targets)
     mcp.resource(SERVER_RESOURCE_URIS[2])(resource_example_prompts)

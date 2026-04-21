@@ -32,6 +32,17 @@ Entry template:
 
 ## Unreleased
 
+## Unreleased
+
+### MCP Reshape Step 27 — Reframe tool descriptions around the experiment loop (2026-04-21)
+
+- [x] 2026-04-21 rewrote all 22 MCP tool descriptions in `src/flytetest/mcp_contract.py` using a `[group] verb-phrase` structure where group is one of `[experiment-loop]`, `[inspect-before-execute]`, or `[lifecycle]`; old ad-hoc one-liners replaced with experiment-oriented framings that cue LLM clients on when each tool fits the workflow.
+- [x] 2026-04-21 introduced `TOOL_DESCRIPTIONS: dict[str, str]` in `mcp_contract.py` as the single source of truth for tool descriptions; `server.py` now passes `description=TOOL_DESCRIPTIONS[key]` to every `mcp.tool()` call so the FastMCP-facing description and the contract constant are always in sync.
+- [x] 2026-04-21 grouped `MCP_TOOL_NAMES` into three named tuples (`EXPERIMENT_LOOP_TOOLS`, `INSPECT_TOOLS`, `LIFECYCLE_TOOLS`) and derived the combined `MCP_TOOL_NAMES` from them; added `RUN_TASK_TOOL_NAME = "run_task"` and `RUN_WORKFLOW_TOOL_NAME = "run_workflow"` constants and registered both as first-class MCP tools in `create_mcp_server()` (total tools: 22, was 20).
+- [x] 2026-04-21 added `QUEUE_ACCOUNT_HANDOFF` policy constant; appended it to the descriptions for `run_task`, `run_workflow`, and `run_slurm_recipe` to enforce that queue and account always come from the user.
+- [x] 2026-04-21 created `tests/test_mcp_contract.py` (4 test classes, 8 tests) covering: all registered tools have descriptions, no stale helper references, queue/account handoff present in required tools, group constants cover all tool names, ordering by group, `run_task`/`run_workflow` in experiment-loop, `run_slurm_recipe` in inspect group.
+- [x] 2026-04-21 updated `FakeFastMCP.tool()` in `tests/test_server.py` and `_FakeFastMCP.tool()` in `tests/test_mcp_prompt_flows.py` to accept `description=` kwarg; full suite: 656 passed, 1 skipped, 41 subtests passed.
+
 ### MCP Reshape Step 26 — Call-site sweep for `run_task` / `run_workflow` BC migration (2026-04-21)
 
 - [x] 2026-04-21 removed three deleted alias types (`AnnotationRefinementResultBundle`, `ConsensusAnnotationResultBundle`, `ProteinAlignmentChunkResult`) from `src/flytetest/tasks/pasa.py`, `src/flytetest/tasks/consensus.py`, and `src/flytetest/tasks/protein_evidence.py`: all three were empty subclasses that were merged back into their parent classes (`PasaGeneModelUpdateResultBundle`, `EvmConsensusResultBundle`, `ExonerateChunkAlignmentResult`) in the working-tree `types/assets.py` refactor; call sites in each task module now use the parent class directly.

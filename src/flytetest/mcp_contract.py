@@ -2,7 +2,15 @@
 
 This module centralizes the stdio MCP surface exposed by the recipe-backed
 server: explicit runnable targets, tool and resource names, example prompts,
-stable prompt-and-run result codes, and typed-planning fields.
+stable prompt-and-run result codes, typed-planning fields, and the canonical
+MCP tool descriptions injected by ``create_mcp_server`` into FastMCP.
+
+Canonical reply shapes live in ``src/flytetest/mcp_replies.py``
+(``RunReply``, ``PlanDecline``, ``PlanSuccess``, ``DryRunReply``, etc.).
+
+Tools are organised into three groups discoverable via the module-level
+tuple constants ``EXPERIMENT_LOOP_TOOLS``, ``INSPECT_TOOLS``, and
+``LIFECYCLE_TOOLS``, and in ``TOOL_DESCRIPTIONS`` keyed by tool name.
 """
 
 from __future__ import annotations
@@ -39,6 +47,8 @@ PRIMARY_TOOL_NAME = "prompt_and_run"
 PREPARE_RECIPE_TOOL_NAME = "prepare_run_recipe"
 RUN_RECIPE_TOOL_NAME = "run_local_recipe"
 RUN_SLURM_RECIPE_TOOL_NAME = "run_slurm_recipe"
+RUN_TASK_TOOL_NAME = "run_task"
+RUN_WORKFLOW_TOOL_NAME = "run_workflow"
 VALIDATE_RUN_RECIPE_TOOL_NAME = "validate_run_recipe"
 LIST_SLURM_RUN_HISTORY_TOOL_NAME = "list_slurm_run_history"
 MONITOR_SLURM_JOB_TOOL_NAME = "monitor_slurm_job"
@@ -55,28 +65,168 @@ WAIT_FOR_SLURM_JOB_TOOL_NAME = "wait_for_slurm_job"
 GET_PIPELINE_STATUS_TOOL_NAME = "get_pipeline_status"
 RUN_RECIPE_RESOURCE_URI_PREFIX = "flytetest://run-recipes/"
 RESULT_MANIFEST_RESOURCE_URI_PREFIX = "flytetest://result-manifests/"
-MCP_TOOL_NAMES = (
+# Experiment-loop tools: the scientist picks a target, loads a bundle, runs it.
+EXPERIMENT_LOOP_TOOLS: tuple[str, ...] = (
     "list_entries",
-    "plan_request",
+    LIST_BUNDLES_TOOL_NAME,
+    LOAD_BUNDLE_TOOL_NAME,
+    RUN_TASK_TOOL_NAME,
+    RUN_WORKFLOW_TOOL_NAME,
+)
+
+# Inspect-before-execute tools: power-user surface between plan and execute.
+INSPECT_TOOLS: tuple[str, ...] = (
     PREPARE_RECIPE_TOOL_NAME,
     RUN_RECIPE_TOOL_NAME,
     RUN_SLURM_RECIPE_TOOL_NAME,
-    VALIDATE_RUN_RECIPE_TOOL_NAME,
-    LIST_SLURM_RUN_HISTORY_TOOL_NAME,
-    MONITOR_SLURM_JOB_TOOL_NAME,
-    RETRY_SLURM_JOB_TOOL_NAME,
-    CANCEL_SLURM_JOB_TOOL_NAME,
     APPROVE_COMPOSED_RECIPE_TOOL_NAME,
+    VALIDATE_RUN_RECIPE_TOOL_NAME,
+)
+
+# Lifecycle tools: planning, observability, job management.
+LIFECYCLE_TOOLS: tuple[str, ...] = (
+    "plan_request",
     PRIMARY_TOOL_NAME,
     LIST_AVAILABLE_BINDINGS_TOOL_NAME,
-    LIST_BUNDLES_TOOL_NAME,
-    LOAD_BUNDLE_TOOL_NAME,
+    MONITOR_SLURM_JOB_TOOL_NAME,
+    CANCEL_SLURM_JOB_TOOL_NAME,
+    RETRY_SLURM_JOB_TOOL_NAME,
+    WAIT_FOR_SLURM_JOB_TOOL_NAME,
+    FETCH_JOB_LOG_TOOL_NAME,
+    LIST_SLURM_RUN_HISTORY_TOOL_NAME,
     GET_RUN_SUMMARY_TOOL_NAME,
     INSPECT_RUN_RESULT_TOOL_NAME,
-    FETCH_JOB_LOG_TOOL_NAME,
-    WAIT_FOR_SLURM_JOB_TOOL_NAME,
     GET_PIPELINE_STATUS_TOOL_NAME,
 )
+
+MCP_TOOL_NAMES: tuple[str, ...] = EXPERIMENT_LOOP_TOOLS + INSPECT_TOOLS + LIFECYCLE_TOOLS
+
+# ---------------------------------------------------------------------------
+# Canonical tool descriptions
+# ---------------------------------------------------------------------------
+
+# Sentence appended verbatim to run_task, run_workflow, and run_slurm_recipe
+# so tooling that surfaces tool descriptions to an LLM stays consistent.
+QUEUE_ACCOUNT_HANDOFF: str = (
+    'execution_defaults["slurm_resource_hints"] supplies sensible defaults for'
+    " cpu / memory / walltime, but queue and account must come from the user —"
+    " the server never invents them."
+)
+
+TOOL_DESCRIPTIONS: dict[str, str] = {
+    # -- experiment-loop -------------------------------------------------------
+    "list_entries": (
+        "[experiment-loop] List registered pipeline workflows and tasks, optionally"
+        " filtered by category or pipeline family."
+    ),
+    LIST_BUNDLES_TOOL_NAME: (
+        "[experiment-loop] List curated starter bundles of typed biological inputs,"
+        " optionally filtered by pipeline family; each entry includes an available"
+        " flag and a reasons list so missing paths are visible even for unavailable"
+        " bundles."
+    ),
+    LOAD_BUNDLE_TOOL_NAME: (
+        "[experiment-loop] Load one curated starter bundle by name and return its"
+        " typed bindings, scalar inputs, runtime images, and tool-database paths"
+        " ready to spread into run_task or run_workflow; returns a structured"
+        " decline instead of a KeyError when the name is unknown."
+    ),
+    RUN_TASK_TOOL_NAME: (
+        "[experiment-loop] Run one registered task against typed biological bindings"
+        " and scalar inputs, freezing the run into a WorkflowSpec artifact before"
+        " execution so the experiment is reproducible from the returned recipe_id."
+        " " + QUEUE_ACCOUNT_HANDOFF
+    ),
+    RUN_WORKFLOW_TOOL_NAME: (
+        "[experiment-loop] Run one registered workflow against typed biological"
+        " bindings and scalar inputs, freezing the run into a WorkflowSpec artifact"
+        " before execution so the experiment is reproducible from the returned"
+        " recipe_id. " + QUEUE_ACCOUNT_HANDOFF
+    ),
+    # -- inspect-before-execute ------------------------------------------------
+    PREPARE_RECIPE_TOOL_NAME: (
+        "[inspect-before-execute] Plan one natural-language prompt and save a frozen"
+        " workflow-spec recipe artifact without executing it; inspect the artifact"
+        " via validate_run_recipe or execute it later with run_local_recipe /"
+        " run_slurm_recipe."
+    ),
+    RUN_RECIPE_TOOL_NAME: (
+        "[inspect-before-execute] Execute a previously frozen workflow-spec recipe"
+        " artifact on the local machine."
+    ),
+    RUN_SLURM_RECIPE_TOOL_NAME: (
+        "[inspect-before-execute] Submit a previously frozen workflow-spec recipe"
+        " artifact to Slurm. " + QUEUE_ACCOUNT_HANDOFF
+    ),
+    APPROVE_COMPOSED_RECIPE_TOOL_NAME: (
+        "[inspect-before-execute] Grant explicit approval for a composed-recipe"
+        " artifact; composed recipes cannot be executed until a valid approval record"
+        " exists alongside the artifact."
+    ),
+    VALIDATE_RUN_RECIPE_TOOL_NAME: (
+        "[inspect-before-execute] Validate a frozen recipe's bindings and staging"
+        " paths without executing it; returns structured findings keyed by kind"
+        " (binding, container, tool_database, shared_fs). Safe to call repeatedly —"
+        " never submits, never writes, never mutates."
+    ),
+    # -- lifecycle -------------------------------------------------------------
+    "plan_request": (
+        "[lifecycle] Classify one biological request through the typed recipe planner"
+        " and return a structured PlanSuccess or PlanDecline; single-entry matches"
+        " echo a suggested_next_call for run_task / run_workflow; novel DAGs freeze"
+        " an artifact and point at approve_composed_recipe."
+    ),
+    PRIMARY_TOOL_NAME: (
+        "[lifecycle] Plan one natural-language prompt and run it through the"
+        " recipe-backed local execution flow (legacy convenience wrapper over"
+        " prepare_run_recipe + run_local_recipe)."
+    ),
+    LIST_AVAILABLE_BINDINGS_TOOL_NAME: (
+        "[lifecycle] Discover files in the workspace that could satisfy each"
+        " parameter of a registered task, scanning up to depth 3 under search_root."
+    ),
+    MONITOR_SLURM_JOB_TOOL_NAME: (
+        "[lifecycle] Inspect and reconcile a submitted Slurm job from its durable run"
+        " record; for terminal jobs returns bounded stdout/stderr tails controlled by"
+        " tail_lines."
+    ),
+    CANCEL_SLURM_JOB_TOOL_NAME: (
+        "[lifecycle] Request cancellation for a submitted Slurm job from its durable"
+        " run record."
+    ),
+    RETRY_SLURM_JOB_TOOL_NAME: (
+        "[lifecycle] Retry a failed Slurm job from its durable run record; supply"
+        " resource_overrides to escalate cpu / memory / walltime for OUT_OF_MEMORY"
+        " or TIMEOUT failures without preparing a new recipe."
+    ),
+    WAIT_FOR_SLURM_JOB_TOOL_NAME: (
+        "[lifecycle] Block until a Slurm job reaches a terminal state or the timeout"
+        " expires, polling monitor_slurm_job at poll_interval_s second intervals."
+    ),
+    FETCH_JOB_LOG_TOOL_NAME: (
+        "[lifecycle] Return the tail of a Slurm scheduler log file (stdout or"
+        " stderr), bounded by tail_lines."
+    ),
+    LIST_SLURM_RUN_HISTORY_TOOL_NAME: (
+        "[lifecycle] List recent durable Slurm submissions from .runtime/runs/"
+        " without querying the scheduler, optionally filtered by workflow_name,"
+        " active_only, or terminal_only."
+    ),
+    GET_RUN_SUMMARY_TOOL_NAME: (
+        "[lifecycle] Return a state-grouped summary of recent local and Slurm run"
+        " records from .runtime/runs/ without scheduler calls."
+    ),
+    INSPECT_RUN_RESULT_TOOL_NAME: (
+        "[lifecycle] Load one run record and return a structured human-readable"
+        " summary including workflow name, state, output paths, and the durable"
+        " asset index; no scheduler calls."
+    ),
+    GET_PIPELINE_STATUS_TOOL_NAME: (
+        "[lifecycle] Return a per-stage status checklist for the 15-stage annotation"
+        " pipeline based on durable Slurm run records."
+    ),
+}
+
 MCP_RESOURCE_URIS = (
     "flytetest://scope",
     "flytetest://supported-targets",

@@ -273,7 +273,7 @@ class FakeFastMCP:
         self.resources: dict[str, object] = {}
         self.ran = False
 
-    def tool(self):  # type: ignore[no-untyped-def]
+    def tool(self, *, description: str | None = None, **_kw):  # type: ignore[no-untyped-def]
         """Return a decorator that records the registered tool callable."""
 
         def decorator(fn):  # type: ignore[no-untyped-def]
