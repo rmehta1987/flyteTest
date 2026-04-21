@@ -91,6 +91,8 @@ from flytetest.server import (
     get_run_summary,
     inspect_run_result,
     list_available_bindings,
+    list_bundles,
+    load_bundle,
     list_entries,
     plan_request,
     prompt_and_run,
@@ -4568,3 +4570,162 @@ class ValidateRunRecipeTests(TestCase):
         kinds = {f["kind"] for f in result["findings"]}
         self.assertIn("container", kinds)
         self.assertIn("tool_database", kinds)
+
+
+# ---------------------------------------------------------------------------
+# Step 25 — Bundle MCP tools
+# ---------------------------------------------------------------------------
+
+
+class ListBundlesTests(TestCase):
+    """Tests for the list_bundles MCP tool."""
+
+    def test_returns_all_bundles_with_expected_keys(self) -> None:
+        """list_bundles() with no filter returns every seeded bundle."""
+        from flytetest.bundles import BUNDLES
+        results = list_bundles()
+        self.assertEqual(len(results), len(BUNDLES))
+        for entry in results:
+            for key in ("name", "description", "pipeline_family", "applies_to",
+                        "binding_types", "available", "reasons"):
+                self.assertIn(key, entry, f"key {key!r} missing from bundle entry")
+
+    def test_filter_by_pipeline_family(self) -> None:
+        """list_bundles(pipeline_family='annotation') returns only annotation bundles."""
+        from flytetest.bundles import BUNDLES
+        results = list_bundles(pipeline_family="annotation")
+        self.assertGreater(len(results), 0)
+        for entry in results:
+            self.assertEqual(entry["pipeline_family"], "annotation")
+        expected_count = sum(1 for b in BUNDLES.values() if b.pipeline_family == "annotation")
+        self.assertEqual(len(results), expected_count)
+
+    def test_unknown_family_returns_empty_list(self) -> None:
+        """list_bundles(pipeline_family='nonexistent') returns an empty list."""
+        results = list_bundles(pipeline_family="nonexistent_family_xyz")
+        self.assertEqual(results, [])
+
+
+class LoadBundleTests(TestCase):
+    """Tests for the load_bundle MCP tool."""
+
+    def test_happy_path_m18_busco_demo(self) -> None:
+        """load_bundle for a known bundle with all paths present returns expected keys."""
+        import tempfile
+        from unittest.mock import patch
+        from flytetest import bundles as bundles_mod
+        from flytetest.bundles import ResourceBundle
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            sif = tmp_path / "busco.sif"
+            sif.write_bytes(b"fake")
+            db = tmp_path / "busco_db"
+            db.mkdir()
+            fasta = tmp_path / "proteins.fa"
+            fasta.write_bytes(b"fake")
+
+            fake = ResourceBundle(
+                name="m18_busco_demo",
+                description="BUSCO demo.",
+                pipeline_family="annotation",
+                bindings={"QualityAssessmentTarget": {"fasta_path": str(fasta)}},
+                inputs={"lineage_dataset": "eukaryota_odb10"},
+                runtime_images={"busco_sif": str(sif)},
+                tool_databases={"busco_lineage_dir": str(db)},
+                applies_to=("annotation_qc_busco",),
+            )
+            with patch.object(bundles_mod, "BUNDLES", {"m18_busco_demo": fake}):
+                result = load_bundle("m18_busco_demo")
+
+        self.assertTrue(result.get("supported"), f"Expected supported=True, got: {result}")
+        for key in ("bindings", "inputs", "runtime_images", "tool_databases",
+                    "description", "pipeline_family"):
+            self.assertIn(key, result, f"key {key!r} missing from load_bundle result")
+
+    def test_known_but_unavailable_bundle_returns_supported_false(self) -> None:
+        """load_bundle for a bundle with missing paths returns supported=False with reasons."""
+        import tempfile
+        from unittest.mock import patch
+        from flytetest import bundles as bundles_mod
+        from flytetest.bundles import ResourceBundle
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            fake = ResourceBundle(
+                name="m18_busco_demo",
+                description="BUSCO demo.",
+                pipeline_family="annotation",
+                bindings={"QualityAssessmentTarget": {"fasta_path": str(tmp_path / "missing.fa")}},
+                inputs={},
+                runtime_images={},
+                tool_databases={},
+                applies_to=("annotation_qc_busco",),
+            )
+            with patch.object(bundles_mod, "BUNDLES", {"m18_busco_demo": fake}):
+                result = load_bundle("m18_busco_demo")
+
+        self.assertFalse(result.get("supported"), f"Expected supported=False, got: {result}")
+        self.assertIn("reasons", result)
+        self.assertGreater(len(result["reasons"]), 0)
+
+    def test_unknown_bundle_returns_structured_decline_not_key_error(self) -> None:
+        """load_bundle('nonexistent') returns a structured decline, not a raw KeyError."""
+        result = load_bundle("nonexistent_bundle_xyz")
+        self.assertFalse(result.get("supported"), f"Expected supported=False, got: {result}")
+        self.assertIn("next_steps", result)
+        joined = " ".join(result["next_steps"])
+        self.assertIn("list_bundles", joined)
+
+    def test_experiment_loop_smoke(self) -> None:
+        """Spreading load_bundle output into run_workflow (dry_run=True) succeeds."""
+        import tempfile
+        from unittest.mock import patch
+        from flytetest import bundles as bundles_mod
+        from flytetest.bundles import ResourceBundle
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            genome = tmp_path / "genome.fa"
+            proteins = tmp_path / "proteins.fa"
+            sif = tmp_path / "braker3.sif"
+            for p in (genome, proteins, sif):
+                p.write_bytes(b"fake")
+
+            fake = ResourceBundle(
+                name="braker3_small_eukaryote",
+                description="Test BRAKER3 bundle.",
+                pipeline_family="annotation",
+                bindings={
+                    "ReferenceGenome": {"fasta_path": str(genome)},
+                    # TranscriptEvidenceSet requires reference_genome (not bam_path)
+                    "TranscriptEvidenceSet": {"reference_genome": {"fasta_path": str(genome)}},
+                    "ProteinEvidenceSet": {
+                        "reference_genome": {"fasta_path": str(genome)},
+                        "protein_fasta_path": str(proteins),
+                    },
+                },
+                inputs={"braker_species": "demo_species"},
+                runtime_images={"braker_sif": str(sif)},
+                tool_databases={},
+                applies_to=("ab_initio_annotation_braker3",),
+            )
+            with patch.object(bundles_mod, "BUNDLES", {"braker3_small_eukaryote": fake}):
+                bundle = load_bundle("braker3_small_eukaryote")
+
+            self.assertTrue(bundle.get("supported"), f"load_bundle failed: {bundle}")
+            # run_workflow still requires the legacy scalar 'genome' input even when
+            # a ReferenceGenome typed binding is present (the scalar check runs before
+            # planner resolution).  Merge it in alongside the bundle inputs.
+            merged_inputs = {**bundle["inputs"], "genome": str(genome)}
+            result = run_workflow(
+                "ab_initio_annotation_braker3",
+                bindings=bundle["bindings"],
+                inputs=merged_inputs,
+                runtime_images=bundle["runtime_images"],
+                tool_databases=bundle["tool_databases"],
+                source_prompt="smoke test via load_bundle",
+                dry_run=True,
+            )
+        self.assertTrue(result.get("supported", True), f"run_workflow declined: {result}")
+        self.assertIn("recipe_id", result)

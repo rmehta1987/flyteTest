@@ -50,6 +50,8 @@ from flytetest.mcp_contract import (
     GET_RUN_SUMMARY_TOOL_NAME,
     INSPECT_RUN_RESULT_TOOL_NAME,
     LIST_AVAILABLE_BINDINGS_TOOL_NAME,
+    LIST_BUNDLES_TOOL_NAME,
+    LOAD_BUNDLE_TOOL_NAME,
     LIST_ENTRIES_LIMITATIONS,
     MCP_RESOURCE_URIS,
     MCP_TOOL_NAMES,
@@ -3691,6 +3693,53 @@ def list_available_bindings(
 
 
 # ---------------------------------------------------------------------------
+# Step 25 — Bundle discovery tools
+# ---------------------------------------------------------------------------
+
+
+def list_bundles(pipeline_family: str | None = None) -> list[dict]:
+    """Enumerate curated starter bundles, optionally filtered by pipeline family.
+
+    Each entry includes an ``available`` flag and a ``reasons`` list so a
+    scientist can see what is missing even for unavailable bundles.
+
+    Args:
+        pipeline_family: If given, only bundles whose ``pipeline_family``
+            matches this string are returned.  Pass ``None`` (default) to
+            list all families.
+"""
+    from flytetest.bundles import list_bundles as _list_bundles
+    return _list_bundles(pipeline_family=pipeline_family)
+
+
+def load_bundle(name: str) -> dict:
+    """Return a bundle's typed bindings, scalar inputs, runtime images, and
+    tool databases ready to spread into ``run_task`` / ``run_workflow``.
+
+    On success the dict has ``supported=True`` plus ``bindings``, ``inputs``,
+    ``runtime_images``, ``tool_databases``, ``description``, and
+    ``pipeline_family``.  If the bundle exists but one or more backing paths
+    are missing on disk, ``supported=False`` is returned with a ``reasons``
+    list — never a partial payload.  If the name is not registered at all, a
+    structured decline is returned instead of propagating a raw ``KeyError``.
+
+    Args:
+        name: Bundle name as returned by ``list_bundles()``.
+"""
+    from flytetest.bundles import load_bundle as _load_bundle
+    from flytetest.bundles import BUNDLES
+    try:
+        return _load_bundle(name)
+    except KeyError:
+        return {
+            "supported": False,
+            "name": name,
+            "reasons": [f"Unknown bundle {name!r}."],
+            "next_steps": ["Call list_bundles() for the set of available names."],
+        }
+
+
+# ---------------------------------------------------------------------------
 # Phase 3 — Run dashboard (TODO 12)
 # ---------------------------------------------------------------------------
 
@@ -4172,6 +4221,8 @@ def create_mcp_server(fastmcp_cls: Any | None = None) -> Any:
     mcp.tool()(approve_composed_recipe)
     mcp.tool()(prompt_and_run)
     mcp.tool()(list_available_bindings)
+    mcp.tool()(list_bundles)
+    mcp.tool()(load_bundle)
     mcp.tool()(get_run_summary)
     mcp.tool()(inspect_run_result)
     mcp.tool()(fetch_job_log)

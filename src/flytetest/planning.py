@@ -218,9 +218,11 @@ def supported_entry_parameters(name: str) -> tuple[EntryParameter, ...]:
             )
             for parameter_name, parameter in signature.parameters.items()
         )
-    except ModuleNotFoundError as exc:
-        if exc.name not in {"flyte", "flyte.io"}:
+    except (ImportError, ModuleNotFoundError) as exc:
+        if isinstance(exc, ModuleNotFoundError) and exc.name not in {"flyte", "flyte.io"}:
             raise
+        if isinstance(exc, ImportError) and not isinstance(exc, ModuleNotFoundError):
+            pass  # broken import in showcase module — fall back to source parse
         return _parameters_from_source(name)
 
 

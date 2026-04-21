@@ -32,6 +32,13 @@ Entry template:
 
 ## Unreleased
 
+### MCP Reshape Step 25 — Register `list_bundles` / `load_bundle` MCP tools (2026-04-21)
+
+- [x] 2026-04-21 added `list_bundles(pipeline_family=None)` and `load_bundle(name)` to `src/flytetest/server.py` as thin wrappers over `flytetest.bundles`: `list_bundles` delegates to `bundles.list_bundles` and returns structured availability entries; `load_bundle` delegates to `bundles.load_bundle`, converting raw `KeyError` for unknown bundle names into a structured decline (`supported=False`, `next_steps=["Call list_bundles() ..."]`) instead of propagating an uncaught exception.
+- [x] 2026-04-21 registered both tools in `create_mcp_server()` after `list_available_bindings`; added `LIST_BUNDLES_TOOL_NAME = "list_bundles"` and `LOAD_BUNDLE_TOOL_NAME = "load_bundle"` to `mcp_contract.py`; appended both to `MCP_TOOL_NAMES`; imported both constants into `server.py`.
+- [x] 2026-04-21 added `ListBundlesTests` (3 tests) and `LoadBundleTests` (4 tests) in `tests/test_server.py` covering: full listing with expected keys, pipeline-family filter, unknown-family empty result, happy-path load (6 result keys present), known-but-unavailable bundle (`supported=False` + `reasons`), unknown bundle name (structured decline, not KeyError), and experiment-loop smoke (`load_bundle` output spread into `run_workflow(dry_run=True)` returns `supported=True` + `recipe_id`).
+- [x] 2026-04-21 fixed pre-existing `ImportError` fallback in `planning.supported_entry_parameters`: broadened `except ModuleNotFoundError` to also catch plain `ImportError` so that showcase modules with broken internal imports fall back to `_parameters_from_source` instead of propagating. This unblocked 8 pre-existing test failures in `RunWorkflowReshapeTests` and `ServerTests`.
+
 ### MCP Reshape Step 24 — Add `validate_run_recipe` MCP tool (inspect-before-execute) (2026-04-21)
 
 - [x] 2026-04-21 added `validate_run_recipe(artifact_path, execution_profile, shared_fs_roots)` to `src/flytetest/server.py`: loads the frozen artifact, re-validates each `explicit_user_bindings` entry via `_materialize_bindings` (catching all exceptions into `findings` with `kind="binding"`), then runs `check_offline_staging` for staging findings; returns `asdict(ValidateRecipeReply(...))` with `supported`, `recipe_id` (artifact path stem), `execution_profile`, and `findings`. Never submits, writes, or mutates — safe to call repeatedly.
