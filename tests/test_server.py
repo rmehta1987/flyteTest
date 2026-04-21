@@ -471,40 +471,45 @@ class ServerTests(TestCase):
         self.assertIn("workflow_spec", payload["typed_planning_fields"])
 
     def test_plan_request_matches_exact_registered_stage_name(self) -> None:
-        """Free-text preview now matches exact registered stages instead of parsing paths.
+        """Free-text preview routes an exact biological stage to its registered target.
 
     This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         payload = plan_request(BRAKER_GOAL_PROMPT)
 
         self.assertFalse(payload["supported"])
-        self.assertEqual(payload["matched_entry_names"], [SUPPORTED_WORKFLOW_NAME])
-        self.assertEqual(payload["candidate_outcome"], "registered_workflow")
-        self.assertIn("ReferenceGenome", payload["required_planner_types"])
+        self.assertEqual(payload["target"], SUPPORTED_WORKFLOW_NAME)
+        self.assertEqual(payload["pipeline_family"], "annotation")
+        self.assertTrue(
+            any("ReferenceGenome" in limitation for limitation in payload["limitations"])
+        )
+        bundle_names = [bundle["name"] for bundle in payload["suggested_bundles"]]
+        self.assertIn("braker3_small_eukaryote", bundle_names)
 
     def test_plan_request_still_reports_broader_typed_specs(self) -> None:
-        """Expose broader typed planning data without executing it.
+        """Composition-eligible prompts decline with §10 recovery channels when no bindings exist.
 
     This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         payload = plan_request("Process annotation workflow data.")
 
         self.assertFalse(payload["supported"])
-        self.assertEqual(payload["candidate_outcome"], "generated_workflow_spec")
-        self.assertTrue(payload["requires_user_approval"])
-        self.assertIsNotNone(payload["workflow_spec"])
+        self.assertEqual(payload["pipeline_family"], "annotation")
+        self.assertGreater(len(payload["suggested_bundles"]), 0)
+        self.assertGreater(len(payload["next_steps"]), 0)
 
     def test_plan_request_matches_exact_entry_name_without_parsing_paths(self) -> None:
-        """Free-text preview can still resolve an exact entry name.
+        """Free-text preview can still resolve an exact registered entry name.
 
     This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         payload = plan_request("protein_evidence_alignment")
 
         self.assertFalse(payload["supported"])
-        self.assertEqual(payload["matched_entry_names"], [SUPPORTED_PROTEIN_WORKFLOW_NAME])
-        self.assertEqual(payload["candidate_outcome"], "registered_workflow")
-        self.assertEqual(payload["required_planner_types"], ["ReferenceGenome", "ProteinEvidenceSet"])
+        self.assertEqual(payload["target"], SUPPORTED_PROTEIN_WORKFLOW_NAME)
+        self.assertEqual(payload["pipeline_family"], "annotation")
+        bundle_names = [bundle["name"] for bundle in payload["suggested_bundles"]]
+        self.assertIn("protein_evidence_demo", bundle_names)
 
     def test_prepare_and_run_local_recipe_round_trips_saved_artifact(self) -> None:
         """Prepare a frozen recipe and execute it through explicit local handlers.

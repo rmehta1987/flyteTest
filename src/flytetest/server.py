@@ -77,6 +77,7 @@ from flytetest.pipeline_tracker import (
 )
 from flytetest.planning import (
     plan_request as preview_plan_request,
+    plan_request_reshape,
     showcase_limitations,
     supported_entry_parameters,
 )
@@ -848,22 +849,20 @@ def resource_prompt_and_run_contract() -> dict[str, object]:
     }
 
 
-def _typed_planning_preview(prompt: str) -> dict[str, object]:
-    """Return typed-planning metadata for the prompt before recipe freezing.
-
-    Args:
-        prompt: Natural-language request being converted into a typed plan.
-"""
-    return preview_plan_request(prompt)
-
-
 def plan_request(prompt: str) -> dict[str, object]:
     """Plan one request through the typed recipe planner.
 
+    Returns the :class:`PlanSuccess` / :class:`PlanDecline` payload serialized
+    to a plain dict for the FastMCP wire boundary. Single-entry matches leave
+    ``artifact_path`` empty and echo a structured ``suggested_next_call`` so
+    the caller commits via ``run_task`` / ``run_workflow``; composed novel DAGs
+    freeze a :class:`WorkflowSpec` artifact and point at
+    ``approve_composed_recipe``.
+
     Args:
         prompt: Natural-language request being converted into a typed plan.
 """
-    return _typed_planning_preview(prompt)
+    return asdict(plan_request_reshape(prompt))
 
 
 def run_workflow(
