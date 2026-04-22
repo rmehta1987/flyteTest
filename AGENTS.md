@@ -46,6 +46,7 @@
 Registry package — `src/flytetest/registry/`
 - `_types.py` — `RegistryEntry`, `RegistryCompatibilityMetadata`, `InterfaceField`
 - `_<family>.py` — one file per pipeline family (annotation, postprocessing, etc.)
+- `_variant_calling.py` — GATK4 germline variant calling family
 - `__init__.py` — `REGISTRY_ENTRIES`, query functions, public re-exports
 
 Core concepts

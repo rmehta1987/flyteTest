@@ -95,6 +95,9 @@ AGAT_CLEANUP_WORKFLOW_NAME = "annotation_postprocess_agat_cleanup"
 AGAT_CLEANUP_RESULTS_PREFIX = "agat_cleanup_results"
 TABLE2ASN_WORKFLOW_NAME = "annotation_postprocess_table2asn"
 TABLE2ASN_RESULTS_PREFIX = "table2asn_results"
+VARIANT_CALLING_WORKFLOW_NAME = "variant_calling"
+VARIANT_CALLING_RESULTS_PREFIX = "variant_calling_results"
+VARIANT_CALLING_SIF_DEFAULT = "data/images/gatk4.sif"
 
 TASK_ENVIRONMENT_CONFIGS: tuple[TaskEnvironmentConfig, ...] = (
     TaskEnvironmentConfig(name=TASK_ENV_NAME),
@@ -125,6 +128,13 @@ TASK_ENVIRONMENT_CONFIGS: tuple[TaskEnvironmentConfig, ...] = (
     TaskEnvironmentConfig(name=AGAT_CONVERSION_WORKFLOW_NAME),
     TaskEnvironmentConfig(name=AGAT_CLEANUP_WORKFLOW_NAME),
     TaskEnvironmentConfig(name=TABLE2ASN_WORKFLOW_NAME),
+    TaskEnvironmentConfig(
+        name=VARIANT_CALLING_WORKFLOW_NAME,
+        kwargs={
+            "resources": flyte.Resources(cpu="4", memory="16Gi"),
+            "description": "GATK4 germline variant calling stage.",
+        },
+    ),
 )
 
 TASK_ENVIRONMENT_NAMES = tuple(config.name for config in TASK_ENVIRONMENT_CONFIGS)
@@ -151,6 +161,7 @@ agat_env = TASK_ENVIRONMENTS_BY_NAME[AGAT_WORKFLOW_NAME]
 agat_conversion_env = TASK_ENVIRONMENTS_BY_NAME[AGAT_CONVERSION_WORKFLOW_NAME]
 agat_cleanup_env = TASK_ENVIRONMENTS_BY_NAME[AGAT_CLEANUP_WORKFLOW_NAME]
 table2asn_env = TASK_ENVIRONMENTS_BY_NAME[TABLE2ASN_WORKFLOW_NAME]
+variant_calling_env = TASK_ENVIRONMENTS_BY_NAME[VARIANT_CALLING_WORKFLOW_NAME]
 DEFAULT_SLURM_ACCOUNT = os.environ.get("FLYTETEST_SLURM_ACCOUNT", "rcc-staff")
 
 

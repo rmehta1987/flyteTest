@@ -38,13 +38,13 @@ then closure (contract tests, tool-ref doc, agent-context refresh).
 | # | Step | Plan section | Prompt | Status |
 |---|------|--------------|--------|--------|
 | 01 | Add `AlignmentSet`, `VariantCallSet`, `KnownSites` planner types | §6.1 | `prompts/step_01_planner_types.md` | Complete |
-| 02 | Add `variant_calling_env` + `_variant_calling.py` skeleton | §6.2 | `prompts/step_02_env_and_registry_skeleton.md` | Not started |
+| 02 | Add `variant_calling_env` + `_variant_calling.py` skeleton | §6.2 | `prompts/step_02_env_and_registry_skeleton.md` | Complete |
 
 ### Tasks (each: task impl + registry entry + unit test + CHANGELOG line)
 
 | # | Step | Plan section | Prompt | Status |
 |---|------|--------------|--------|--------|
-| 03 | `create_sequence_dictionary` — reference prep | §6.3 (stage 1) | `prompts/step_03_create_sequence_dictionary.md` | Not started |
+| 03 | `create_sequence_dictionary` — reference prep | §6.3 (stage 1) | `prompts/step_03_create_sequence_dictionary.md` | Complete |
 | 04 | `index_feature_file` — known-sites indexer | §6.3 (stage 2) | `prompts/step_04_index_feature_file.md` | Not started |
 | 05 | `base_recalibrator` — BQSR report | §6.3 (stage 3) | `prompts/step_05_base_recalibrator.md` | Not started |
 | 06 | `apply_bqsr` — apply BQSR | §6.3 (stage 4) | `prompts/step_06_apply_bqsr.md` | Not started |

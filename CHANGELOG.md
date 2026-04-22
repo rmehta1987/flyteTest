@@ -32,6 +32,21 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone A Step 03 — create_sequence_dictionary task + registry entry (2026-04-21)
+
+- [x] 2026-04-21 created `src/flytetest/tasks/variant_calling.py` with
+  `create_sequence_dictionary` task: runs `gatk CreateSequenceDictionary -R …
+  -O …` via `run_tool` + Apptainer, emits `run_manifest.json` via
+  `build_manifest_envelope` (stage `"create_sequence_dictionary"`).
+- [x] 2026-04-21 added `create_sequence_dictionary` `RegistryEntry` to
+  `VARIANT_CALLING_ENTRIES` in `src/flytetest/registry/_variant_calling.py`
+  (pipeline_family `"variant_calling"`, pipeline_stage_order 1).
+- [x] 2026-04-21 deleted Step 02 scaffolding test
+  `test_variant_calling_family_registered` from `tests/test_registry.py`.
+- [x] 2026-04-21 added `tests/test_variant_calling.py` with 4 tests covering
+  registry entry shape, correct GATK command invocation, default SIF fallback,
+  and manifest emission — all passing.
+
 ### GATK Milestone A Step 01 — Planner types for variant calling (2026-04-21)
 
 - [x] 2026-04-21 added `AlignmentSet`, `VariantCallSet`, `KnownSites` planner

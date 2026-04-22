@@ -28,7 +28,8 @@ src/flytetest/registry/
   _evm.py                  # 12 entries: EVM consensus preparation and execution
   _postprocessing.py       # 21 entries: repeat filtering, QC, functional annotation, AGAT, table2asn
   _rnaseq.py               # 5 entries: RNA-seq QC and quantification
-  _gatk.py                 # 1 entry: GATK4 variant calling (catalog-only placeholder)
+  _variant_calling.py      # GATK4 germline variant calling family (skeleton; entries added in Steps 03–09)
+  _gatk.py                 # catalog-only placeholder — reference example only, not imported
 ```
 
 `REGISTRY_ENTRIES` is the concatenation of all family tuples in `__init__.py`.
@@ -119,8 +120,9 @@ edit, treat that as a sign the planner-type or registry model is missing a
 generalization — push the fix there instead.
 
 Worked example: the GATK4 variant-calling placeholder entry in
-`_gatk.py` (`gatk_haplotype_caller`, `showcase_module=""`).  It is the
-canonical catalog-only shape that a real family implementation extends.
+`_gatk.py` (`gatk_haplotype_caller`, `showcase_module=""`).  It is a
+reference-only file showing the catalog-only shape; the live family is
+`_variant_calling.py` (wired into `REGISTRY_ENTRIES` via `VARIANT_CALLING_ENTRIES`).
 
 Steps to add a new family (`<family>`):
 

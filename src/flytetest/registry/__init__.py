@@ -27,7 +27,7 @@ from flytetest.registry._annotation import ANNOTATION_ENTRIES
 from flytetest.registry._evm import EVM_ENTRIES
 from flytetest.registry._postprocessing import POSTPROCESSING_ENTRIES
 from flytetest.registry._rnaseq import RNASEQ_ENTRIES
-from flytetest.registry._gatk import GATK_ENTRIES
+from flytetest.registry._variant_calling import VARIANT_CALLING_ENTRIES
 
 REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
     TRANSCRIPT_EVIDENCE_ENTRIES
@@ -37,7 +37,7 @@ REGISTRY_ENTRIES: tuple[RegistryEntry, ...] = (
     + EVM_ENTRIES
     + POSTPROCESSING_ENTRIES
     + RNASEQ_ENTRIES
-    + GATK_ENTRIES
+    + VARIANT_CALLING_ENTRIES
 )
 
 _REGISTRY: dict[str, RegistryEntry] = {entry.name: entry for entry in REGISTRY_ENTRIES}
