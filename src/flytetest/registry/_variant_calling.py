@@ -77,4 +77,41 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             pipeline_stage_order=2,
         ),
     ),
+    RegistryEntry(
+        name="base_recalibrator",
+        category="task",
+        description="Generate a GATK4 BQSR recalibration table via BaseRecalibrator.",
+        inputs=(
+            InterfaceField("reference_fasta", "File", "Reference genome FASTA."),
+            InterfaceField("aligned_bam", "File", "Coordinate-sorted, duplicate-marked BAM."),
+            InterfaceField("known_sites", "list[File]", "Indexed known-sites VCF(s) for BQSR."),
+            InterfaceField("sample_id", "str", "Sample identifier used to name the output table."),
+            InterfaceField("gatk_sif", "str", "Optional Apptainer/Singularity image path for GATK4."),
+        ),
+        outputs=(
+            InterfaceField("bqsr_report", "File", "GATK4 BQSR recalibration table (.table)."),
+        ),
+        tags=("variant_calling", "gatk4", "bqsr"),
+        compatibility=RegistryCompatibilityMetadata(
+            biological_stage="GATK4 base quality score recalibration report",
+            accepted_planner_types=("ReferenceGenome", "AlignmentSet", "KnownSites"),
+            produced_planner_types=(),
+            reusable_as_reference=False,
+            execution_defaults={
+                "profile": "local",
+                "result_manifest": "run_manifest.json",
+                "resources": {"cpu": "4", "memory": "16Gi", "execution_class": "local"},
+                "slurm_resource_hints": {"cpu": "8", "memory": "32Gi", "walltime": "06:00:00"},
+                "runtime_images": {"gatk_sif": "data/images/gatk4.sif"},
+                "module_loads": ("python/3.11.9", "apptainer/1.4.1"),
+            },
+            supported_execution_profiles=("local", "slurm"),
+            synthesis_eligible=True,
+            composition_constraints=(
+                "Requires coordinate-sorted dedup'd BAM + reference + \u22651 indexed known-sites VCF.",
+            ),
+            pipeline_family="variant_calling",
+            pipeline_stage_order=3,
+        ),
+    ),
 )

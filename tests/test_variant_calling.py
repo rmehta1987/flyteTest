@@ -24,6 +24,7 @@ from flyte.io import File
 import flytetest.tasks.variant_calling as variant_calling
 from flytetest.tasks.variant_calling import (
     MANIFEST_OUTPUT_KEYS,
+    base_recalibrator,
     create_sequence_dictionary,
     index_feature_file,
 )
@@ -273,3 +274,115 @@ class IndexFeatureFileManifestTests(TestCase):
         self.assertEqual(manifest["stage"], "index_feature_file")
         self.assertIn("feature_index", manifest["outputs"])
         self.assertTrue(manifest["outputs"]["feature_index"].endswith(".vcf.idx"))
+
+
+class BaseRecalibratorRegistryTests(TestCase):
+    def test_base_recalibrator_registry_entry_shape(self):
+        from flytetest.registry._variant_calling import VARIANT_CALLING_ENTRIES
+
+        entry = next(e for e in VARIANT_CALLING_ENTRIES if e.name == "base_recalibrator")
+        self.assertEqual(entry.category, "task")
+        input_names = [f.name for f in entry.inputs]
+        self.assertIn("reference_fasta", input_names)
+        self.assertIn("aligned_bam", input_names)
+        self.assertIn("known_sites", input_names)
+        self.assertIn("sample_id", input_names)
+        output_names = [f.name for f in entry.outputs]
+        self.assertIn("bqsr_report", output_names)
+        self.assertEqual(entry.compatibility.pipeline_stage_order, 3)
+        self.assertIn("ReferenceGenome", entry.compatibility.accepted_planner_types)
+        self.assertIn("AlignmentSet", entry.compatibility.accepted_planner_types)
+        self.assertIn("KnownSites", entry.compatibility.accepted_planner_types)
+
+
+class BaseRecalibratorInvocationTests(TestCase):
+    def test_base_recalibrator_rejects_empty_known_sites(self):
+        stub_ref = File(path="/data/ref.fa")
+        stub_bam = File(path="/data/sample.bam")
+        with self.assertRaises(ValueError) as ctx:
+            base_recalibrator(
+                reference_fasta=stub_ref,
+                aligned_bam=stub_bam,
+                known_sites=[],
+                sample_id="sample1",
+            )
+        self.assertIn("known_sites list cannot be empty", str(ctx.exception))
+
+    def test_base_recalibrator_cmd_shape(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            ref_fa = tmp_path / "ref.fa"
+            bam_file = tmp_path / "sample.bam"
+            site1 = tmp_path / "dbsnp.vcf"
+            site2 = tmp_path / "mills.vcf"
+            for p in (ref_fa, bam_file, site1, site2):
+                p.touch()
+
+            captured_cmd = []
+            emitted_out_dir = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                captured_cmd.extend(cmd)
+                out_idx = cmd.index("-O")
+                out_path = Path(cmd[out_idx + 1])
+                emitted_out_dir.append(out_path.parent)
+                out_path.touch()
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                result = base_recalibrator(
+                    reference_fasta=File(path=str(ref_fa)),
+                    aligned_bam=File(path=str(bam_file)),
+                    known_sites=[
+                        File(path=str(site1)),
+                        File(path=str(site2)),
+                    ],
+                    sample_id="sample1",
+                )
+
+            self.assertEqual(captured_cmd[0], "gatk")
+            self.assertEqual(captured_cmd[1], "BaseRecalibrator")
+            self.assertIn("-R", captured_cmd)
+            self.assertIn("-I", captured_cmd)
+            self.assertIn("-O", captured_cmd)
+            # --known-sites should appear once per site
+            known_sites_flags = [i for i, v in enumerate(captured_cmd) if v == "--known-sites"]
+            self.assertEqual(len(known_sites_flags), 2)
+            self.assertEqual(captured_cmd[known_sites_flags[0] + 1], str(site1))
+            self.assertEqual(captured_cmd[known_sites_flags[1] + 1], str(site2))
+            self.assertTrue(result.path.endswith(".table"))
+
+
+class BaseRecalibratorManifestTests(TestCase):
+    def test_base_recalibrator_emits_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            ref_fa = tmp_path / "ref.fa"
+            bam_file = tmp_path / "sample.bam"
+            site1 = tmp_path / "dbsnp.vcf"
+            for p in (ref_fa, bam_file, site1):
+                p.touch()
+
+            emitted_out_dir = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                out_idx = cmd.index("-O")
+                out_path = Path(cmd[out_idx + 1])
+                emitted_out_dir.append(out_path.parent)
+                out_path.touch()
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                base_recalibrator(
+                    reference_fasta=File(path=str(ref_fa)),
+                    aligned_bam=File(path=str(bam_file)),
+                    known_sites=[File(path=str(site1))],
+                    sample_id="sample1",
+                )
+
+            out_dir = emitted_out_dir[0]
+            manifest_path = out_dir / "run_manifest.json"
+            self.assertTrue(manifest_path.exists(), "run_manifest.json was not written")
+
+            manifest = json.loads(manifest_path.read_text())
+            self.assertEqual(manifest["stage"], "base_recalibrator")
+            self.assertIn("bqsr_report", manifest["outputs"])
+            self.assertTrue(manifest["outputs"]["bqsr_report"].endswith(".table"))

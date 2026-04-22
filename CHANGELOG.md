@@ -32,6 +32,21 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone A Step 05 — base_recalibrator task + registry entry (2026-04-21)
+
+- [x] 2026-04-21 added `base_recalibrator` task to
+  `src/flytetest/tasks/variant_calling.py`: runs `gatk BaseRecalibrator -R … -I … -O …
+  --known-sites …` (repeated per site) via `run_tool`; raises `ValueError` on empty
+  `known_sites`; emits `run_manifest.json`.
+- [x] 2026-04-21 added `base_recalibrator` `RegistryEntry` to
+  `VARIANT_CALLING_ENTRIES` (pipeline_stage_order 3,
+  accepted_planner_types `ReferenceGenome` / `AlignmentSet` / `KnownSites`,
+  4 CPU / 16 GiB local; 8 CPU / 32 GiB / 06:00:00 Slurm).
+- [x] 2026-04-21 extended `MANIFEST_OUTPUT_KEYS` with `"bqsr_report"`.
+- [x] 2026-04-21 added 4 tests to `tests/test_variant_calling.py`: registry
+  shape, empty-known-sites rejection, cmd shape (two `--known-sites` flags), manifest
+  emission — all 12 variant-calling tests passing.
+
 ### GATK Milestone A Step 04 — index_feature_file task + registry entry (2026-04-21)
 
 - [x] 2026-04-21 added `index_feature_file` task to

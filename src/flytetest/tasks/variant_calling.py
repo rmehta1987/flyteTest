@@ -21,6 +21,7 @@ from flytetest.manifest_io import write_json as _write_json
 MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
     "sequence_dict",
     "feature_index",
+    "bqsr_report",
 )
 
 
@@ -86,3 +87,59 @@ def index_feature_file(
     )
     _write_json(out_dir / "run_manifest.json", manifest)
     return File(path=str(expected_index))
+
+
+@variant_calling_env.task
+def base_recalibrator(
+    reference_fasta: File,
+    aligned_bam: File,
+    known_sites: list[File],
+    sample_id: str,
+    gatk_sif: str = "",
+) -> File:
+    """Generate a BQSR recalibration table via GATK4 BaseRecalibrator."""
+    if not known_sites:
+        raise ValueError("known_sites list cannot be empty for BQSR")
+
+    ref_path = require_path(Path(reference_fasta.download_sync()),
+                            "Reference genome FASTA")
+    bam_path = require_path(Path(aligned_bam.download_sync()),
+                            "Aligned BAM")
+    site_paths = [
+        require_path(Path(s.download_sync()), f"KnownSites VCF #{i}")
+        for i, s in enumerate(known_sites)
+    ]
+
+    out_dir = project_mkdtemp("gatk_bqsr_report_")
+    recal_path = out_dir / f"{sample_id}_bqsr.table"
+
+    cmd = ["gatk", "BaseRecalibrator",
+           "-R", str(ref_path),
+           "-I", str(bam_path),
+           "-O", str(recal_path)]
+    for site in site_paths:
+        cmd.extend(["--known-sites", str(site)])
+
+    bind_paths = [ref_path.parent, bam_path.parent, out_dir,
+                  *[s.parent for s in site_paths]]
+    run_tool(cmd, gatk_sif or "data/images/gatk4.sif", bind_paths)
+
+    require_path(recal_path, "GATK BaseRecalibrator output table")
+
+    manifest = build_manifest_envelope(
+        stage="base_recalibrator",
+        assumptions=[
+            "Aligned BAM is coordinate-sorted and has duplicates marked (caller responsibility).",
+            "All known-sites VCFs are indexed (.idx or .tbi present next to each VCF).",
+            "Reference has a .fai and .dict next to the FASTA.",
+        ],
+        inputs={
+            "reference_fasta": str(ref_path),
+            "aligned_bam": str(bam_path),
+            "known_sites": [str(s) for s in site_paths],
+            "sample_id": sample_id,
+        },
+        outputs={"bqsr_report": str(recal_path)},
+    )
+    _write_json(out_dir / "run_manifest.json", manifest)
+    return File(path=str(recal_path))
