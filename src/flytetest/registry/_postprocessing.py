@@ -379,6 +379,7 @@ POSTPROCESSING_ENTRIES: tuple[RegistryEntry, ...] = (
         showcase_module='flytetest.tasks.functional',
         compatibility=RegistryCompatibilityMetadata(
             biological_stage='BUSCO fixture and lineage assessment',
+            pipeline_family='annotation',
             produced_planner_types=('Dir',),
             reusable_as_reference=True,
             execution_defaults={

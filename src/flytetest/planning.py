@@ -273,6 +273,17 @@ def _pipeline_stage_order(entry: RegistryEntry) -> int:
     return order if isinstance(order, int) else 1_000_000
 
 
+_ACTION_PREFIXES = ("run ", "execute ", "perform ", "start ", "launch ")
+
+
+def _strip_action_prefix(normalized: str) -> str:
+    """Remove a leading action verb so 'run X' matches the same target as 'X'."""
+    for prefix in _ACTION_PREFIXES:
+        if normalized.startswith(prefix):
+            return normalized[len(prefix):]
+    return normalized
+
+
 def _match_target(
     biological_goal: str,
     registry_entries: Sequence[RegistryEntry],
@@ -282,12 +293,15 @@ def _match_target(
     if not goal:
         return NoMatch()
 
+    stripped = _strip_action_prefix(goal)
     primary = [
         entry
         for entry in registry_entries
-        if _normalize(entry.compatibility.biological_stage or "") == goal
+        if _normalize(entry.compatibility.biological_stage or "") in (goal, stripped)
     ]
-    candidates = primary or [entry for entry in registry_entries if _normalize(entry.name) == goal]
+    candidates = primary or [
+        entry for entry in registry_entries if _normalize(entry.name) in (goal, stripped)
+    ]
     if not candidates:
         return NoMatch()
 

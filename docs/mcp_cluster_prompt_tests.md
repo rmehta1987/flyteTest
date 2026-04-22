@@ -67,59 +67,66 @@ Then print exactly:
 
 ---
 
-## Scenario 2 — Happy path: prepare → submit → poll until COMPLETED
+## Scenario 2 — Happy path: load bundle → run task → poll until COMPLETED
 
-**Goal:** Full prepare-submit-monitor cycle for the BUSCO genome-mode fixture.
-Validates the `final_scheduler_state` polling gate.
+**Goal:** Full submit-and-monitor cycle for the BUSCO genome-mode fixture using
+the primary scientist loop (`load_bundle` → `run_task`).  Validates the
+`final_scheduler_state` polling gate.
 
 **Estimated time:** 5–15 minutes on `caslake` (BUSCO eukaryota fixture is
 small).
 
-**Step 2a — Prepare the recipe:**
+**Step 2a — Load the starter bundle:**
 
 ```text
 Use the flytetest MCP server.
 
-Call prepare_run_recipe with exactly these arguments:
-- prompt: "Run the BUSCO eukaryota genome-mode fixture for cluster validation."
-- runtime_bindings: {"proteins_fasta": "data/busco/test_data/eukaryota/genome.fna", "lineage_dataset": "auto-lineage", "busco_cpu": 2, "busco_mode": "geno"}
-- resource_request: {"cpu": 2, "memory": "8Gi", "queue": "caslake", "account": "rcc-staff", "walltime": "00:15:00"}
-- execution_profile: "slurm"
+Call load_bundle with exactly this argument:
+- name: "busco_eukaryota_genome_fixture"
 
 Then print exactly:
 - supported
-- artifact_path
+- inputs   (show proteins_fasta, lineage_dataset, busco_mode)
 - limitations
 ```
 
 **Pass criteria for 2a:**
 
 - `supported` is `true`.
-- `artifact_path` is a non-null string ending in `.json`.
+- `inputs.proteins_fasta` points to `data/busco/test_data/eukaryota/genome.fna`.
+- `inputs.busco_mode` is `"geno"`.
 - `limitations` is empty.
 
 ---
 
-**Step 2b — Submit the saved artifact:**
+**Step 2b — Freeze and submit in one step:**
 
 ```text
 Use the flytetest MCP server.
 
-Call run_slurm_recipe with the artifact_path from the last prepare_run_recipe call.
+Call run_task with exactly these arguments:
+- task_name: "busco_assess_proteins"
+- inputs: <inputs dict from load_bundle>
+- runtime_images: <runtime_images dict from load_bundle>
+- resources: {"cpu": 2, "memory": "8Gi", "queue": "caslake", "account": "rcc-staff", "walltime": "00:15:00"}
+- execution_profile: "slurm"
+- source_prompt: "Run BUSCO eukaryota genome-mode fixture for cluster validation"
 
 Then print exactly:
 - supported
-- job_id
+- recipe_id
 - run_record_path
+- execution_profile
 - limitations
 ```
 
 **Pass criteria for 2b:**
 
 - `supported` is `true`.
-- `job_id` is a numeric string (e.g. `"1234567"`).
+- `recipe_id` is a non-null string (timestamp-target format).
 - `run_record_path` is a non-null path ending in `slurm_run_record.json`.
-- `limitations` is empty.
+- `execution_profile` is `"slurm"`.
+- `limitations` is empty or advisory only.
 
 ---
 
@@ -131,7 +138,7 @@ seconds between calls while the job is `PENDING` or `RUNNING`.
 ```text
 Use the flytetest MCP server.
 
-Call monitor_slurm_job with the run_record_path from run_slurm_recipe.
+Call monitor_slurm_job with the run_record_path from run_task.
 
 Then print exactly:
 - supported
@@ -165,8 +172,8 @@ genome fixture FASTA exists and the `busco_mode` is correct.
 even in a new OpenCode session.  This is the client path for resuming
 monitoring after a restart.
 
-**Prerequisite:** Scenario 2, Step 2b must have been completed in any prior
-session (the run record is durable on disk).
+**Prerequisite:** Scenario 2, Step 2b (`run_task`) must have been completed in
+any prior session (the run record is durable on disk).
 
 ```text
 Use the flytetest MCP server.
@@ -210,9 +217,10 @@ Then print job_id, effective_scheduler_state, and run_record_path for each entry
 returns `supported: true` both times and does NOT issue a second `scancel` to
 the scheduler.
 
-**Prerequisite:** Complete Scenario 2, Steps 2a and 2b to get a
-`run_record_path` for a submitted job.  This scenario works best while the
-job is still `PENDING` or `RUNNING` — cancel it before it finishes.
+**Prerequisite:** Complete Scenario 2, Steps 2a and 2b (`load_bundle` +
+`run_task`) to get a `run_record_path` for a submitted job.  This scenario
+works best while the job is still `PENDING` or `RUNNING` — cancel it before
+it finishes.
 
 **Step 4a — First cancel:**
 
@@ -467,6 +475,8 @@ Use the same polling pattern as Scenario 2, Step 2c with `retry_run_record_path`
 | Tool | Fields to print |
 |---|---|
 | `list_entries` | `supported`, `server_tools`, entries with `slurm_resource_hints` |
+| `load_bundle` | `supported`, `inputs`, `runtime_images`, `limitations` |
+| `run_task` | `supported`, `recipe_id`, `run_record_path`, `execution_profile`, `limitations` |
 | `prepare_run_recipe` | `supported`, `artifact_path`, `limitations` |
 | `run_slurm_recipe` | `supported`, `job_id`, `run_record_path`, `limitations` |
 | `monitor_slurm_job` | `supported`, `scheduler_state`, `final_scheduler_state`, `stdout_path`, `stderr_path`, `run_record_path`, `limitations` |
