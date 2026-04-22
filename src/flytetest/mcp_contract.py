@@ -315,17 +315,13 @@ TASK_EXAMPLE_PROMPT = (
     "data/braker3/reference/genome.fa and protein chunk data/braker3/protein_data/fastas/proteins.fa"
 )
 SHOWCASE_LIMITATIONS = (
-    "The MCP recipe surface executes "
-    + ", ".join(f"`{n}`" for n in SUPPORTED_TARGET_NAMES)
-    + " through explicit local handlers.",
-    "Prompt-contained local file paths and explicit recipe inputs are frozen into saved WorkflowSpec artifacts before execution.",
-    "Additional registered workflows require explicit local handlers before they are exposed as runnable MCP targets.",
+    "This server runs a fixed set of analysis pipelines — call list_entries to see what is available.",
+    "Every job is saved as a frozen recipe before it runs, so the exact inputs and settings used are always recorded.",
+    "Additional pipelines can be added by the server administrator when needed.",
 )
 LIST_ENTRIES_LIMITATIONS = (
-    "The MCP recipe surface exposes only "
-    + ", ".join(f"`{n}`" for n in SUPPORTED_TARGET_NAMES)
-    + " as runnable targets.",
-    "The primary MCP flow is `prompt_and_run(prompt)`, which prepares and executes a saved WorkflowSpec artifact.",
+    "Only the pipelines listed above are available to run from this server.",
+    "Describe what you want in plain language — the server will match it to the right pipeline, prepare a recipe, and submit the job.",
 )
 PROMPT_REQUIREMENTS = (
     "Write explicit local file paths directly in the prompt when you want prompt-derived runtime bindings.",

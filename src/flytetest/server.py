@@ -807,12 +807,16 @@ def _run_workflow_direct(workflow_name: str, inputs: Mapping[str, object]) -> di
 def list_entries(
     category: str | None = None,
     pipeline_family: str | None = None,
-) -> list[dict[str, object]]:
+) -> dict[str, object]:
     """List showcased MCP recipe targets, optionally filtered by category or pipeline family."""
     entries = registry_list_entries(category)
     if pipeline_family:
         entries = tuple(e for e in entries if e.compatibility.pipeline_family == pipeline_family)
-    return [_entry_payload(e) for e in entries if e.showcase_module]
+    return {
+        "supported": True,
+        "entries": [_entry_payload(e) for e in entries if e.showcase_module],
+        "limitations": list(LIST_ENTRIES_LIMITATIONS),
+    }
 
 
 def resource_scope() -> dict[str, object]:

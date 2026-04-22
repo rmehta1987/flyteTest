@@ -361,10 +361,12 @@ class ServerTests(TestCase):
     This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         payload = list_entries()
-        self.assertIsInstance(payload, list)
-        entries_by_name = {entry["name"]: entry for entry in payload}
+        self.assertTrue(payload["supported"])
+        self.assertIn("limitations", payload)
+        entries = payload["entries"]
+        entries_by_name = {entry["name"]: entry for entry in entries}
 
-        self.assertEqual([entry["name"] for entry in payload], EXPECTED_TARGET_NAMES)
+        self.assertEqual([entry["name"] for entry in entries], EXPECTED_TARGET_NAMES)
         self.assertIn("slurm", entries_by_name[SUPPORTED_WORKFLOW_NAME]["supported_execution_profiles"])
         self.assertIn("slurm", entries_by_name[SUPPORTED_BUSCO_FIXTURE_TASK_NAME]["supported_execution_profiles"])
         self.assertEqual(entries_by_name[SUPPORTED_TASK_NAME]["supported_execution_profiles"], ["local"])
@@ -380,26 +382,26 @@ class ServerTests(TestCase):
 
     def test_list_entries_category_filter_returns_only_tasks(self) -> None:
         """list_entries(category='task') returns only task entries."""
-        entries = list_entries(category="task")
+        entries = list_entries(category="task")["entries"]
         self.assertTrue(len(entries) > 0)
         for entry in entries:
             self.assertEqual(entry["category"], "task")
 
     def test_list_entries_category_filter_returns_only_workflows(self) -> None:
         """list_entries(category='workflow') returns only workflow entries."""
-        entries = list_entries(category="workflow")
+        entries = list_entries(category="workflow")["entries"]
         self.assertTrue(len(entries) > 0)
         for entry in entries:
             self.assertEqual(entry["category"], "workflow")
 
     def test_list_entries_pipeline_family_filter(self) -> None:
         """list_entries(pipeline_family=...) filters to matching entries only."""
-        all_entries = list_entries()
+        all_entries = list_entries()["entries"]
         families = {e["pipeline_family"] for e in all_entries if e["pipeline_family"]}
         if not families:
             self.skipTest("no entries with pipeline_family set")
         family = next(iter(sorted(families)))
-        filtered = list_entries(pipeline_family=family)
+        filtered = list_entries(pipeline_family=family)["entries"]
         self.assertTrue(len(filtered) > 0)
         for entry in filtered:
             self.assertEqual(entry["pipeline_family"], family)
@@ -414,8 +416,7 @@ class ServerTests(TestCase):
         non_showcased = [e.name for e in REGISTRY_ENTRIES if not e.showcase_module]
         if not non_showcased:
             self.skipTest("all registry entries have showcase_module set")
-        entries = list_entries()
-        returned_names = {e["name"] for e in entries}
+        returned_names = {e["name"] for e in list_entries()["entries"]}
         for name in non_showcased:
             self.assertNotIn(name, returned_names)
 
@@ -2584,8 +2585,7 @@ class ServerTests(TestCase):
         values before calling prepare_run_recipe; the hints must be present and
         non-empty for workflows that support the Slurm execution profile.
         """
-        payload = list_entries()
-        entries_by_name = {entry["name"]: entry for entry in payload}
+        entries_by_name = {entry["name"]: entry for entry in list_entries()["entries"]}
 
         busco_entry = entries_by_name[SUPPORTED_BUSCO_WORKFLOW_NAME]
         self.assertIn("slurm_resource_hints", busco_entry)
@@ -3513,7 +3513,7 @@ class ServerTests(TestCase):
 
         T20: Validates the new ShowcaseTarget entry is present.
         """
-        entries = list_entries()
+        entries = list_entries()["entries"]
         names = [e["name"] for e in entries]
         self.assertIn(SUPPORTED_TABLE2ASN_WORKFLOW_NAME, names)
         table2asn_entry = next(e for e in entries if e["name"] == SUPPORTED_TABLE2ASN_WORKFLOW_NAME)
