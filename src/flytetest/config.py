@@ -251,7 +251,10 @@ def run_tool(
         run(cmd, cwd=cwd, stdout_path=stdout_path)
         return
 
-    sif_abs = str(Path(sif).resolve())
+    sif_path = Path(sif)
+    if not sif_path.is_absolute():
+        sif_path = Path(__file__).resolve().parents[2] / sif_path
+    sif_abs = str(sif_path)
     mounts: set[str] = set()
     for path in bind_paths:
         resolved = str(path.resolve())
