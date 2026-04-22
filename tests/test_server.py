@@ -642,7 +642,7 @@ class ServerTests(TestCase):
                 BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
-                resource_request={"cpu": 12, "memory": "48Gi", "queue": "batch", "walltime": "02:00:00"},
+                resource_request={"cpu": 12, "memory": "48Gi", "partition": "batch", "walltime": "02:00:00"},
                 execution_profile="slurm",
                 recipe_dir=tmp_path,
             )
@@ -668,7 +668,7 @@ class ServerTests(TestCase):
         self.assertTrue(run_record_exists)
         self.assertEqual(captured["args"][0], "sbatch")
         self.assertEqual(submitted["execution_result"]["execution_mode"], "slurm-workflow-spec-executor")
-        self.assertEqual(submitted["execution_result"]["run_record"]["resource_spec"]["queue"], "batch")
+        self.assertEqual(submitted["execution_result"]["run_record"]["resource_spec"]["partition"], "batch")
         self.assertEqual(submitted["execution_result"]["run_record"]["resource_spec"]["account"], "rcc-staff")
 
     def test_run_slurm_recipe_updates_generic_latest_pointer_on_back_to_back_submissions(self) -> None:
@@ -932,7 +932,7 @@ class ServerTests(TestCase):
                 BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
-                resource_request={"cpu": 12, "memory": "48Gi", "queue": "batch"},
+                resource_request={"cpu": 12, "memory": "48Gi", "partition": "batch"},
                 execution_profile="slurm",
                 recipe_dir=tmp_path,
             )
@@ -1215,7 +1215,7 @@ class ServerTests(TestCase):
                     "busco_sif": "busco.sif",
                     "busco_cpu": 12,
                 },
-                resource_request={"cpu": 12, "memory": "48Gi", "queue": "short"},
+                resource_request={"cpu": 12, "memory": "48Gi", "partition": "short"},
                 execution_profile="local",
                 runtime_image={"apptainer_image": "busco.sif"},
                 recipe_dir=tmp_path,
@@ -1226,7 +1226,7 @@ class ServerTests(TestCase):
         self.assertEqual(prepared["recipe_input_context"]["manifest_sources"], [str(result_dir)])
         self.assertEqual(
             prepared["recipe_input_context"]["resource_request"],
-            {"cpu": 12, "memory": "48Gi", "queue": "short"},
+            {"cpu": 12, "memory": "48Gi", "partition": "short"},
         )
         self.assertEqual(
             prepared["typed_plan"]["resolved_inputs"]["QualityAssessmentTarget"]["source_result_dir"],
@@ -1260,7 +1260,7 @@ class ServerTests(TestCase):
                 runtime_bindings={"exonerate_sif": "data/images/exonerate_2.2.0--1.sif"},
                 resource_request={
                     "account": "rcc-staff",
-                    "queue": "caslake",
+                    "partition": "caslake",
                     "cpu": 8,
                     "memory": "32Gi",
                     "walltime": "02:00:00",
@@ -1292,7 +1292,7 @@ class ServerTests(TestCase):
                 runtime_bindings={"exonerate_sif": "data/images/exonerate_2.2.0--1.sif"},
                 resource_request={
                     "account": "rcc-staff",
-                    "queue": "caslake",
+                    "partition": "caslake",
                     "cpu": 8,
                     "memory": "32Gi",
                     "walltime": "02:00:00",
@@ -1322,7 +1322,7 @@ class ServerTests(TestCase):
                 resource_request={
                     "cpu": 2,
                     "memory": "8Gi",
-                    "queue": "caslake",
+                    "partition": "caslake",
                     "account": "rcc-staff",
                     "walltime": "00:10:00",
                 },
@@ -2154,7 +2154,7 @@ class ServerTests(TestCase):
             resource_request={
                 "cpu": 8,
                 "memory": "32Gi",
-                "queue": "caslake",
+                "partition": "caslake",
                 "account": "rcc-staff",
                 "walltime": "02:00:00",
             },
@@ -2534,7 +2534,7 @@ class ServerTests(TestCase):
                 resource_request={
                     "cpu": 4,
                     "memory": "16Gi",
-                    "queue": "caslake",
+                    "partition": "caslake",
                     "account": "rcc-staff",
                     "walltime": "01:00:00",
                 },
@@ -2593,8 +2593,8 @@ class ServerTests(TestCase):
         self.assertIn("cpu", hints)
         self.assertIn("memory", hints)
         self.assertIn("walltime", hints)
-        # queue and account are site-specific and must never appear in hints.
-        self.assertNotIn("queue", hints)
+        # partition and account are site-specific and must never appear in hints.
+        self.assertNotIn("partition", hints)
         self.assertNotIn("account", hints)
 
     # ------------------------------------------------------------------
@@ -4288,7 +4288,7 @@ class StagingPreflightServerTests(TestCase):
                 source_prompt="staging replay test",
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
-                resource_request={"cpu": 4, "memory": "16Gi", "queue": "batch", "walltime": "01:00:00"},
+                resource_request={"cpu": 4, "memory": "16Gi", "partition": "batch", "walltime": "01:00:00"},
                 execution_profile="slurm",
                 # Override both registry defaults: bad db path, valid sif path.
                 runtime_images={"busco_sif": str(valid_sif)},
@@ -4367,7 +4367,7 @@ class ValidateRunRecipeTests(TestCase):
             source_prompt="validate_run_recipe test",
             manifest_sources=(result_dir,),
             runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
-            resource_request={"cpu": 4, "memory": "16Gi", "queue": "batch", "walltime": "01:00:00"},
+            resource_request={"cpu": 4, "memory": "16Gi", "partition": "batch", "walltime": "01:00:00"},
             execution_profile="slurm",
             runtime_images=runtime_images,
             tool_databases=tool_databases,

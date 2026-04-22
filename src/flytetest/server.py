@@ -2951,7 +2951,7 @@ def _retry_slurm_job_impl(
         command_available: Command probe used to confirm scheduler tooling is available.
         resource_overrides: Optional resource escalation values for
             ``resource_exhaustion`` retries.  Valid keys are ``cpu``,
-            ``memory``, ``walltime``, ``queue``, ``account``, and ``gpu``.
+            ``memory``, ``walltime``, ``partition``, ``account``, and ``gpu``.
 """
     result = SlurmWorkflowSpecExecutor(
         run_root=run_dir or DEFAULT_RUN_DIR,
@@ -2980,7 +2980,7 @@ def retry_slurm_job(
     For ``resource_exhaustion`` failures (``OUT_OF_MEMORY`` and ``TIMEOUT``)
     you can supply *resource_overrides* to escalate resources without
     preparing a new recipe.  Valid keys are ``cpu``, ``memory``,
-    ``walltime``, ``queue``, ``account``, and ``gpu``.  ``DEADLINE``
+    ``walltime``, ``partition``, ``account``, and ``gpu``.  ``DEADLINE``
     failures require a new ``prepare_run_recipe`` call with an updated
     ``walltime``.
 

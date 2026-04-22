@@ -108,7 +108,7 @@ Call run_task with exactly these arguments:
 - task_name: "busco_assess_proteins"
 - inputs: <inputs dict from load_bundle>
 - runtime_images: <runtime_images dict from load_bundle>
-- resources: {"cpu": 2, "memory": "8Gi", "queue": "caslake", "account": "rcc-staff", "walltime": "00:15:00"}
+- resources: {"cpu": 2, "memory": "8Gi", "partition": "caslake", "account": "rcc-staff", "walltime": "00:15:00"}
 - execution_profile: "slurm"
 - source_prompt: "Run BUSCO eukaryota genome-mode fixture for cluster validation"
 

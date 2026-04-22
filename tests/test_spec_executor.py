@@ -159,7 +159,7 @@ def _slurm_busco_artifact_with_runtime_bindings(tmp_path: Path):
         source_prompt="Run BUSCO quality assessment on the annotation using execution profile slurm.",
         manifest_sources=(result_dir,),
         runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
-        resource_request={"cpu": 20, "memory": "80Gi", "queue": "batch", "walltime": "04:00:00"},
+        resource_request={"cpu": 20, "memory": "80Gi", "partition": "batch", "walltime": "04:00:00"},
         execution_profile="slurm",
     )
     return artifact_from_typed_plan(typed_plan, created_at="2026-04-08T12:00:00Z")
@@ -586,7 +586,7 @@ class SpecExecutorTests(TestCase):
         self.assertTrue(result.supported)
         self.assertEqual(result.run_record.job_id, "98765")
         self.assertEqual(result.run_record.execution_profile, "slurm")
-        self.assertEqual(result.run_record.resource_spec.queue, "batch")
+        self.assertEqual(result.run_record.resource_spec.partition, "batch")
         self.assertEqual(result.run_record.resource_spec.account, "rcc-staff")
         self.assertTrue(script_exists)
         self.assertTrue(record_exists)
@@ -1774,7 +1774,7 @@ class ModuleLoadsAndResourceOverrideTests(TestCase):
             custom_spec = ResourceSpec(
                 cpu="4",
                 memory="16Gi",
-                queue="batch",
+                partition="batch",
                 walltime="01:00:00",
                 module_loads=("custom_tool/9.9", "extra_lib/2.0"),
             )
@@ -1802,7 +1802,7 @@ class ModuleLoadsAndResourceOverrideTests(TestCase):
             artifact = _slurm_busco_artifact_with_runtime_bindings(tmp_path)
             artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
 
-            bare_spec = ResourceSpec(cpu="4", memory="16Gi", queue="batch", walltime="01:00:00")
+            bare_spec = ResourceSpec(cpu="4", memory="16Gi", partition="batch", walltime="01:00:00")
             script = render_slurm_script(
                 artifact_path=artifact_path,
                 workflow_name="annotation_qc_busco",
@@ -1828,7 +1828,7 @@ class ModuleLoadsAndResourceOverrideTests(TestCase):
             spec_with_space = ResourceSpec(
                 cpu="4",
                 memory="16Gi",
-                queue="batch",
+                partition="batch",
                 module_loads=("tool with spaces/1.0",),
             )
             script = render_slurm_script(
@@ -2162,7 +2162,7 @@ def _build_slurm_staging_artifact(
         source_prompt="staging preflight test",
         manifest_sources=(result_dir,),
         runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
-        resource_request={"cpu": 4, "memory": "16Gi", "queue": "batch", "walltime": "01:00:00"},
+        resource_request={"cpu": 4, "memory": "16Gi", "partition": "batch", "walltime": "01:00:00"},
         execution_profile="slurm",
         runtime_images=runtime_images if runtime_images is not None else {},
         tool_databases=tool_databases if tool_databases is not None else {},

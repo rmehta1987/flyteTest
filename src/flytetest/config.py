@@ -251,6 +251,7 @@ def run_tool(
         run(cmd, cwd=cwd, stdout_path=stdout_path)
         return
 
+    sif_abs = str(Path(sif).resolve())
     mounts: set[str] = set()
     for path in bind_paths:
         resolved = str(path.resolve())
@@ -260,5 +261,5 @@ def run_tool(
     sing_cmd = [runtime, "exec", "--cleanenv"]
     for mount in sorted(mounts):
         sing_cmd.extend(["-B", mount])
-    sing_cmd.extend([sif, *cmd])
+    sing_cmd.extend([sif_abs, *cmd])
     run(sing_cmd, cwd=cwd, stdout_path=stdout_path)

@@ -360,7 +360,7 @@ class PlanningTests(TestCase):
                 "annotation_qc_busco",
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
-                resource_request={"cpu": "12", "memory": "64Gi", "queue": "short", "walltime": "02:00:00"},
+                resource_request={"cpu": "12", "memory": "64Gi", "partition": "short", "walltime": "02:00:00"},
                 execution_profile="local",
                 runtime_image={"apptainer_image": "busco.sif"},
             )
@@ -369,7 +369,7 @@ class PlanningTests(TestCase):
         self.assertEqual(payload["execution_profile"], "local")
         self.assertEqual(payload["resource_spec"]["cpu"], "12")
         self.assertEqual(payload["resource_spec"]["memory"], "64Gi")
-        self.assertEqual(payload["resource_spec"]["queue"], "short")
+        self.assertEqual(payload["resource_spec"]["partition"], "short")
         self.assertEqual(payload["resource_spec"]["walltime"], "02:00:00")
         self.assertEqual(payload["runtime_image"]["apptainer_image"], "busco.sif")
         self.assertEqual(payload["binding_plan"]["execution_profile"], "local")
@@ -389,7 +389,7 @@ class PlanningTests(TestCase):
                 "annotation_qc_busco",
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
-                resource_request={"queue": "batch"},
+                resource_request={"partition": "batch"},
                 execution_profile="slurm",
             )
 
@@ -416,7 +416,7 @@ class PlanningTests(TestCase):
             resource_request={
                 "cpu": "2",
                 "account": "rcc-staff",
-                "queue": "caslake",
+                "partition": "caslake",
                 "memory": "8Gi",
                 "walltime": "00:10:00",
             },
