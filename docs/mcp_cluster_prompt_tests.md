@@ -300,8 +300,7 @@ BUSCO submission without waiting for a real `NODE_FAIL`:
 ```bash
 # Run this in the terminal (not in OpenCode) before the prompts below.
 # Replace <run_record_path> with the path from Scenario 2, Step 2b.
-FLYTETEST_M18_RETRY_SMOKE_STATE=NODE_FAIL \
-  bash scripts/rcc/make_m18_retry_smoke_record.sh <run_record_path>
+bash scripts/rcc/make_m18_retry_smoke_record.sh <run_record_path> NODE_FAIL
 ```
 
 The script prints the path of the synthetic retryable run record.  Use that
@@ -389,8 +388,7 @@ smoke-record helper to synthesise one:
 ```bash
 # Run this in the terminal (not in OpenCode) before the prompts below.
 # Replace <run_record_path> with a path from a prior BUSCO Slurm submission.
-FLYTETEST_M18_RETRY_SMOKE_STATE=OUT_OF_MEMORY \
-  bash scripts/rcc/make_m18_retry_smoke_record.sh <run_record_path>
+bash scripts/rcc/make_m18_retry_smoke_record.sh <run_record_path> OUT_OF_MEMORY
 ```
 
 The script prints the path of the synthetic `OUT_OF_MEMORY` record.  Use that
