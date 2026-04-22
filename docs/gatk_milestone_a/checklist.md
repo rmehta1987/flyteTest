@@ -45,7 +45,7 @@ then closure (contract tests, tool-ref doc, agent-context refresh).
 | # | Step | Plan section | Prompt | Status |
 |---|------|--------------|--------|--------|
 | 03 | `create_sequence_dictionary` — reference prep | §6.3 (stage 1) | `prompts/step_03_create_sequence_dictionary.md` | Complete |
-| 04 | `index_feature_file` — known-sites indexer | §6.3 (stage 2) | `prompts/step_04_index_feature_file.md` | Not started |
+| 04 | `index_feature_file` — known-sites indexer | §6.3 (stage 2) | `prompts/step_04_index_feature_file.md` | Complete |
 | 05 | `base_recalibrator` — BQSR report | §6.3 (stage 3) | `prompts/step_05_base_recalibrator.md` | Not started |
 | 06 | `apply_bqsr` — apply BQSR | §6.3 (stage 4) | `prompts/step_06_apply_bqsr.md` | Not started |
 | 07 | `haplotype_caller` — per-sample GVCF | §6.3 (stage 5) | `prompts/step_07_haplotype_caller.md` | Not started |

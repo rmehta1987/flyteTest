@@ -32,6 +32,20 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone A Step 04 — index_feature_file task + registry entry (2026-04-21)
+
+- [x] 2026-04-21 added `index_feature_file` task to
+  `src/flytetest/tasks/variant_calling.py`: runs `gatk IndexFeatureFile -I
+  …` via `run_tool`, derives index suffix (`.idx` for plain VCF, `.tbi` for
+  `.vcf.gz`), emits `run_manifest.json`.
+- [x] 2026-04-21 added `index_feature_file` `RegistryEntry` to
+  `VARIANT_CALLING_ENTRIES` (pipeline_stage_order 2,
+  accepted_planner_types `KnownSites`).
+- [x] 2026-04-21 extended `MANIFEST_OUTPUT_KEYS` with `"feature_index"`.
+- [x] 2026-04-21 added 4 tests to `tests/test_variant_calling.py`: registry
+  shape, `.tbi` for `.vcf.gz`, `.idx` for plain VCF, manifest emission —
+  all 8 variant-calling tests passing.
+
 ### GATK Milestone A Step 02 — variant_calling_env + registry skeleton (2026-04-21)
 
 - [x] 2026-04-21 added `VARIANT_CALLING_WORKFLOW_NAME`, `VARIANT_CALLING_RESULTS_PREFIX`,

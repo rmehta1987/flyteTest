@@ -18,7 +18,10 @@ from flytetest.manifest_io import write_json as _write_json
 
 # Source of truth for the registry-manifest contract: every key this module
 # writes under manifest["outputs"].  Grows as each task lands.
-MANIFEST_OUTPUT_KEYS: tuple[str, ...] = ("sequence_dict",)
+MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
+    "sequence_dict",
+    "feature_index",
+)
 
 
 @variant_calling_env.task
@@ -50,3 +53,36 @@ def create_sequence_dictionary(
     )
     _write_json(out_dir / "run_manifest.json", manifest)
     return File(path=str(dict_path))
+
+
+@variant_calling_env.task
+def index_feature_file(
+    vcf: File,
+    gatk_sif: str = "",
+) -> File:
+    """Emit a GATK4 feature-file index (.idx or .tbi) next to a VCF/GVCF."""
+    vcf_path = require_path(Path(vcf.download_sync()),
+                            "VCF/GVCF input for IndexFeatureFile")
+    out_dir = project_mkdtemp("gatk_index_")
+
+    if vcf_path.suffix == ".gz":
+        expected_index = vcf_path.with_suffix(vcf_path.suffix + ".tbi")
+    else:
+        expected_index = vcf_path.with_suffix(vcf_path.suffix + ".idx")
+
+    cmd = ["gatk", "IndexFeatureFile", "-I", str(vcf_path)]
+    bind_paths = [vcf_path.parent, out_dir]
+    run_tool(cmd, gatk_sif or "data/images/gatk4.sif", bind_paths)
+
+    require_path(expected_index, "GATK IndexFeatureFile output index")
+
+    manifest = build_manifest_envelope(
+        stage="index_feature_file",
+        assumptions=[
+            "VCF is readable; GATK writes the index next to the VCF.",
+        ],
+        inputs={"vcf": str(vcf_path)},
+        outputs={"feature_index": str(expected_index)},
+    )
+    _write_json(out_dir / "run_manifest.json", manifest)
+    return File(path=str(expected_index))
