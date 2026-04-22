@@ -23,6 +23,7 @@ MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
     "feature_index",
     "bqsr_report",
     "recalibrated_bam",
+    "gvcf",
 )
 
 
@@ -199,3 +200,51 @@ def apply_bqsr(
     )
     _write_json(out_dir / "run_manifest.json", manifest)
     return File(path=str(out_bam))
+
+
+@variant_calling_env.task
+def haplotype_caller(
+    reference_fasta: File,
+    aligned_bam: File,
+    sample_id: str,
+    gatk_sif: str = "",
+) -> File:
+    """Call per-sample germline GVCF via GATK4 HaplotypeCaller in GVCF mode."""
+    ref_path = require_path(Path(reference_fasta.download_sync()),
+                            "Reference genome FASTA")
+    bam_path = require_path(Path(aligned_bam.download_sync()),
+                            "Aligned BAM for HaplotypeCaller")
+
+    out_dir = project_mkdtemp("gatk_hc_")
+    out_gvcf = out_dir / f"{sample_id}.g.vcf"
+
+    cmd = ["gatk", "HaplotypeCaller",
+           "-R", str(ref_path),
+           "-I", str(bam_path),
+           "-O", str(out_gvcf),
+           "--emit-ref-confidence", "GVCF"]
+    bind_paths = [ref_path.parent, bam_path.parent, out_dir]
+    run_tool(cmd, gatk_sif or "data/images/gatk4.sif", bind_paths)
+
+    require_path(out_gvcf, "GATK HaplotypeCaller output GVCF")
+    out_idx = out_dir / f"{out_gvcf.name}.idx"
+
+    manifest = build_manifest_envelope(
+        stage="haplotype_caller",
+        assumptions=[
+            "Aligned BAM is coordinate-sorted, dedup'd, and (recommended) BQSR-recalibrated.",
+            "Reference has a .fai and .dict next to the FASTA.",
+            "Whole-genome pass; intervals-scoped calling is out of scope for Milestone A.",
+        ],
+        inputs={
+            "reference_fasta": str(ref_path),
+            "aligned_bam": str(bam_path),
+            "sample_id": sample_id,
+        },
+        outputs={
+            "gvcf": str(out_gvcf),
+            "gvcf_index": str(out_idx) if out_idx.exists() else "",
+        },
+    )
+    _write_json(out_dir / "run_manifest.json", manifest)
+    return File(path=str(out_gvcf))

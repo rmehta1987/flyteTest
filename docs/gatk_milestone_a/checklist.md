@@ -48,7 +48,7 @@ then closure (contract tests, tool-ref doc, agent-context refresh).
 | 04 | `index_feature_file` — known-sites indexer | §6.3 (stage 2) | `prompts/step_04_index_feature_file.md` | Complete |
 | 05 | `base_recalibrator` — BQSR report | §6.3 (stage 3) | `prompts/step_05_base_recalibrator.md` | Complete |
 | 06 | `apply_bqsr` — apply BQSR | §6.3 (stage 4) | `prompts/step_06_apply_bqsr.md` | Complete |
-| 07 | `haplotype_caller` — per-sample GVCF | §6.3 (stage 5) | `prompts/step_07_haplotype_caller.md` | Not started |
+| 07 | `haplotype_caller` — per-sample GVCF | §6.3 (stage 5) | `prompts/step_07_haplotype_caller.md` | Complete |
 | 08 | `combine_gvcfs` — merge per-sample GVCFs | §6.3 (stage 6) | `prompts/step_08_combine_gvcfs.md` | Not started |
 | 09 | `joint_call_gvcfs` — GenomicsDBImport + GenotypeGVCFs | §6.3 (stage 7) | `prompts/step_09_joint_call_gvcfs.md` | Not started |
 

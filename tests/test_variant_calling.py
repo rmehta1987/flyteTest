@@ -27,6 +27,7 @@ from flytetest.tasks.variant_calling import (
     apply_bqsr,
     base_recalibrator,
     create_sequence_dictionary,
+    haplotype_caller,
     index_feature_file,
 )
 
@@ -480,3 +481,90 @@ class ApplyBqsrManifestTests(TestCase):
             self.assertIn("recalibrated_bam", manifest["outputs"])
             self.assertIn("recalibrated_bam_index", manifest["outputs"])
             self.assertTrue(manifest["outputs"]["recalibrated_bam"].endswith(".bam"))
+
+
+class HaplotypeCallerRegistryTests(TestCase):
+    def test_haplotype_caller_registry_entry_shape(self):
+        from flytetest.registry._variant_calling import VARIANT_CALLING_ENTRIES
+
+        entry = next(e for e in VARIANT_CALLING_ENTRIES if e.name == "haplotype_caller")
+        self.assertEqual(entry.category, "task")
+        input_names = [f.name for f in entry.inputs]
+        self.assertIn("reference_fasta", input_names)
+        self.assertIn("aligned_bam", input_names)
+        self.assertIn("sample_id", input_names)
+        output_names = [f.name for f in entry.outputs]
+        self.assertIn("gvcf", output_names)
+        self.assertEqual(entry.compatibility.pipeline_stage_order, 5)
+        self.assertIn("ReferenceGenome", entry.compatibility.accepted_planner_types)
+        self.assertIn("AlignmentSet", entry.compatibility.accepted_planner_types)
+        self.assertIn("VariantCallSet", entry.compatibility.produced_planner_types)
+
+
+class HaplotypeCallerInvocationTests(TestCase):
+    def test_haplotype_caller_cmd_shape(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            ref_fa = tmp_path / "ref.fa"
+            bam_file = tmp_path / "sample.bam"
+            for p in (ref_fa, bam_file):
+                p.touch()
+
+            captured_cmd = []
+            emitted_out_dir = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                captured_cmd.extend(cmd)
+                out_idx = cmd.index("-O")
+                out_path = Path(cmd[out_idx + 1])
+                emitted_out_dir.append(out_path.parent)
+                out_path.touch()
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                result = haplotype_caller(
+                    reference_fasta=File(path=str(ref_fa)),
+                    aligned_bam=File(path=str(bam_file)),
+                    sample_id="sample1",
+                )
+
+            self.assertEqual(captured_cmd[0], "gatk")
+            self.assertEqual(captured_cmd[1], "HaplotypeCaller")
+            self.assertIn("--emit-ref-confidence", captured_cmd)
+            erc_idx = captured_cmd.index("--emit-ref-confidence")
+            self.assertEqual(captured_cmd[erc_idx + 1], "GVCF")
+            self.assertTrue(result.path.endswith(".g.vcf"))
+            self.assertIn("sample1", result.path)
+
+
+class HaplotypeCallerManifestTests(TestCase):
+    def test_haplotype_caller_emits_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            ref_fa = tmp_path / "ref.fa"
+            bam_file = tmp_path / "sample.bam"
+            for p in (ref_fa, bam_file):
+                p.touch()
+
+            emitted_out_dir = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                out_idx = cmd.index("-O")
+                out_path = Path(cmd[out_idx + 1])
+                emitted_out_dir.append(out_path.parent)
+                out_path.touch()
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                haplotype_caller(
+                    reference_fasta=File(path=str(ref_fa)),
+                    aligned_bam=File(path=str(bam_file)),
+                    sample_id="sample1",
+                )
+
+            out_dir = emitted_out_dir[0]
+            manifest_path = out_dir / "run_manifest.json"
+            self.assertTrue(manifest_path.exists(), "run_manifest.json was not written")
+
+            manifest = json.loads(manifest_path.read_text())
+            self.assertEqual(manifest["stage"], "haplotype_caller")
+            self.assertIn("gvcf", manifest["outputs"])
+            self.assertTrue(manifest["outputs"]["gvcf"].endswith(".g.vcf"))

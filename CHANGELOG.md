@@ -32,6 +32,22 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone A Step 07 — haplotype_caller task + registry entry (2026-04-22)
+
+- [x] 2026-04-22 added `haplotype_caller` task to
+  `src/flytetest/tasks/variant_calling.py`: runs `gatk HaplotypeCaller -R … -I …
+  -O … --emit-ref-confidence GVCF` via `run_tool`; emits
+  `<sample_id>.g.vcf` + companion index in manifest.
+- [x] 2026-04-22 added `haplotype_caller` `RegistryEntry` to
+  `VARIANT_CALLING_ENTRIES` (pipeline_stage_order 5,
+  accepted_planner_types `ReferenceGenome` / `AlignmentSet`,
+  produced_planner_types `VariantCallSet`,
+  8 CPU / 32 GiB local; 16 CPU / 64 GiB / 24:00:00 Slurm).
+- [x] 2026-04-22 extended `MANIFEST_OUTPUT_KEYS` with `"gvcf"`.
+- [x] 2026-04-22 added 3 tests to `tests/test_variant_calling.py`: registry
+  shape, cmd shape (`--emit-ref-confidence GVCF`, output ends in `.g.vcf`),
+  manifest emission — all 18 variant-calling tests passing.
+
 ### GATK Milestone A Step 06 — apply_bqsr task + registry entry (2026-04-22)
 
 - [x] 2026-04-22 added `apply_bqsr` task to
