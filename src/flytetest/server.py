@@ -2877,6 +2877,10 @@ def _monitor_slurm_job_impl(
     return {
         "supported": bool(result.supported),
         "run_record_path": str(run_record_path),
+        "scheduler_state": lifecycle.get("scheduler_state"),
+        "final_scheduler_state": lifecycle.get("final_scheduler_state"),
+        "stdout_path": lifecycle.get("stdout_path"),
+        "stderr_path": lifecycle.get("stderr_path"),
         "lifecycle_result": lifecycle,
         "limitations": list(result.limitations),
     }
