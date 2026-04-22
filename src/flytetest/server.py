@@ -2919,11 +2919,14 @@ def _cancel_slurm_job_impl(
         scheduler_runner=scheduler_runner,
         command_available=command_available or _command_is_available,
     ).cancel(Path(run_record_path))
+    lifecycle = _result_from_slurm_lifecycle(result)
+    limitations = list(result.limitations) + list(result.assumptions)
     return {
         "supported": bool(result.supported),
         "run_record_path": str(run_record_path),
-        "lifecycle_result": _result_from_slurm_lifecycle(result),
-        "limitations": list(result.limitations),
+        "scheduler_state": lifecycle.get("scheduler_state"),
+        "lifecycle_result": lifecycle,
+        "limitations": limitations,
     }
 
 
