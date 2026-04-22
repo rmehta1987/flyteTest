@@ -32,6 +32,21 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone A Step 01 — Planner types for variant calling (2026-04-21)
+
+- [x] 2026-04-21 added `AlignmentSet`, `VariantCallSet`, `KnownSites` planner
+  dataclasses to `src/flytetest/planner_types.py` (inherit
+  `PlannerSerializable`; `VariantCallSet.variant_type` discriminates GVCF vs
+  VCF; `KnownSites` carries VQSR-facing fields for forward compatibility).
+- [x] 2026-04-21 extended `__all__` in `planner_types.py` to export the three
+  new types.
+- [x] 2026-04-21 added round-trip coverage in `tests/test_planner_types.py`:
+  `test_alignment_set_round_trips`,
+  `test_variant_call_set_round_trips_gvcf`,
+  `test_variant_call_set_round_trips_vcf`,
+  `test_known_sites_round_trips_with_vqsr_fields`,
+  `test_known_sites_defaults_minimal` — 13/13 passing.
+
 ### Track A Step A4 — Rewire types/assets.py to shared serialization module (2026-04-21)
 
 - [x] 2026-04-21 removed `_serialize_manifest_value()`, `_is_optional_manifest_type()`,

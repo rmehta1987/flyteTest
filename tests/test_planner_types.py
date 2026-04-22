@@ -26,14 +26,17 @@ from flytetest.planner_adapters import (
     transcript_evidence_from_manifest,
 )
 from flytetest.planner_types import (
+    AlignmentSet,
     AnnotationEvidenceSet,
     ConsensusAnnotation,
+    KnownSites,
     ProteinEvidenceSet,
     QualityAssessmentTarget,
     ReadSet,
     ReferenceGenome,
     TOP_LEVEL_PLANNER_TYPE_ADDITION_RULES,
     TranscriptEvidenceSet,
+    VariantCallSet,
 )
 from flytetest.types.assets import (
     AbInitioResultBundle,
@@ -440,3 +443,80 @@ class PlannerTypeTests(TestCase):
         self.assertEqual(consensus.supporting_evidence.combined_predictions_gff3_path, Path("results/pre_evm/predictions.gff3"))
         self.assertEqual(qc_target.annotation_gff3_path, Path("results/repeat/all_repeats_removed.gff3"))
         self.assertEqual(qc_target.proteins_fasta_path, Path("results/repeat/all_repeats_removed.proteins.fa"))
+
+    def test_alignment_set_round_trips(self) -> None:
+        """Round-trip AlignmentSet with every field populated."""
+        alignment = AlignmentSet(
+            bam_path=Path("results/align/NA12878.bam"),
+            sample_id="NA12878",
+            reference_fasta_path=Path("data/gatk/reference/GRCh38.fa"),
+            sorted="coordinate",
+            duplicates_marked=True,
+            bqsr_applied=True,
+            bam_index_path=Path("results/align/NA12878.bai"),
+            source_result_dir=Path("results/align"),
+            source_manifest_path=Path("results/align/run_manifest.json"),
+            notes=("Coordinate-sorted, dedup'd, BQSR-recalibrated.",),
+        )
+        self.assertEqual(AlignmentSet.from_dict(alignment.to_dict()), alignment)
+
+    def test_variant_call_set_round_trips_gvcf(self) -> None:
+        """Round-trip a per-sample GVCF VariantCallSet."""
+        gvcf = VariantCallSet(
+            vcf_path=Path("results/hc/NA12878.g.vcf"),
+            variant_type="gvcf",
+            caller="haplotype_caller",
+            sample_ids=("NA12878",),
+            reference_fasta_path=Path("data/gatk/reference/GRCh38.fa"),
+            vcf_index_path=Path("results/hc/NA12878.g.vcf.idx"),
+            build="GRCh38",
+            source_manifest_path=Path("results/hc/run_manifest.json"),
+        )
+        self.assertEqual(gvcf.variant_type, "gvcf")
+        self.assertEqual(VariantCallSet.from_dict(gvcf.to_dict()), gvcf)
+
+    def test_variant_call_set_round_trips_vcf(self) -> None:
+        """Round-trip a joint-called VCF VariantCallSet."""
+        vcf = VariantCallSet(
+            vcf_path=Path("results/joint/cohort_genotyped.vcf"),
+            variant_type="vcf",
+            caller="joint_call_gvcfs",
+            sample_ids=("NA12878", "NA12891", "NA12892"),
+            reference_fasta_path=Path("data/gatk/reference/GRCh38.fa"),
+            vcf_index_path=Path("results/joint/cohort_genotyped.vcf.idx"),
+            build="GRCh38",
+            cohort_id="cohort",
+            notes=("Joint-genotyped across trio.",),
+        )
+        self.assertEqual(vcf.variant_type, "vcf")
+        self.assertEqual(VariantCallSet.from_dict(vcf.to_dict()), vcf)
+
+    def test_known_sites_round_trips_with_vqsr_fields(self) -> None:
+        """Round-trip KnownSites carrying VQSR-facing training / truth / prior fields."""
+        sites = KnownSites(
+            vcf_path=Path("data/gatk/known_sites/hapmap_3.3.hg38.vcf.gz"),
+            resource_name="hapmap",
+            index_path=Path("data/gatk/known_sites/hapmap_3.3.hg38.vcf.gz.tbi"),
+            build="GRCh38",
+            known=False,
+            training=True,
+            truth=True,
+            prior=15.0,
+            vqsr_mode="SNP",
+            notes=("VQSR SNP truth resource.",),
+        )
+        self.assertEqual(KnownSites.from_dict(sites.to_dict()), sites)
+
+    def test_known_sites_defaults_minimal(self) -> None:
+        """Minimal KnownSites (vcf_path + resource_name) lands expected defaults."""
+        sites = KnownSites(
+            vcf_path=Path("data/gatk/known_sites/dbsnp.vcf.gz"),
+            resource_name="dbsnp",
+        )
+        self.assertTrue(sites.known)
+        self.assertFalse(sites.training)
+        self.assertFalse(sites.truth)
+        self.assertIsNone(sites.prior)
+        self.assertIsNone(sites.vqsr_mode)
+        self.assertEqual(sites.notes, ())
+        self.assertEqual(KnownSites.from_dict(sites.to_dict()), sites)

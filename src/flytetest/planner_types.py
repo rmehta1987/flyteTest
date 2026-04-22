@@ -176,9 +176,77 @@ class QualityAssessmentTarget(PlannerSerializable):
     notes: tuple[str, ...] = field(default_factory=tuple)
 
 
+@dataclass(frozen=True, slots=True)
+class AlignmentSet(PlannerSerializable):
+    """Planner-facing aligned-read boundary for DNA variant calling workflows.
+
+    Describes a coordinate-sorted, duplicate-marked BAM plus the metadata a
+    variant-calling planner needs to reason about sample identity, reference
+    build, and recalibration state without peeking at the BAM header.
+"""
+
+    bam_path: Path
+    sample_id: str
+    reference_fasta_path: Path | None = None
+    sorted: str | None = None
+    duplicates_marked: bool = False
+    bqsr_applied: bool = False
+    bam_index_path: Path | None = None
+    source_result_dir: Path | None = None
+    source_manifest_path: Path | None = None
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class VariantCallSet(PlannerSerializable):
+    """Planner-facing variant-call boundary spanning per-sample GVCFs and joint VCFs.
+
+    One dataclass covers both GVCF and VCF outputs; ``variant_type`` is the
+    discriminator so composed workflows can enforce GVCF-in for joint-calling
+    stages and VCF-out for downstream filtering stages.
+"""
+
+    vcf_path: Path
+    variant_type: str
+    caller: str
+    sample_ids: tuple[str, ...] = field(default_factory=tuple)
+    reference_fasta_path: Path | None = None
+    vcf_index_path: Path | None = None
+    build: str | None = None
+    cohort_id: str | None = None
+    source_result_dir: Path | None = None
+    source_manifest_path: Path | None = None
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
+class KnownSites(PlannerSerializable):
+    """Planner-facing known-variant resource for BQSR and VQSR stages.
+
+    VQSR-facing fields (``training``, ``truth``, ``prior``, ``vqsr_mode``) are
+    carried here even though VQSR is out of scope for Milestone A so the type
+    stays stable when Milestone B/C lights up VariantRecalibrator.
+"""
+
+    vcf_path: Path
+    resource_name: str
+    index_path: Path | None = None
+    build: str | None = None
+    known: bool = True
+    training: bool = False
+    truth: bool = False
+    prior: float | None = None
+    vqsr_mode: str | None = None
+    source_result_dir: Path | None = None
+    source_manifest_path: Path | None = None
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+
 __all__ = [
+    "AlignmentSet",
     "AnnotationEvidenceSet",
     "ConsensusAnnotation",
+    "KnownSites",
     "PlannerSerializable",
     "ProteinEvidenceSet",
     "QualityAssessmentTarget",
@@ -186,4 +254,5 @@ __all__ = [
     "ReferenceGenome",
     "TOP_LEVEL_PLANNER_TYPE_ADDITION_RULES",
     "TranscriptEvidenceSet",
+    "VariantCallSet",
 ]
