@@ -531,5 +531,3 @@ class RegistryTests(TestCase):
         self.assertEqual(entry.category, "workflow")
         self.assertIn("Galaxy tutorial-backed", entry.description)
         self.assertIn("preserves upstream braker.gff3 source values", entry.description)
-
-

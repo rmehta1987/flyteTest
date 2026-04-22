@@ -32,6 +32,20 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone A Step 02 — variant_calling_env + registry skeleton (2026-04-21)
+
+- [x] 2026-04-21 added `VARIANT_CALLING_WORKFLOW_NAME`, `VARIANT_CALLING_RESULTS_PREFIX`,
+  and `VARIANT_CALLING_SIF_DEFAULT` constants to `src/flytetest/config.py`.
+- [x] 2026-04-21 added `variant_calling_env` (`TaskEnvironmentConfig` with 4 CPU / 16 GiB)
+  to `TASK_ENVIRONMENT_CONFIGS` and exposed alias in `src/flytetest/config.py`.
+- [x] 2026-04-21 created `src/flytetest/registry/_variant_calling.py` with empty
+  `VARIANT_CALLING_ENTRIES` tuple; wired into `REGISTRY_ENTRIES` in `__init__.py`
+  (replacing the `_gatk.py` placeholder import).
+- [x] 2026-04-21 updated `AGENTS.md` and `.codex/registry.md` with `_variant_calling.py`
+  family listing; noted `_gatk.py` as reference-only.
+- [x] 2026-04-21 added scaffolding smoke test `test_variant_calling_family_registered`
+  to `tests/test_registry.py` (deleted in Step 03).
+
 ### GATK Milestone A Step 03 — create_sequence_dictionary task + registry entry (2026-04-21)
 
 - [x] 2026-04-21 created `src/flytetest/tasks/variant_calling.py` with
