@@ -1367,6 +1367,12 @@ def _typed_plan_from_goal(
     merged_runtime_bindings = dict(goal.runtime_bindings)
     merged_runtime_bindings.update(scalar_inputs or {})
     merged_runtime_bindings.update(runtime_bindings or {})
+    caller_images = {
+        **_coerce_string_mapping(bundle_overrides.get("runtime_images") if bundle_overrides else None),
+        **_coerce_string_mapping(runtime_images),
+    }
+    for key, value in caller_images.items():
+        merged_runtime_bindings.setdefault(key, value)
     goal = replace(
         goal,
         runtime_bindings=merged_runtime_bindings,

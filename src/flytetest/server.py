@@ -1808,11 +1808,9 @@ def run_task(
                     artifact_path=Path(artifact_path),
                     run_record_path=slurm_result.run_record.run_record_path,
                 )
-            outputs_map, output_limits = _collect_named_outputs(entry, None)
             combined_limits = (
                 plan_limitations
                 + tuple(str(item) for item in slurm_result.limitations)
-                + tuple(output_limits)
             )
             return asdict(
                 RunReply(
@@ -1823,7 +1821,7 @@ def run_task(
                     execution_profile="slurm",
                     execution_status="success" if slurm_result.supported else "failed",
                     exit_status=None,
-                    outputs=outputs_map,
+                    outputs={},
                     limitations=combined_limits,
                     task_name=task_name,
                 )
@@ -2090,11 +2088,9 @@ def run_workflow(
                     artifact_path=Path(artifact_path),
                     run_record_path=slurm_result.run_record.run_record_path,
                 )
-            outputs_map, output_limits = _collect_named_outputs(entry, None)
             combined_limits = (
                 plan_limitations
                 + tuple(str(item) for item in slurm_result.limitations)
-                + tuple(output_limits)
             )
             return asdict(
                 RunReply(
@@ -2105,7 +2101,7 @@ def run_workflow(
                     execution_profile="slurm",
                     execution_status="success" if slurm_result.supported else "failed",
                     exit_status=None,
-                    outputs=outputs_map,
+                    outputs={},
                     limitations=combined_limits,
                     workflow_name=workflow_name,
                 )
