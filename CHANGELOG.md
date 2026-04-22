@@ -32,6 +32,23 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone A Step 06 — apply_bqsr task + registry entry (2026-04-22)
+
+- [x] 2026-04-22 added `apply_bqsr` task to
+  `src/flytetest/tasks/variant_calling.py`: runs `gatk ApplyBQSR -R … -I …
+  --bqsr-recal-file … -O …` via `run_tool`; surfaces companion `.bai` in
+  manifest; emits `run_manifest.json`.
+- [x] 2026-04-22 added `apply_bqsr` `RegistryEntry` to
+  `VARIANT_CALLING_ENTRIES` (pipeline_stage_order 4,
+  accepted_planner_types `ReferenceGenome` / `AlignmentSet`,
+  produced_planner_types `AlignmentSet`,
+  4 CPU / 16 GiB local; 8 CPU / 32 GiB / 06:00:00 Slurm).
+- [x] 2026-04-22 extended `MANIFEST_OUTPUT_KEYS` with `"recalibrated_bam"`.
+- [x] 2026-04-22 added 3 tests to `tests/test_variant_calling.py`: registry
+  shape, cmd shape (`--bqsr-recal-file` before `-O`, output named
+  `sample1_recalibrated.bam`), manifest emission — all 15 variant-calling
+  tests passing.
+
 ### GATK Milestone A Step 05 — base_recalibrator task + registry entry (2026-04-21)
 
 - [x] 2026-04-21 added `base_recalibrator` task to

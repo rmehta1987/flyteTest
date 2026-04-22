@@ -22,6 +22,7 @@ MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
     "sequence_dict",
     "feature_index",
     "bqsr_report",
+    "recalibrated_bam",
 )
 
 
@@ -143,3 +144,58 @@ def base_recalibrator(
     )
     _write_json(out_dir / "run_manifest.json", manifest)
     return File(path=str(recal_path))
+
+
+@variant_calling_env.task
+def apply_bqsr(
+    reference_fasta: File,
+    aligned_bam: File,
+    bqsr_report: File,
+    sample_id: str,
+    gatk_sif: str = "",
+) -> File:
+    """Apply a BQSR recalibration table to an aligned BAM via GATK4 ApplyBQSR."""
+    ref_path = require_path(Path(reference_fasta.download_sync()),
+                            "Reference genome FASTA")
+    bam_path = require_path(Path(aligned_bam.download_sync()),
+                            "Aligned BAM for ApplyBQSR")
+    recal_path = require_path(Path(bqsr_report.download_sync()),
+                              "BQSR recalibration table")
+
+    out_dir = project_mkdtemp("gatk_apply_bqsr_")
+    out_bam = out_dir / f"{sample_id}_recalibrated.bam"
+
+    cmd = ["gatk", "ApplyBQSR",
+           "-R", str(ref_path),
+           "-I", str(bam_path),
+           "--bqsr-recal-file", str(recal_path),
+           "-O", str(out_bam)]
+    bind_paths = [ref_path.parent, bam_path.parent, recal_path.parent, out_dir]
+    run_tool(cmd, gatk_sif or "data/images/gatk4.sif", bind_paths)
+
+    require_path(out_bam, "GATK ApplyBQSR output BAM")
+    out_bai = out_bam.with_suffix(".bai")  # GATK writes this; may also be .bam.bai
+    if not out_bai.exists():
+        alt_bai = Path(str(out_bam) + ".bai")
+        if alt_bai.exists():
+            out_bai = alt_bai
+
+    manifest = build_manifest_envelope(
+        stage="apply_bqsr",
+        assumptions=[
+            "Input BAM is coordinate-sorted and dedup'd (caller responsibility).",
+            "BQSR table was generated from this BAM + the same reference + known sites.",
+        ],
+        inputs={
+            "reference_fasta": str(ref_path),
+            "aligned_bam": str(bam_path),
+            "bqsr_report": str(recal_path),
+            "sample_id": sample_id,
+        },
+        outputs={
+            "recalibrated_bam": str(out_bam),
+            "recalibrated_bam_index": str(out_bai) if out_bai.exists() else "",
+        },
+    )
+    _write_json(out_dir / "run_manifest.json", manifest)
+    return File(path=str(out_bam))

@@ -24,6 +24,7 @@ from flyte.io import File
 import flytetest.tasks.variant_calling as variant_calling
 from flytetest.tasks.variant_calling import (
     MANIFEST_OUTPUT_KEYS,
+    apply_bqsr,
     base_recalibrator,
     create_sequence_dictionary,
     index_feature_file,
@@ -386,3 +387,96 @@ class BaseRecalibratorManifestTests(TestCase):
             self.assertEqual(manifest["stage"], "base_recalibrator")
             self.assertIn("bqsr_report", manifest["outputs"])
             self.assertTrue(manifest["outputs"]["bqsr_report"].endswith(".table"))
+
+
+class ApplyBqsrRegistryTests(TestCase):
+    def test_apply_bqsr_registry_entry_shape(self):
+        from flytetest.registry._variant_calling import VARIANT_CALLING_ENTRIES
+
+        entry = next(e for e in VARIANT_CALLING_ENTRIES if e.name == "apply_bqsr")
+        self.assertEqual(entry.category, "task")
+        input_names = [f.name for f in entry.inputs]
+        self.assertIn("reference_fasta", input_names)
+        self.assertIn("aligned_bam", input_names)
+        self.assertIn("bqsr_report", input_names)
+        self.assertIn("sample_id", input_names)
+        output_names = [f.name for f in entry.outputs]
+        self.assertIn("recalibrated_bam", output_names)
+        self.assertEqual(entry.compatibility.pipeline_stage_order, 4)
+        self.assertIn("ReferenceGenome", entry.compatibility.accepted_planner_types)
+        self.assertIn("AlignmentSet", entry.compatibility.accepted_planner_types)
+        self.assertIn("AlignmentSet", entry.compatibility.produced_planner_types)
+
+
+class ApplyBqsrInvocationTests(TestCase):
+    def test_apply_bqsr_cmd_shape(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            ref_fa = tmp_path / "ref.fa"
+            bam_file = tmp_path / "sample.bam"
+            recal_table = tmp_path / "sample_bqsr.table"
+            for p in (ref_fa, bam_file, recal_table):
+                p.touch()
+
+            captured_cmd = []
+            emitted_out_dir = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                captured_cmd.extend(cmd)
+                out_idx = cmd.index("-O")
+                out_path = Path(cmd[out_idx + 1])
+                emitted_out_dir.append(out_path.parent)
+                out_path.touch()
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                result = apply_bqsr(
+                    reference_fasta=File(path=str(ref_fa)),
+                    aligned_bam=File(path=str(bam_file)),
+                    bqsr_report=File(path=str(recal_table)),
+                    sample_id="sample1",
+                )
+
+            self.assertEqual(captured_cmd[0], "gatk")
+            self.assertEqual(captured_cmd[1], "ApplyBQSR")
+            self.assertIn("--bqsr-recal-file", captured_cmd)
+            recal_idx = captured_cmd.index("--bqsr-recal-file")
+            o_idx = captured_cmd.index("-O")
+            self.assertLess(recal_idx, o_idx)
+            self.assertIn("sample1_recalibrated.bam", result.path)
+
+
+class ApplyBqsrManifestTests(TestCase):
+    def test_apply_bqsr_emits_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            ref_fa = tmp_path / "ref.fa"
+            bam_file = tmp_path / "sample.bam"
+            recal_table = tmp_path / "sample_bqsr.table"
+            for p in (ref_fa, bam_file, recal_table):
+                p.touch()
+
+            emitted_out_dir = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                out_idx = cmd.index("-O")
+                out_path = Path(cmd[out_idx + 1])
+                emitted_out_dir.append(out_path.parent)
+                out_path.touch()
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                apply_bqsr(
+                    reference_fasta=File(path=str(ref_fa)),
+                    aligned_bam=File(path=str(bam_file)),
+                    bqsr_report=File(path=str(recal_table)),
+                    sample_id="sample1",
+                )
+
+            out_dir = emitted_out_dir[0]
+            manifest_path = out_dir / "run_manifest.json"
+            self.assertTrue(manifest_path.exists(), "run_manifest.json was not written")
+
+            manifest = json.loads(manifest_path.read_text())
+            self.assertEqual(manifest["stage"], "apply_bqsr")
+            self.assertIn("recalibrated_bam", manifest["outputs"])
+            self.assertIn("recalibrated_bam_index", manifest["outputs"])
+            self.assertTrue(manifest["outputs"]["recalibrated_bam"].endswith(".bam"))
