@@ -16,8 +16,9 @@ here. Keep entries scannable.
 
 ## Branch
 
-Work lands on the active GATK port branch (coordinate before starting;
-default: `gatk_milestone_a`).
+All Milestone A work lands on branch `gatkport`. Check it out before
+starting a step (`git checkout gatkport`) and commit each step there
+using the commit message specified in the step's prompt file.
 
 ## Status Labels
 
