@@ -20,129 +20,17 @@ Planned Flyte mapping:
 
 from __future__ import annotations
 
-import types
-from dataclasses import dataclass, field, fields, is_dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping, TypeVar, Union, get_args, get_origin, get_type_hints
+
+from flytetest.serialization import SerializableMixin, deserialize_value_coercing, serialize_value_full
 
 
-_ManifestSerializableT = TypeVar("_ManifestSerializableT", bound="ManifestSerializable")
-
-
-def _serialize_manifest_value(value: Any) -> Any:
-    """Convert asset values into JSON-compatible manifest payloads.
-
-    Args:
-        value: Asset value to serialize.
-
-    Returns:
-        JSON-compatible representation of the asset value.
-    """
-    if isinstance(value, Path):
-        return str(value)
-    if isinstance(value, tuple):
-        return [_serialize_manifest_value(item) for item in value]
-    if isinstance(value, dict):
-        return {str(key): _serialize_manifest_value(item) for key, item in value.items()}
-    if is_dataclass(value):
-        if hasattr(value, "to_dict"):
-            return value.to_dict()
-        return {field_info.name: _serialize_manifest_value(getattr(value, field_info.name)) for field_info in fields(value)}
-    return value
-
-
-def _is_optional_manifest_type(annotation: Any) -> bool:
-    """Return whether one type hint is an optional union.
-
-    Args:
-        annotation: Type hint being inspected during deserialization.
-
-    Returns:
-        ``True`` when the annotation is an optional union.
-    """
-    origin = get_origin(annotation)
-    return origin in (Union, types.UnionType) and type(None) in get_args(annotation)
-
-
-def _deserialize_manifest_value(annotation: Any, value: Any) -> Any:
-    """Rehydrate one serialized asset value using a dataclass type hint.
-
-    Args:
-        annotation: Declared field type for the asset member being restored.
-        value: Serialized asset value to convert back into a typed object.
-
-    Returns:
-        Typed asset value reconstructed from the manifest payload.
-    """
-    if value is None:
-        return None
-    if annotation is Any:
-        return value
-    if annotation is Path:
-        return Path(str(value))
-    if annotation is str:
-        return str(value)
-    if annotation is int:
-        return int(value)
-    if annotation is bool:
-        return bool(value)
-
-    origin = get_origin(annotation)
-    if origin is tuple:
-        item_type = get_args(annotation)[0]
-        return tuple(_deserialize_manifest_value(item_type, item) for item in value)
-    if origin is dict:
-        key_type, value_type = get_args(annotation)
-        return {
-            _deserialize_manifest_value(key_type, key): _deserialize_manifest_value(value_type, item)
-            for key, item in value.items()
-        }
-    if _is_optional_manifest_type(annotation):
-        inner = [item for item in get_args(annotation) if item is not type(None)]
-        if len(inner) == 1:
-            return _deserialize_manifest_value(inner[0], value)
-    if isinstance(annotation, type) and is_dataclass(annotation):
-        if hasattr(annotation, "from_dict"):
-            return annotation.from_dict(value)
-        hints = get_type_hints(annotation)
-        return annotation(
-            **{
-                field_info.name: _deserialize_manifest_value(hints[field_info.name], value[field_info.name])
-                for field_info in fields(annotation)
-                if isinstance(value, Mapping) and field_info.name in value
-            }
-        )
-    return value
-
-
-class ManifestSerializable:
+class ManifestSerializable(SerializableMixin):
     """Mixin for asset dataclasses that need stable manifest round-trips."""
 
-    def to_dict(self) -> dict[str, Any]:
-        """Serialize one asset dataclass into JSON-compatible data.
-
-        Returns:
-            Field-ordered JSON-compatible payload for the dataclass.
-        """
-        return {field_info.name: _serialize_manifest_value(getattr(self, field_info.name)) for field_info in fields(self)}
-
-    @classmethod
-    def from_dict(cls: type[_ManifestSerializableT], payload: Mapping[str, Any]) -> _ManifestSerializableT:
-        """Deserialize one asset dataclass from JSON-compatible data.
-
-        Args:
-            payload: Structured payload to restore into the dataclass.
-
-        Returns:
-            Dataclass instance reconstructed from the supplied payload.
-        """
-        hints = get_type_hints(cls)
-        kwargs = {}
-        for field_info in fields(cls):
-            if field_info.name not in payload:
-                continue
-            kwargs[field_info.name] = _deserialize_manifest_value(hints[field_info.name], payload[field_info.name])
-        return cls(**kwargs)
+    _serialize_fn = staticmethod(serialize_value_full)
+    _deserialize_fn = staticmethod(deserialize_value_coercing)
 
 
 @dataclass(frozen=True, slots=True)

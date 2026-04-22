@@ -32,6 +32,14 @@ Entry template:
 
 ## Unreleased
 
+### Track A Step A4 — Rewire types/assets.py to shared serialization module (2026-04-21)
+
+- [x] 2026-04-21 removed `_serialize_manifest_value()`, `_is_optional_manifest_type()`,
+  `_deserialize_manifest_value()` from `src/flytetest/types/assets.py`
+- [x] 2026-04-21 `ManifestSerializable` now inherits `SerializableMixin` with
+  `serialize_value_full` + `deserialize_value_coercing` (asset layer)
+- [x] 2026-04-21 all private helpers now live only in `serialization.py`; 658 tests pass
+
 ### MCP Reshape Step 30 — Seed-bundle audit for fresh-clone honesty (2026-04-21)
 
 - [x] 2026-04-21 added `ResourceBundle.fetch_hints` — optional actionable

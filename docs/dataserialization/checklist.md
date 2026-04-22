@@ -177,7 +177,7 @@ Prompt: `docs/dataserialization/prompts/step_A2_A3_A4_rewire_serializers_prompt.
 - [x] Remove `_serialize_manifest_value()`, `_is_optional_manifest_type()`, `_deserialize_manifest_value()` from `types/assets.py`
 - [x] `ManifestSerializable` uses `SerializableMixin` with `serialize_value_full` + `deserialize_value_coercing`
 - [x] A0 regression fixtures pass (including manifest reload-from-disk)
-- [x] Full test suite passes (494 tests, 0 failures)
+- [x] Full test suite passes (658 passed, 1 skipped as of 2026-04-21)
 - [x] `rg "def _serialize|def _deserialize" src/flytetest/` — only in `serialization.py` + unrelated helpers
 - [x] `CHANGELOG.md` updated
 
@@ -186,7 +186,7 @@ Prompt: `docs/dataserialization/prompts/step_A2_A3_A4_rewire_serializers_prompt.
 - Three duplicate `_serialize*`/`_deserialize*` helper sets eliminated
 - All serialization flows through `src/flytetest/serialization.py`
 - A0 regression fixtures pass at every step
-- Full test suite passes (494 tests as of 2026-04-16)
+- Full test suite passes (658 passed, 1 skipped as of 2026-04-21)
 
 ---
 
