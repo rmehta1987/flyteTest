@@ -37,7 +37,7 @@ Merge into `main` after all steps are complete and verification gates pass.
 | # | Step | Prompt | Status |
 |---|------|--------|--------|
 | 02 | `bwa_mem2_index` — index reference for BWA-MEM2 | `prompts/step_02_bwa_mem2_index.md` | Complete |
-| 03 | `bwa_mem2_mem` — align paired reads → unsorted BAM | `prompts/step_03_bwa_mem2_mem.md` | Not started |
+| 03 | `bwa_mem2_mem` — align paired reads → unsorted BAM | `prompts/step_03_bwa_mem2_mem.md` | Complete |
 | 04 | `sort_sam` — coordinate-sort BAM | `prompts/step_04_sort_sam.md` | Not started |
 | 05 | `mark_duplicates` — mark PCR/optical duplicates | `prompts/step_05_mark_duplicates.md` | Not started |
 

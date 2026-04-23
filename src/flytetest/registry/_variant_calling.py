@@ -298,4 +298,43 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             pipeline_stage_order=8,
         ),
     ),
+    RegistryEntry(
+        name="bwa_mem2_mem",
+        category="task",
+        description="Align paired-end FASTQ reads to a reference using BWA-MEM2.",
+        inputs=(
+            InterfaceField("ref_path", "str", "Absolute path to reference FASTA."),
+            InterfaceField("r1_path", "str", "Absolute path to R1 FASTQ."),
+            InterfaceField("sample_id", "str", "Sample identifier."),
+            InterfaceField("results_dir", "str", "Output directory."),
+            InterfaceField("r2_path", "str", "Optional R2 FASTQ path (empty string for single-end)."),
+            InterfaceField("threads", "int", "BWA-MEM2 alignment threads."),
+            InterfaceField("sif_path", "str", "Optional Apptainer/Singularity image path."),
+        ),
+        outputs=(
+            InterfaceField("aligned_bam", "str", "Path to unsorted aligned BAM."),
+        ),
+        tags=("variant_calling", "gatk4", "alignment"),
+        compatibility=RegistryCompatibilityMetadata(
+            biological_stage="BWA-MEM2 paired-end alignment",
+            accepted_planner_types=("ReferenceGenome", "ReadPair"),
+            produced_planner_types=("AlignmentSet",),
+            reusable_as_reference=False,
+            execution_defaults={
+                "profile": "local",
+                "result_manifest": "run_manifest.json",
+                "resources": {"cpu": "8", "memory": "32Gi", "execution_class": "local"},
+                "slurm_resource_hints": {"cpu": "16", "memory": "64Gi", "walltime": "08:00:00"},
+                "runtime_images": {"sif_path": "data/images/gatk4.sif"},
+                "module_loads": ("python/3.11.9", "apptainer/1.4.1"),
+            },
+            supported_execution_profiles=("local", "slurm"),
+            synthesis_eligible=True,
+            composition_constraints=(
+                "Reference must be indexed by bwa_mem2_index before calling this task.",
+            ),
+            pipeline_family="variant_calling",
+            pipeline_stage_order=9,
+        ),
+    ),
 )

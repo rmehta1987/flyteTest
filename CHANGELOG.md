@@ -32,6 +32,12 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone B Step 03 — bwa_mem2_mem task (2026-04-23)
+- [x] 2026-04-23 added `bwa_mem2_mem` using shell pipeline (bwa-mem2 | samtools view).
+- [x] 2026-04-23 added `bwa_mem2_mem` registry entry (stage_order 9).
+- [x] 2026-04-23 extended `MANIFEST_OUTPUT_KEYS` with `"aligned_bam"`.
+- [x] 2026-04-23 added 7 tests (registry shape, pipeline string, R2 conditional, read-group, manifest, error); all passing.
+
 ### GATK Milestone B Step 02 — bwa_mem2_index task (2026-04-23)
 - [x] 2026-04-23 added `bwa_mem2_index` to `src/flytetest/tasks/variant_calling.py`.
 - [x] 2026-04-23 added `bwa_mem2_index` registry entry (stage_order 8).

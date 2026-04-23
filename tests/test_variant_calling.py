@@ -955,3 +955,160 @@ class BwaMem2IndexManifestTests(TestCase):
         self.assertEqual(result["stage"], "bwa_mem2_index")
         self.assertIn("bwa_index_prefix", result["outputs"])
         self.assertTrue(result["outputs"]["bwa_index_prefix"].endswith("genome"))
+
+
+class BwaMem2MemRegistryTests(TestCase):
+    """Guard the bwa_mem2_mem registry entry shape."""
+
+    def test_bwa_mem2_mem_registry_entry_shape(self) -> None:
+        """Entry exists at stage_order 9 and accepts ReadPair planner type."""
+        from flytetest.registry import get_entry
+
+        entry = get_entry("bwa_mem2_mem")
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry.category, "task")
+        self.assertEqual(entry.compatibility.pipeline_family, "variant_calling")
+        self.assertEqual(entry.compatibility.pipeline_stage_order, 9)
+        self.assertIn("ReadPair", entry.compatibility.accepted_planner_types)
+
+        output_names = tuple(f.name for f in entry.outputs)
+        self.assertIn("aligned_bam", output_names)
+        self.assertIn("aligned_bam", MANIFEST_OUTPUT_KEYS)
+
+
+class BwaMem2MemInvocationTests(TestCase):
+    """Verify bwa_mem2_mem pipeline string construction."""
+
+    def _run_with_mock(self, tmp_path, r2_path="", capture_cmd=None):
+        from flytetest.tasks.variant_calling import bwa_mem2_mem
+
+        ref_fasta = tmp_path / "genome.fa"
+        ref_fasta.write_text(">chr1\nACGT\n")
+        r1 = tmp_path / "sample_R1.fq.gz"
+        r1.write_text("@read1\n")
+        results_dir = tmp_path / "bwa_out"
+        results_dir.mkdir()
+        output_bam = results_dir / "s1_aligned.bam"
+
+        import unittest.mock as mock
+
+        def fake_run(cmd, shell, capture_output, text):
+            output_bam.write_text("BAM")
+            if capture_cmd is not None:
+                capture_cmd.append(cmd)
+            return mock.MagicMock(returncode=0, stderr="")
+
+        with mock.patch("flytetest.tasks.variant_calling.subprocess.run", side_effect=fake_run):
+            return bwa_mem2_mem(
+                ref_path=str(ref_fasta),
+                r1_path=str(r1),
+                sample_id="s1",
+                results_dir=str(results_dir),
+                r2_path=r2_path,
+            )
+
+    def test_pipeline_contains_bwa_mem2_and_ref(self) -> None:
+        """Pipeline string contains bwa-mem2, mem, -R, ref_path, and r1_path."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            cmds: list[str] = []
+            self._run_with_mock(tmp_path, capture_cmd=cmds)
+
+        self.assertEqual(len(cmds), 1)
+        cmd = cmds[0]
+        self.assertIn("bwa-mem2", cmd)
+        self.assertIn("mem", cmd)
+        self.assertIn("-R", cmd)
+        self.assertIn("genome.fa", cmd)
+        self.assertIn("sample_R1.fq.gz", cmd)
+
+    def test_r2_appended_when_provided(self) -> None:
+        """R2 path appears in pipeline when r2_path is non-empty."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            r2 = tmp_path / "sample_R2.fq.gz"
+            r2.write_text("@read2\n")
+            cmds: list[str] = []
+            self._run_with_mock(tmp_path, r2_path=str(r2), capture_cmd=cmds)
+
+        self.assertIn("sample_R2.fq.gz", cmds[0])
+
+    def test_r2_absent_for_single_end(self) -> None:
+        """Pipeline does not contain R2 when r2_path is empty."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            cmds: list[str] = []
+            self._run_with_mock(tmp_path, r2_path="", capture_cmd=cmds)
+
+        self.assertNotIn("_R2", cmds[0])
+
+    def test_read_group_contains_sample_id(self) -> None:
+        """Read-group string contains ID:<sample_id> and SM:<sample_id>."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            cmds: list[str] = []
+            self._run_with_mock(tmp_path, capture_cmd=cmds)
+
+        self.assertIn("ID:s1", cmds[0])
+        self.assertIn("SM:s1", cmds[0])
+
+    def test_runtime_error_on_nonzero_returncode(self) -> None:
+        """RuntimeError is raised when subprocess returns non-zero."""
+        from flytetest.tasks.variant_calling import bwa_mem2_mem
+        import unittest.mock as mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            ref_fasta = tmp_path / "genome.fa"
+            ref_fasta.write_text(">chr1\nACGT\n")
+            r1 = tmp_path / "r1.fq.gz"
+            r1.write_text("@r\n")
+            results_dir = tmp_path / "out"
+            results_dir.mkdir()
+
+            def fail_run(cmd, shell, capture_output, text):
+                return mock.MagicMock(returncode=1, stderr="alignment error")
+
+            with mock.patch("flytetest.tasks.variant_calling.subprocess.run", side_effect=fail_run):
+                with self.assertRaises(RuntimeError):
+                    bwa_mem2_mem(
+                        ref_path=str(ref_fasta),
+                        r1_path=str(r1),
+                        sample_id="s1",
+                        results_dir=str(results_dir),
+                    )
+
+
+class BwaMem2MemManifestTests(TestCase):
+    """Verify bwa_mem2_mem emits a well-formed run_manifest.json."""
+
+    def test_bwa_mem2_mem_emits_aligned_bam_manifest(self) -> None:
+        """Manifest contains aligned_bam pointing at <sample_id>_aligned.bam."""
+        from flytetest.tasks.variant_calling import bwa_mem2_mem
+        import unittest.mock as mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            ref_fasta = tmp_path / "genome.fa"
+            ref_fasta.write_text(">chr1\nACGT\n")
+            r1 = tmp_path / "r1.fq.gz"
+            r1.write_text("@r\n")
+            results_dir = tmp_path / "out"
+            results_dir.mkdir()
+            output_bam = results_dir / "s1_aligned.bam"
+
+            def fake_run(cmd, shell, capture_output, text):
+                output_bam.write_text("BAM")
+                return mock.MagicMock(returncode=0, stderr="")
+
+            with mock.patch("flytetest.tasks.variant_calling.subprocess.run", side_effect=fake_run):
+                result = bwa_mem2_mem(
+                    ref_path=str(ref_fasta),
+                    r1_path=str(r1),
+                    sample_id="s1",
+                    results_dir=str(results_dir),
+                )
+
+        self.assertEqual(result["stage"], "bwa_mem2_mem")
+        self.assertIn("aligned_bam", result["outputs"])
+        self.assertTrue(result["outputs"]["aligned_bam"].endswith("s1_aligned.bam"))

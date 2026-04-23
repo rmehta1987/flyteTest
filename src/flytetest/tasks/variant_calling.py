@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import shlex
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -28,6 +30,7 @@ MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
     "combined_gvcf",
     "joint_vcf",
     "bwa_index_prefix",
+    "aligned_bam",
 )
 
 
@@ -423,6 +426,65 @@ def bwa_mem2_index(
         ],
         inputs={"ref_path": str(ref), "results_dir": str(out_dir)},
         outputs={"bwa_index_prefix": str(index_prefix)},
+    )
+    _write_json(out_dir / "run_manifest.json", manifest)
+    return manifest
+
+
+def bwa_mem2_mem(
+    ref_path: str,
+    r1_path: str,
+    sample_id: str,
+    results_dir: str,
+    r2_path: str = "",
+    threads: int = 4,
+    sif_path: str = "",
+) -> dict:
+    """Align paired-end FASTQ reads to a reference using BWA-MEM2."""
+    require_path(Path(ref_path), "Reference genome FASTA")
+    require_path(Path(r1_path), "R1 FASTQ")
+    if r2_path:
+        require_path(Path(r2_path), "R2 FASTQ")
+
+    out_dir = Path(results_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    output_bam = out_dir / f"{sample_id}_aligned.bam"
+
+    rg = f"@RG\\tID:{sample_id}\\tSM:{sample_id}\\tLB:lib\\tPL:ILLUMINA"
+    pipeline = (
+        f"bwa-mem2 mem "
+        f"-R '{rg}' "
+        f"-t {threads} {ref_path} {r1_path}"
+        + (f" {r2_path}" if r2_path else "")
+        + f" | samtools view -bS -o {output_bam} -"
+    )
+
+    if sif_path:
+        cmd = f"apptainer exec {sif_path} bash -c {shlex.quote(pipeline)}"
+    else:
+        cmd = pipeline
+
+    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"bwa_mem2_mem failed:\n{result.stderr}")
+
+    if not output_bam.exists():
+        raise FileNotFoundError(f"bwa_mem2_mem produced no BAM: {output_bam}")
+
+    manifest = build_manifest_envelope(
+        stage="bwa_mem2_mem",
+        assumptions=[
+            "Reference is indexed (bwa_mem2_index must have run first).",
+            "R1 (and R2 if provided) are readable FASTQ files.",
+        ],
+        inputs={
+            "ref_path": ref_path,
+            "r1_path": r1_path,
+            "r2_path": r2_path,
+            "sample_id": sample_id,
+            "threads": threads,
+        },
+        outputs={"aligned_bam": str(output_bam)},
     )
     _write_json(out_dir / "run_manifest.json", manifest)
     return manifest
