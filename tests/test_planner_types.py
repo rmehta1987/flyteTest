@@ -32,6 +32,7 @@ from flytetest.planner_types import (
     KnownSites,
     ProteinEvidenceSet,
     QualityAssessmentTarget,
+    ReadPair as PlannerReadPair,
     ReadSet,
     ReferenceGenome,
     TOP_LEVEL_PLANNER_TYPE_ADDITION_RULES,
@@ -506,6 +507,17 @@ class PlannerTypeTests(TestCase):
             notes=("VQSR SNP truth resource.",),
         )
         self.assertEqual(KnownSites.from_dict(sites.to_dict()), sites)
+
+    def test_read_pair_paired_round_trips(self) -> None:
+        """Round-trip a paired-end ReadPair through serialize/deserialize."""
+        rp = PlannerReadPair(sample_id="s1", r1_path="/r1.fq.gz", r2_path="/r2.fq.gz")
+        self.assertEqual(PlannerReadPair.from_dict(rp.to_dict()), rp)
+
+    def test_read_pair_single_end_round_trips(self) -> None:
+        """Round-trip a single-end ReadPair (r2_path=None)."""
+        rp = PlannerReadPair(sample_id="s1", r1_path="/r1.fq.gz")
+        self.assertIsNone(rp.r2_path)
+        self.assertEqual(PlannerReadPair.from_dict(rp.to_dict()), rp)
 
     def test_known_sites_defaults_minimal(self) -> None:
         """Minimal KnownSites (vcf_path + resource_name) lands expected defaults."""

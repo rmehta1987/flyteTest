@@ -30,7 +30,7 @@ Merge into `main` after all steps are complete and verification gates pass.
 
 | # | Step | Prompt | Status |
 |---|------|--------|--------|
-| 01 | Add `ReadPair` planner type | `prompts/step_01_read_pair_type.md` | Not started |
+| 01 | Add `ReadPair` planner type | `prompts/step_01_read_pair_type.md` | Complete |
 
 ### Preprocessing Tasks (each: task impl + registry entry + unit test + CHANGELOG line)
 

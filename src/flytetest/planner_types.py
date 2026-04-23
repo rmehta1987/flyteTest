@@ -198,6 +198,15 @@ class AlignmentSet(PlannerSerializable):
 
 
 @dataclass(frozen=True, slots=True)
+class ReadPair(PlannerSerializable):
+    """Paired-end FASTQ inputs for one sample."""
+
+    sample_id: str
+    r1_path: str
+    r2_path: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class VariantCallSet(PlannerSerializable):
     """Planner-facing variant-call boundary spanning per-sample GVCFs and joint VCFs.
 
@@ -250,6 +259,7 @@ __all__ = [
     "PlannerSerializable",
     "ProteinEvidenceSet",
     "QualityAssessmentTarget",
+    "ReadPair",
     "ReadSet",
     "ReferenceGenome",
     "TOP_LEVEL_PLANNER_TYPE_ADDITION_RULES",

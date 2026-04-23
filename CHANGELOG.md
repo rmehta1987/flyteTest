@@ -32,6 +32,10 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone B Step 01 — ReadPair planner type (2026-04-23)
+- [x] 2026-04-23 added `ReadPair` dataclass to `src/flytetest/planner_types.py`.
+- [x] 2026-04-23 added paired and single-end round-trip tests to `tests/test_planner_types.py`.
+
 ### GATK Milestone A — Complete (2026-04-22)
 
 All seven GATK4 germline variant calling tasks are implemented, tested, and
