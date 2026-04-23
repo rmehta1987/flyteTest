@@ -361,10 +361,12 @@ class ServerTests(TestCase):
     This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         payload = list_entries()
-        self.assertIsInstance(payload, list)
-        entries_by_name = {entry["name"]: entry for entry in payload}
+        self.assertTrue(payload["supported"])
+        self.assertIn("limitations", payload)
+        entries = payload["entries"]
+        entries_by_name = {entry["name"]: entry for entry in entries}
 
-        self.assertEqual([entry["name"] for entry in payload], EXPECTED_TARGET_NAMES)
+        self.assertEqual([entry["name"] for entry in entries], EXPECTED_TARGET_NAMES)
         self.assertIn("slurm", entries_by_name[SUPPORTED_WORKFLOW_NAME]["supported_execution_profiles"])
         self.assertIn("slurm", entries_by_name[SUPPORTED_BUSCO_FIXTURE_TASK_NAME]["supported_execution_profiles"])
         self.assertEqual(entries_by_name[SUPPORTED_TASK_NAME]["supported_execution_profiles"], ["local"])
@@ -380,26 +382,26 @@ class ServerTests(TestCase):
 
     def test_list_entries_category_filter_returns_only_tasks(self) -> None:
         """list_entries(category='task') returns only task entries."""
-        entries = list_entries(category="task")
+        entries = list_entries(category="task")["entries"]
         self.assertTrue(len(entries) > 0)
         for entry in entries:
             self.assertEqual(entry["category"], "task")
 
     def test_list_entries_category_filter_returns_only_workflows(self) -> None:
         """list_entries(category='workflow') returns only workflow entries."""
-        entries = list_entries(category="workflow")
+        entries = list_entries(category="workflow")["entries"]
         self.assertTrue(len(entries) > 0)
         for entry in entries:
             self.assertEqual(entry["category"], "workflow")
 
     def test_list_entries_pipeline_family_filter(self) -> None:
         """list_entries(pipeline_family=...) filters to matching entries only."""
-        all_entries = list_entries()
+        all_entries = list_entries()["entries"]
         families = {e["pipeline_family"] for e in all_entries if e["pipeline_family"]}
         if not families:
             self.skipTest("no entries with pipeline_family set")
         family = next(iter(sorted(families)))
-        filtered = list_entries(pipeline_family=family)
+        filtered = list_entries(pipeline_family=family)["entries"]
         self.assertTrue(len(filtered) > 0)
         for entry in filtered:
             self.assertEqual(entry["pipeline_family"], family)
@@ -414,8 +416,7 @@ class ServerTests(TestCase):
         non_showcased = [e.name for e in REGISTRY_ENTRIES if not e.showcase_module]
         if not non_showcased:
             self.skipTest("all registry entries have showcase_module set")
-        entries = list_entries()
-        returned_names = {e["name"] for e in entries}
+        returned_names = {e["name"] for e in list_entries()["entries"]}
         for name in non_showcased:
             self.assertNotIn(name, returned_names)
 
@@ -641,7 +642,7 @@ class ServerTests(TestCase):
                 BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
-                resource_request={"cpu": 12, "memory": "48Gi", "queue": "batch", "walltime": "02:00:00"},
+                resource_request={"cpu": 12, "memory": "48Gi", "partition": "batch", "walltime": "02:00:00"},
                 execution_profile="slurm",
                 recipe_dir=tmp_path,
             )
@@ -667,7 +668,7 @@ class ServerTests(TestCase):
         self.assertTrue(run_record_exists)
         self.assertEqual(captured["args"][0], "sbatch")
         self.assertEqual(submitted["execution_result"]["execution_mode"], "slurm-workflow-spec-executor")
-        self.assertEqual(submitted["execution_result"]["run_record"]["resource_spec"]["queue"], "batch")
+        self.assertEqual(submitted["execution_result"]["run_record"]["resource_spec"]["partition"], "batch")
         self.assertEqual(submitted["execution_result"]["run_record"]["resource_spec"]["account"], "rcc-staff")
 
     def test_run_slurm_recipe_updates_generic_latest_pointer_on_back_to_back_submissions(self) -> None:
@@ -931,7 +932,7 @@ class ServerTests(TestCase):
                 BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
-                resource_request={"cpu": 12, "memory": "48Gi", "queue": "batch"},
+                resource_request={"cpu": 12, "memory": "48Gi", "partition": "batch"},
                 execution_profile="slurm",
                 recipe_dir=tmp_path,
             )
@@ -1214,7 +1215,7 @@ class ServerTests(TestCase):
                     "busco_sif": "busco.sif",
                     "busco_cpu": 12,
                 },
-                resource_request={"cpu": 12, "memory": "48Gi", "queue": "short"},
+                resource_request={"cpu": 12, "memory": "48Gi", "partition": "short"},
                 execution_profile="local",
                 runtime_image={"apptainer_image": "busco.sif"},
                 recipe_dir=tmp_path,
@@ -1225,7 +1226,7 @@ class ServerTests(TestCase):
         self.assertEqual(prepared["recipe_input_context"]["manifest_sources"], [str(result_dir)])
         self.assertEqual(
             prepared["recipe_input_context"]["resource_request"],
-            {"cpu": 12, "memory": "48Gi", "queue": "short"},
+            {"cpu": 12, "memory": "48Gi", "partition": "short"},
         )
         self.assertEqual(
             prepared["typed_plan"]["resolved_inputs"]["QualityAssessmentTarget"]["source_result_dir"],
@@ -1259,7 +1260,7 @@ class ServerTests(TestCase):
                 runtime_bindings={"exonerate_sif": "data/images/exonerate_2.2.0--1.sif"},
                 resource_request={
                     "account": "rcc-staff",
-                    "queue": "caslake",
+                    "partition": "caslake",
                     "cpu": 8,
                     "memory": "32Gi",
                     "walltime": "02:00:00",
@@ -1291,7 +1292,7 @@ class ServerTests(TestCase):
                 runtime_bindings={"exonerate_sif": "data/images/exonerate_2.2.0--1.sif"},
                 resource_request={
                     "account": "rcc-staff",
-                    "queue": "caslake",
+                    "partition": "caslake",
                     "cpu": 8,
                     "memory": "32Gi",
                     "walltime": "02:00:00",
@@ -1321,7 +1322,7 @@ class ServerTests(TestCase):
                 resource_request={
                     "cpu": 2,
                     "memory": "8Gi",
-                    "queue": "caslake",
+                    "partition": "caslake",
                     "account": "rcc-staff",
                     "walltime": "00:10:00",
                 },
@@ -2153,7 +2154,7 @@ class ServerTests(TestCase):
             resource_request={
                 "cpu": 8,
                 "memory": "32Gi",
-                "queue": "caslake",
+                "partition": "caslake",
                 "account": "rcc-staff",
                 "walltime": "02:00:00",
             },
@@ -2533,7 +2534,7 @@ class ServerTests(TestCase):
                 resource_request={
                     "cpu": 4,
                     "memory": "16Gi",
-                    "queue": "caslake",
+                    "partition": "caslake",
                     "account": "rcc-staff",
                     "walltime": "01:00:00",
                 },
@@ -2584,8 +2585,7 @@ class ServerTests(TestCase):
         values before calling prepare_run_recipe; the hints must be present and
         non-empty for workflows that support the Slurm execution profile.
         """
-        payload = list_entries()
-        entries_by_name = {entry["name"]: entry for entry in payload}
+        entries_by_name = {entry["name"]: entry for entry in list_entries()["entries"]}
 
         busco_entry = entries_by_name[SUPPORTED_BUSCO_WORKFLOW_NAME]
         self.assertIn("slurm_resource_hints", busco_entry)
@@ -2593,8 +2593,8 @@ class ServerTests(TestCase):
         self.assertIn("cpu", hints)
         self.assertIn("memory", hints)
         self.assertIn("walltime", hints)
-        # queue and account are site-specific and must never appear in hints.
-        self.assertNotIn("queue", hints)
+        # partition and account are site-specific and must never appear in hints.
+        self.assertNotIn("partition", hints)
         self.assertNotIn("account", hints)
 
     # ------------------------------------------------------------------
@@ -3513,7 +3513,7 @@ class ServerTests(TestCase):
 
         T20: Validates the new ShowcaseTarget entry is present.
         """
-        entries = list_entries()
+        entries = list_entries()["entries"]
         names = [e["name"] for e in entries]
         self.assertIn(SUPPORTED_TABLE2ASN_WORKFLOW_NAME, names)
         table2asn_entry = next(e for e in entries if e["name"] == SUPPORTED_TABLE2ASN_WORKFLOW_NAME)
@@ -4288,7 +4288,7 @@ class StagingPreflightServerTests(TestCase):
                 source_prompt="staging replay test",
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
-                resource_request={"cpu": 4, "memory": "16Gi", "queue": "batch", "walltime": "01:00:00"},
+                resource_request={"cpu": 4, "memory": "16Gi", "partition": "batch", "walltime": "01:00:00"},
                 execution_profile="slurm",
                 # Override both registry defaults: bad db path, valid sif path.
                 runtime_images={"busco_sif": str(valid_sif)},
@@ -4367,7 +4367,7 @@ class ValidateRunRecipeTests(TestCase):
             source_prompt="validate_run_recipe test",
             manifest_sources=(result_dir,),
             runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
-            resource_request={"cpu": 4, "memory": "16Gi", "queue": "batch", "walltime": "01:00:00"},
+            resource_request={"cpu": 4, "memory": "16Gi", "partition": "batch", "walltime": "01:00:00"},
             execution_profile="slurm",
             runtime_images=runtime_images,
             tool_databases=tool_databases,

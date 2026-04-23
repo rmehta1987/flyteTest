@@ -1283,7 +1283,7 @@ DEFAULT_SLURM_MODULE_LOADS: tuple[str, ...] = ("python/3.11.9", "apptainer/1.4.1
 """Default environment modules loaded when none are specified in the recipe."""
 
 _RETRY_RESOURCE_OVERRIDE_FIELDS: frozenset[str] = frozenset(
-    {"cpu", "memory", "walltime", "queue", "account", "gpu"}
+    {"cpu", "memory", "walltime", "partition", "account", "gpu"}
 )
 
 
@@ -1355,7 +1355,7 @@ def _effective_resource_spec(
         cpu=resource_overrides.cpu or base.cpu,
         memory=resource_overrides.memory or base.memory,
         gpu=resource_overrides.gpu or base.gpu,
-        queue=resource_overrides.queue or base.queue,
+        partition=resource_overrides.partition or base.partition,
         account=resource_overrides.account or base.account,
         walltime=resource_overrides.walltime or base.walltime,
         execution_class=resource_overrides.execution_class or base.execution_class,
@@ -1438,8 +1438,8 @@ def _slurm_directives(
         directives.append(f"#SBATCH --cpus-per-task={resource_spec.cpu}")
     if memory := _normalize_slurm_memory(resource_spec.memory):
         directives.append(f"#SBATCH --mem={memory}")
-    if resource_spec.queue:
-        directives.append(f"#SBATCH --partition={resource_spec.queue}")
+    if resource_spec.partition:
+        directives.append(f"#SBATCH --partition={resource_spec.partition}")
     if resource_spec.account:
         directives.append(f"#SBATCH --account={resource_spec.account}")
     if resource_spec.walltime:
@@ -2502,7 +2502,7 @@ class SlurmWorkflowSpecExecutor:
                 the failed run.
             resource_overrides: Optional resource escalation values for
                 ``resource_exhaustion`` retries.  Valid keys are
-                ``cpu``, ``memory``, ``walltime``, ``queue``, ``account``,
+                ``cpu``, ``memory``, ``walltime``, ``partition``, ``account``,
                 and ``gpu``.  Ignored for regular retryable failures.
         """
         try:

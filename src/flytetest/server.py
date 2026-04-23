@@ -807,12 +807,16 @@ def _run_workflow_direct(workflow_name: str, inputs: Mapping[str, object]) -> di
 def list_entries(
     category: str | None = None,
     pipeline_family: str | None = None,
-) -> list[dict[str, object]]:
+) -> dict[str, object]:
     """List showcased MCP recipe targets, optionally filtered by category or pipeline family."""
     entries = registry_list_entries(category)
     if pipeline_family:
         entries = tuple(e for e in entries if e.compatibility.pipeline_family == pipeline_family)
-    return [_entry_payload(e) for e in entries if e.showcase_module]
+    return {
+        "supported": True,
+        "entries": [_entry_payload(e) for e in entries if e.showcase_module],
+        "limitations": list(LIST_ENTRIES_LIMITATIONS),
+    }
 
 
 def resource_scope() -> dict[str, object]:
@@ -1804,11 +1808,9 @@ def run_task(
                     artifact_path=Path(artifact_path),
                     run_record_path=slurm_result.run_record.run_record_path,
                 )
-            outputs_map, output_limits = _collect_named_outputs(entry, None)
             combined_limits = (
                 plan_limitations
                 + tuple(str(item) for item in slurm_result.limitations)
-                + tuple(output_limits)
             )
             return asdict(
                 RunReply(
@@ -1819,7 +1821,7 @@ def run_task(
                     execution_profile="slurm",
                     execution_status="success" if slurm_result.supported else "failed",
                     exit_status=None,
-                    outputs=outputs_map,
+                    outputs={},
                     limitations=combined_limits,
                     task_name=task_name,
                 )
@@ -2086,11 +2088,9 @@ def run_workflow(
                     artifact_path=Path(artifact_path),
                     run_record_path=slurm_result.run_record.run_record_path,
                 )
-            outputs_map, output_limits = _collect_named_outputs(entry, None)
             combined_limits = (
                 plan_limitations
                 + tuple(str(item) for item in slurm_result.limitations)
-                + tuple(output_limits)
             )
             return asdict(
                 RunReply(
@@ -2101,7 +2101,7 @@ def run_workflow(
                     execution_profile="slurm",
                     execution_status="success" if slurm_result.supported else "failed",
                     exit_status=None,
-                    outputs=outputs_map,
+                    outputs={},
                     limitations=combined_limits,
                     workflow_name=workflow_name,
                 )
@@ -2877,6 +2877,10 @@ def _monitor_slurm_job_impl(
     return {
         "supported": bool(result.supported),
         "run_record_path": str(run_record_path),
+        "scheduler_state": lifecycle.get("scheduler_state"),
+        "final_scheduler_state": lifecycle.get("final_scheduler_state"),
+        "stdout_path": lifecycle.get("stdout_path"),
+        "stderr_path": lifecycle.get("stderr_path"),
         "lifecycle_result": lifecycle,
         "limitations": list(result.limitations),
     }
@@ -2915,11 +2919,14 @@ def _cancel_slurm_job_impl(
         scheduler_runner=scheduler_runner,
         command_available=command_available or _command_is_available,
     ).cancel(Path(run_record_path))
+    lifecycle = _result_from_slurm_lifecycle(result)
+    limitations = list(result.limitations) + list(result.assumptions)
     return {
         "supported": bool(result.supported),
         "run_record_path": str(run_record_path),
-        "lifecycle_result": _result_from_slurm_lifecycle(result),
-        "limitations": list(result.limitations),
+        "scheduler_state": lifecycle.get("scheduler_state"),
+        "lifecycle_result": lifecycle,
+        "limitations": limitations,
     }
 
 
@@ -2947,7 +2954,7 @@ def _retry_slurm_job_impl(
         command_available: Command probe used to confirm scheduler tooling is available.
         resource_overrides: Optional resource escalation values for
             ``resource_exhaustion`` retries.  Valid keys are ``cpu``,
-            ``memory``, ``walltime``, ``queue``, ``account``, and ``gpu``.
+            ``memory``, ``walltime``, ``partition``, ``account``, and ``gpu``.
 """
     result = SlurmWorkflowSpecExecutor(
         run_root=run_dir or DEFAULT_RUN_DIR,
@@ -2976,7 +2983,7 @@ def retry_slurm_job(
     For ``resource_exhaustion`` failures (``OUT_OF_MEMORY`` and ``TIMEOUT``)
     you can supply *resource_overrides* to escalate resources without
     preparing a new recipe.  Valid keys are ``cpu``, ``memory``,
-    ``walltime``, ``queue``, ``account``, and ``gpu``.  ``DEADLINE``
+    ``walltime``, ``partition``, ``account``, and ``gpu``.  ``DEADLINE``
     failures require a new ``prepare_run_recipe`` call with an updated
     ``walltime``.
 

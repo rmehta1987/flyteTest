@@ -113,7 +113,7 @@ class SpecTests(TestCase):
             resolved_prior_assets={"quality_target": "all_repeats_removed.proteins.fa"},
             manifest_derived_paths={"repeat_filter_manifest": "results/repeat_filter_20260406_120000/run_manifest.json"},
             execution_profile="local",
-            resource_spec=ResourceSpec(cpu="16", memory="64Gi", queue="short", walltime="02:00:00"),
+            resource_spec=ResourceSpec(cpu="16", memory="64Gi", partition="short", walltime="02:00:00"),
             runtime_image=RuntimeImageSpec(apptainer_image="busco.sif"),
             runtime_bindings={"busco_cpu": 16, "busco_sif": "busco.sif"},
             unresolved_requirements=("lineage datasets must remain available locally",),
@@ -320,7 +320,7 @@ class SpecTests(TestCase):
         profile = ExecutionProfile(
             name="high-mem",
             description="Use the same biology with a larger memory envelope.",
-            resource_overrides=ResourceSpec(cpu="16", memory="64Gi", queue="highmem"),
+            resource_overrides=ResourceSpec(cpu="16", memory="64Gi", partition="highmem"),
             runtime_image=RuntimeImageSpec(
                 container_image="ghcr.io/flytetest/annotation:latest",
                 compatibility_notes=("Container usage remains future-facing metadata here.",),

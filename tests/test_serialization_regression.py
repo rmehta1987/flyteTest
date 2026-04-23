@@ -81,7 +81,7 @@ class TestSpecLayerRegression(unittest.TestCase):
                 assumptions=("genome and evidence inputs unchanged",),
                 limitations=("non-deterministic AUGUSTUS training",),
             ),
-            resource_spec=ResourceSpec(cpu="8", memory="64G", queue="normal"),
+            resource_spec=ResourceSpec(cpu="8", memory="64G", partition="normal"),
             runtime_image=RuntimeImageSpec(
                 container_image="ghcr.io/example/braker3:latest"
             ),
@@ -135,7 +135,7 @@ class TestSpecLayerRegression(unittest.TestCase):
                 "cpu": "8",
                 "memory": "64G",
                 "gpu": None,
-                "queue": "normal",
+                "partition": "normal",
                 "account": None,
                 "walltime": None,
                 "execution_class": None,

@@ -81,7 +81,7 @@ Call prepare_run_recipe with exactly these arguments:
     "trinity_sif": "data/images/trinity_2.13.2.sif",
     "stringtie_sif": "data/images/stringtie_2.2.3.sif"
   }
-- resource_request: {"cpu": 16, "memory": "64Gi", "queue": "caslake", "account": "rcc-staff", "walltime": "04:00:00"}
+- resource_request: {"cpu": 16, "memory": "64Gi", "partition": "caslake", "account": "rcc-staff", "walltime": "04:00:00"}
 - execution_profile: "slurm"
 
 Print artifact_path, supported, and limitations.
@@ -112,7 +112,7 @@ Call prepare_run_recipe with exactly these arguments:
     "transcript_evidence_results": "/path/to/results/transcript_evidence_results_TIMESTAMP",
     "pasa_sif": "data/images/pasa_2.5.3.sif"
   }
-- resource_request: {"cpu": 8, "memory": "32Gi", "queue": "caslake", "account": "rcc-staff", "walltime": "03:00:00"}
+- resource_request: {"cpu": 8, "memory": "32Gi", "partition": "caslake", "account": "rcc-staff", "walltime": "03:00:00"}
 - execution_profile: "slurm"
 
 Print artifact_path, supported, and limitations.
@@ -137,7 +137,7 @@ Call prepare_run_recipe with exactly these arguments:
     "pasa_results": "/path/to/results/pasa_results_TIMESTAMP",
     "transdecoder_sif": "data/images/transdecoder_6.0.0.sif"
   }
-- resource_request: {"cpu": 8, "memory": "32Gi", "queue": "caslake", "account": "rcc-staff", "walltime": "01:00:00"}
+- resource_request: {"cpu": 8, "memory": "32Gi", "partition": "caslake", "account": "rcc-staff", "walltime": "01:00:00"}
 - execution_profile: "slurm"
 
 Print artifact_path, supported, and limitations.
@@ -163,7 +163,7 @@ Call prepare_run_recipe with exactly these arguments:
     "protein_fastas": "/path/to/proteins.fa",
     "exonerate_sif": "data/images/exonerate_2.2.0--1.sif"
   }
-- resource_request: {"cpu": 16, "memory": "64Gi", "queue": "caslake", "account": "rcc-staff", "walltime": "04:00:00"}
+- resource_request: {"cpu": 16, "memory": "64Gi", "partition": "caslake", "account": "rcc-staff", "walltime": "04:00:00"}
 - execution_profile: "slurm"
 
 Print artifact_path, supported, and limitations.
@@ -195,7 +195,7 @@ Call prepare_run_recipe with exactly these arguments:
     "protein_fasta_path": "/path/to/proteins.fa",
     "braker3_sif": "data/images/braker3.sif"
   }
-- resource_request: {"cpu": 16, "memory": "64Gi", "queue": "caslake", "account": "rcc-staff", "walltime": "08:00:00"}
+- resource_request: {"cpu": 16, "memory": "64Gi", "partition": "caslake", "account": "rcc-staff", "walltime": "08:00:00"}
 - execution_profile: "slurm"
 
 Print artifact_path, supported, and limitations.
@@ -226,7 +226,7 @@ Call prepare_run_recipe with exactly these arguments:
     "protein_evidence_results": "/path/to/results/protein_evidence_results_TIMESTAMP",
     "braker3_results": "/path/to/results/braker3_results_TIMESTAMP"
   }
-- resource_request: {"cpu": 4, "memory": "16Gi", "queue": "caslake", "account": "rcc-staff", "walltime": "00:30:00"}
+- resource_request: {"cpu": 4, "memory": "16Gi", "partition": "caslake", "account": "rcc-staff", "walltime": "00:30:00"}
 - execution_profile: "slurm"
 
 Print artifact_path, supported, and limitations.
@@ -254,7 +254,7 @@ Call prepare_run_recipe with exactly these arguments:
     "evm_prep_results": "/path/to/results/evm_prep_results_TIMESTAMP",
     "evm_sif": "data/images/evidencemodeler_2.1.0.sif"
   }
-- resource_request: {"cpu": 16, "memory": "64Gi", "queue": "caslake", "account": "rcc-staff", "walltime": "03:00:00"}
+- resource_request: {"cpu": 16, "memory": "64Gi", "partition": "caslake", "account": "rcc-staff", "walltime": "03:00:00"}
 - execution_profile: "slurm"
 
 Print artifact_path, supported, and limitations.
@@ -280,7 +280,7 @@ Call prepare_run_recipe with exactly these arguments:
     "evm_results": "/path/to/results/evm_results_TIMESTAMP",
     "pasa_sif": "data/images/pasa_2.5.3.sif"
   }
-- resource_request: {"cpu": 8, "memory": "32Gi", "queue": "caslake", "account": "rcc-staff", "walltime": "03:00:00"}
+- resource_request: {"cpu": 8, "memory": "32Gi", "partition": "caslake", "account": "rcc-staff", "walltime": "03:00:00"}
 - execution_profile: "slurm"
 
 Print artifact_path, supported, and limitations.
@@ -308,7 +308,7 @@ Call prepare_run_recipe with exactly these arguments:
     "repeatmasker_out": "/path/to/repeatmasker.out",
     "repeat_filter_sif": "data/images/repeatmasker_4.2.3.sif"
   }
-- resource_request: {"cpu": 8, "memory": "32Gi", "queue": "caslake", "account": "rcc-staff", "walltime": "02:00:00"}
+- resource_request: {"cpu": 8, "memory": "32Gi", "partition": "caslake", "account": "rcc-staff", "walltime": "02:00:00"}
 - execution_profile: "slurm"
 
 Print artifact_path, supported, and limitations.
@@ -336,7 +336,7 @@ Call prepare_run_recipe with exactly these arguments:
     "busco_mode": "prot",
     "busco_sif": "data/images/busco_v6.0.0_cv1.sif"
   }
-- resource_request: {"cpu": 16, "memory": "32Gi", "queue": "caslake", "account": "rcc-staff", "walltime": "01:00:00"}
+- resource_request: {"cpu": 16, "memory": "32Gi", "partition": "caslake", "account": "rcc-staff", "walltime": "01:00:00"}
 - execution_profile: "slurm"
 
 Print artifact_path, supported, and limitations.
@@ -367,7 +367,7 @@ Call prepare_run_recipe with exactly these arguments:
     "eggnog_cpu": 16,
     "eggnog_sif": "data/images/eggnog_mapper_2.1.13.sif"
   }
-- resource_request: {"cpu": 16, "memory": "64Gi", "queue": "caslake", "account": "rcc-staff", "walltime": "04:00:00"}
+- resource_request: {"cpu": 16, "memory": "64Gi", "partition": "caslake", "account": "rcc-staff", "walltime": "04:00:00"}
 - execution_profile: "slurm"
 
 Print artifact_path, supported, and limitations.
@@ -395,7 +395,7 @@ Call prepare_run_recipe with exactly these arguments:
     "annotation_fasta_path": "/path/to/genome.fa",
     "agat_sif": "data/images/agat_1.7.0.sif"
   }
-- resource_request: {"cpu": 4, "memory": "16Gi", "queue": "caslake", "account": "rcc-staff", "walltime": "00:30:00"}
+- resource_request: {"cpu": 4, "memory": "16Gi", "partition": "caslake", "account": "rcc-staff", "walltime": "00:30:00"}
 - execution_profile: "slurm"
 
 Print artifact_path, supported, and limitations.
@@ -418,7 +418,7 @@ Call prepare_run_recipe with exactly these arguments:
     "eggnog_results": "/path/to/results/eggnog_results_TIMESTAMP",
     "agat_sif": "data/images/agat_1.7.0.sif"
   }
-- resource_request: {"cpu": 4, "memory": "16Gi", "queue": "caslake", "account": "rcc-staff", "walltime": "00:30:00"}
+- resource_request: {"cpu": 4, "memory": "16Gi", "partition": "caslake", "account": "rcc-staff", "walltime": "00:30:00"}
 - execution_profile: "slurm"
 
 Print artifact_path, supported, and limitations.
@@ -441,7 +441,7 @@ Call prepare_run_recipe with exactly these arguments:
     "agat_conversion_results": "/path/to/results/agat_conversion_results_TIMESTAMP",
     "agat_sif": "data/images/agat_1.7.0.sif"
   }
-- resource_request: {"cpu": 4, "memory": "16Gi", "queue": "caslake", "account": "rcc-staff", "walltime": "00:30:00"}
+- resource_request: {"cpu": 4, "memory": "16Gi", "partition": "caslake", "account": "rcc-staff", "walltime": "00:30:00"}
 - execution_profile: "slurm"
 
 Print artifact_path, supported, and limitations.
@@ -466,7 +466,7 @@ Call prepare_run_recipe with exactly these arguments:
     "genome_fasta": "/path/to/genome.fa",
     "submission_template": "/path/to/template.sbt"
   }
-- resource_request: {"cpu": 4, "memory": "16Gi", "queue": "caslake", "account": "rcc-staff", "walltime": "00:30:00"}
+- resource_request: {"cpu": 4, "memory": "16Gi", "partition": "caslake", "account": "rcc-staff", "walltime": "00:30:00"}
 - execution_profile: "slurm"
 
 Print artifact_path, supported, and limitations.

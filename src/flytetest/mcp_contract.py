@@ -109,7 +109,7 @@ MCP_TOOL_NAMES: tuple[str, ...] = EXPERIMENT_LOOP_TOOLS + INSPECT_TOOLS + LIFECY
 # so tooling that surfaces tool descriptions to an LLM stays consistent.
 QUEUE_ACCOUNT_HANDOFF: str = (
     'execution_defaults["slurm_resource_hints"] supplies sensible defaults for'
-    " cpu / memory / walltime, but queue and account must come from the user —"
+    " cpu / memory / walltime, but partition and account must come from the user —"
     " the server never invents them."
 )
 
@@ -291,12 +291,12 @@ RECIPE_INPUT_RUNTIME_RULES = (
     "BUSCO runtime bindings begin with `busco_lineages_text`, optional `busco_sif`, and `busco_cpu`.",
     "EggNOG runtime bindings are `eggnog_data_dir`, optional `eggnog_sif`, `eggnog_cpu`, and `eggnog_database`.",
     "AGAT runtime bindings are `annotation_fasta_path` and optional `agat_sif` for statistics, and optional `agat_sif` for conversion.",
-    "Resource requests use structured `ResourceSpec` fields such as `cpu`, `memory`, `queue`, `account`, and `walltime`.",
+    "Resource requests use structured `ResourceSpec` fields such as `cpu`, `memory`, `partition`, `account`, and `walltime`.",
     "`local` recipes run through explicit local handlers; `slurm` recipes can be submitted with `run_slurm_recipe` after they are frozen.",
     "`list_slurm_run_history` reads durable `.runtime/runs/` records only, supports optional `workflow_name`, `active_only`, and `terminal_only` filters, and does not require live scheduler access.",
     "Slurm recipe submission and lifecycle tools require FLyteTest to run inside an already-authenticated scheduler-capable environment with the needed Slurm CLI commands on PATH.",
     "`monitor_slurm_job`, `retry_slurm_job`, and `cancel_slurm_job` operate from durable `.runtime/runs/` Slurm run records and return explicit unsupported-environment limitations when that scheduler boundary is unavailable.",
-    "`retry_slurm_job` stays Slurm-specific, reuses the frozen saved recipe plus recorded execution profile, and declines when the run record is not terminal, not clearly retryable, or already at its attempt limit. For `resource_exhaustion` failures (`OUT_OF_MEMORY`, `TIMEOUT`), pass `resource_overrides` with one or more of `cpu`, `memory`, `walltime`, `queue`, `account`, or `gpu` to escalate resources without re-preparing the recipe. `DEADLINE` failures are excluded from escalation and require a new `prepare_run_recipe` call.",
+    "`retry_slurm_job` stays Slurm-specific, reuses the frozen saved recipe plus recorded execution profile, and declines when the run record is not terminal, not clearly retryable, or already at its attempt limit. For `resource_exhaustion` failures (`OUT_OF_MEMORY`, `TIMEOUT`), pass `resource_overrides` with one or more of `cpu`, `memory`, `walltime`, `partition`, `account`, or `gpu` to escalate resources without re-preparing the recipe. `DEADLINE` failures are excluded from escalation and require a new `prepare_run_recipe` call.",
     "`monitor_slurm_job` accepts an optional `tail_lines` parameter (default 50, max 500). When the job has reached a terminal state, the response includes `stdout_tail` and `stderr_tail` with the last N lines of the scheduler log files. Set `tail_lines=0` to disable log reading.",
     "Runtime image policy can be frozen as `RuntimeImageSpec` metadata, while existing workflow SIF inputs remain explicit runtime bindings.",
 )
@@ -315,17 +315,13 @@ TASK_EXAMPLE_PROMPT = (
     "data/braker3/reference/genome.fa and protein chunk data/braker3/protein_data/fastas/proteins.fa"
 )
 SHOWCASE_LIMITATIONS = (
-    "The MCP recipe surface executes "
-    + ", ".join(f"`{n}`" for n in SUPPORTED_TARGET_NAMES)
-    + " through explicit local handlers.",
-    "Prompt-contained local file paths and explicit recipe inputs are frozen into saved WorkflowSpec artifacts before execution.",
-    "Additional registered workflows require explicit local handlers before they are exposed as runnable MCP targets.",
+    "This server runs a fixed set of analysis pipelines — call list_entries to see what is available.",
+    "Every job is saved as a frozen recipe before it runs, so the exact inputs and settings used are always recorded.",
+    "Additional pipelines can be added by the server administrator when needed.",
 )
 LIST_ENTRIES_LIMITATIONS = (
-    "The MCP recipe surface exposes only "
-    + ", ".join(f"`{n}`" for n in SUPPORTED_TARGET_NAMES)
-    + " as runnable targets.",
-    "The primary MCP flow is `prompt_and_run(prompt)`, which prepares and executes a saved WorkflowSpec artifact.",
+    "Only the pipelines listed above are available to run from this server.",
+    "Describe what you want in plain language — the server will match it to the right pipeline, prepare a recipe, and submit the job.",
 )
 PROMPT_REQUIREMENTS = (
     "Write explicit local file paths directly in the prompt when you want prompt-derived runtime bindings.",

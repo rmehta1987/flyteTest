@@ -52,7 +52,7 @@ class ResourceSpec(SpecSerializable):
     cpu: str | None = None
     memory: str | None = None
     gpu: str | None = None
-    queue: str | None = None
+    partition: str | None = None
     account: str | None = None
     walltime: str | None = None
     execution_class: str | None = None

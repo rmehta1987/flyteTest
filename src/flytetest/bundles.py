@@ -58,6 +58,29 @@ BUNDLES: dict[str, ResourceBundle] = {
             "Stage the BRAKER3 fixture set under data/braker3/ (reference, rnaseq BAM, protein FASTA) — see scripts/rcc/README.md for expected layout",
         ),
     ),
+    "busco_eukaryota_genome_fixture": ResourceBundle(
+        name="busco_eukaryota_genome_fixture",
+        description=(
+            "BUSCO genome-mode fixture for the eukaryota test FASTA: "
+            "runs auto-lineage detection against the minimal eukaryota genome "
+            "included under data/busco/test_data/."
+        ),
+        pipeline_family="annotation",
+        bindings={},
+        inputs={
+            "proteins_fasta": "data/busco/test_data/eukaryota/genome.fna",
+            "lineage_dataset": "auto-lineage",
+            "busco_cpu": 2,
+            "busco_mode": "geno",
+        },
+        runtime_images={"busco_sif": "data/images/busco_v6.0.0_cv1.sif"},
+        tool_databases={},
+        applies_to=("busco_assess_proteins",),
+        fetch_hints=(
+            "Pull the BUSCO container: `apptainer pull data/images/busco_v6.0.0_cv1.sif docker://ezlabgva/busco:v6.0.0_cv1`",
+            "Download the eukaryota test fixture: `scripts/rcc/download_minimal_busco_fixture.sh`",
+        ),
+    ),
     "m18_busco_demo": ResourceBundle(
         name="m18_busco_demo",
         description=(

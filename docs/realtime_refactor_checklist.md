@@ -1824,39 +1824,25 @@ Goal: make the pipeline status tracker registry-driven by adding
 `RegistryCompatibilityMetadata` so stage lists are derived from the registry
 rather than hardcoded per pipeline.
 
-Status: Complete (2026-04-21)
-
-Subsumed by the MCP Surface Reshape milestone: the registry restructure
-(reshape Steps 8–11) already split `RegistryCompatibilityMetadata` into the
-per-family `_<family>.py` submodules, populated `pipeline_family` and
-`pipeline_stage_order` for every entry, added a pure `get_pipeline_stages`
-query function, and flipped `pipeline_tracker.py` to call it.
+Status: Not started
 
 ### Still required
 
-- [x] Add `pipeline_family: str = ""` and `pipeline_stage_order: int = 0` to
-      `RegistryCompatibilityMetadata` in `src/flytetest/registry/_types.py`.
-- [x] Populate all workflow entries across the family submodules
-      (`_annotation.py`, `_consensus.py`, `_evm.py`, `_gatk.py`,
-      `_postprocessing.py`, `_protein_evidence.py`, `_rnaseq.py`,
-      `_transcript_evidence.py`) with correct `pipeline_family` and
-      `pipeline_stage_order` values.
-- [x] Add `get_pipeline_stages(family: str)` pure function to
-      `src/flytetest/registry/__init__.py`.
-- [x] Replace hardcoded `ANNOTATION_PIPELINE_STAGES` in `pipeline_tracker.py`
-      with `get_pipeline_stages("annotation")` — now at
-      `src/flytetest/pipeline_tracker.py:23`.
-- [x] Extend `tests/test_pipeline_tracker.py` with registry-driven coverage;
-      cross-family coverage added in `tests/test_registry.py`,
-      `tests/test_bundles.py`, and `tests/test_mcp_replies.py`.
-- [x] Update `CHANGELOG.md` — covered under the MCP Reshape Step 8–11
-      entries (registry-manifest contract + widened `_entry_payload` +
-      `pipeline_family` filter on `list_entries`).
+- [ ] Add `pipeline_family: str = ""` and `pipeline_stage_order: int = 0` to
+      `RegistryCompatibilityMetadata` in `src/flytetest/registry.py`.
+- [ ] Populate all 17 existing `_WORKFLOW_COMPATIBILITY_METADATA` entries with
+      correct `pipeline_family` and `pipeline_stage_order` values.
+- [ ] Add `get_pipeline_stages(family: str)` pure function to `registry.py`.
+- [ ] Replace hardcoded `ANNOTATION_PIPELINE_STAGES` in `pipeline_tracker.py`
+      with `get_pipeline_stages("annotation")`.
+- [ ] Add 3 tests to `tests/test_pipeline_tracker.py`.
+- [ ] Update `CHANGELOG.md`.
 
 ### Acceptance evidence
 
-- `docs/realtime_refactor_plans/archive/2026-04-16-milestone-22-registry-driven-pipeline-tracker.md`
-- Existing pipeline tracker tests pass under the registry-driven lookup.
+- `docs/realtime_refactor_plans/2026-04-16-milestone-22-registry-driven-pipeline-tracker.md`
+- `docs/realtime_refactor_milestone_22_submission_prompt.md`
+- All existing pipeline tracker tests pass; 3 new tests added.
 
 ### Compatibility risks
 
@@ -1884,7 +1870,7 @@ Status: Complete
       TransDecoder-branded asset names.
 - [x] Add tests for generic-name round-tripping, legacy manifest loading, and
       current manifest emission.
-- [x] Update README, `docs/capability_maturity.md`, and the handoff prompt
+- [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
       after the behavior lands.
 
 ### Milestone 23 implementation note
@@ -1918,21 +1904,21 @@ Status: Complete
 Goal: make the nested protein-evidence alignment assets less Exonerate-specific
 while preserving the current top-level protein-evidence bundle contract.
 
-Status: Complete
+Status: Not started
 
 ### Still required
 
-- [x] Audit which nested protein-evidence assets are too Exonerate-branded for
+- [ ] Audit which nested protein-evidence assets are too Exonerate-branded for
       future planner or manifest reuse.
-- [x] Define generic sibling names for the nested raw-alignment and converted
+- [ ] Define generic sibling names for the nested raw-alignment and converted
       evidence assets where a stable biology-facing meaning exists.
-- [x] Keep the current top-level `protein_evidence_result_bundle` contract
+- [ ] Keep the current top-level `protein_evidence_result_bundle` contract
       intact while adding generic nested names.
-- [x] Preserve replay of manifests that still carry the current
+- [ ] Preserve replay of manifests that still carry the current
       Exonerate-specific nested asset names.
-- [x] Add tests for nested generic-name round-tripping, legacy manifest
+- [ ] Add tests for nested generic-name round-tripping, legacy manifest
       loading, and current manifest emission.
-- [x] Update README, `docs/capability_maturity.md`, and the handoff prompt
+- [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
       after the behavior lands.
 
 ### Milestone 24 implementation note
@@ -1966,31 +1952,30 @@ Goal: define whether PASA post-EVM refinement should grow a generic annotation-
 refinement asset layer, and adopt it only if that abstraction is genuinely
 useful.
 
-Status: Complete
+Status: Not started
 
 ### Still required
 
-- [x] Decide whether the PASA post-EVM refinement boundary needs a generic
+- [ ] Decide whether the PASA post-EVM refinement boundary needs a generic
       annotation-refinement asset layer at all.
-- [x] If yes, define generic sibling names for the PASA refinement input,
+- [ ] If yes, define generic sibling names for the PASA refinement input,
       round, and result-bundle assets while keeping current PASA names
       available.
-- [x] Update manifest emitters and adapters to prefer the generic names only
+- [ ] Update manifest emitters and adapters to prefer the generic names only
       if the biological boundary is now explicit enough.
-- [x] Preserve replay of historical PASA refinement manifests.
-- [x] Add tests for generic-name round-tripping, legacy manifest loading, and
+- [ ] Preserve replay of historical PASA refinement manifests.
+- [ ] Add tests for generic-name round-tripping, legacy manifest loading, and
       current manifest emission when the generic layer is adopted.
-- [x] Update README, `docs/capability_maturity.md`, and the handoff prompt
+- [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
       after the behavior lands.
 
 ### Milestone 25 implementation note
 
-- Decision: `AnnotationRefinementResultBundle` is introduced as a biology-
-  facing generic sibling of `PasaGeneModelUpdateResultBundle` at the top-level
-  bundle. The nested input bundle (`PasaGeneModelUpdateInputBundleAsset`) and
-  round result (`PasaGeneModelUpdateRoundResult`) remain PASA-named because
-  their fields are inherently PASA-specific (database path, PASA config files).
-- This slice was narrow: generic top-level bundle only, no nested renaming.
+- This slice may legitimately decide not to introduce a generic sibling layer
+  yet if PASA remains the only clear truthful boundary.
+- The milestone is about making that decision explicit, not forcing a rename.
+- If the answer is “not yet”, the landed result should still improve the docs
+  and clarify the boundary.
 
 ### Acceptance evidence
 
@@ -2016,33 +2001,31 @@ Goal: define whether the EVM-prefixed consensus assets need a generic
 consensus-annotation layer, and adopt it only when another implementation path
 or real planner pressure justifies it.
 
-Status: Complete
+Status: Not started
 
 ### Still required
 
-- [x] Decide whether the repo currently needs a generic consensus-annotation
+- [ ] Decide whether the repo currently needs a generic consensus-annotation
       asset layer or should keep the explicit EVM-prefixed names for now.
-- [x] If yes, define generic sibling names for the consensus input,
+- [ ] If yes, define generic sibling names for the consensus input,
       preparation, execution, partition, command, and result assets while
       keeping current EVM names available.
-- [x] Update manifest emitters and adapters to prefer the generic names only
+- [ ] Update manifest emitters and adapters to prefer the generic names only
       if the broader stage meaning is now explicit enough.
-- [x] Preserve replay of historical EVM manifests and result bundles.
-- [x] Add tests for generic-name round-tripping, legacy manifest loading, and
+- [ ] Preserve replay of historical EVM manifests and result bundles.
+- [ ] Add tests for generic-name round-tripping, legacy manifest loading, and
       current manifest emission when the generic layer is adopted.
-- [x] Update README, `docs/capability_maturity.md`, and the handoff prompt
+- [ ] Update README, `docs/capability_maturity.md`, and the handoff prompt
       after the behavior lands.
 
 ### Milestone 26 implementation note
 
-- Decision: a narrow generic sibling (`ConsensusAnnotationResultBundle`) is
-  introduced for the top-level result bundle only. The 7 internal EVM
-  computation types (execution input, partition, command_set, etc.) remain
-  EVM-named because they are internal implementation details with no
-  biology-facing stage meaning.
-- New manifests emit both `consensus_annotation_result_bundle` (generic,
-  preferred) and `evm_consensus_result_bundle` (legacy) so historical manifests
-  remain replayable unchanged.
+- This slice should not proceed as a casual rename.
+- It should only introduce a generic consensus layer if the repo has a real
+  need for that abstraction, such as planner pressure or a second
+  consensus-engine path.
+- If the answer is “not yet”, the milestone can still land as a clarified
+  boundary decision and documentation improvement.
 
 ### Acceptance evidence
 

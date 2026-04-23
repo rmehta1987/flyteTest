@@ -273,6 +273,17 @@ def _pipeline_stage_order(entry: RegistryEntry) -> int:
     return order if isinstance(order, int) else 1_000_000
 
 
+_ACTION_PREFIXES = ("run ", "execute ", "perform ", "start ", "launch ")
+
+
+def _strip_action_prefix(normalized: str) -> str:
+    """Remove a leading action verb so 'run X' matches the same target as 'X'."""
+    for prefix in _ACTION_PREFIXES:
+        if normalized.startswith(prefix):
+            return normalized[len(prefix):]
+    return normalized
+
+
 def _match_target(
     biological_goal: str,
     registry_entries: Sequence[RegistryEntry],
@@ -282,12 +293,15 @@ def _match_target(
     if not goal:
         return NoMatch()
 
+    stripped = _strip_action_prefix(goal)
     primary = [
         entry
         for entry in registry_entries
-        if _normalize(entry.compatibility.biological_stage or "") == goal
+        if _normalize(entry.compatibility.biological_stage or "") in (goal, stripped)
     ]
-    candidates = primary or [entry for entry in registry_entries if _normalize(entry.name) == goal]
+    candidates = primary or [
+        entry for entry in registry_entries if _normalize(entry.name) in (goal, stripped)
+    ]
     if not candidates:
         return NoMatch()
 
@@ -315,7 +329,7 @@ def _coerce_resource_spec(value: Mapping[str, Any] | ResourceSpec | None) -> Res
     if isinstance(value, ResourceSpec):
         return value
 
-    allowed_fields = {"cpu", "memory", "gpu", "queue", "account", "walltime", "execution_class", "module_loads", "notes"}
+    allowed_fields = {"cpu", "memory", "gpu", "partition", "account", "walltime", "execution_class", "module_loads", "notes"}
     kwargs: dict[str, Any] = {}
     for key in allowed_fields:
         if key not in value or value[key] in (None, ""):
@@ -392,7 +406,7 @@ def _merge_resource_specs(base: ResourceSpec | None, override: ResourceSpec | No
         cpu=override.cpu or base.cpu,
         memory=override.memory or base.memory,
         gpu=override.gpu or base.gpu,
-        queue=override.queue or base.queue,
+        partition=override.partition or base.partition,
         account=override.account or base.account,
         walltime=override.walltime or base.walltime,
         execution_class=override.execution_class or base.execution_class,
@@ -1353,6 +1367,12 @@ def _typed_plan_from_goal(
     merged_runtime_bindings = dict(goal.runtime_bindings)
     merged_runtime_bindings.update(scalar_inputs or {})
     merged_runtime_bindings.update(runtime_bindings or {})
+    caller_images = {
+        **_coerce_string_mapping(bundle_overrides.get("runtime_images") if bundle_overrides else None),
+        **_coerce_string_mapping(runtime_images),
+    }
+    for key, value in caller_images.items():
+        merged_runtime_bindings.setdefault(key, value)
     goal = replace(
         goal,
         runtime_bindings=merged_runtime_bindings,

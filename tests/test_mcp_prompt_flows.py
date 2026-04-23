@@ -345,7 +345,7 @@ class SlurmMcpPromptFlowTests(TestCase):
                     resource_request={
                         "cpu": 8,
                         "memory": "32Gi",
-                        "queue": "caslake",
+                        "partition": "caslake",
                         "account": "rcc-staff",
                         "walltime": "02:00:00",
                     },
@@ -431,7 +431,7 @@ class SlurmMcpPromptFlowTests(TestCase):
                     resource_request={
                         "cpu": 8,
                         "memory": "32Gi",
-                        "queue": "caslake",
+                        "partition": "caslake",
                         "account": "rcc-staff",
                         "walltime": "02:00:00",
                     },
@@ -524,7 +524,7 @@ class SlurmMcpPromptFlowTests(TestCase):
                     resource_request={
                         "cpu": 8,
                         "memory": "32Gi",
-                        "queue": "caslake",
+                        "partition": "caslake",
                         "account": "rcc-staff",
                         "walltime": "02:00:00",
                     },
@@ -592,7 +592,7 @@ class SlurmMcpPromptFlowTests(TestCase):
                     resource_request={
                         "cpu": 4,
                         "memory": "16Gi",
-                        "queue": "caslake",
+                        "partition": "caslake",
                         "account": "rcc-staff",
                         "walltime": "01:00:00",
                     },
@@ -641,7 +641,7 @@ class SlurmMcpPromptFlowTests(TestCase):
                     resource_request={
                         "cpu": 8,
                         "memory": "32Gi",
-                        "queue": "caslake",
+                        "partition": "caslake",
                         "account": "rcc-staff",
                         "walltime": "02:00:00",
                     },
@@ -703,7 +703,7 @@ class SlurmMcpPromptFlowTests(TestCase):
                     resource_request={
                         "cpu": 8,
                         "memory": "32Gi",
-                        "queue": "caslake",
+                        "partition": "caslake",
                         "account": "rcc-staff",
                         "walltime": "02:00:00",
                     },

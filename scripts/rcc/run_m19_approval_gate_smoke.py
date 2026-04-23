@@ -75,7 +75,7 @@ def main() -> int:
     resource_request = {
         "cpu": os.environ.get("FLYTETEST_SLURM_CPU", "2"),
         "memory": os.environ.get("FLYTETEST_SLURM_MEMORY", "8Gi"),
-        "queue": os.environ.get("FLYTETEST_SLURM_QUEUE", "caslake"),
+        "partition": os.environ.get("FLYTETEST_SLURM_QUEUE", "caslake"),
         "account": os.environ.get("FLYTETEST_SLURM_ACCOUNT", "rcc-staff"),
         "walltime": os.environ.get("FLYTETEST_SLURM_WALLTIME", "00:15:00"),
         "notes": (f"job_prefix={os.environ.get('FLYTETEST_SLURM_JOB_PREFIX', 'm19-approval')}",),
