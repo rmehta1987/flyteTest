@@ -36,15 +36,15 @@ Merge into `main` after all steps are complete and verification gates pass.
 
 | # | Step | Prompt | Status |
 |---|------|--------|--------|
-| 02 | Cluster prompt doc skeleton + sanity + single-task happy path | `prompts/step_02_cluster_prompt_sanity_and_single_task.md` | Not started |
-| 03 | Workflow happy-path scenarios | `prompts/step_03_cluster_prompt_workflow_scenarios.md` | Not started |
-| 04 | Cancel, retry, escalation scenarios | `prompts/step_04_cluster_prompt_lifecycle_scenarios.md` | Not started |
+| 02 | Cluster prompt doc skeleton + sanity + single-task happy path | `prompts/step_02_cluster_prompt_sanity_and_single_task.md` | Complete |
+| 03 | Workflow happy-path scenarios | `prompts/step_03_cluster_prompt_workflow_scenarios.md` | Complete |
+| 04 | Cancel, retry, escalation scenarios | `prompts/step_04_cluster_prompt_lifecycle_scenarios.md` | Complete |
 
 ### Full Pipeline Refresh
 
 | # | Step | Prompt | Status |
 |---|------|--------|--------|
-| 05 | Add Variant Calling Pipeline section to `docs/mcp_full_pipeline_prompt_tests.md` | `prompts/step_05_full_pipeline_refresh.md` | Not started |
+| 05 | Add Variant Calling Pipeline section to `docs/mcp_full_pipeline_prompt_tests.md` | `prompts/step_05_full_pipeline_refresh.md` | Complete |
 
 ### Closure
 
