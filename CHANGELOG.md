@@ -32,6 +32,12 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone B Step 05 — mark_duplicates task (2026-04-23)
+- [x] 2026-04-23 added `mark_duplicates` to `src/flytetest/tasks/variant_calling.py`.
+- [x] 2026-04-23 added `mark_duplicates` registry entry (stage_order 11).
+- [x] 2026-04-23 extended `MANIFEST_OUTPUT_KEYS` with `"dedup_bam"`, `"duplicate_metrics"`.
+- [x] 2026-04-23 added 4 tests (registry shape, cmd shape, missing-file error, manifest); all passing.
+
 ### GATK Milestone B Step 04 — sort_sam task (2026-04-23)
 - [x] 2026-04-23 added `sort_sam` to `src/flytetest/tasks/variant_calling.py`.
 - [x] 2026-04-23 added `sort_sam` registry entry (stage_order 10).

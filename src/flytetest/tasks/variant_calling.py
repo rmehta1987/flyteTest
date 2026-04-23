@@ -32,6 +32,8 @@ MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
     "bwa_index_prefix",
     "aligned_bam",
     "sorted_bam",
+    "dedup_bam",
+    "duplicate_metrics",
 )
 
 
@@ -530,6 +532,56 @@ def sort_sam(
         outputs={
             "sorted_bam": str(out_bam),
             "sorted_bam_index": str(out_bai) if out_bai.exists() else "",
+        },
+    )
+    _write_json(out_dir / "run_manifest.json", manifest)
+    return manifest
+
+
+def mark_duplicates(
+    bam_path: str,
+    sample_id: str,
+    results_dir: str,
+    sif_path: str = "",
+) -> dict:
+    """Mark PCR and optical duplicate reads using GATK MarkDuplicates."""
+    in_bam = require_path(Path(bam_path), "Coordinate-sorted BAM for MarkDuplicates")
+    out_dir = Path(results_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    out_bam = out_dir / f"{sample_id}_marked_duplicates.bam"
+    metrics = out_dir / f"{sample_id}_duplicate_metrics.txt"
+
+    cmd = [
+        "gatk", "MarkDuplicates",
+        "-I", str(in_bam),
+        "-O", str(out_bam),
+        "-M", str(metrics),
+        "--CREATE_INDEX", "true",
+    ]
+    bind_paths = [in_bam.parent, out_dir]
+    run_tool(cmd, sif_path or "data/images/gatk4.sif", bind_paths)
+
+    require_path(out_bam, "GATK MarkDuplicates output BAM")
+    require_path(metrics, "GATK MarkDuplicates metrics file")
+
+    out_bai = out_bam.with_suffix(".bai")
+    if not out_bai.exists():
+        alt_bai = Path(str(out_bam) + ".bai")
+        if alt_bai.exists():
+            out_bai = alt_bai
+
+    manifest = build_manifest_envelope(
+        stage="mark_duplicates",
+        assumptions=[
+            "Input BAM is coordinate-sorted (sort_sam must have run first).",
+            "--CREATE_INDEX true writes the BAI alongside the output BAM.",
+        ],
+        inputs={"bam_path": str(in_bam), "sample_id": sample_id},
+        outputs={
+            "dedup_bam": str(out_bam),
+            "duplicate_metrics": str(metrics),
+            "dedup_bam_index": str(out_bai) if out_bai.exists() else "",
         },
     )
     _write_json(out_dir / "run_manifest.json", manifest)

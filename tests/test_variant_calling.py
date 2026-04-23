@@ -1222,3 +1222,122 @@ class SortSamManifestTests(TestCase):
         self.assertEqual(result["stage"], "sort_sam")
         self.assertIn("sorted_bam", result["outputs"])
         self.assertTrue(result["outputs"]["sorted_bam"].endswith("s1_sorted.bam"))
+
+
+class MarkDuplicatesRegistryTests(TestCase):
+    """Guard the mark_duplicates registry entry shape."""
+
+    def test_mark_duplicates_registry_entry_shape(self) -> None:
+        """Entry exists at stage_order 11 with two output fields."""
+        from flytetest.registry import get_entry
+
+        entry = get_entry("mark_duplicates")
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry.category, "task")
+        self.assertEqual(entry.compatibility.pipeline_family, "variant_calling")
+        self.assertEqual(entry.compatibility.pipeline_stage_order, 11)
+
+        output_names = tuple(f.name for f in entry.outputs)
+        self.assertIn("dedup_bam", output_names)
+        self.assertIn("duplicate_metrics", output_names)
+        self.assertIn("dedup_bam", MANIFEST_OUTPUT_KEYS)
+        self.assertIn("duplicate_metrics", MANIFEST_OUTPUT_KEYS)
+
+
+class MarkDuplicatesInvocationTests(TestCase):
+    """Verify mark_duplicates builds the correct GATK MarkDuplicates command."""
+
+    def test_mark_duplicates_command_shape(self) -> None:
+        """run_tool called with MarkDuplicates, -I, -O, -M, --CREATE_INDEX true."""
+        from flytetest.tasks.variant_calling import mark_duplicates
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            in_bam = tmp_path / "s1_sorted.bam"
+            in_bam.write_text("BAM")
+            results_dir = tmp_path / "dedup_out"
+            results_dir.mkdir()
+
+            captured: list[list[str]] = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                captured.append(cmd)
+                o_idx = cmd.index("-O")
+                Path(cmd[o_idx + 1]).write_text("BAM")
+                m_idx = cmd.index("-M")
+                Path(cmd[m_idx + 1]).write_text("metrics")
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                mark_duplicates(
+                    bam_path=str(in_bam),
+                    sample_id="s1",
+                    results_dir=str(results_dir),
+                )
+
+        cmd = captured[0]
+        self.assertIn("MarkDuplicates", cmd)
+        self.assertIn("-I", cmd)
+        self.assertIn("-O", cmd)
+        self.assertIn("-M", cmd)
+        self.assertIn("--CREATE_INDEX", cmd)
+        self.assertIn("true", cmd)
+        o_idx = cmd.index("-O")
+        self.assertIn("_marked_duplicates", cmd[o_idx + 1])
+        m_idx = cmd.index("-M")
+        self.assertIn("_duplicate_metrics", cmd[m_idx + 1])
+
+    def test_mark_duplicates_raises_on_missing_bam(self) -> None:
+        """FileNotFoundError raised when output BAM is absent."""
+        from flytetest.tasks.variant_calling import mark_duplicates
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            in_bam = tmp_path / "s1_sorted.bam"
+            in_bam.write_text("BAM")
+            results_dir = tmp_path / "dedup_out"
+            results_dir.mkdir()
+
+            def fake_run_tool_no_output(cmd, sif, bind_paths):
+                pass
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool_no_output):
+                with self.assertRaises(FileNotFoundError):
+                    mark_duplicates(
+                        bam_path=str(in_bam),
+                        sample_id="s1",
+                        results_dir=str(results_dir),
+                    )
+
+
+class MarkDuplicatesManifestTests(TestCase):
+    """Verify mark_duplicates emits a well-formed run_manifest.json."""
+
+    def test_mark_duplicates_emits_both_manifest_keys(self) -> None:
+        """Manifest contains both dedup_bam and duplicate_metrics."""
+        from flytetest.tasks.variant_calling import mark_duplicates
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            in_bam = tmp_path / "s1_sorted.bam"
+            in_bam.write_text("BAM")
+            results_dir = tmp_path / "dedup_out"
+            results_dir.mkdir()
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                o_idx = cmd.index("-O")
+                Path(cmd[o_idx + 1]).write_text("BAM")
+                m_idx = cmd.index("-M")
+                Path(cmd[m_idx + 1]).write_text("metrics")
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                result = mark_duplicates(
+                    bam_path=str(in_bam),
+                    sample_id="s1",
+                    results_dir=str(results_dir),
+                )
+
+        self.assertEqual(result["stage"], "mark_duplicates")
+        self.assertIn("dedup_bam", result["outputs"])
+        self.assertIn("duplicate_metrics", result["outputs"])
+        self.assertIn("_marked_duplicates", result["outputs"]["dedup_bam"])
+        self.assertIn("_duplicate_metrics", result["outputs"]["duplicate_metrics"])

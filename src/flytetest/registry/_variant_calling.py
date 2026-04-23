@@ -373,4 +373,41 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             pipeline_stage_order=10,
         ),
     ),
+    RegistryEntry(
+        name="mark_duplicates",
+        category="task",
+        description="Mark PCR and optical duplicate reads using GATK MarkDuplicates.",
+        inputs=(
+            InterfaceField("bam_path", "str", "Absolute path to coordinate-sorted BAM."),
+            InterfaceField("sample_id", "str", "Sample identifier."),
+            InterfaceField("results_dir", "str", "Output directory."),
+            InterfaceField("sif_path", "str", "Optional Apptainer/Singularity image path."),
+        ),
+        outputs=(
+            InterfaceField("dedup_bam", "str", "Path to duplicate-marked BAM."),
+            InterfaceField("duplicate_metrics", "str", "Path to duplicate metrics file."),
+        ),
+        tags=("variant_calling", "gatk4", "preprocessing"),
+        compatibility=RegistryCompatibilityMetadata(
+            biological_stage="GATK4 duplicate marking",
+            accepted_planner_types=("AlignmentSet",),
+            produced_planner_types=("AlignmentSet",),
+            reusable_as_reference=False,
+            execution_defaults={
+                "profile": "local",
+                "result_manifest": "run_manifest.json",
+                "resources": {"cpu": "4", "memory": "16Gi", "execution_class": "local"},
+                "slurm_resource_hints": {"cpu": "8", "memory": "32Gi", "walltime": "04:00:00"},
+                "runtime_images": {"sif_path": "data/images/gatk4.sif"},
+                "module_loads": ("python/3.11.9", "apptainer/1.4.1"),
+            },
+            supported_execution_profiles=("local", "slurm"),
+            synthesis_eligible=True,
+            composition_constraints=(
+                "Input BAM must be coordinate-sorted (sort_sam must have run first).",
+            ),
+            pipeline_family="variant_calling",
+            pipeline_stage_order=11,
+        ),
+    ),
 )
