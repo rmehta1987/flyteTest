@@ -32,6 +32,12 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone B Step 02 — bwa_mem2_index task (2026-04-23)
+- [x] 2026-04-23 added `bwa_mem2_index` to `src/flytetest/tasks/variant_calling.py`.
+- [x] 2026-04-23 added `bwa_mem2_index` registry entry (stage_order 8).
+- [x] 2026-04-23 extended `MANIFEST_OUTPUT_KEYS` with `"bwa_index_prefix"`.
+- [x] 2026-04-23 added 4 tests (registry shape, cmd shape, missing-file error, manifest); all passing.
+
 ### GATK Milestone B Step 01 — ReadPair planner type (2026-04-23)
 - [x] 2026-04-23 added `ReadPair` dataclass to `src/flytetest/planner_types.py`.
 - [x] 2026-04-23 added paired and single-end round-trip tests to `tests/test_planner_types.py`.

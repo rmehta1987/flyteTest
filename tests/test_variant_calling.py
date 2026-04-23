@@ -848,3 +848,110 @@ class JointCallGvcfsManifestTests(TestCase):
         self.assertEqual(len(manifest["inputs"]["gvcfs"]), 2)
         self.assertEqual(manifest["inputs"]["intervals"], ["chr20"])
         self.assertEqual(manifest["inputs"]["sample_ids"], ["s1", "s2"])
+
+
+class BwaMem2IndexRegistryTests(TestCase):
+    """Guard the bwa_mem2_index registry entry shape."""
+
+    def test_bwa_mem2_index_registry_entry_shape(self) -> None:
+        """Entry exists at stage_order 8 in the variant_calling family."""
+        from flytetest.registry import get_entry
+
+        entry = get_entry("bwa_mem2_index")
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry.category, "task")
+        self.assertIsNotNone(entry.compatibility)
+        self.assertEqual(entry.compatibility.pipeline_family, "variant_calling")
+        self.assertEqual(entry.compatibility.pipeline_stage_order, 8)
+
+        output_names = tuple(f.name for f in entry.outputs)
+        self.assertIn("bwa_index_prefix", output_names)
+        self.assertIn("bwa_index_prefix", MANIFEST_OUTPUT_KEYS)
+
+
+class BwaMem2IndexInvocationTests(TestCase):
+    """Verify that bwa_mem2_index builds the correct bwa-mem2 command."""
+
+    def test_bwa_mem2_index_command_shape(self) -> None:
+        """run_tool is called with bwa-mem2 index -p <prefix> <ref_path>."""
+        from flytetest.tasks.variant_calling import bwa_mem2_index
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            ref_fasta = tmp_path / "genome.fa"
+            ref_fasta.write_text(">chr1\nACGT\n")
+            results_dir = tmp_path / "index_out"
+            results_dir.mkdir()
+
+            captured: list[list[str]] = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                captured.append(cmd)
+                prefix = cmd[cmd.index("-p") + 1]
+                for suffix in (".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac"):
+                    Path(prefix + suffix).write_text("x")
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                bwa_mem2_index(
+                    ref_path=str(ref_fasta),
+                    results_dir=str(results_dir),
+                    sif_path="data/images/gatk4.sif",
+                )
+
+        self.assertEqual(len(captured), 1)
+        cmd = captured[0]
+        self.assertIn("bwa-mem2", cmd)
+        self.assertIn("index", cmd)
+        self.assertIn("-p", cmd)
+        self.assertIn(str(ref_fasta), cmd)
+
+    def test_bwa_mem2_index_raises_on_missing_index_files(self) -> None:
+        """FileNotFoundError is raised if any of the five index files are absent."""
+        from flytetest.tasks.variant_calling import bwa_mem2_index
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            ref_fasta = tmp_path / "genome.fa"
+            ref_fasta.write_text(">chr1\nACGT\n")
+            results_dir = tmp_path / "index_out"
+            results_dir.mkdir()
+
+            def fake_run_tool_no_files(cmd, sif, bind_paths):
+                pass  # produce no index files
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool_no_files):
+                with self.assertRaises(FileNotFoundError):
+                    bwa_mem2_index(
+                        ref_path=str(ref_fasta),
+                        results_dir=str(results_dir),
+                    )
+
+
+class BwaMem2IndexManifestTests(TestCase):
+    """Verify that bwa_mem2_index emits a well-formed run_manifest.json."""
+
+    def test_bwa_mem2_index_emits_manifest(self) -> None:
+        """run_manifest.json contains bwa_index_prefix in outputs."""
+        from flytetest.tasks.variant_calling import bwa_mem2_index
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            ref_fasta = tmp_path / "genome.fa"
+            ref_fasta.write_text(">chr1\nACGT\n")
+            results_dir = tmp_path / "index_out"
+            results_dir.mkdir()
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                prefix = cmd[cmd.index("-p") + 1]
+                for suffix in (".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac"):
+                    Path(prefix + suffix).write_text("x")
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                result = bwa_mem2_index(
+                    ref_path=str(ref_fasta),
+                    results_dir=str(results_dir),
+                )
+
+        self.assertEqual(result["stage"], "bwa_mem2_index")
+        self.assertIn("bwa_index_prefix", result["outputs"])
+        self.assertTrue(result["outputs"]["bwa_index_prefix"].endswith("genome"))

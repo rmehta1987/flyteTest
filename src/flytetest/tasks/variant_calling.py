@@ -27,6 +27,7 @@ MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
     "gvcf",
     "combined_gvcf",
     "joint_vcf",
+    "bwa_index_prefix",
 )
 
 
@@ -389,3 +390,39 @@ def combine_gvcfs(
     )
     _write_json(out_dir / "run_manifest.json", manifest)
     return File(path=str(out_gvcf))
+
+
+def bwa_mem2_index(
+    ref_path: str,
+    results_dir: str,
+    sif_path: str = "",
+) -> dict:
+    """Index a reference FASTA for BWA-MEM2 alignment."""
+    ref = require_path(Path(ref_path), "Reference genome FASTA")
+    out_dir = Path(results_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    index_prefix = out_dir / ref.stem
+
+    cmd = ["bwa-mem2", "index", "-p", str(index_prefix), str(ref)]
+    bind_paths = [ref.parent, out_dir]
+    run_tool(cmd, sif_path or "data/images/gatk4.sif", bind_paths)
+
+    expected_suffixes = (".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac")
+    for suffix in expected_suffixes:
+        index_file = Path(str(index_prefix) + suffix)
+        if not index_file.exists():
+            raise FileNotFoundError(
+                f"bwa-mem2 index missing expected file: {index_file}"
+            )
+
+    manifest = build_manifest_envelope(
+        stage="bwa_mem2_index",
+        assumptions=[
+            "Reference FASTA is readable and has no conflicting index files at the output prefix.",
+        ],
+        inputs={"ref_path": str(ref), "results_dir": str(out_dir)},
+        outputs={"bwa_index_prefix": str(index_prefix)},
+    )
+    _write_json(out_dir / "run_manifest.json", manifest)
+    return manifest

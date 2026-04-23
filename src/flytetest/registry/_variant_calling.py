@@ -263,4 +263,39 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             pipeline_stage_order=7,
         ),
     ),
+    RegistryEntry(
+        name="bwa_mem2_index",
+        category="task",
+        description="Index a reference FASTA for BWA-MEM2 alignment.",
+        inputs=(
+            InterfaceField("ref_path", "str", "Absolute path to reference FASTA."),
+            InterfaceField("results_dir", "str", "Directory for index output."),
+            InterfaceField("sif_path", "str", "Optional Apptainer/Singularity image path."),
+        ),
+        outputs=(
+            InterfaceField("bwa_index_prefix", "str", "Path prefix for BWA-MEM2 index files."),
+        ),
+        tags=("variant_calling", "gatk4", "alignment", "reference_prep"),
+        compatibility=RegistryCompatibilityMetadata(
+            biological_stage="BWA-MEM2 reference indexing",
+            accepted_planner_types=("ReferenceGenome",),
+            produced_planner_types=("ReferenceGenome",),
+            reusable_as_reference=True,
+            execution_defaults={
+                "profile": "local",
+                "result_manifest": "run_manifest.json",
+                "resources": {"cpu": "4", "memory": "16Gi", "execution_class": "local"},
+                "slurm_resource_hints": {"cpu": "8", "memory": "32Gi", "walltime": "02:00:00"},
+                "runtime_images": {"sif_path": "data/images/gatk4.sif"},
+                "module_loads": ("python/3.11.9", "apptainer/1.4.1"),
+            },
+            supported_execution_profiles=("local", "slurm"),
+            synthesis_eligible=True,
+            composition_constraints=(
+                "Requires a reference genome FASTA; output prefix used by bwa_mem2_mem.",
+            ),
+            pipeline_family="variant_calling",
+            pipeline_stage_order=8,
+        ),
+    ),
 )
