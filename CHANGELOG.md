@@ -32,6 +32,20 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone B — Complete (2026-04-23)
+
+Four preprocessing tasks and three end-to-end workflow compositions.
+Full pipeline: raw reads → joint-called VCF.
+
+- [x] 2026-04-23 4 preprocessing tasks: bwa_mem2_index, bwa_mem2_mem, sort_sam, mark_duplicates.
+- [x] 2026-04-23 3 workflows: prepare_reference, preprocess_sample, germline_short_variant_discovery.
+- [x] 2026-04-23 ReadPair planner type.
+- [x] 2026-04-23 Fixture bundle `variant_calling_germline_minimal` added to bundles.py.
+- [x] 2026-04-23 scripts/rcc/pull_gatk_image.sh added.
+- [x] 2026-04-23 AGENTS.md, DESIGN.md §5.6, docs/tool_refs/gatk4.md updated.
+- [x] 2026-04-23 Full pytest suite green (733 passed, 1 skipped, 45 subtests).
+- Deferred: merge_bam_alignment (uBAM path), VQSR, Milestone C cluster validation.
+
 ### GATK Milestone B Step 08 — germline_short_variant_discovery workflow (2026-04-23)
 - [x] 2026-04-23 added `germline_short_variant_discovery` to workflow module (synchronous for-loop).
 - [x] 2026-04-23 added registry entry (category=workflow, stage_order 3).

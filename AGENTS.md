@@ -67,6 +67,7 @@ Tasks — `src/flytetest/tasks/`
 
 Workflows — `src/flytetest/workflows/`
 - One file per workflow entrypoint; composes tasks into biologically ordered stages.
+- `variant_calling.py` — GATK4 germline variant calling workflows (prepare_reference, preprocess_sample, germline_short_variant_discovery)
 
 Types — `src/flytetest/planner_types.py`, `src/flytetest/types/`
 - Typed planner dataclasses (`ReferenceGenome`, `AnnotationEvidenceSet`, etc.)

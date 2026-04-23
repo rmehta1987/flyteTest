@@ -53,7 +53,7 @@ Merge into `main` after all steps are complete and verification gates pass.
 
 | # | Step | Prompt | Status |
 |---|------|--------|--------|
-| 09 | Fixture bundle + container script + agent-context sweep | `prompts/step_09_closure.md` | Not started |
+| 09 | Fixture bundle + container script + agent-context sweep | `prompts/step_09_closure.md` | Complete |
 
 ## Verification Gates
 

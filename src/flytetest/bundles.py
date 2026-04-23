@@ -123,6 +123,55 @@ BUNDLES: dict[str, ResourceBundle] = {
             "Stage the BRAKER3 fixture set under data/braker3/ (reference FASTA and protein FASTA) — see scripts/rcc/README.md for expected layout",
         ),
     ),
+    "variant_calling_germline_minimal": ResourceBundle(
+        name="variant_calling_germline_minimal",
+        description=(
+            "Minimal germline variant calling demo: chr20 slice of NA12878 "
+            "with reference, known-sites VCFs, and paired reads. "
+            "Documentation-only — no fixture data is stored in the repo."
+        ),
+        pipeline_family="variant_calling",
+        bindings={
+            "ReferenceGenome": {"fasta_path": "data/references/hg38/chr20.fa"},
+            "ReadPair": {
+                "sample_id": "NA12878_chr20",
+                "r1_path": "data/reads/NA12878_chr20_R1.fastq.gz",
+                "r2_path": "data/reads/NA12878_chr20_R2.fastq.gz",
+            },
+            "KnownSites": {
+                "vcf_path": "data/references/hg38/dbsnp_138.hg38.vcf",
+                "resource_name": "dbsnp",
+            },
+        },
+        inputs={
+            "ref_path": "data/references/hg38/chr20.fa",
+            "known_sites": [
+                "data/references/hg38/dbsnp_138.hg38.vcf",
+                "data/references/hg38/Mills_and_1000G_gold_standard.indels.hg38.vcf",
+            ],
+            "r1_path": "data/reads/NA12878_chr20_R1.fastq.gz",
+            "r2_path": "data/reads/NA12878_chr20_R2.fastq.gz",
+            "results_dir": "results/germline_minimal/",
+            "intervals": ["chr20"],
+            "cohort_id": "NA12878_chr20",
+        },
+        runtime_images={"sif_path": "data/images/gatk4.sif"},
+        tool_databases={
+            "dbsnp": "data/references/hg38/dbsnp_138.hg38.vcf",
+            "mills": "data/references/hg38/Mills_and_1000G_gold_standard.indels.hg38.vcf",
+        },
+        applies_to=(
+            "prepare_reference",
+            "preprocess_sample",
+            "germline_short_variant_discovery",
+        ),
+        fetch_hints=(
+            "Pull the GATK4 SIF image: bash scripts/rcc/pull_gatk_image.sh",
+            "Stage chr20 reference FASTA under data/references/hg38/chr20.fa",
+            "Stage dbSNP and Mills VCFs under data/references/hg38/",
+            "Stage NA12878 chr20 FASTQ slices under data/reads/",
+        ),
+    ),
     "rnaseq_paired_demo": ResourceBundle(
         name="rnaseq_paired_demo",
         description=(

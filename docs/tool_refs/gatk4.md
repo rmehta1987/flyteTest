@@ -234,3 +234,102 @@ gatk GenotypeGVCFs -R <ref.fa> \
 - Empty `gvcfs` or empty `intervals` each raise `ValueError` before GATK runs.
 - Output is `<cohort_id>_genotyped.vcf`; GATK writes `.vcf.idx` alongside.
 - Resources: 8 CPU / 32 GiB local; Slurm hints 16 CPU / 64 GiB / 24:00:00.
+
+---
+
+## bwa_mem2_index
+
+**Tool:** BWA-MEM2
+
+**FLyteTest path:** `flytetest.tasks.variant_calling.bwa_mem2_index`
+
+**Command shape:**
+```
+bwa-mem2 index -p <results_dir>/<ref_stem> <ref.fa>
+```
+
+**Key argument rationale:**
+- `-p <prefix>` — writes all five index files (`.0123`, `.amb`, `.ann`, `.bwt.2bit.64`, `.pac`) under `results_dir` using the reference stem as prefix.
+
+**Stargazer citation:**
+`stargazer/src/stargazer/tasks/general/bwa_mem2.py` — `bwa_mem2_index`
+
+**Milestone B scope notes:**
+- All five index file extensions are verified post-run; `FileNotFoundError` if any is absent.
+- Plain function returning a `dict` manifest (not a Flyte task decorator).
+- Resources: 4 CPU / 16 GiB local; Slurm hints 8 CPU / 32 GiB / 02:00:00.
+
+---
+
+## bwa_mem2_mem
+
+**Tool:** BWA-MEM2 + samtools
+
+**FLyteTest path:** `flytetest.tasks.variant_calling.bwa_mem2_mem`
+
+**Command shape:**
+```
+bwa-mem2 mem -R '@RG\tID:<sample_id>\tSM:<sample_id>\tLB:lib\tPL:ILLUMINA' \
+  -t <threads> <ref.fa> <r1.fq.gz> [r2.fq.gz] \
+  | samtools view -bS -o <sample_id>_aligned.bam -
+```
+
+**Implementation note:** Shell pipeline via `subprocess.run(shell=True)`; wrapped in `apptainer exec` when `sif_path` is set. `run_tool` cannot be used for piped commands.
+
+**Stargazer citation:**
+`stargazer/src/stargazer/tasks/general/bwa_mem2.py` — `bwa_mem2_mem`
+
+**Milestone B scope notes:**
+- `r2_path=""` → single-end mode.
+- `RuntimeError` raised when subprocess exits non-zero.
+- Resources: 8 CPU / 32 GiB local; Slurm hints 16 CPU / 64 GiB / 08:00:00.
+
+---
+
+## sort_sam
+
+**Tool:** GATK4 SortSam
+
+**FLyteTest path:** `flytetest.tasks.variant_calling.sort_sam`
+
+**Command shape:**
+```
+gatk SortSam -I <aligned.bam> -O <sample_id>_sorted.bam \
+  --SORT_ORDER coordinate --CREATE_INDEX true
+```
+
+**Key argument rationale:**
+- `--CREATE_INDEX true` — GATK writes the BAI alongside the sorted BAM. FLyteTest checks both `.bai` and `.bam.bai` naming conventions.
+
+**Stargazer citation:**
+`stargazer/src/stargazer/tasks/gatk/sort_sam.py`
+
+**Milestone B scope notes:**
+- Consumes the unsorted BAM from `bwa_mem2_mem`.
+- Resources: 4 CPU / 16 GiB local; Slurm hints 8 CPU / 32 GiB / 04:00:00.
+
+---
+
+## mark_duplicates
+
+**Tool:** GATK4 MarkDuplicates
+
+**FLyteTest path:** `flytetest.tasks.variant_calling.mark_duplicates`
+
+**Command shape:**
+```
+gatk MarkDuplicates -I <sorted.bam> -O <sample_id>_marked_duplicates.bam \
+  -M <sample_id>_duplicate_metrics.txt --CREATE_INDEX true
+```
+
+**Key outputs:**
+- `dedup_bam` — duplicate-marked BAM; required input for `base_recalibrator`.
+- `duplicate_metrics` — per-sample duplicate rate; both appear in the manifest.
+
+**Stargazer citation:**
+`stargazer/src/stargazer/tasks/gatk/mark_duplicates.py`
+
+**Milestone B scope notes:**
+- Consumes the coordinate-sorted BAM from `sort_sam`.
+- Both output files are verified post-run; `FileNotFoundError` if either is absent.
+- Resources: 4 CPU / 16 GiB local; Slurm hints 8 CPU / 32 GiB / 04:00:00.

@@ -46,13 +46,19 @@ class TestListBundles:
             assert entry["pipeline_family"] == "annotation"
 
     def test_filter_unknown_family_returns_empty(self):
-        assert list_bundles(pipeline_family="variant_calling") == []
+        assert list_bundles(pipeline_family="no_such_family") == []
 
-    def test_filter_annotation_matches_all_seeds(self):
-        # All four seed bundles are annotation family; filtering should return the same count.
+    def test_filter_variant_calling_returns_only_variant_calling(self):
+        vc = list_bundles(pipeline_family="variant_calling")
+        assert len(vc) > 0
+        for entry in vc:
+            assert entry["pipeline_family"] == "variant_calling"
+
+    def test_filter_annotation_returns_subset_of_all_seeds(self):
+        # Annotation bundles are a subset — not all bundles, since variant_calling was added.
         all_results = list_bundles()
         annotation = list_bundles(pipeline_family="annotation")
-        assert len(annotation) == len(all_results)
+        assert 0 < len(annotation) < len(all_results)
 
 
 class TestLoadBundle:

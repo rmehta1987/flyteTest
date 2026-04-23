@@ -600,14 +600,27 @@ post-processing path they need.
 
 ### 5.6 Germline Variant Calling
 
-Germline variant calling workflows (Milestone A, `pipeline_family="variant_calling"`)
-accept a coordinate-sorted, duplicate-marked BAM and a reference genome and
-produce a joint-called VCF via the GATK4 best-practices path:
+Germline variant calling workflows (Milestone A + B, `pipeline_family="variant_calling"`)
+cover the full pipeline from raw paired-end FASTQ reads to a joint-called VCF.
+
+**Milestone A** (complete) — seven GATK4 tasks accepting a pre-aligned BAM:
 `BaseRecalibrator` → `ApplyBQSR` → `HaplotypeCaller` (per-sample GVCF) →
 `CombineGVCFs` (cohort merge) → `GenomicsDBImport` + `GenotypeGVCFs` (joint
-genotyping). Alignment and duplicate-marking are Milestone B scope; VQSR is
-deferred. All seven tasks live in `src/flytetest/tasks/variant_calling.py`; the
-registry entries live in `src/flytetest/registry/_variant_calling.py`.
+genotyping).
+
+**Milestone B** (complete) — four preprocessing tasks and three workflow compositions:
+- `bwa_mem2_index` — index reference FASTA for BWA-MEM2.
+- `bwa_mem2_mem` — align paired-end reads → unsorted BAM (shell pipeline).
+- `sort_sam` — coordinate-sort BAM via GATK SortSam.
+- `mark_duplicates` — mark PCR/optical duplicates via GATK MarkDuplicates.
+- `prepare_reference` workflow — CreateSequenceDictionary + IndexFeatureFile + bwa_mem2_index.
+- `preprocess_sample` workflow — align → sort → dedup → BQSR → recalibrated BAM.
+- `germline_short_variant_discovery` workflow — per-sample preprocess → HaplotypeCaller → CombineGVCFs → joint genotyping.
+- Fixture bundle `variant_calling_germline_minimal` added to `bundles.py`.
+
+Tasks live in `src/flytetest/tasks/variant_calling.py`; workflows in
+`src/flytetest/workflows/variant_calling.py`; registry entries in
+`src/flytetest/registry/_variant_calling.py`. VQSR and the uBAM path are deferred.
 
 ## 6. Prompting and MCP Interface
 

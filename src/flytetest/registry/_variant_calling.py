@@ -468,7 +468,7 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             biological_stage="GATK4 sample preprocessing",
             accepted_planner_types=("ReferenceGenome", "ReadPair", "KnownSites"),
             produced_planner_types=("AlignmentSet",),
-            reusable_as_reference=False,
+            reusable_as_reference=True,
             execution_defaults={
                 "profile": "local",
                 "result_manifest": "run_manifest.json",
@@ -510,7 +510,7 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             biological_stage="GATK4 germline short variant discovery",
             accepted_planner_types=("ReferenceGenome", "ReadPair", "KnownSites"),
             produced_planner_types=("VariantCallSet",),
-            reusable_as_reference=False,
+            reusable_as_reference=True,
             execution_defaults={
                 "profile": "local",
                 "result_manifest": "run_manifest.json",
