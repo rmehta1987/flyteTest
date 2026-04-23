@@ -451,3 +451,57 @@ Deliver:
 - expected submission artifacts
 - any assumptions that still require confirmation from NCBI docs
 ```
+
+## Germline Variant Calling
+
+Stage status:
+
+- Milestone A complete: all seven GATK4 tasks implemented, tested, and registered
+- BAM-in, VCF-out; alignment and duplicate-marking are Milestone B scope
+- VQSR is deferred
+
+Primary task family:
+
+- `variant_calling` (pipeline_family)
+
+Primary tasks:
+
+- `create_sequence_dictionary`
+- `index_feature_file`
+- `base_recalibrator`
+- `apply_bqsr`
+- `haplotype_caller`
+- `combine_gvcfs`
+- `joint_call_gvcfs`
+
+Tool ref:
+
+- [GATK4](./gatk4.md)
+
+Use this stage when you need to:
+
+- run BQSR recalibration on a coordinate-sorted, duplicate-marked BAM
+- produce per-sample GVCFs from recalibrated BAMs
+- merge per-sample GVCFs into a cohort-level combined GVCF
+- perform joint genotyping via GenomicsDBImport + GenotypeGVCFs
+
+Prompt starter:
+
+```text
+Use the germline variant calling stage ref in docs/tool_refs/stage_index.md.
+
+Goal:
+Run the GATK4 germline variant calling pipeline on <sample_id>.bam.
+
+Context:
+- coordinate-sorted, duplicate-marked BAM at <path>
+- reference FASTA at <ref.fa> (with .fai and .dict)
+- known-sites VCFs: <dbsnp.vcf>, <mills.vcf> (must be indexed)
+- cohort: <cohort_id>
+- intervals for joint calling: ["<chr>"]
+
+Deliver:
+- registry entries for the seven variant_calling tasks
+- expected output artifacts (BQSR table, recalibrated BAM, per-sample GVCF, cohort combined GVCF, joint-called VCF)
+- any pre-flight checks needed before BaseRecalibrator
+```

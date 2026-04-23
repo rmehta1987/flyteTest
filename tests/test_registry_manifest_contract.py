@@ -54,3 +54,33 @@ def test_every_declared_output_is_a_declared_manifest_key() -> None:
             f"{entry.name}: declared outputs {sorted(missing)} are not "
             f"listed in {manifest_module_name}.MANIFEST_OUTPUT_KEYS"
         )
+
+
+import pytest
+
+_VARIANT_CALLING_TASK_NAMES = [
+    "create_sequence_dictionary",
+    "index_feature_file",
+    "base_recalibrator",
+    "apply_bqsr",
+    "haplotype_caller",
+    "combine_gvcfs",
+    "joint_call_gvcfs",
+]
+
+
+@pytest.mark.parametrize("task_name", _VARIANT_CALLING_TASK_NAMES)
+def test_variant_calling_manifest_output_keys_align(task_name: str) -> None:
+    """Each variant_calling task's registry output names must be in MANIFEST_OUTPUT_KEYS."""
+    import importlib
+    from flytetest.registry import get_entry
+
+    entry = get_entry(task_name)
+    task_module = importlib.import_module("flytetest.tasks.variant_calling")
+    manifest_keys = set(getattr(task_module, "MANIFEST_OUTPUT_KEYS", ()))
+    declared = {field.name for field in entry.outputs}
+    missing = declared - manifest_keys
+    assert not missing, (
+        f"{task_name}: declared outputs {sorted(missing)} are not listed in "
+        f"flytetest.tasks.variant_calling.MANIFEST_OUTPUT_KEYS"
+    )

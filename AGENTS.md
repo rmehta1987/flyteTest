@@ -63,6 +63,7 @@ Core concepts
 
 Tasks — `src/flytetest/tasks/`
 - One file per tool family; each exports narrow, typed Flyte task functions.
+- `variant_calling.py` — GATK4 germline variant calling tasks (BaseRecalibrator, ApplyBQSR, HaplotypeCaller, CombineGVCFs, GenomicsDBImport+GenotypeGVCFs)
 
 Workflows — `src/flytetest/workflows/`
 - One file per workflow entrypoint; composes tasks into biologically ordered stages.

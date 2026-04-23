@@ -598,6 +598,17 @@ conversion, and optional `table2asn` submission preparation.
 These stages should remain composable so users can request only the part of the
 post-processing path they need.
 
+### 5.6 Germline Variant Calling
+
+Germline variant calling workflows (Milestone A, `pipeline_family="variant_calling"`)
+accept a coordinate-sorted, duplicate-marked BAM and a reference genome and
+produce a joint-called VCF via the GATK4 best-practices path:
+`BaseRecalibrator` → `ApplyBQSR` → `HaplotypeCaller` (per-sample GVCF) →
+`CombineGVCFs` (cohort merge) → `GenomicsDBImport` + `GenotypeGVCFs` (joint
+genotyping). Alignment and duplicate-marking are Milestone B scope; VQSR is
+deferred. All seven tasks live in `src/flytetest/tasks/variant_calling.py`; the
+registry entries live in `src/flytetest/registry/_variant_calling.py`.
+
 ## 6. Prompting and MCP Interface
 
 FLyteTest treats natural language as the primary user-facing entrypoint, but not
@@ -1171,7 +1182,7 @@ src/flytetest/
     _annotation.py       # BRAKER3 ab initio annotation family
     _consensus.py        # PASA/TransDecoder consensus family
     _evm.py              # EVM consensus preparation and execution family
-    _gatk.py             # GATK4 variant-calling family (catalog-only placeholder)
+    _variant_calling.py  # GATK4 germline variant-calling family (Milestone A)
     _postprocessing.py   # repeat filtering, QC, functional annotation, AGAT, table2asn
     _protein_evidence.py # Exonerate protein-evidence family
     _rnaseq.py           # RNA-seq QC and quantification family

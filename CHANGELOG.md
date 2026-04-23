@@ -32,6 +32,24 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone A — Complete (2026-04-22)
+
+All seven GATK4 germline variant calling tasks are implemented, tested, and
+registered. The full pipeline runs BAM-in → VCF-out:
+`create_sequence_dictionary` → `index_feature_file` → `base_recalibrator` →
+`apply_bqsr` → `haplotype_caller` → `combine_gvcfs` → `joint_call_gvcfs`.
+
+- [x] 2026-04-22 29 unit tests passing (`tests/test_variant_calling.py`).
+- [x] 2026-04-22 7 manifest-contract parametrized tests added to
+  `tests/test_registry_manifest_contract.py`; all align with `MANIFEST_OUTPUT_KEYS`.
+- [x] 2026-04-22 tool-reference doc created at `docs/tool_refs/gatk4.md`.
+- [x] 2026-04-22 `AGENTS.md` Tasks section updated with `variant_calling.py` note.
+- [x] 2026-04-22 `DESIGN.md` updated: `_variant_calling.py` replaces catalog-only
+  `_gatk.py` placeholder; §5.6 Germline Variant Calling added.
+- [x] 2026-04-22 `docs/tool_refs/stage_index.md` Germline Variant Calling section added.
+- [x] 2026-04-22 `docs/gatk_milestone_a/checklist.md` marked Complete.
+- Deferred: alignment/dedup (Milestone B), VQSR (deferred), workflow compositions.
+
 ### GATK Milestone A Step 09 — joint_call_gvcfs task + registry entry (2026-04-22)
 
 - [x] 2026-04-22 added `import tempfile` to `src/flytetest/tasks/variant_calling.py`.

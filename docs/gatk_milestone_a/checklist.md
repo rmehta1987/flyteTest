@@ -56,7 +56,7 @@ then closure (contract tests, tool-ref doc, agent-context refresh).
 
 | # | Step | Plan section | Prompt | Status |
 |---|------|--------------|--------|--------|
-| 10 | Manifest contract tests + tool-ref doc + agent-context sweep | §6.4 | `prompts/step_10_closure.md` | Not started |
+| 10 | Manifest contract tests + tool-ref doc + agent-context sweep | §6.4 | `prompts/step_10_closure.md` | Complete |
 
 ## Verification Gates
 
