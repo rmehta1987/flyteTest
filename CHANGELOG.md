@@ -32,6 +32,12 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone B Step 06 — prepare_reference workflow (2026-04-23)
+- [x] 2026-04-23 created `src/flytetest/workflows/variant_calling.py` with `prepare_reference` (plus `preprocess_sample` and `germline_short_variant_discovery` stubs for steps 07–08).
+- [x] 2026-04-23 added `prepare_reference` registry entry (category=workflow, stage_order 1).
+- [x] 2026-04-23 created `tests/test_variant_calling_workflows.py`.
+- [x] 2026-04-23 added 4 tests (registry shape, sub-task call order, per-VCF indexing, manifest); all passing.
+
 ### GATK Milestone B Step 05 — mark_duplicates task (2026-04-23)
 - [x] 2026-04-23 added `mark_duplicates` to `src/flytetest/tasks/variant_calling.py`.
 - [x] 2026-04-23 added `mark_duplicates` registry entry (stage_order 11).

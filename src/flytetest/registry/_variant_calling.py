@@ -410,4 +410,40 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             pipeline_stage_order=11,
         ),
     ),
+    RegistryEntry(
+        name="prepare_reference",
+        category="workflow",
+        description="Prepare a reference genome for GATK germline variant calling (dict + known-sites index + BWA-MEM2 index).",
+        inputs=(
+            InterfaceField("ref_path", "str", "Absolute path to reference FASTA."),
+            InterfaceField("known_sites", "list[str]", "List of known-sites VCF paths."),
+            InterfaceField("results_dir", "str", "Output directory."),
+            InterfaceField("sif_path", "str", "Optional Apptainer/Singularity image path."),
+        ),
+        outputs=(
+            InterfaceField("prepared_ref", "str", "Reference path (with all indices in results_dir)."),
+        ),
+        tags=("variant_calling", "gatk4", "reference_prep", "workflow"),
+        compatibility=RegistryCompatibilityMetadata(
+            biological_stage="GATK4 reference preparation",
+            accepted_planner_types=("ReferenceGenome", "KnownSites"),
+            produced_planner_types=("ReferenceGenome",),
+            reusable_as_reference=True,
+            execution_defaults={
+                "profile": "local",
+                "result_manifest": "run_manifest.json",
+                "resources": {"cpu": "4", "memory": "16Gi", "execution_class": "local"},
+                "slurm_resource_hints": {"cpu": "8", "memory": "32Gi", "walltime": "04:00:00"},
+                "runtime_images": {"sif_path": "data/images/gatk4.sif"},
+                "module_loads": ("python/3.11.9", "apptainer/1.4.1"),
+            },
+            supported_execution_profiles=("local", "slurm"),
+            synthesis_eligible=True,
+            composition_constraints=(
+                "Composes create_sequence_dictionary, index_feature_file (per VCF), and bwa_mem2_index.",
+            ),
+            pipeline_family="variant_calling",
+            pipeline_stage_order=1,
+        ),
+    ),
 )
