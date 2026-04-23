@@ -1,5 +1,7 @@
 # GATK4 Germline Variant Calling — Milestone D Checklist
 
+Milestone status: Complete
+
 Tracks Milestone D of the Phase 3 GATK port described in
 `docs/gatk_milestone_d/milestone_d_plan.md`.
 
@@ -26,26 +28,26 @@ Merge into `main` after all steps are complete and verification gates pass.
 
 | # | Step | Prompt | Status |
 |---|------|--------|--------|
-| 01 | `variant_recalibrator` task | `prompts/step_01_variant_recalibrator.md` | Not started |
-| 02 | `apply_vqsr` task | `prompts/step_02_apply_vqsr.md` | Not started |
+| 01 | `variant_recalibrator` task | `prompts/step_01_variant_recalibrator.md` | Complete |
+| 02 | `apply_vqsr` task | `prompts/step_02_apply_vqsr.md` | Complete |
 
 ### Workflow Composition
 
 | # | Step | Prompt | Status |
 |---|------|--------|--------|
-| 03 | `genotype_refinement` workflow | `prompts/step_03_genotype_refinement_workflow.md` | Not started |
+| 03 | `genotype_refinement` workflow | `prompts/step_03_genotype_refinement_workflow.md` | Complete |
 
 ### Fixture and Tooling
 
 | # | Step | Prompt | Status |
 |---|------|--------|--------|
-| 04 | Fixture bundle + download script | `prompts/step_04_fixture_and_download_script.md` | Not started |
+| 04 | Fixture bundle + download script | `prompts/step_04_fixture_and_download_script.md` | Complete |
 
 ### Closure
 
 | # | Step | Prompt | Status |
 |---|------|--------|--------|
-| 05 | Tool ref + agent-context sweep + CHANGELOG + submission prompt | `prompts/step_05_closure.md` | Not started |
+| 05 | Tool ref + agent-context sweep + CHANGELOG + submission prompt | `prompts/step_05_closure.md` | Complete |
 
 ## Verification Gates
 

@@ -1341,3 +1341,357 @@ class MarkDuplicatesManifestTests(TestCase):
         self.assertIn("duplicate_metrics", result["outputs"])
         self.assertIn("_marked_duplicates", result["outputs"]["dedup_bam"])
         self.assertIn("_duplicate_metrics", result["outputs"]["duplicate_metrics"])
+
+
+# ---------------------------------------------------------------------------
+# VariantRecalibrator tests (Milestone D Step 01)
+# ---------------------------------------------------------------------------
+
+_FAKE_SNP_FLAGS = [
+    {"resource_name": "hapmap", "known": "false", "training": "true",  "truth": "true",  "prior": "15"},
+    {"resource_name": "dbsnp",  "known": "true",  "training": "false", "truth": "false", "prior": "2"},
+]
+_FAKE_INDEL_FLAGS = [
+    {"resource_name": "mills", "known": "false", "training": "true",  "truth": "true",  "prior": "12"},
+    {"resource_name": "dbsnp", "known": "true",  "training": "false", "truth": "false", "prior": "2"},
+]
+
+
+class VariantRecalibratorRegistryTests(TestCase):
+    """Guard the variant_recalibrator registry entry shape."""
+
+    def test_variant_recalibrator_registry_entry_shape(self) -> None:
+        """Entry exists at stage_order 12 with recal_file and tranches_file outputs."""
+        from flytetest.registry import get_entry
+
+        entry = get_entry("variant_recalibrator")
+        self.assertEqual(entry.category, "task")
+        self.assertEqual(entry.compatibility.pipeline_stage_order, 12)
+        self.assertEqual(entry.compatibility.pipeline_family, "variant_calling")
+        output_names = [f.name for f in entry.outputs]
+        self.assertIn("recal_file", output_names)
+        self.assertIn("tranches_file", output_names)
+
+
+class VariantRecalibratorInvocationTests(TestCase):
+    """Verify variant_recalibrator builds the correct GATK command."""
+
+    def _run_vr(self, tmp_path, mode, resource_flags=None):
+        from flytetest.tasks.variant_calling import variant_recalibrator
+
+        ref_fa = tmp_path / "ref.fa"
+        vcf_file = tmp_path / "cohort.vcf.gz"
+        site1 = tmp_path / "hapmap.vcf.gz"
+        site2 = tmp_path / "dbsnp.vcf"
+        for p in (ref_fa, vcf_file, site1, site2):
+            p.write_text("stub")
+        results_dir = tmp_path / "vqsr_out"
+        results_dir.mkdir()
+
+        flags = resource_flags or _FAKE_SNP_FLAGS
+        sites = [str(site1), str(site2)]
+
+        captured: list[list[str]] = []
+
+        def fake_run_tool(cmd, sif, bind_paths):
+            captured.append(list(cmd))
+            # create expected output files so require_path doesn't raise
+            o_idx = cmd.index("-O")
+            Path(cmd[o_idx + 1]).write_text("recal")
+            t_idx = cmd.index("--tranches-file")
+            Path(cmd[t_idx + 1]).write_text("tranches")
+
+        with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+            result = variant_recalibrator(
+                ref_path=str(ref_fa),
+                vcf_path=str(vcf_file),
+                known_sites=sites,
+                known_sites_flags=flags,
+                mode=mode,
+                cohort_id="cohort1",
+                results_dir=str(results_dir),
+            )
+        return captured[0], result, results_dir
+
+    def test_variant_recalibrator_snp_runs(self) -> None:
+        """SNP mode completes and manifest has recal_file + tranches_file."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cmd, result, results_dir = self._run_vr(Path(tmp), "SNP")
+        self.assertEqual(result["stage"], "variant_recalibrator")
+        self.assertIn("recal_file", result["outputs"])
+        self.assertIn("tranches_file", result["outputs"])
+        self.assertTrue(result["outputs"]["recal_file"].endswith("_snp.recal"))
+        self.assertTrue(result["outputs"]["tranches_file"].endswith("_snp.tranches"))
+
+    def test_variant_recalibrator_indel_runs(self) -> None:
+        """INDEL mode completes and output filenames carry _indel suffix."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cmd, result, _ = self._run_vr(Path(tmp), "INDEL", _FAKE_INDEL_FLAGS)
+        self.assertTrue(result["outputs"]["recal_file"].endswith("_indel.recal"))
+        self.assertTrue(result["outputs"]["tranches_file"].endswith("_indel.tranches"))
+
+    def test_variant_recalibrator_invalid_mode(self) -> None:
+        """ValueError raised for unsupported mode."""
+        from flytetest.tasks.variant_calling import variant_recalibrator
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            ref_fa = tmp_path / "ref.fa"
+            vcf_file = tmp_path / "cohort.vcf.gz"
+            for p in (ref_fa, vcf_file):
+                p.write_text("stub")
+            with self.assertRaises(ValueError) as ctx:
+                variant_recalibrator(
+                    ref_path=str(ref_fa),
+                    vcf_path=str(vcf_file),
+                    known_sites=[str(vcf_file)],
+                    known_sites_flags=_FAKE_SNP_FLAGS[:1],
+                    mode="MIXED",
+                    cohort_id="c",
+                    results_dir=str(tmp_path),
+                )
+            self.assertIn("MIXED", str(ctx.exception))
+
+    def test_variant_recalibrator_resource_flags_snp(self) -> None:
+        """SNP mode includes MQ and MQRankSum annotations; -mode SNP in command."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cmd, _, _ = self._run_vr(Path(tmp), "SNP")
+        self.assertIn("-mode", cmd)
+        self.assertEqual(cmd[cmd.index("-mode") + 1], "SNP")
+        self.assertIn("-an", cmd)
+        # Collect all annotations after -an flags
+        annotations = [cmd[i + 1] for i, v in enumerate(cmd) if v == "-an"]
+        self.assertIn("MQ", annotations)
+        self.assertIn("MQRankSum", annotations)
+        self.assertIn("ReadPosRankSum", annotations)
+        # resource flag format: --resource:name,known=...,training=...,truth=...,prior=...
+        resource_flags = [v for v in cmd if v.startswith("--resource:")]
+        self.assertEqual(len(resource_flags), 2)
+        self.assertIn("hapmap", resource_flags[0])
+        self.assertIn("training=true", resource_flags[0])
+
+    def test_variant_recalibrator_resource_flags_indel(self) -> None:
+        """INDEL mode omits MQ and MQRankSum; -mode INDEL in command."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cmd, _, _ = self._run_vr(Path(tmp), "INDEL", _FAKE_INDEL_FLAGS)
+        self.assertEqual(cmd[cmd.index("-mode") + 1], "INDEL")
+        annotations = [cmd[i + 1] for i, v in enumerate(cmd) if v == "-an"]
+        self.assertNotIn("MQ", annotations)
+        self.assertNotIn("MQRankSum", annotations)
+        self.assertIn("QD", annotations)
+        self.assertIn("FS", annotations)
+
+
+class VariantRecalibratorManifestTests(TestCase):
+    """Verify variant_recalibrator emits a well-formed run_manifest.json."""
+
+    def test_variant_recalibrator_emits_manifest(self) -> None:
+        """run_manifest.json written to results_dir with recal_file + tranches_file keys."""
+        from flytetest.tasks.variant_calling import variant_recalibrator
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            ref_fa = tmp_path / "ref.fa"
+            vcf_file = tmp_path / "cohort.vcf.gz"
+            site = tmp_path / "hapmap.vcf.gz"
+            for p in (ref_fa, vcf_file, site):
+                p.write_text("stub")
+            results_dir = tmp_path / "vqsr_out"
+            results_dir.mkdir()
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                o_idx = cmd.index("-O")
+                Path(cmd[o_idx + 1]).write_text("recal")
+                t_idx = cmd.index("--tranches-file")
+                Path(cmd[t_idx + 1]).write_text("tranches")
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                variant_recalibrator(
+                    ref_path=str(ref_fa),
+                    vcf_path=str(vcf_file),
+                    known_sites=[str(site)],
+                    known_sites_flags=[_FAKE_SNP_FLAGS[0]],
+                    mode="SNP",
+                    cohort_id="cohort1",
+                    results_dir=str(results_dir),
+                )
+
+            manifest_path = results_dir / "run_manifest.json"
+            self.assertTrue(manifest_path.exists())
+            manifest = json.loads(manifest_path.read_text())
+            self.assertEqual(manifest["stage"], "variant_recalibrator")
+            self.assertIn("recal_file", manifest["outputs"])
+            self.assertIn("tranches_file", manifest["outputs"])
+
+
+# ---------------------------------------------------------------------------
+# ApplyVQSR tests (Milestone D Step 02)
+# ---------------------------------------------------------------------------
+
+class ApplyVQSRRegistryTests(TestCase):
+    """Guard the apply_vqsr registry entry shape."""
+
+    def test_apply_vqsr_registry_entry_shape(self) -> None:
+        """Entry exists at stage_order 13 with vqsr_vcf output."""
+        from flytetest.registry import get_entry
+
+        entry = get_entry("apply_vqsr")
+        self.assertEqual(entry.category, "task")
+        self.assertEqual(entry.compatibility.pipeline_stage_order, 13)
+        self.assertEqual(entry.compatibility.pipeline_family, "variant_calling")
+        output_names = [f.name for f in entry.outputs]
+        self.assertIn("vqsr_vcf", output_names)
+
+
+class ApplyVQSRInvocationTests(TestCase):
+    """Verify apply_vqsr builds the correct GATK ApplyVQSR command."""
+
+    def _run_av(self, tmp_path, mode, filter_level=0.0):
+        from flytetest.tasks.variant_calling import apply_vqsr
+
+        ref_fa = tmp_path / "ref.fa"
+        vcf_file = tmp_path / "cohort.vcf.gz"
+        recal = tmp_path / "cohort_snp.recal"
+        tranches = tmp_path / "cohort_snp.tranches"
+        for p in (ref_fa, vcf_file, recal, tranches):
+            p.write_text("stub")
+        results_dir = tmp_path / "vqsr_apply_out"
+        results_dir.mkdir()
+
+        captured: list[list[str]] = []
+
+        def fake_run_tool(cmd, sif, bind_paths):
+            captured.append(list(cmd))
+            o_idx = cmd.index("-O")
+            out = Path(cmd[o_idx + 1])
+            out.write_text("VCF")
+            Path(str(out) + ".tbi").write_text("TBI")
+
+        with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+            result = apply_vqsr(
+                ref_path=str(ref_fa),
+                vcf_path=str(vcf_file),
+                recal_file=str(recal),
+                tranches_file=str(tranches),
+                mode=mode,
+                cohort_id="cohort1",
+                results_dir=str(results_dir),
+                truth_sensitivity_filter_level=filter_level,
+            )
+        return captured[0], result, results_dir
+
+    def test_apply_vqsr_snp_runs(self) -> None:
+        """SNP mode completes; manifest contains vqsr_vcf ending in _vqsr_snp.vcf.gz."""
+        with tempfile.TemporaryDirectory() as tmp:
+            _, result, _ = self._run_av(Path(tmp), "SNP")
+        self.assertEqual(result["stage"], "apply_vqsr")
+        self.assertIn("vqsr_vcf", result["outputs"])
+        self.assertTrue(result["outputs"]["vqsr_vcf"].endswith("_vqsr_snp.vcf.gz"))
+
+    def test_apply_vqsr_indel_runs(self) -> None:
+        """INDEL mode output filename ends in _vqsr_indel.vcf.gz."""
+        with tempfile.TemporaryDirectory() as tmp:
+            _, result, _ = self._run_av(Path(tmp), "INDEL")
+        self.assertTrue(result["outputs"]["vqsr_vcf"].endswith("_vqsr_indel.vcf.gz"))
+
+    def test_apply_vqsr_default_filter_level_snp(self) -> None:
+        """filter_level=0.0 for SNP resolves to 99.5 in the command."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cmd, _, _ = self._run_av(Path(tmp), "SNP", filter_level=0.0)
+        idx = cmd.index("--truth-sensitivity-filter-level")
+        self.assertEqual(cmd[idx + 1], "99.5")
+
+    def test_apply_vqsr_default_filter_level_indel(self) -> None:
+        """filter_level=0.0 for INDEL resolves to 99.0 in the command."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cmd, _, _ = self._run_av(Path(tmp), "INDEL", filter_level=0.0)
+        idx = cmd.index("--truth-sensitivity-filter-level")
+        self.assertEqual(cmd[idx + 1], "99.0")
+
+    def test_apply_vqsr_custom_filter_level(self) -> None:
+        """Explicit filter_level overrides the default."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cmd, _, _ = self._run_av(Path(tmp), "SNP", filter_level=99.0)
+        idx = cmd.index("--truth-sensitivity-filter-level")
+        self.assertEqual(cmd[idx + 1], "99.0")
+
+    def test_apply_vqsr_invalid_mode(self) -> None:
+        """ValueError raised for mode != SNP|INDEL."""
+        from flytetest.tasks.variant_calling import apply_vqsr
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            for stub in ("ref.fa", "cohort.vcf.gz", "c.recal", "c.tranches"):
+                (tmp_path / stub).write_text("stub")
+            with self.assertRaises(ValueError) as ctx:
+                apply_vqsr(
+                    ref_path=str(tmp_path / "ref.fa"),
+                    vcf_path=str(tmp_path / "cohort.vcf.gz"),
+                    recal_file=str(tmp_path / "c.recal"),
+                    tranches_file=str(tmp_path / "c.tranches"),
+                    mode="BOTH",
+                    cohort_id="c",
+                    results_dir=str(tmp_path),
+                )
+            self.assertIn("BOTH", str(ctx.exception))
+
+    def test_apply_vqsr_missing_output_raises(self) -> None:
+        """FileNotFoundError raised when output VCF is absent after run."""
+        from flytetest.tasks.variant_calling import apply_vqsr
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            for stub in ("ref.fa", "cohort.vcf.gz", "c.recal", "c.tranches"):
+                (tmp_path / stub).write_text("stub")
+            results_dir = tmp_path / "out"
+            results_dir.mkdir()
+
+            with patch.object(variant_calling, "run_tool", return_value=None):
+                with self.assertRaises(FileNotFoundError):
+                    apply_vqsr(
+                        ref_path=str(tmp_path / "ref.fa"),
+                        vcf_path=str(tmp_path / "cohort.vcf.gz"),
+                        recal_file=str(tmp_path / "c.recal"),
+                        tranches_file=str(tmp_path / "c.tranches"),
+                        mode="SNP",
+                        cohort_id="cohort1",
+                        results_dir=str(results_dir),
+                    )
+
+
+class ApplyVQSRManifestTests(TestCase):
+    """Verify apply_vqsr emits a well-formed run_manifest.json."""
+
+    def test_apply_vqsr_emits_manifest(self) -> None:
+        """run_manifest.json written with vqsr_vcf key."""
+        from flytetest.tasks.variant_calling import apply_vqsr
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            for stub in ("ref.fa", "cohort.vcf.gz", "c.recal", "c.tranches"):
+                (tmp_path / stub).write_text("stub")
+            results_dir = tmp_path / "out"
+            results_dir.mkdir()
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                o_idx = cmd.index("-O")
+                out = Path(cmd[o_idx + 1])
+                out.write_text("VCF")
+                Path(str(out) + ".tbi").write_text("TBI")
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                apply_vqsr(
+                    ref_path=str(tmp_path / "ref.fa"),
+                    vcf_path=str(tmp_path / "cohort.vcf.gz"),
+                    recal_file=str(tmp_path / "c.recal"),
+                    tranches_file=str(tmp_path / "c.tranches"),
+                    mode="SNP",
+                    cohort_id="cohort1",
+                    results_dir=str(results_dir),
+                )
+
+            manifest = json.loads((results_dir / "run_manifest.json").read_text())
+            self.assertEqual(manifest["stage"], "apply_vqsr")
+            self.assertIn("vqsr_vcf", manifest["outputs"])
+            self.assertTrue(manifest["outputs"]["vqsr_vcf"].endswith("_vqsr_snp.vcf.gz"))
+            self.assertIn("vqsr_vcf_index", manifest["outputs"])

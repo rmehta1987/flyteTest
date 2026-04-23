@@ -32,6 +32,45 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone D — Complete (2026-04-23)
+
+Closes Milestone D of the Phase 3 GATK port (tracker:
+`docs/gatk_milestone_d/checklist.md`). Adds VQSR to the germline variant
+calling pipeline: two tasks (`variant_recalibrator`, `apply_vqsr`), a
+`genotype_refinement` workflow, the `variant_calling_vqsr_chr20` fixture
+bundle, and `scripts/rcc/download_vqsr_training_vcfs.sh`.
+
+- [x] 2026-04-23 variant_recalibrator task (stage 12) + 7 unit tests.
+- [x] 2026-04-23 apply_vqsr task (stage 13) + 9 unit tests.
+- [x] 2026-04-23 genotype_refinement workflow (stage 4) + 4 unit tests.
+- [x] 2026-04-23 variant_calling_vqsr_chr20 bundle + download script.
+- [x] 2026-04-23 docs/tool_refs/gatk4.md updated with variant_recalibrator + apply_vqsr sections.
+- [x] 2026-04-23 full pytest green; python -m compileall clean.
+- Deferred: merge_bam_alignment, interval-scoped HaplotypeCaller, CalculateGenotypePosteriors.
+
+### GATK Milestone D Step 04 — VQSR fixture bundle + download script (2026-04-23)
+- [x] 2026-04-23 added variant_calling_vqsr_chr20 bundle to src/flytetest/bundles.py.
+- [x] 2026-04-23 created scripts/rcc/download_vqsr_training_vcfs.sh (10 files: 5 VCFs + 5 indices from gs://gcp-public-data--broad-references/hg38/v0/).
+
+### GATK Milestone D Step 03 — genotype_refinement workflow (2026-04-23)
+- [x] 2026-04-23 added genotype_refinement workflow to src/flytetest/workflows/variant_calling.py.
+- [x] 2026-04-23 added genotype_refinement registry entry (workflow stage 4, reusable_as_reference=True).
+- [x] 2026-04-23 added 4 unit tests in GenotypeRefinementRegistryTests + WorkflowTests.
+- [x] 2026-04-23 extended workflows MANIFEST_OUTPUT_KEYS with refined_vcf.
+
+### GATK Milestone D Step 02 — apply_vqsr task (2026-04-23)
+- [x] 2026-04-23 added apply_vqsr to src/flytetest/tasks/variant_calling.py.
+- [x] 2026-04-23 added apply_vqsr registry entry (stage 13).
+- [x] 2026-04-23 added 9 unit tests (ApplyVQSRRegistryTests, InvocationTests, ManifestTests).
+- [x] 2026-04-23 added apply_vqsr to _VARIANT_CALLING_TASK_NAMES in contract test.
+
+### GATK Milestone D Step 01 — variant_recalibrator task (2026-04-23)
+- [x] 2026-04-23 added variant_recalibrator to src/flytetest/tasks/variant_calling.py.
+- [x] 2026-04-23 added variant_recalibrator registry entry (stage 12).
+- [x] 2026-04-23 added 7 unit tests (VariantRecalibratorRegistryTests, InvocationTests, ManifestTests).
+- [x] 2026-04-23 extended MANIFEST_OUTPUT_KEYS with recal_file, tranches_file, vqsr_vcf.
+- [x] 2026-04-23 added variant_recalibrator to _VARIANT_CALLING_TASK_NAMES in contract test.
+
 ### GATK Milestone C — Complete (2026-04-23)
 
 Closes Milestone C of the Phase 3 GATK port (tracker:

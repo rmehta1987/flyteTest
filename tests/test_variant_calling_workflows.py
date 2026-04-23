@@ -386,3 +386,160 @@ class GermlineShortVariantDiscoveryManifestTests(TestCase):
         self.assertEqual(result["stage"], "germline_short_variant_discovery")
         self.assertIn("genotyped_vcf", result["outputs"])
         self.assertEqual(result["outputs"]["genotyped_vcf"], "/tmp/cohort_genotyped.vcf")
+
+
+# ---------------------------------------------------------------------------
+# GenotypeRefinement workflow tests (Milestone D Step 03)
+# ---------------------------------------------------------------------------
+
+import json
+
+
+class GenotypeRefinementRegistryTests(TestCase):
+    """Guard the genotype_refinement registry entry shape."""
+
+    def test_genotype_refinement_registry_entry_shape(self) -> None:
+        """Entry exists at workflow stage_order 4 with refined_vcf output."""
+        from flytetest.registry import get_entry
+
+        entry = get_entry("genotype_refinement")
+        self.assertEqual(entry.category, "workflow")
+        self.assertEqual(entry.compatibility.pipeline_stage_order, 4)
+        self.assertEqual(entry.compatibility.pipeline_family, "variant_calling")
+        output_names = [f.name for f in entry.outputs]
+        self.assertIn("refined_vcf", output_names)
+
+
+class GenotypeRefinementWorkflowTests(TestCase):
+    """Verify genotype_refinement two-pass VQSR ordering and manifest."""
+
+    _SNP_RESOURCES = ["/data/hapmap.vcf.gz", "/data/dbsnp.vcf"]
+    _SNP_FLAGS = [
+        {"resource_name": "hapmap", "known": "false", "training": "true",  "truth": "true",  "prior": "15"},
+        {"resource_name": "dbsnp",  "known": "true",  "training": "false", "truth": "false", "prior": "2"},
+    ]
+    _INDEL_RESOURCES = ["/data/mills.vcf.gz", "/data/dbsnp.vcf"]
+    _INDEL_FLAGS = [
+        {"resource_name": "mills", "known": "false", "training": "true",  "truth": "true",  "prior": "12"},
+        {"resource_name": "dbsnp", "known": "true",  "training": "false", "truth": "false", "prior": "2"},
+    ]
+
+    def _mock_vr(self, mode):
+        """Return a fake variant_recalibrator manifest for the given mode."""
+        return {
+            "stage": "variant_recalibrator",
+            "outputs": {
+                "recal_file": f"/tmp/cohort_{mode.lower()}.recal",
+                "tranches_file": f"/tmp/cohort_{mode.lower()}.tranches",
+            },
+        }
+
+    def _mock_av(self, mode):
+        """Return a fake apply_vqsr manifest for the given mode."""
+        return {
+            "stage": "apply_vqsr",
+            "outputs": {
+                "vqsr_vcf": f"/tmp/cohort_vqsr_{mode.lower()}.vcf.gz",
+                "vqsr_vcf_index": f"/tmp/cohort_vqsr_{mode.lower()}.vcf.gz.tbi",
+            },
+        }
+
+    def test_genotype_refinement_runs(self) -> None:
+        """Workflow completes; manifest has refined_vcf key."""
+        from flytetest.workflows.variant_calling import genotype_refinement
+
+        with tempfile.TemporaryDirectory() as tmp:
+            results_dir = Path(tmp) / "gr_out"
+            results_dir.mkdir()
+
+            with (
+                patch.object(variant_calling_wf, "variant_recalibrator",
+                             side_effect=[self._mock_vr("SNP"), self._mock_vr("INDEL")]),
+                patch.object(variant_calling_wf, "apply_vqsr",
+                             side_effect=[self._mock_av("SNP"), self._mock_av("INDEL")]),
+            ):
+                result = genotype_refinement(
+                    ref_path="/tmp/ref.fa",
+                    joint_vcf="/tmp/cohort.vcf.gz",
+                    snp_resources=self._SNP_RESOURCES,
+                    snp_resource_flags=self._SNP_FLAGS,
+                    indel_resources=self._INDEL_RESOURCES,
+                    indel_resource_flags=self._INDEL_FLAGS,
+                    cohort_id="cohort1",
+                    results_dir=str(results_dir),
+                )
+
+        self.assertEqual(result["stage"], "genotype_refinement")
+        self.assertIn("refined_vcf", result["outputs"])
+
+    def test_genotype_refinement_indel_uses_snp_vcf(self) -> None:
+        """INDEL pass vcf_path is the SNP apply_vqsr output, not the original joint_vcf."""
+        from flytetest.workflows.variant_calling import genotype_refinement
+
+        snp_filtered_vcf = "/tmp/cohort_vqsr_snp.vcf.gz"
+        snp_apply_result = {
+            "stage": "apply_vqsr",
+            "outputs": {"vqsr_vcf": snp_filtered_vcf, "vqsr_vcf_index": ""},
+        }
+
+        vr_calls: list[dict] = []
+
+        def capturing_vr(**kwargs):
+            vr_calls.append(kwargs)
+            mode = kwargs["mode"]
+            return self._mock_vr(mode)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            results_dir = Path(tmp) / "gr_out"
+            results_dir.mkdir()
+
+            with (
+                patch.object(variant_calling_wf, "variant_recalibrator",
+                             side_effect=capturing_vr),
+                patch.object(variant_calling_wf, "apply_vqsr",
+                             side_effect=[snp_apply_result, self._mock_av("INDEL")]),
+            ):
+                genotype_refinement(
+                    ref_path="/tmp/ref.fa",
+                    joint_vcf="/tmp/cohort.vcf.gz",
+                    snp_resources=self._SNP_RESOURCES,
+                    snp_resource_flags=self._SNP_FLAGS,
+                    indel_resources=self._INDEL_RESOURCES,
+                    indel_resource_flags=self._INDEL_FLAGS,
+                    cohort_id="cohort1",
+                    results_dir=str(results_dir),
+                )
+
+        # Second variant_recalibrator call must have received the SNP-filtered VCF
+        self.assertEqual(len(vr_calls), 2)
+        self.assertEqual(vr_calls[1]["vcf_path"], snp_filtered_vcf)
+
+    def test_genotype_refinement_manifest_key(self) -> None:
+        """run_manifest.json has refined_vcf pointing at the INDEL-pass output."""
+        from flytetest.workflows.variant_calling import genotype_refinement
+
+        with tempfile.TemporaryDirectory() as tmp:
+            results_dir = Path(tmp) / "gr_out"
+            results_dir.mkdir()
+
+            with (
+                patch.object(variant_calling_wf, "variant_recalibrator",
+                             side_effect=[self._mock_vr("SNP"), self._mock_vr("INDEL")]),
+                patch.object(variant_calling_wf, "apply_vqsr",
+                             side_effect=[self._mock_av("SNP"), self._mock_av("INDEL")]),
+            ):
+                genotype_refinement(
+                    ref_path="/tmp/ref.fa",
+                    joint_vcf="/tmp/cohort.vcf.gz",
+                    snp_resources=self._SNP_RESOURCES,
+                    snp_resource_flags=self._SNP_FLAGS,
+                    indel_resources=self._INDEL_RESOURCES,
+                    indel_resource_flags=self._INDEL_FLAGS,
+                    cohort_id="cohort1",
+                    results_dir=str(results_dir),
+                )
+
+            manifest = json.loads((results_dir / "run_manifest.json").read_text())
+            self.assertEqual(manifest["stage"], "genotype_refinement")
+            self.assertIn("refined_vcf", manifest["outputs"])
+            self.assertTrue(manifest["outputs"]["refined_vcf"].endswith("_vqsr_indel.vcf.gz"))
