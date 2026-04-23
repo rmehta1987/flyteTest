@@ -46,8 +46,8 @@ Merge into `main` after all steps are complete and verification gates pass.
 | # | Step | Prompt | Status |
 |---|------|--------|--------|
 | 06 | `prepare_reference` workflow | `prompts/step_06_prepare_reference.md` | Complete |
-| 07 | `preprocess_sample` workflow | `prompts/step_07_preprocess_sample.md` | Not started |
-| 08 | `germline_short_variant_discovery` workflow | `prompts/step_08_germline_short_variant_discovery.md` | Not started |
+| 07 | `preprocess_sample` workflow | `prompts/step_07_preprocess_sample.md` | Complete |
+| 08 | `germline_short_variant_discovery` workflow | `prompts/step_08_germline_short_variant_discovery.md` | Complete |
 
 ### Closure
 

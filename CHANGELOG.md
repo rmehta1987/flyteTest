@@ -32,6 +32,18 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone B Step 08 — germline_short_variant_discovery workflow (2026-04-23)
+- [x] 2026-04-23 added `germline_short_variant_discovery` to workflow module (synchronous for-loop).
+- [x] 2026-04-23 added registry entry (category=workflow, stage_order 3).
+- [x] 2026-04-23 extended workflow `MANIFEST_OUTPUT_KEYS` with `"genotyped_vcf"`.
+- [x] 2026-04-23 added 4 tests (registry shape, validation errors, call counts, manifest); all passing.
+
+### GATK Milestone B Step 07 — preprocess_sample workflow (2026-04-23)
+- [x] 2026-04-23 added `preprocess_sample` to workflow module.
+- [x] 2026-04-23 added registry entry (category=workflow, stage_order 2).
+- [x] 2026-04-23 extended workflow `MANIFEST_OUTPUT_KEYS` with `"preprocessed_bam"`.
+- [x] 2026-04-23 added 3 tests (registry shape, sub-task call order, manifest); all passing.
+
 ### GATK Milestone B Step 06 — prepare_reference workflow (2026-04-23)
 - [x] 2026-04-23 created `src/flytetest/workflows/variant_calling.py` with `prepare_reference` (plus `preprocess_sample` and `germline_short_variant_discovery` stubs for steps 07–08).
 - [x] 2026-04-23 added `prepare_reference` registry entry (category=workflow, stage_order 1).

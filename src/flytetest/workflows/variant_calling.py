@@ -175,6 +175,10 @@ def germline_short_variant_discovery(
     3. combine_gvcfs — merge per-sample GVCFs.
     4. joint_call_gvcfs — joint genotyping → final VCF.
     """
+    if len(sample_ids) != len(r1_paths):
+        raise ValueError("sample_ids and r1_paths must be the same length")
+    if r2_paths is not None and len(r2_paths) != len(sample_ids):
+        raise ValueError("r2_paths must match sample_ids length when provided")
     if r2_paths is None:
         r2_paths = [""] * len(sample_ids)
 
