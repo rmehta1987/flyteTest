@@ -32,6 +32,12 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone D Step 02 — apply_vqsr task (2026-04-23)
+- [x] 2026-04-23 added apply_vqsr to src/flytetest/tasks/variant_calling.py.
+- [x] 2026-04-23 added apply_vqsr registry entry (stage 13).
+- [x] 2026-04-23 added 9 unit tests (ApplyVQSRRegistryTests, InvocationTests, ManifestTests).
+- [x] 2026-04-23 added apply_vqsr to _VARIANT_CALLING_TASK_NAMES in contract test.
+
 ### GATK Milestone D Step 01 — variant_recalibrator task (2026-04-23)
 - [x] 2026-04-23 added variant_recalibrator to src/flytetest/tasks/variant_calling.py.
 - [x] 2026-04-23 added variant_recalibrator registry entry (stage 12).

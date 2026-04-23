@@ -592,6 +592,7 @@ def mark_duplicates(
     return manifest
 
 
+_DEFAULT_VQSR_FILTER_LEVEL: dict[str, float] = {"SNP": 99.5, "INDEL": 99.0}
 _SNP_ANNOTATIONS = ["QD", "MQ", "MQRankSum", "ReadPosRankSum", "FS", "SOR"]
 _INDEL_ANNOTATIONS = ["QD", "FS", "SOR"]
 
@@ -681,6 +682,93 @@ def variant_recalibrator(
         outputs={
             "recal_file": str(output_recal),
             "tranches_file": str(output_tranches),
+        },
+    )
+    _write_json(out_dir / "run_manifest.json", manifest)
+    return manifest
+
+
+def apply_vqsr(
+    ref_path: str,
+    vcf_path: str,
+    recal_file: str,
+    tranches_file: str,
+    mode: str,
+    cohort_id: str,
+    results_dir: str,
+    truth_sensitivity_filter_level: float = 0.0,
+    sif_path: str = "",
+) -> dict:
+    """Apply a VQSR recalibration model to a VCF using GATK4 ApplyVQSR.
+
+    ``truth_sensitivity_filter_level`` defaults to 99.5 for SNP and 99.0 for
+    INDEL when passed as 0.0.  ``recal_file`` and ``tranches_file`` must come
+    from ``variant_recalibrator`` run with the same ``mode``.
+    """
+    if mode not in ("SNP", "INDEL"):
+        raise ValueError(f"mode must be 'SNP' or 'INDEL', got {mode!r}")
+
+    require_path(Path(ref_path), "Reference genome FASTA")
+    require_path(Path(vcf_path), "Input VCF for ApplyVQSR")
+    require_path(Path(recal_file), "VQSR recalibration file")
+    require_path(Path(tranches_file), "VQSR tranches file")
+
+    filter_level = (
+        truth_sensitivity_filter_level
+        if truth_sensitivity_filter_level != 0.0
+        else _DEFAULT_VQSR_FILTER_LEVEL[mode]
+    )
+
+    out_dir = Path(results_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    output_vcf = out_dir / f"{cohort_id}_vqsr_{mode.lower()}.vcf.gz"
+    tbi_path = Path(str(output_vcf) + ".tbi")
+
+    cmd = [
+        "gatk", "ApplyVQSR",
+        "-R", ref_path,
+        "-V", vcf_path,
+        "--recal-file", recal_file,
+        "--tranches-file", tranches_file,
+        "--truth-sensitivity-filter-level", str(filter_level),
+        "--create-output-variant-index", "true",
+        "-mode", mode,
+        "-O", str(output_vcf),
+    ]
+
+    bind_paths = [
+        Path(ref_path).parent,
+        Path(vcf_path).parent,
+        Path(recal_file).parent,
+        Path(tranches_file).parent,
+        out_dir,
+    ]
+    run_tool(cmd, sif_path or "data/images/gatk4.sif", bind_paths)
+
+    if not output_vcf.exists():
+        raise FileNotFoundError(
+            f"ApplyVQSR did not produce output VCF: {output_vcf}"
+        )
+
+    manifest = build_manifest_envelope(
+        stage="apply_vqsr",
+        assumptions=[
+            "recal_file and tranches_file were produced by variant_recalibrator "
+            "for the same mode and the same VCF.",
+            "--create-output-variant-index true writes a .vcf.gz.tbi companion automatically.",
+        ],
+        inputs={
+            "ref_path": ref_path,
+            "vcf_path": vcf_path,
+            "recal_file": recal_file,
+            "tranches_file": tranches_file,
+            "mode": mode,
+            "cohort_id": cohort_id,
+            "truth_sensitivity_filter_level": filter_level,
+        },
+        outputs={
+            "vqsr_vcf": str(output_vcf),
+            "vqsr_vcf_index": str(tbi_path) if tbi_path.exists() else "",
         },
     )
     _write_json(out_dir / "run_manifest.json", manifest)

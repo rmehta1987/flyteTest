@@ -27,7 +27,7 @@ Merge into `main` after all steps are complete and verification gates pass.
 | # | Step | Prompt | Status |
 |---|------|--------|--------|
 | 01 | `variant_recalibrator` task | `prompts/step_01_variant_recalibrator.md` | Complete |
-| 02 | `apply_vqsr` task | `prompts/step_02_apply_vqsr.md` | Not started |
+| 02 | `apply_vqsr` task | `prompts/step_02_apply_vqsr.md` | Complete |
 
 ### Workflow Composition
 

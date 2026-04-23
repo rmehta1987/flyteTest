@@ -575,4 +575,47 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             pipeline_stage_order=12,
         ),
     ),
+    RegistryEntry(
+        name="apply_vqsr",
+        category="task",
+        description="Apply a VQSR recalibration model to a VCF using GATK4 ApplyVQSR.",
+        inputs=(
+            InterfaceField("ref_path", "str", "Absolute path to reference FASTA."),
+            InterfaceField("vcf_path", "str", "Absolute path to input VCF (joint-called or SNP-filtered)."),
+            InterfaceField("recal_file", "str", "Recalibration file from variant_recalibrator."),
+            InterfaceField("tranches_file", "str", "Tranches file from variant_recalibrator."),
+            InterfaceField("mode", "str", "Variant type to apply: 'SNP' or 'INDEL'."),
+            InterfaceField("cohort_id", "str", "Cohort identifier used to name output files."),
+            InterfaceField("results_dir", "str", "Output directory."),
+            InterfaceField("truth_sensitivity_filter_level", "float", "VQSLOD filter threshold (0.0 = use default: 99.5 SNP / 99.0 INDEL)."),
+            InterfaceField("sif_path", "str", "Optional Apptainer/Singularity image path."),
+        ),
+        outputs=(
+            InterfaceField("vqsr_vcf", "str", "Path to the VQSR-filtered VCF (.vcf.gz)."),
+        ),
+        tags=("variant_calling", "gatk4", "vqsr"),
+        compatibility=RegistryCompatibilityMetadata(
+            biological_stage="GATK4 VQSR filter application",
+            accepted_planner_types=("ReferenceGenome", "VariantCallSet"),
+            produced_planner_types=("VariantCallSet",),
+            reusable_as_reference=False,
+            execution_defaults={
+                "profile": "local",
+                "result_manifest": "run_manifest.json",
+                "resources": {"cpu": "4", "memory": "16Gi", "execution_class": "local"},
+                "slurm_resource_hints": {"cpu": "4", "memory": "16Gi", "walltime": "02:00:00"},
+                "runtime_images": {"sif_path": "data/images/gatk4.sif"},
+                "module_loads": ("python/3.11.9", "apptainer/1.4.1"),
+            },
+            supported_execution_profiles=("local", "slurm"),
+            synthesis_eligible=True,
+            composition_constraints=(
+                "recal_file and tranches_file must come from variant_recalibrator for the same mode.",
+                "INDEL pass must consume the SNP-filtered VCF from a prior apply_vqsr SNP call, "
+                "not the original joint VCF.",
+            ),
+            pipeline_family="variant_calling",
+            pipeline_stage_order=13,
+        ),
+    ),
 )
