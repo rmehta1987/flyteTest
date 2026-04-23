@@ -224,4 +224,43 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             pipeline_stage_order=6,
         ),
     ),
+    RegistryEntry(
+        name="joint_call_gvcfs",
+        category="task",
+        description="Run GenomicsDBImport then GenotypeGVCFs to produce a joint-called VCF for a cohort.",
+        inputs=(
+            InterfaceField("reference_fasta", "File", "Reference genome FASTA."),
+            InterfaceField("gvcfs", "list[File]", "Per-sample GVCFs; each must pair 1:1 with sample_ids."),
+            InterfaceField("sample_ids", "list[str]", "Sample identifiers matching the gvcfs list order; written into the GenomicsDB sample-name map."),
+            InterfaceField("intervals", "list[str]", "Genomic intervals (e.g. 'chr20') passed to GenomicsDBImport via -L; at least one required."),
+            InterfaceField("cohort_id", "str", "Cohort identifier used to name the output VCF."),
+            InterfaceField("gatk_sif", "str", "Optional Apptainer/Singularity image path for GATK4."),
+        ),
+        outputs=(
+            InterfaceField("joint_vcf", "File", "Joint-called VCF produced by GATK4 GenotypeGVCFs."),
+        ),
+        tags=("variant_calling", "gatk4", "joint-calling", "genotyping"),
+        compatibility=RegistryCompatibilityMetadata(
+            biological_stage="GATK4 joint genotyping",
+            accepted_planner_types=("ReferenceGenome", "VariantCallSet"),
+            produced_planner_types=("VariantCallSet",),
+            reusable_as_reference=False,
+            execution_defaults={
+                "profile": "local",
+                "result_manifest": "run_manifest.json",
+                "resources": {"cpu": "8", "memory": "32Gi", "execution_class": "local"},
+                "slurm_resource_hints": {"cpu": "16", "memory": "64Gi", "walltime": "24:00:00"},
+                "runtime_images": {"gatk_sif": "data/images/gatk4.sif"},
+                "module_loads": ("python/3.11.9", "apptainer/1.4.1"),
+            },
+            supported_execution_profiles=("local", "slurm"),
+            synthesis_eligible=True,
+            composition_constraints=(
+                "Requires a list of GVCFs with matching sample_ids 1:1.",
+                "Requires at least one genomic interval.",
+            ),
+            pipeline_family="variant_calling",
+            pipeline_stage_order=7,
+        ),
+    ),
 )

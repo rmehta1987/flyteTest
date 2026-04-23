@@ -30,6 +30,7 @@ from flytetest.tasks.variant_calling import (
     create_sequence_dictionary,
     haplotype_caller,
     index_feature_file,
+    joint_call_gvcfs,
 )
 
 
@@ -665,3 +666,185 @@ class CombineGvcfsManifestTests(TestCase):
         self.assertTrue(manifest["outputs"]["combined_gvcf"].endswith("_combined.g.vcf"))
         self.assertIsInstance(manifest["inputs"]["gvcfs"], list)
         self.assertEqual(len(manifest["inputs"]["gvcfs"]), 2)
+
+
+class JointCallGvcfsRegistryTests(TestCase):
+    def test_joint_call_gvcfs_registry_entry_shape(self):
+        from flytetest.registry._variant_calling import VARIANT_CALLING_ENTRIES
+
+        entry = next(e for e in VARIANT_CALLING_ENTRIES if e.name == "joint_call_gvcfs")
+        self.assertEqual(entry.category, "task")
+        input_names = [f.name for f in entry.inputs]
+        self.assertIn("reference_fasta", input_names)
+        self.assertIn("gvcfs", input_names)
+        self.assertIn("sample_ids", input_names)
+        self.assertIn("intervals", input_names)
+        output_names = [f.name for f in entry.outputs]
+        self.assertIn("joint_vcf", output_names)
+        self.assertEqual(entry.compatibility.pipeline_stage_order, 7)
+        self.assertIn("ReferenceGenome", entry.compatibility.accepted_planner_types)
+        self.assertIn("VariantCallSet", entry.compatibility.accepted_planner_types)
+        self.assertIn("VariantCallSet", entry.compatibility.produced_planner_types)
+
+
+class JointCallGvcfsInvocationTests(TestCase):
+    def test_joint_call_gvcfs_rejects_empty_gvcfs(self):
+        stub_ref = File(path="/data/ref.fa")
+        with self.assertRaises(ValueError) as ctx:
+            joint_call_gvcfs(
+                reference_fasta=stub_ref,
+                gvcfs=[],
+                sample_ids=[],
+                intervals=["chr20"],
+            )
+        self.assertIn("gvcfs list cannot be empty", str(ctx.exception))
+
+    def test_joint_call_gvcfs_rejects_empty_intervals(self):
+        stub_ref = File(path="/data/ref.fa")
+        stub_gvcf = File(path="/data/sample.g.vcf")
+        with self.assertRaises(ValueError) as ctx:
+            joint_call_gvcfs(
+                reference_fasta=stub_ref,
+                gvcfs=[stub_gvcf],
+                sample_ids=["s1"],
+                intervals=[],
+            )
+        self.assertIn("intervals list cannot be empty", str(ctx.exception))
+
+    def test_joint_call_gvcfs_rejects_mismatched_sample_ids_length(self):
+        stub_ref = File(path="/data/ref.fa")
+        stub_gvcf = File(path="/data/sample.g.vcf")
+        with self.assertRaises(ValueError) as ctx:
+            joint_call_gvcfs(
+                reference_fasta=stub_ref,
+                gvcfs=[stub_gvcf],
+                sample_ids=["s1", "s2"],
+                intervals=["chr20"],
+            )
+        self.assertIn("sample_ids length", str(ctx.exception))
+        self.assertIn("must match gvcfs", str(ctx.exception))
+
+    def test_joint_call_gvcfs_cmd_sequence(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            ref_fa = tmp_path / "ref.fa"
+            gvcf1 = tmp_path / "s1.g.vcf"
+            gvcf2 = tmp_path / "s2.g.vcf"
+            for p in (ref_fa, gvcf1, gvcf2):
+                p.touch()
+
+            calls: list[list[str]] = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                calls.append(list(cmd))
+                # create workspace dir for require_path after GenomicsDBImport
+                if cmd[1] == "GenomicsDBImport":
+                    ws_idx = cmd.index("--genomicsdb-workspace-path")
+                    Path(cmd[ws_idx + 1]).mkdir(parents=True, exist_ok=True)
+                elif cmd[1] == "GenotypeGVCFs":
+                    o_idx = cmd.index("-O")
+                    Path(cmd[o_idx + 1]).touch()
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                result = joint_call_gvcfs(
+                    reference_fasta=File(path=str(ref_fa)),
+                    gvcfs=[File(path=str(gvcf1)), File(path=str(gvcf2))],
+                    sample_ids=["s1", "s2"],
+                    intervals=["chr20", "chr21"],
+                    cohort_id="cohort",
+                )
+
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(calls[0][1], "GenomicsDBImport")
+        self.assertEqual(calls[1][1], "GenotypeGVCFs")
+        # GenomicsDBImport gets -L per interval
+        l_indices = [i for i, v in enumerate(calls[0]) if v == "-L"]
+        self.assertEqual(len(l_indices), 2)
+        self.assertEqual(calls[0][l_indices[0] + 1], "chr20")
+        self.assertEqual(calls[0][l_indices[1] + 1], "chr21")
+        # GenotypeGVCFs uses gendb:// URI
+        v_idx = calls[1].index("-V")
+        self.assertTrue(calls[1][v_idx + 1].startswith("gendb://"))
+        self.assertTrue(result.path.endswith("_genotyped.vcf"))
+
+    def test_joint_call_gvcfs_sample_map_format(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            ref_fa = tmp_path / "ref.fa"
+            gvcf1 = tmp_path / "s1.g.vcf"
+            gvcf2 = tmp_path / "s2.g.vcf"
+            for p in (ref_fa, gvcf1, gvcf2):
+                p.touch()
+
+            captured_map: list[str] = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                if cmd[1] == "GenomicsDBImport":
+                    map_idx = cmd.index("--sample-name-map")
+                    captured_map.append(Path(cmd[map_idx + 1]).read_text())
+                    ws_idx = cmd.index("--genomicsdb-workspace-path")
+                    Path(cmd[ws_idx + 1]).mkdir(parents=True, exist_ok=True)
+                elif cmd[1] == "GenotypeGVCFs":
+                    o_idx = cmd.index("-O")
+                    Path(cmd[o_idx + 1]).touch()
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                joint_call_gvcfs(
+                    reference_fasta=File(path=str(ref_fa)),
+                    gvcfs=[File(path=str(gvcf1)), File(path=str(gvcf2))],
+                    sample_ids=["sampleA", "sampleB"],
+                    intervals=["chr20"],
+                    cohort_id="cohort",
+                )
+
+        lines = [ln for ln in captured_map[0].splitlines() if ln]
+        self.assertEqual(len(lines), 2)
+        self.assertTrue(lines[0].startswith("sampleA\t"))
+        self.assertIn(str(gvcf1), lines[0])
+        self.assertTrue(lines[1].startswith("sampleB\t"))
+        self.assertIn(str(gvcf2), lines[1])
+
+
+class JointCallGvcfsManifestTests(TestCase):
+    def test_joint_call_gvcfs_emits_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            ref_fa = tmp_path / "ref.fa"
+            gvcf1 = tmp_path / "s1.g.vcf"
+            gvcf2 = tmp_path / "s2.g.vcf"
+            for p in (ref_fa, gvcf1, gvcf2):
+                p.touch()
+
+            emitted_out_dir: list[Path] = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                if cmd[1] == "GenomicsDBImport":
+                    ws_idx = cmd.index("--genomicsdb-workspace-path")
+                    Path(cmd[ws_idx + 1]).mkdir(parents=True, exist_ok=True)
+                elif cmd[1] == "GenotypeGVCFs":
+                    o_idx = cmd.index("-O")
+                    out_path = Path(cmd[o_idx + 1])
+                    emitted_out_dir.append(out_path.parent)
+                    out_path.touch()
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                joint_call_gvcfs(
+                    reference_fasta=File(path=str(ref_fa)),
+                    gvcfs=[File(path=str(gvcf1)), File(path=str(gvcf2))],
+                    sample_ids=["s1", "s2"],
+                    intervals=["chr20"],
+                    cohort_id="trio",
+                )
+
+        out_dir = emitted_out_dir[0]
+        manifest_path = out_dir / "run_manifest.json"
+        self.assertTrue(manifest_path.exists(), "run_manifest.json was not written")
+
+        manifest = json.loads(manifest_path.read_text())
+        self.assertEqual(manifest["stage"], "joint_call_gvcfs")
+        self.assertIn("joint_vcf", manifest["outputs"])
+        self.assertTrue(manifest["outputs"]["joint_vcf"].endswith("_genotyped.vcf"))
+        self.assertIsInstance(manifest["inputs"]["gvcfs"], list)
+        self.assertEqual(len(manifest["inputs"]["gvcfs"]), 2)
+        self.assertEqual(manifest["inputs"]["intervals"], ["chr20"])
+        self.assertEqual(manifest["inputs"]["sample_ids"], ["s1", "s2"])

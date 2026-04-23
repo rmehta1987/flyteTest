@@ -32,6 +32,19 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone A Step 09 — joint_call_gvcfs task + registry entry (2026-04-22)
+
+- [x] 2026-04-22 added `import tempfile` to `src/flytetest/tasks/variant_calling.py`.
+- [x] 2026-04-22 added `joint_call_gvcfs` task: runs `gatk GenomicsDBImport` (ephemeral
+  tempdir workspace, sample-name map written per invocation) then `gatk GenotypeGVCFs`
+  (gendb:// URI); validates non-empty gvcfs, non-empty intervals, and 1:1 sample_ids.
+- [x] 2026-04-22 added `joint_call_gvcfs` `RegistryEntry` to `VARIANT_CALLING_ENTRIES`
+  (pipeline_stage_order 7, accepted_planner_types `ReferenceGenome`/`VariantCallSet`,
+  produced_planner_types `VariantCallSet`).
+- [x] 2026-04-22 extended `MANIFEST_OUTPUT_KEYS` with `"joint_vcf"`.
+- [x] 2026-04-22 added 7 tests: 3 validation rejections, cmd-sequence ordering,
+  sample-map format, registry shape, manifest emission — all 29 tests passing.
+
 ### GATK Milestone A Step 08 — combine_gvcfs task + registry entry (2026-04-22)
 
 - [x] 2026-04-22 added `combine_gvcfs` task to `src/flytetest/tasks/variant_calling.py`:
