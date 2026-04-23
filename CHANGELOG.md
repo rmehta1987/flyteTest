@@ -32,6 +32,11 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone C Step 01 — Plan + checklist skeleton (2026-04-23)
+
+- [x] 2026-04-23 created docs/gatk_milestone_c/milestone_c_plan.md.
+- [x] 2026-04-23 created docs/gatk_milestone_c/checklist.md.
+
 ### GATK Milestone B — Complete (2026-04-23)
 
 Four preprocessing tasks and three end-to-end workflow compositions.
