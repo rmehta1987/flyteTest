@@ -1,5 +1,7 @@
 # GATK4 Germline Variant Calling — Milestone C Checklist
 
+Milestone status: Complete
+
 Tracks Milestone C of the Phase 3 GATK port described in
 `docs/gatk_milestone_c/milestone_c_plan.md`.
 
@@ -50,7 +52,7 @@ Merge into `main` after all steps are complete and verification gates pass.
 
 | # | Step | Prompt | Status |
 |---|------|--------|--------|
-| 06 | Agent-context sweep, CHANGELOG, submission prompt, verification | `prompts/step_06_closure.md` | Not started |
+| 06 | Agent-context sweep, CHANGELOG, submission prompt, verification | `prompts/step_06_closure.md` | Complete |
 
 ## Verification Gates
 

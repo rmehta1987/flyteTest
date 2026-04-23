@@ -32,6 +32,22 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone C — Complete (2026-04-23)
+
+Closes Milestone C of the Phase 3 GATK port (tracker:
+`docs/gatk_milestone_c/checklist.md`). Delivers the live-cluster
+validation prompt set for the variant_calling family and refreshes
+`docs/mcp_full_pipeline_prompt_tests.md` with a Variant Calling
+Pipeline section. Documentation-only — no new Python, tasks,
+workflows, registry entries, or planner types.
+
+- [x] 2026-04-23 docs/mcp_variant_calling_cluster_prompt_tests.md: Scenarios 1–8.
+- [x] 2026-04-23 docs/mcp_full_pipeline_prompt_tests.md: Variant Calling Pipeline section (Stages 0–3).
+- [x] 2026-04-23 AGENTS.md cluster prompt docs section added.
+- [x] 2026-04-23 docs/gatk_milestone_c_submission_prompt.md authored.
+- [x] 2026-04-23 full pytest green; python -m compileall clean.
+- Deferred to future milestones: merge_bam_alignment (uBAM path), VQSR, interval-scoped HaplotypeCaller.
+
 ### GATK Milestone C Step 05 — Full pipeline doc refresh for variant calling (2026-04-23)
 
 - [x] 2026-04-23 retitled docs/mcp_full_pipeline_prompt_tests.md to cover both annotation and variant calling families.
