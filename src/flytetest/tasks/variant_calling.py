@@ -24,6 +24,7 @@ MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
     "bqsr_report",
     "recalibrated_bam",
     "gvcf",
+    "combined_gvcf",
 )
 
 
@@ -244,6 +245,59 @@ def haplotype_caller(
         outputs={
             "gvcf": str(out_gvcf),
             "gvcf_index": str(out_idx) if out_idx.exists() else "",
+        },
+    )
+    _write_json(out_dir / "run_manifest.json", manifest)
+    return File(path=str(out_gvcf))
+
+
+@variant_calling_env.task
+def combine_gvcfs(
+    reference_fasta: File,
+    gvcfs: list[File],
+    cohort_id: str = "cohort",
+    gatk_sif: str = "",
+) -> File:
+    """Combine per-sample GVCFs into a cohort GVCF via GATK4 CombineGVCFs."""
+    if not gvcfs:
+        raise ValueError("gvcfs list cannot be empty")
+
+    ref_path = require_path(Path(reference_fasta.download_sync()),
+                            "Reference genome FASTA")
+    gvcf_paths = [
+        require_path(Path(g.download_sync()), f"Input GVCF #{i}")
+        for i, g in enumerate(gvcfs)
+    ]
+
+    out_dir = project_mkdtemp("gatk_combine_")
+    out_gvcf = out_dir / f"{cohort_id}_combined.g.vcf"
+
+    cmd = ["gatk", "CombineGVCFs",
+           "-R", str(ref_path),
+           "-O", str(out_gvcf)]
+    for gp in gvcf_paths:
+        cmd.extend(["-V", str(gp)])
+
+    bind_paths = [ref_path.parent, out_dir, *[g.parent for g in gvcf_paths]]
+    run_tool(cmd, gatk_sif or "data/images/gatk4.sif", bind_paths)
+
+    require_path(out_gvcf, "GATK CombineGVCFs output GVCF")
+    out_idx = out_dir / f"{out_gvcf.name}.idx"
+
+    manifest = build_manifest_envelope(
+        stage="combine_gvcfs",
+        assumptions=[
+            "Every input is a per-sample GVCF emitted with --emit-ref-confidence GVCF.",
+            "All inputs call against the same reference build as the one supplied here.",
+        ],
+        inputs={
+            "reference_fasta": str(ref_path),
+            "gvcfs": [str(g) for g in gvcf_paths],
+            "cohort_id": cohort_id,
+        },
+        outputs={
+            "combined_gvcf": str(out_gvcf),
+            "combined_gvcf_index": str(out_idx) if out_idx.exists() else "",
         },
     )
     _write_json(out_dir / "run_manifest.json", manifest)

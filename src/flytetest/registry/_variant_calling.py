@@ -187,4 +187,41 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             pipeline_stage_order=5,
         ),
     ),
+    RegistryEntry(
+        name="combine_gvcfs",
+        category="task",
+        description="Merge per-sample GVCFs into a cohort GVCF via GATK4 CombineGVCFs.",
+        inputs=(
+            InterfaceField("reference_fasta", "File", "Reference genome FASTA."),
+            InterfaceField("gvcfs", "list[File]", "Per-sample GVCFs to combine; each must have been emitted with --emit-ref-confidence GVCF."),
+            InterfaceField("cohort_id", "str", "Cohort identifier used to name the output GVCF."),
+            InterfaceField("gatk_sif", "str", "Optional Apptainer/Singularity image path for GATK4."),
+        ),
+        outputs=(
+            InterfaceField("combined_gvcf", "File", "Cohort GVCF produced by GATK4 CombineGVCFs."),
+        ),
+        tags=("variant_calling", "gatk4", "gvcf", "joint-calling"),
+        compatibility=RegistryCompatibilityMetadata(
+            biological_stage="GATK4 cohort GVCF merging",
+            accepted_planner_types=("ReferenceGenome", "VariantCallSet"),
+            produced_planner_types=("VariantCallSet",),
+            reusable_as_reference=False,
+            execution_defaults={
+                "profile": "local",
+                "result_manifest": "run_manifest.json",
+                "resources": {"cpu": "4", "memory": "16Gi", "execution_class": "local"},
+                "slurm_resource_hints": {"cpu": "8", "memory": "32Gi", "walltime": "06:00:00"},
+                "runtime_images": {"gatk_sif": "data/images/gatk4.sif"},
+                "module_loads": ("python/3.11.9", "apptainer/1.4.1"),
+            },
+            supported_execution_profiles=("local", "slurm"),
+            synthesis_eligible=True,
+            composition_constraints=(
+                "All input GVCFs must call against the same reference build.",
+                "Each GVCF must have been produced with --emit-ref-confidence GVCF.",
+            ),
+            pipeline_family="variant_calling",
+            pipeline_stage_order=6,
+        ),
+    ),
 )

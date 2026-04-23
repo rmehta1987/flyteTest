@@ -32,6 +32,18 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone A Step 08 — combine_gvcfs task + registry entry (2026-04-22)
+
+- [x] 2026-04-22 added `combine_gvcfs` task to `src/flytetest/tasks/variant_calling.py`:
+  runs `gatk CombineGVCFs -R … -O … -V <gvcf>` (repeated per input) via `run_tool`,
+  raises `ValueError` on empty list, emits `run_manifest.json` with `combined_gvcf` key.
+- [x] 2026-04-22 added `combine_gvcfs` `RegistryEntry` to `VARIANT_CALLING_ENTRIES`
+  (pipeline_stage_order 6, accepted_planner_types `ReferenceGenome`/`VariantCallSet`,
+  produced_planner_types `VariantCallSet`).
+- [x] 2026-04-22 extended `MANIFEST_OUTPUT_KEYS` with `"combined_gvcf"`.
+- [x] 2026-04-22 added 4 tests to `tests/test_variant_calling.py`: registry shape,
+  empty-list rejection, `-V`-per-input ordering, manifest emission — all 22 tests passing.
+
 ### GATK Milestone A Step 07 — haplotype_caller task + registry entry (2026-04-22)
 
 - [x] 2026-04-22 added `haplotype_caller` task to

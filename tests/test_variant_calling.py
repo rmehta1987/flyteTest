@@ -26,6 +26,7 @@ from flytetest.tasks.variant_calling import (
     MANIFEST_OUTPUT_KEYS,
     apply_bqsr,
     base_recalibrator,
+    combine_gvcfs,
     create_sequence_dictionary,
     haplotype_caller,
     index_feature_file,
@@ -568,3 +569,99 @@ class HaplotypeCallerManifestTests(TestCase):
             self.assertEqual(manifest["stage"], "haplotype_caller")
             self.assertIn("gvcf", manifest["outputs"])
             self.assertTrue(manifest["outputs"]["gvcf"].endswith(".g.vcf"))
+
+
+class CombineGvcfsRegistryTests(TestCase):
+    def test_combine_gvcfs_registry_entry_shape(self):
+        from flytetest.registry._variant_calling import VARIANT_CALLING_ENTRIES
+
+        entry = next(e for e in VARIANT_CALLING_ENTRIES if e.name == "combine_gvcfs")
+        self.assertEqual(entry.category, "task")
+        input_names = [f.name for f in entry.inputs]
+        self.assertIn("reference_fasta", input_names)
+        self.assertIn("gvcfs", input_names)
+        self.assertIn("cohort_id", input_names)
+        output_names = [f.name for f in entry.outputs]
+        self.assertIn("combined_gvcf", output_names)
+        self.assertEqual(entry.compatibility.pipeline_stage_order, 6)
+        self.assertIn("ReferenceGenome", entry.compatibility.accepted_planner_types)
+        self.assertIn("VariantCallSet", entry.compatibility.accepted_planner_types)
+        self.assertIn("VariantCallSet", entry.compatibility.produced_planner_types)
+
+
+class CombineGvcfsInvocationTests(TestCase):
+    def test_combine_gvcfs_rejects_empty_list(self):
+        stub_ref = File(path="/data/ref.fa")
+        with self.assertRaises(ValueError) as ctx:
+            combine_gvcfs(reference_fasta=stub_ref, gvcfs=[])
+        self.assertIn("gvcfs list cannot be empty", str(ctx.exception))
+
+    def test_combine_gvcfs_cmd_emits_V_per_input(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            ref_fa = tmp_path / "ref.fa"
+            gvcf1 = tmp_path / "sample1.g.vcf"
+            gvcf2 = tmp_path / "sample2.g.vcf"
+            gvcf3 = tmp_path / "sample3.g.vcf"
+            for p in (ref_fa, gvcf1, gvcf2, gvcf3):
+                p.touch()
+
+            captured_cmd = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                captured_cmd.extend(cmd)
+                out_idx = cmd.index("-O")
+                Path(cmd[out_idx + 1]).touch()
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                result = combine_gvcfs(
+                    reference_fasta=File(path=str(ref_fa)),
+                    gvcfs=[File(path=str(gvcf1)), File(path=str(gvcf2)), File(path=str(gvcf3))],
+                    cohort_id="trio",
+                )
+
+        self.assertEqual(captured_cmd[0], "gatk")
+        self.assertEqual(captured_cmd[1], "CombineGVCFs")
+        v_indices = [i for i, v in enumerate(captured_cmd) if v == "-V"]
+        self.assertEqual(len(v_indices), 3)
+        self.assertEqual(captured_cmd[v_indices[0] + 1], str(gvcf1))
+        self.assertEqual(captured_cmd[v_indices[1] + 1], str(gvcf2))
+        self.assertEqual(captured_cmd[v_indices[2] + 1], str(gvcf3))
+        self.assertIn("trio_combined.g.vcf", result.path)
+
+
+class CombineGvcfsManifestTests(TestCase):
+    def test_combine_gvcfs_emits_manifest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            ref_fa = tmp_path / "ref.fa"
+            gvcf1 = tmp_path / "sample1.g.vcf"
+            gvcf2 = tmp_path / "sample2.g.vcf"
+            for p in (ref_fa, gvcf1, gvcf2):
+                p.touch()
+
+            emitted_out_dir = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                out_idx = cmd.index("-O")
+                out_path = Path(cmd[out_idx + 1])
+                emitted_out_dir.append(out_path.parent)
+                out_path.touch()
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                combine_gvcfs(
+                    reference_fasta=File(path=str(ref_fa)),
+                    gvcfs=[File(path=str(gvcf1)), File(path=str(gvcf2))],
+                    cohort_id="cohort1",
+                )
+
+        out_dir = emitted_out_dir[0]
+        manifest_path = out_dir / "run_manifest.json"
+        self.assertTrue(manifest_path.exists(), "run_manifest.json was not written")
+
+        manifest = json.loads(manifest_path.read_text())
+        self.assertEqual(manifest["stage"], "combine_gvcfs")
+        self.assertIn("combined_gvcf", manifest["outputs"])
+        self.assertTrue(manifest["outputs"]["combined_gvcf"].endswith("_combined.g.vcf"))
+        self.assertIsInstance(manifest["inputs"]["gvcfs"], list)
+        self.assertEqual(len(manifest["inputs"]["gvcfs"]), 2)
