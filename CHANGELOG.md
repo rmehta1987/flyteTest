@@ -32,6 +32,50 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone C — Complete (2026-04-23)
+
+Closes Milestone C of the Phase 3 GATK port (tracker:
+`docs/gatk_milestone_c/checklist.md`). Delivers the live-cluster
+validation prompt set for the variant_calling family and refreshes
+`docs/mcp_full_pipeline_prompt_tests.md` with a Variant Calling
+Pipeline section. Documentation-only — no new Python, tasks,
+workflows, registry entries, or planner types.
+
+- [x] 2026-04-23 docs/mcp_variant_calling_cluster_prompt_tests.md: Scenarios 1–8.
+- [x] 2026-04-23 docs/mcp_full_pipeline_prompt_tests.md: Variant Calling Pipeline section (Stages 0–3).
+- [x] 2026-04-23 AGENTS.md cluster prompt docs section added.
+- [x] 2026-04-23 docs/gatk_milestone_c_submission_prompt.md authored.
+- [x] 2026-04-23 full pytest green; python -m compileall clean.
+- Deferred to future milestones: merge_bam_alignment (uBAM path), VQSR, interval-scoped HaplotypeCaller.
+
+### GATK Milestone C Step 05 — Full pipeline doc refresh for variant calling (2026-04-23)
+
+- [x] 2026-04-23 retitled docs/mcp_full_pipeline_prompt_tests.md to cover both annotation and variant calling families.
+- [x] 2026-04-23 appended Variant Calling Pipeline section (Stages 0–3) referencing docs/mcp_variant_calling_cluster_prompt_tests.md.
+- [x] 2026-04-23 extended Prerequisites with GATK4 SIF + germline fixture staging note.
+
+### GATK Milestone C Step 04 — Cluster lifecycle scenarios (2026-04-23)
+
+- [x] 2026-04-23 added Scenario 6 (cancel idempotency) for haplotype_caller.
+- [x] 2026-04-23 added Scenario 7 (NODE_FAIL retry).
+- [x] 2026-04-23 added Scenario 8 (OUT_OF_MEMORY escalation retry).
+
+### GATK Milestone C Step 03 — Workflow happy-path cluster scenarios (2026-04-23)
+
+- [x] 2026-04-23 added Scenario 3 (prepare_reference) to docs/mcp_variant_calling_cluster_prompt_tests.md.
+- [x] 2026-04-23 added Scenario 4 (preprocess_sample).
+- [x] 2026-04-23 added Scenario 5 (germline_short_variant_discovery end-to-end).
+
+### GATK Milestone C Step 02 — Cluster prompt doc skeleton + single-task happy path (2026-04-23)
+
+- [x] 2026-04-23 created docs/mcp_variant_calling_cluster_prompt_tests.md with Prerequisites, Scenario 1, Scenario 2 (haplotype_caller).
+- [x] 2026-04-23 copied quick-reference table and "supported: false" troubleshooting block from mcp_cluster_prompt_tests.md.
+
+### GATK Milestone C Step 01 — Plan + checklist skeleton (2026-04-23)
+
+- [x] 2026-04-23 created docs/gatk_milestone_c/milestone_c_plan.md.
+- [x] 2026-04-23 created docs/gatk_milestone_c/checklist.md.
+
 ### GATK Milestone B — Complete (2026-04-23)
 
 Four preprocessing tasks and three end-to-end workflow compositions.

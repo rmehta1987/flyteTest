@@ -1,12 +1,21 @@
-# MCP Full Annotation Pipeline Prompt Tests
+# MCP Full Pipeline Prompt Tests
 
-End-to-end prompt scenarios for running the complete BRAKER3/EVM annotation
-pipeline on RCC through the FLyteTest MCP server.  Each scenario is a prompt
-you paste into OpenCode (or any MCP client connected to the server).
+End-to-end prompt scenarios for running complete FLyteTest pipelines on RCC
+through the MCP server.  Each scenario is a prompt you paste into OpenCode (or
+any MCP client connected to the server).
 
-These scenarios follow the biological order defined in
-`docs/braker3_evm_notes.md` and exercise each stage sequentially.  Run them
-in order — each stage consumes the result bundle of the previous one.
+This document covers two independent pipeline families:
+
+- **Annotation Pipeline** (Stages 1–15, below) — BRAKER3/EVM genome annotation
+  from RNA-seq reads + protein evidence to a `.sqn` submission set.
+- **Variant Calling Pipeline** (at the bottom) — GATK4 germline short-variant
+  discovery from raw paired FASTQ reads to a joint-called VCF.
+
+The two families do not share result bundles and are safe to run in parallel.
+
+For the **Annotation Pipeline**, these scenarios follow the biological order
+defined in `docs/braker3_evm_notes.md` and exercise each stage sequentially.
+Run them in order — each stage consumes the result bundle of the previous one.
 
 At any point, call `get_pipeline_status` (Stage 0) to see a live progress
 checklist of all 15 stages without querying Slurm.
@@ -29,6 +38,15 @@ Before starting:
 - eggNOG database staged and bind-mount path known.
 - See `CHANGELOG.md` Open TODOs for AUGUSTUS_CONFIG_PATH, RepeatMasker library,
   eggNOG database, and EVM 2.x flag confirmation before first run.
+
+For the **Variant Calling Pipeline** (bottom of this doc):
+
+- GATK4 SIF image at `data/images/gatk4.sif`
+  (run `bash scripts/rcc/pull_gatk_image.sh` if missing).
+- Reference FASTA + dbSNP + Mills VCFs staged under `data/references/hg38/`.
+- Paired FASTQ reads staged under `data/reads/`.
+- See `src/flytetest/bundles.py` (`variant_calling_germline_minimal`) for exact
+  fixture paths and `fetch_hints`.
 
 Check server connectivity first:
 
@@ -498,3 +516,93 @@ Print artifact_path, supported, and limitations.
 
 **Before first real run, resolve the open TODOs in `CHANGELOG.md`:**
 AUGUSTUS_CONFIG_PATH, RepeatMasker library, eggNOG database, EVM 2.x flags.
+
+---
+
+# Variant Calling Pipeline
+
+End-to-end prompt scenarios for the GATK4 germline short-variant path.
+These stages are independent of the annotation pipeline above — they do not
+share result bundles, and they run under a separate registry family
+(`pipeline_family="variant_calling"`).
+
+Run them in order; each downstream stage assumes the upstream one has
+completed.  The full prompt blocks are in
+`docs/mcp_variant_calling_cluster_prompt_tests.md` — this section provides
+the scientist's narrative and cross-references them by Scenario number.
+
+---
+
+## Variant Stage 0 — Sanity check
+
+Use the `list_entries` prompt from Scenario 1 of
+`docs/mcp_variant_calling_cluster_prompt_tests.md`.  Confirm
+`prepare_reference`, `preprocess_sample`, and
+`germline_short_variant_discovery` appear with `"slurm"` in
+`supported_execution_profiles`, alongside the eleven individual tasks.
+
+**Pass criteria:** All fourteen variant_calling entries visible with Slurm
+support.
+
+---
+
+## Variant Stage 1 — Reference preparation (one-time)
+
+**Goal:** Produce `.fai`, `.dict`, BWA-MEM2 index, and known-sites `.tbi`
+files beside the reference FASTA.  Run once per reference; reuse across
+cohorts.
+
+**Estimated time:** 5–15 minutes.
+
+**Prerequisite:** GATK4 SIF and reference FASTA + known-sites VCFs staged on
+the shared filesystem.
+
+Use the `run_workflow` prompt block from **Scenario 3** of
+`docs/mcp_variant_calling_cluster_prompt_tests.md` verbatim.
+
+**Pass criteria:** `run_manifest.json` in `results_dir` contains key
+`"prepared_ref"` equal to the reference FASTA path.
+
+---
+
+## Variant Stage 2 — Sample preprocessing
+
+**Goal:** Raw paired FASTQ → BQSR-recalibrated BAM.
+
+**Prerequisite:** Variant Stage 1 completed (reference companion files
+present).
+
+**Estimated time:** 20–60 minutes per sample.
+
+Use the `run_workflow` prompt block from **Scenario 4** of
+`docs/mcp_variant_calling_cluster_prompt_tests.md` verbatim.
+
+**Pass criteria:** `run_manifest.json` contains key `"preprocessed_bam"`
+pointing at a `*_recal.bam` with a sibling `.bai` or `.bam.bai`.
+
+---
+
+## Variant Stage 3 — Germline short variant discovery
+
+**Goal:** Cohort-level raw reads → joint-called VCF.
+
+**Prerequisite:** Variant Stage 1 completed.  (Variant Stage 2 is not a
+prerequisite — this workflow re-runs per-sample preprocessing inside the
+workflow automatically.)
+
+**Estimated time:** 45–120 minutes for the chr20 NA12878 fixture.
+
+Use the `run_workflow` prompt block from **Scenario 5** of
+`docs/mcp_variant_calling_cluster_prompt_tests.md` verbatim.
+
+**Pass criteria:** `run_manifest.json` contains key `"genotyped_vcf"`
+pointing at a `.vcf.gz` with companion `.tbi`.
+
+---
+
+## When a variant stage fails
+
+Variant calling uses the same Slurm lifecycle as annotation.  If a stage
+fails with `NODE_FAIL` or `OUT_OF_MEMORY`, apply **Scenario 7** or
+**Scenario 8** of `docs/mcp_variant_calling_cluster_prompt_tests.md` rather
+than writing a new recipe.
