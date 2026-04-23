@@ -32,6 +32,10 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone D Step 04 — VQSR fixture bundle + download script (2026-04-23)
+- [x] 2026-04-23 added variant_calling_vqsr_chr20 bundle to src/flytetest/bundles.py.
+- [x] 2026-04-23 created scripts/rcc/download_vqsr_training_vcfs.sh (10 files: 5 VCFs + 5 indices from gs://gcp-public-data--broad-references/hg38/v0/).
+
 ### GATK Milestone D Step 03 — genotype_refinement workflow (2026-04-23)
 - [x] 2026-04-23 added genotype_refinement workflow to src/flytetest/workflows/variant_calling.py.
 - [x] 2026-04-23 added genotype_refinement registry entry (workflow stage 4, reusable_as_reference=True).

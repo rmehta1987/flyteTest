@@ -39,7 +39,7 @@ Merge into `main` after all steps are complete and verification gates pass.
 
 | # | Step | Prompt | Status |
 |---|------|--------|--------|
-| 04 | Fixture bundle + download script | `prompts/step_04_fixture_and_download_script.md` | Not started |
+| 04 | Fixture bundle + download script | `prompts/step_04_fixture_and_download_script.md` | Complete |
 
 ### Closure
 

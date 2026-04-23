@@ -172,6 +172,71 @@ BUNDLES: dict[str, ResourceBundle] = {
             "Stage NA12878 chr20 FASTQ slices under data/reads/",
         ),
     ),
+    "variant_calling_vqsr_chr20": ResourceBundle(
+        name="variant_calling_vqsr_chr20",
+        description=(
+            "Full-chr20 NA12878 WGS germline VQSR demo. "
+            "Uses a joint-called VCF from germline_short_variant_discovery plus "
+            "five GATK Best Practices training VCFs for SNP + INDEL recalibration. "
+            "Reference data from gs://gcp-public-data--broad-references/hg38/v0/. "
+            "NA12878 chr20 BAM and VCF are user-staged (SCP); "
+            "training VCFs are downloaded by scripts/rcc/download_vqsr_training_vcfs.sh."
+        ),
+        pipeline_family="variant_calling",
+        bindings={
+            "ReferenceGenome": {"fasta_path": "data/references/hg38/chr20.fa"},
+            "VariantCallSet": {
+                "vcf_path": "data/vcf/NA12878_chr20_joint.vcf.gz",
+                "variant_type": "vcf",
+                "sample_id": "NA12878_chr20",
+            },
+        },
+        inputs={
+            "ref_path": "data/references/hg38/chr20.fa",
+            "joint_vcf": "data/vcf/NA12878_chr20_joint.vcf.gz",
+            "snp_resources": [
+                "data/references/hg38/hapmap_3.3.hg38.vcf.gz",
+                "data/references/hg38/1000G_omni2.5.hg38.vcf.gz",
+                "data/references/hg38/1000G_phase1.snps.high_confidence.hg38.vcf.gz",
+                "data/references/hg38/Homo_sapiens_assembly38.dbsnp138.vcf",
+            ],
+            "snp_resource_flags": [
+                {"resource_name": "hapmap", "known": "false", "training": "true",  "truth": "true",  "prior": "15"},
+                {"resource_name": "omni",   "known": "false", "training": "true",  "truth": "true",  "prior": "12"},
+                {"resource_name": "1000g",  "known": "false", "training": "true",  "truth": "false", "prior": "10"},
+                {"resource_name": "dbsnp",  "known": "true",  "training": "false", "truth": "false", "prior": "2"},
+            ],
+            "indel_resources": [
+                "data/references/hg38/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz",
+                "data/references/hg38/Homo_sapiens_assembly38.dbsnp138.vcf",
+            ],
+            "indel_resource_flags": [
+                {"resource_name": "mills", "known": "false", "training": "true",  "truth": "true",  "prior": "12"},
+                {"resource_name": "dbsnp", "known": "true",  "training": "false", "truth": "false", "prior": "2"},
+            ],
+            "cohort_id": "NA12878_chr20",
+            "results_dir": "results/vqsr_chr20/",
+        },
+        runtime_images={"sif_path": "data/images/gatk4.sif"},
+        tool_databases={
+            "hapmap": "data/references/hg38/hapmap_3.3.hg38.vcf.gz",
+            "omni":   "data/references/hg38/1000G_omni2.5.hg38.vcf.gz",
+            "1000g":  "data/references/hg38/1000G_phase1.snps.high_confidence.hg38.vcf.gz",
+            "mills":  "data/references/hg38/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz",
+            "dbsnp":  "data/references/hg38/Homo_sapiens_assembly38.dbsnp138.vcf",
+        },
+        applies_to=(
+            "variant_recalibrator",
+            "apply_vqsr",
+            "genotype_refinement",
+        ),
+        fetch_hints=(
+            "Download training VCFs: bash scripts/rcc/download_vqsr_training_vcfs.sh",
+            "Stage NA12878 chr20 BAM via SCP; run germline_short_variant_discovery to produce the joint VCF at data/vcf/NA12878_chr20_joint.vcf.gz",
+            "Pull GATK4 SIF image: bash scripts/rcc/pull_gatk_image.sh",
+            "chr20.fa must match the Homo_sapiens_assembly38.fasta reference used for alignment (contig name 'chr20', not '20')",
+        ),
+    ),
     "rnaseq_paired_demo": ResourceBundle(
         name="rnaseq_paired_demo",
         description=(
