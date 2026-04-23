@@ -1,5 +1,7 @@
 # GATK4 Germline Variant Calling — Milestone D Checklist
 
+Milestone status: Complete
+
 Tracks Milestone D of the Phase 3 GATK port described in
 `docs/gatk_milestone_d/milestone_d_plan.md`.
 
@@ -45,7 +47,7 @@ Merge into `main` after all steps are complete and verification gates pass.
 
 | # | Step | Prompt | Status |
 |---|------|--------|--------|
-| 05 | Tool ref + agent-context sweep + CHANGELOG + submission prompt | `prompts/step_05_closure.md` | Not started |
+| 05 | Tool ref + agent-context sweep + CHANGELOG + submission prompt | `prompts/step_05_closure.md` | Complete |
 
 ## Verification Gates
 

@@ -333,3 +333,77 @@ gatk MarkDuplicates -I <sorted.bam> -O <sample_id>_marked_duplicates.bam \
 - Consumes the coordinate-sorted BAM from `sort_sam`.
 - Both output files are verified post-run; `FileNotFoundError` if either is absent.
 - Resources: 4 CPU / 16 GiB local; Slurm hints 8 CPU / 32 GiB / 04:00:00.
+
+---
+
+## variant_recalibrator
+
+**Tool:** GATK4 VariantRecalibrator
+
+**FLyteTest path:** `flytetest.tasks.variant_calling.variant_recalibrator`
+
+**Command shape:**
+```
+gatk VariantRecalibrator \
+  -R <ref.fa> -V <joint.vcf.gz> \
+  -mode SNP|INDEL \
+  -O <cohort_id>_<mode>.recal \
+  --tranches-file <cohort_id>_<mode>.tranches \
+  --resource:<name>,known=<bool>,training=<bool>,truth=<bool>,prior=<float> <vcf> \
+  -an QD -an MQ -an MQRankSum -an ReadPosRankSum -an FS -an SOR   # SNP
+  -an QD -an FS -an SOR                                            # INDEL
+```
+
+**Key argument rationale:**
+- `-mode SNP` uses MQ and MQRankSum; `-mode INDEL` omits them — MQ-based annotations are unreliable for indels.
+- `prior` encodes confidence in the resource: HapMap/Omni 15/12, 1000G 10, dbSNP 2 (known-only, not training).
+- `known`/`training`/`truth` are lowercase strings (`"true"`/`"false"`); GATK rejects Python booleans.
+- `known_sites` and `known_sites_flags` are parallel lists; each dict carries `resource_name`, `known`, `training`, `truth`, `prior`.
+
+**Outputs:**
+- `recal_file` — `<cohort_id>_<mode>.recal`; input to `apply_vqsr`.
+- `tranches_file` — `<cohort_id>_<mode>.tranches`; input to `apply_vqsr`.
+
+**Stargazer citation:**
+`stargazer/src/stargazer/tasks/gatk/variant_recalibrator.py:1-117`
+
+**Milestone D scope notes:**
+- Requires ≥30k SNPs (SNP mode) or ≥2k indels (INDEL mode). The chr20 slice in `variant_calling_germline_minimal` is too small; use `variant_calling_vqsr_chr20` bundle.
+- All known-sites VCFs must be indexed (`.tbi` or `.idx`).
+- Resources: 4 CPU / 16 GiB local; Slurm hints 4 CPU / 16 GiB / 04:00:00.
+
+---
+
+## apply_vqsr
+
+**Tool:** GATK4 ApplyVQSR
+
+**FLyteTest path:** `flytetest.tasks.variant_calling.apply_vqsr`
+
+**Command shape:**
+```
+gatk ApplyVQSR \
+  -R <ref.fa> -V <in.vcf.gz> \
+  --recal-file <recal_file> \
+  --tranches-file <tranches_file> \
+  --truth-sensitivity-filter-level <level> \
+  --create-output-variant-index true \
+  -mode SNP|INDEL \
+  -O <cohort_id>_vqsr_<mode>.vcf.gz
+```
+
+**Key argument rationale:**
+- `--truth-sensitivity-filter-level` defaults to 99.5 (SNP) and 99.0 (INDEL) when `truth_sensitivity_filter_level=0.0` is passed.
+- `--create-output-variant-index true` writes `.vcf.gz.tbi` automatically.
+- The INDEL pass must consume the SNP-filtered VCF from the prior `apply_vqsr` call, not the original joint VCF — enforced by `genotype_refinement`.
+
+**Outputs:**
+- `vqsr_vcf` — `<cohort_id>_vqsr_<mode>.vcf.gz`.
+- `vqsr_vcf_index` — companion `.vcf.gz.tbi`; empty string in manifest if absent.
+
+**Stargazer citation:**
+`stargazer/src/stargazer/tasks/gatk/apply_vqsr.py:1-114`
+
+**Milestone D scope notes:**
+- `recal_file` and `tranches_file` must come from `variant_recalibrator` for the same mode.
+- Resources: 4 CPU / 16 GiB local; Slurm hints 4 CPU / 16 GiB / 02:00:00.

@@ -32,6 +32,22 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone D — Complete (2026-04-23)
+
+Closes Milestone D of the Phase 3 GATK port (tracker:
+`docs/gatk_milestone_d/checklist.md`). Adds VQSR to the germline variant
+calling pipeline: two tasks (`variant_recalibrator`, `apply_vqsr`), a
+`genotype_refinement` workflow, the `variant_calling_vqsr_chr20` fixture
+bundle, and `scripts/rcc/download_vqsr_training_vcfs.sh`.
+
+- [x] 2026-04-23 variant_recalibrator task (stage 12) + 7 unit tests.
+- [x] 2026-04-23 apply_vqsr task (stage 13) + 9 unit tests.
+- [x] 2026-04-23 genotype_refinement workflow (stage 4) + 4 unit tests.
+- [x] 2026-04-23 variant_calling_vqsr_chr20 bundle + download script.
+- [x] 2026-04-23 docs/tool_refs/gatk4.md updated with variant_recalibrator + apply_vqsr sections.
+- [x] 2026-04-23 full pytest green; python -m compileall clean.
+- Deferred: merge_bam_alignment, interval-scoped HaplotypeCaller, CalculateGenotypePosteriors.
+
 ### GATK Milestone D Step 04 — VQSR fixture bundle + download script (2026-04-23)
 - [x] 2026-04-23 added variant_calling_vqsr_chr20 bundle to src/flytetest/bundles.py.
 - [x] 2026-04-23 created scripts/rcc/download_vqsr_training_vcfs.sh (10 files: 5 VCFs + 5 indices from gs://gcp-public-data--broad-references/hg38/v0/).
