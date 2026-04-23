@@ -530,4 +530,49 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             pipeline_stage_order=3,
         ),
     ),
+    RegistryEntry(
+        name="variant_recalibrator",
+        category="task",
+        description="Build a VQSR recalibration model using GATK4 VariantRecalibrator.",
+        inputs=(
+            InterfaceField("ref_path", "str", "Absolute path to reference FASTA."),
+            InterfaceField("vcf_path", "str", "Absolute path to joint-called cohort VCF."),
+            InterfaceField("known_sites", "list[str]", "Parallel list of training/truth VCF paths."),
+            InterfaceField("known_sites_flags", "list[dict]", "Parallel list of per-resource flag dicts (resource_name, known, training, truth, prior)."),
+            InterfaceField("mode", "str", "Variant type to recalibrate: 'SNP' or 'INDEL'."),
+            InterfaceField("cohort_id", "str", "Cohort identifier used to name output files."),
+            InterfaceField("results_dir", "str", "Output directory."),
+            InterfaceField("sif_path", "str", "Optional Apptainer/Singularity image path."),
+        ),
+        outputs=(
+            InterfaceField("recal_file", "str", "Path to the VQSR recalibration file (.recal)."),
+            InterfaceField("tranches_file", "str", "Path to the VQSR tranches file (.tranches)."),
+        ),
+        tags=("variant_calling", "gatk4", "vqsr"),
+        compatibility=RegistryCompatibilityMetadata(
+            biological_stage="GATK4 VQSR recalibration model building",
+            accepted_planner_types=("ReferenceGenome", "VariantCallSet", "KnownSites"),
+            produced_planner_types=(),
+            reusable_as_reference=False,
+            execution_defaults={
+                "profile": "local",
+                "result_manifest": "run_manifest.json",
+                "resources": {"cpu": "4", "memory": "16Gi", "execution_class": "local"},
+                "slurm_resource_hints": {"cpu": "4", "memory": "16Gi", "walltime": "04:00:00"},
+                "runtime_images": {"sif_path": "data/images/gatk4.sif"},
+                "module_loads": ("python/3.11.9", "apptainer/1.4.1"),
+            },
+            supported_execution_profiles=("local", "slurm"),
+            synthesis_eligible=True,
+            composition_constraints=(
+                "Requires a joint-called cohort VCF with sufficient variant count "
+                "(≥30k SNPs for SNP mode; ≥2k indels for INDEL mode). "
+                "The chr20 NA12878 slice in variant_calling_germline_minimal is too small; "
+                "use the full-chr20 WGS data from variant_calling_vqsr_chr20 bundle.",
+                "All known-sites VCFs must be indexed (.tbi or .idx present next to each VCF).",
+            ),
+            pipeline_family="variant_calling",
+            pipeline_stage_order=12,
+        ),
+    ),
 )

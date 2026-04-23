@@ -32,6 +32,13 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone D Step 01 — variant_recalibrator task (2026-04-23)
+- [x] 2026-04-23 added variant_recalibrator to src/flytetest/tasks/variant_calling.py.
+- [x] 2026-04-23 added variant_recalibrator registry entry (stage 12).
+- [x] 2026-04-23 added 7 unit tests (VariantRecalibratorRegistryTests, InvocationTests, ManifestTests).
+- [x] 2026-04-23 extended MANIFEST_OUTPUT_KEYS with recal_file, tranches_file, vqsr_vcf.
+- [x] 2026-04-23 added variant_recalibrator to _VARIANT_CALLING_TASK_NAMES in contract test.
+
 ### GATK Milestone C — Complete (2026-04-23)
 
 Closes Milestone C of the Phase 3 GATK port (tracker:

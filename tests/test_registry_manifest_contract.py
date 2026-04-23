@@ -66,6 +66,7 @@ _VARIANT_CALLING_TASK_NAMES = [
     "haplotype_caller",
     "combine_gvcfs",
     "joint_call_gvcfs",
+    "variant_recalibrator",
 ]
 
 
