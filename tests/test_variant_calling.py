@@ -1112,3 +1112,113 @@ class BwaMem2MemManifestTests(TestCase):
         self.assertEqual(result["stage"], "bwa_mem2_mem")
         self.assertIn("aligned_bam", result["outputs"])
         self.assertTrue(result["outputs"]["aligned_bam"].endswith("s1_aligned.bam"))
+
+
+class SortSamRegistryTests(TestCase):
+    """Guard the sort_sam registry entry shape."""
+
+    def test_sort_sam_registry_entry_shape(self) -> None:
+        """Entry exists at stage_order 10 in the variant_calling family."""
+        from flytetest.registry import get_entry
+
+        entry = get_entry("sort_sam")
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry.category, "task")
+        self.assertEqual(entry.compatibility.pipeline_family, "variant_calling")
+        self.assertEqual(entry.compatibility.pipeline_stage_order, 10)
+
+        output_names = tuple(f.name for f in entry.outputs)
+        self.assertIn("sorted_bam", output_names)
+        self.assertIn("sorted_bam", MANIFEST_OUTPUT_KEYS)
+
+
+class SortSamInvocationTests(TestCase):
+    """Verify sort_sam builds the correct GATK SortSam command."""
+
+    def test_sort_sam_command_shape(self) -> None:
+        """run_tool called with SortSam, -I, -O, --SORT_ORDER coordinate, --CREATE_INDEX true."""
+        from flytetest.tasks.variant_calling import sort_sam
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            in_bam = tmp_path / "s1_aligned.bam"
+            in_bam.write_text("BAM")
+            results_dir = tmp_path / "sort_out"
+            results_dir.mkdir()
+
+            captured: list[list[str]] = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                captured.append(cmd)
+                o_idx = cmd.index("-O")
+                Path(cmd[o_idx + 1]).write_text("BAM")
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                sort_sam(
+                    bam_path=str(in_bam),
+                    sample_id="s1",
+                    results_dir=str(results_dir),
+                )
+
+        cmd = captured[0]
+        self.assertIn("SortSam", cmd)
+        self.assertIn("-I", cmd)
+        self.assertIn("-O", cmd)
+        self.assertIn("--SORT_ORDER", cmd)
+        self.assertIn("coordinate", cmd)
+        self.assertIn("--CREATE_INDEX", cmd)
+        self.assertIn("true", cmd)
+        o_idx = cmd.index("-O")
+        self.assertTrue(cmd[o_idx + 1].endswith("s1_sorted.bam"))
+
+    def test_sort_sam_raises_on_missing_output(self) -> None:
+        """FileNotFoundError raised when output BAM is absent after run."""
+        from flytetest.tasks.variant_calling import sort_sam
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            in_bam = tmp_path / "s1_aligned.bam"
+            in_bam.write_text("BAM")
+            results_dir = tmp_path / "sort_out"
+            results_dir.mkdir()
+
+            def fake_run_tool_no_output(cmd, sif, bind_paths):
+                pass
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool_no_output):
+                with self.assertRaises(FileNotFoundError):
+                    sort_sam(
+                        bam_path=str(in_bam),
+                        sample_id="s1",
+                        results_dir=str(results_dir),
+                    )
+
+
+class SortSamManifestTests(TestCase):
+    """Verify sort_sam emits a well-formed run_manifest.json."""
+
+    def test_sort_sam_emits_sorted_bam_manifest(self) -> None:
+        """Manifest contains sorted_bam pointing at <sample_id>_sorted.bam."""
+        from flytetest.tasks.variant_calling import sort_sam
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            in_bam = tmp_path / "s1_aligned.bam"
+            in_bam.write_text("BAM")
+            results_dir = tmp_path / "sort_out"
+            results_dir.mkdir()
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                o_idx = cmd.index("-O")
+                Path(cmd[o_idx + 1]).write_text("BAM")
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                result = sort_sam(
+                    bam_path=str(in_bam),
+                    sample_id="s1",
+                    results_dir=str(results_dir),
+                )
+
+        self.assertEqual(result["stage"], "sort_sam")
+        self.assertIn("sorted_bam", result["outputs"])
+        self.assertTrue(result["outputs"]["sorted_bam"].endswith("s1_sorted.bam"))

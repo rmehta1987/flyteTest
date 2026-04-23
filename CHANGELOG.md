@@ -32,6 +32,12 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone B Step 04 — sort_sam task (2026-04-23)
+- [x] 2026-04-23 added `sort_sam` to `src/flytetest/tasks/variant_calling.py`.
+- [x] 2026-04-23 added `sort_sam` registry entry (stage_order 10).
+- [x] 2026-04-23 extended `MANIFEST_OUTPUT_KEYS` with `"sorted_bam"`.
+- [x] 2026-04-23 added 4 tests (registry shape, cmd shape, missing-file error, manifest); all passing.
+
 ### GATK Milestone B Step 03 — bwa_mem2_mem task (2026-04-23)
 - [x] 2026-04-23 added `bwa_mem2_mem` using shell pipeline (bwa-mem2 | samtools view).
 - [x] 2026-04-23 added `bwa_mem2_mem` registry entry (stage_order 9).

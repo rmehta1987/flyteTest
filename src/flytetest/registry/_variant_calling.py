@@ -337,4 +337,40 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             pipeline_stage_order=9,
         ),
     ),
+    RegistryEntry(
+        name="sort_sam",
+        category="task",
+        description="Coordinate-sort a BAM file using GATK SortSam.",
+        inputs=(
+            InterfaceField("bam_path", "str", "Absolute path to input BAM."),
+            InterfaceField("sample_id", "str", "Sample identifier."),
+            InterfaceField("results_dir", "str", "Output directory."),
+            InterfaceField("sif_path", "str", "Optional Apptainer/Singularity image path."),
+        ),
+        outputs=(
+            InterfaceField("sorted_bam", "str", "Path to coordinate-sorted BAM."),
+        ),
+        tags=("variant_calling", "gatk4", "preprocessing"),
+        compatibility=RegistryCompatibilityMetadata(
+            biological_stage="GATK4 coordinate sort",
+            accepted_planner_types=("AlignmentSet",),
+            produced_planner_types=("AlignmentSet",),
+            reusable_as_reference=False,
+            execution_defaults={
+                "profile": "local",
+                "result_manifest": "run_manifest.json",
+                "resources": {"cpu": "4", "memory": "16Gi", "execution_class": "local"},
+                "slurm_resource_hints": {"cpu": "8", "memory": "32Gi", "walltime": "04:00:00"},
+                "runtime_images": {"sif_path": "data/images/gatk4.sif"},
+                "module_loads": ("python/3.11.9", "apptainer/1.4.1"),
+            },
+            supported_execution_profiles=("local", "slurm"),
+            synthesis_eligible=True,
+            composition_constraints=(
+                "Consumes the unsorted BAM from bwa_mem2_mem; emits a coordinate-sorted BAM with index.",
+            ),
+            pipeline_family="variant_calling",
+            pipeline_stage_order=10,
+        ),
+    ),
 )

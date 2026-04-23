@@ -31,6 +31,7 @@ MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
     "joint_vcf",
     "bwa_index_prefix",
     "aligned_bam",
+    "sorted_bam",
 )
 
 
@@ -485,6 +486,51 @@ def bwa_mem2_mem(
             "threads": threads,
         },
         outputs={"aligned_bam": str(output_bam)},
+    )
+    _write_json(out_dir / "run_manifest.json", manifest)
+    return manifest
+
+
+def sort_sam(
+    bam_path: str,
+    sample_id: str,
+    results_dir: str,
+    sif_path: str = "",
+) -> dict:
+    """Coordinate-sort a BAM file using GATK SortSam."""
+    in_bam = require_path(Path(bam_path), "Input BAM for SortSam")
+    out_dir = Path(results_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_bam = out_dir / f"{sample_id}_sorted.bam"
+
+    cmd = [
+        "gatk", "SortSam",
+        "-I", str(in_bam),
+        "-O", str(out_bam),
+        "--SORT_ORDER", "coordinate",
+        "--CREATE_INDEX", "true",
+    ]
+    bind_paths = [in_bam.parent, out_dir]
+    run_tool(cmd, sif_path or "data/images/gatk4.sif", bind_paths)
+
+    require_path(out_bam, "GATK SortSam output BAM")
+    out_bai = out_bam.with_suffix(".bai")
+    if not out_bai.exists():
+        alt_bai = Path(str(out_bam) + ".bai")
+        if alt_bai.exists():
+            out_bai = alt_bai
+
+    manifest = build_manifest_envelope(
+        stage="sort_sam",
+        assumptions=[
+            "Input BAM is an unsorted aligned BAM produced by bwa_mem2_mem.",
+            "--CREATE_INDEX true writes the index alongside the sorted BAM.",
+        ],
+        inputs={"bam_path": str(in_bam), "sample_id": sample_id},
+        outputs={
+            "sorted_bam": str(out_bam),
+            "sorted_bam_index": str(out_bai) if out_bai.exists() else "",
+        },
     )
     _write_json(out_dir / "run_manifest.json", manifest)
     return manifest
