@@ -33,7 +33,7 @@ Merge into `main` after all steps are complete and verification gates pass.
 
 | # | Step | Prompt | Status |
 |---|------|--------|--------|
-| 03 | `genotype_refinement` workflow | `prompts/step_03_genotype_refinement_workflow.md` | Not started |
+| 03 | `genotype_refinement` workflow | `prompts/step_03_genotype_refinement_workflow.md` | Complete |
 
 ### Fixture and Tooling
 

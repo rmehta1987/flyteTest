@@ -11,6 +11,7 @@ from flytetest.manifest_envelope import build_manifest_envelope
 from flytetest.manifest_io import write_json as _write_json
 from flytetest.tasks.variant_calling import (
     apply_bqsr,
+    apply_vqsr,
     base_recalibrator,
     bwa_mem2_index,
     bwa_mem2_mem,
@@ -21,6 +22,7 @@ from flytetest.tasks.variant_calling import (
     joint_call_gvcfs,
     mark_duplicates,
     sort_sam,
+    variant_recalibrator,
 )
 
 
@@ -29,6 +31,7 @@ MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
     "prepared_ref",
     "preprocessed_bam",
     "genotyped_vcf",
+    "refined_vcf",
 )
 
 
@@ -235,6 +238,91 @@ def germline_short_variant_discovery(
             "cohort_id": cohort_id,
         },
         outputs={"genotyped_vcf": joint_vcf.path},
+    )
+    _write_json(out_dir / "run_manifest.json", manifest)
+    return manifest
+
+
+@variant_calling_env.task
+def genotype_refinement(
+    ref_path: str,
+    joint_vcf: str,
+    snp_resources: list[str],
+    snp_resource_flags: list[dict],
+    indel_resources: list[str],
+    indel_resource_flags: list[dict],
+    cohort_id: str,
+    results_dir: str,
+    snp_filter_level: float = 0.0,
+    indel_filter_level: float = 0.0,
+    sif_path: str = "",
+) -> dict:
+    """Refine a joint-called VCF with two-pass VQSR (SNP then INDEL).
+
+    Pass 1 — SNP VQSR on the joint VCF.
+    Pass 2 — INDEL VQSR on the SNP-filtered VCF (not the original joint VCF).
+    """
+    # Pass 1 — SNP
+    snp_recal = variant_recalibrator(
+        ref_path=ref_path,
+        vcf_path=joint_vcf,
+        known_sites=snp_resources,
+        known_sites_flags=snp_resource_flags,
+        mode="SNP",
+        cohort_id=cohort_id,
+        results_dir=results_dir,
+        sif_path=sif_path,
+    )
+    snp_apply = apply_vqsr(
+        ref_path=ref_path,
+        vcf_path=joint_vcf,
+        recal_file=snp_recal["outputs"]["recal_file"],
+        tranches_file=snp_recal["outputs"]["tranches_file"],
+        mode="SNP",
+        cohort_id=cohort_id,
+        results_dir=results_dir,
+        truth_sensitivity_filter_level=snp_filter_level,
+        sif_path=sif_path,
+    )
+    snp_vcf = snp_apply["outputs"]["vqsr_vcf"]
+
+    # Pass 2 — INDEL (input is the SNP-filtered VCF)
+    indel_recal = variant_recalibrator(
+        ref_path=ref_path,
+        vcf_path=snp_vcf,
+        known_sites=indel_resources,
+        known_sites_flags=indel_resource_flags,
+        mode="INDEL",
+        cohort_id=cohort_id,
+        results_dir=results_dir,
+        sif_path=sif_path,
+    )
+    indel_apply = apply_vqsr(
+        ref_path=ref_path,
+        vcf_path=snp_vcf,
+        recal_file=indel_recal["outputs"]["recal_file"],
+        tranches_file=indel_recal["outputs"]["tranches_file"],
+        mode="INDEL",
+        cohort_id=cohort_id,
+        results_dir=results_dir,
+        truth_sensitivity_filter_level=indel_filter_level,
+        sif_path=sif_path,
+    )
+    refined_vcf = indel_apply["outputs"]["vqsr_vcf"]
+
+    out_dir = Path(results_dir)
+    manifest = build_manifest_envelope(
+        stage="genotype_refinement",
+        assumptions=[
+            "joint_vcf is a cohort-level VCF with sufficient variant count for VQSR training.",
+            "INDEL pass consumes the SNP-filtered VCF, not the original joint VCF.",
+        ],
+        inputs={
+            "ref_path": ref_path,
+            "joint_vcf": joint_vcf,
+            "cohort_id": cohort_id,
+        },
+        outputs={"refined_vcf": refined_vcf},
     )
     _write_json(out_dir / "run_manifest.json", manifest)
     return manifest

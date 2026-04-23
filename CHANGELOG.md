@@ -32,6 +32,12 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone D Step 03 — genotype_refinement workflow (2026-04-23)
+- [x] 2026-04-23 added genotype_refinement workflow to src/flytetest/workflows/variant_calling.py.
+- [x] 2026-04-23 added genotype_refinement registry entry (workflow stage 4, reusable_as_reference=True).
+- [x] 2026-04-23 added 4 unit tests in GenotypeRefinementRegistryTests + WorkflowTests.
+- [x] 2026-04-23 extended workflows MANIFEST_OUTPUT_KEYS with refined_vcf.
+
 ### GATK Milestone D Step 02 — apply_vqsr task (2026-04-23)
 - [x] 2026-04-23 added apply_vqsr to src/flytetest/tasks/variant_calling.py.
 - [x] 2026-04-23 added apply_vqsr registry entry (stage 13).
