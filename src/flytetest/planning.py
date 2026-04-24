@@ -743,12 +743,17 @@ _VARIANT_CALLING_KEYWORDS: frozenset[str] = frozenset({
     "dedup", "mark duplicates",
     "bwa", "bwa mem", "bwa mem2",
     "gatk", "gatk4",
+    # Milestone I additions (only GATK/variant-specific terms to avoid cross-family matches)
+    "hard-filter", "hard filter", "variant filtration",
+    "snpeff", "snp eff",
+    "multiqc",
+    "insert size",
 })
 
 _VARIANT_CALLING_TARGET_MAP: tuple[tuple[tuple[str, ...], str], ...] = (
     (("prepare reference", "index reference", "create sequence dictionary", "sequence dictionary"), "prepare_reference"),
     (("preprocess from ubam", "ubam", "unmapped bam"), "preprocess_sample_from_ubam"),
-    (("scatter haplotype", "scatter gvcf", "interval scatter"), "scattered_haplotype_caller"),
+    (("scatter haplotype", "scatter gvcf", "interval scatter", "sequential haplotype", "serial haplotype"), "sequential_interval_haplotype_caller"),
     (("refine genotype", "calculate genotype posterior", "cgp", "population prior"), "post_genotyping_refinement"),
     (("vqsr", "recalibrate variant", "filter cohort", "genotype refinement", "snp indel filter"), "genotype_refinement"),
     (("germline short variant", "end to end", "full pipeline", "germline discovery"), "germline_short_variant_discovery"),
@@ -759,6 +764,12 @@ _VARIANT_CALLING_TARGET_MAP: tuple[tuple[tuple[str, ...], str], ...] = (
     (("base recalibrat", "bqsr table", "recalibration table", "bqsr recal", "bqsr"), "base_recalibrator"),
     (("preprocess", "align", "sort", "dedup", "recalibrate reads", "bwa mem"), "preprocess_sample"),
     (("index vcf", "index feature file", "index feature"), "index_feature_file"),
+    # Milestone I — new target routing
+    (("hard filter", "hard-filter", "variant filtration", "small cohort filter", "filtration"), "small_cohort_filter"),
+    (("filter snp", "filter indel", "variantfiltration"), "variant_filtration"),
+    (("coverage metric", "wgs metric", "insert size", "pre call qc", "pre-call qc"), "pre_call_coverage_qc"),
+    (("bcftools stats", "variant stats", "post call qc", "post-call qc", "multiqc"), "post_call_qc_summary"),
+    (("annotate variant", "snpeff", "snp eff", "functional effect", "annotation"), "annotate_variants_snpeff"),
 )
 
 

@@ -66,11 +66,22 @@ _VARIANT_CALLING_TASK_NAMES = [
     "haplotype_caller",
     "combine_gvcfs",
     "joint_call_gvcfs",
+    # Milestone I ported tasks
+    "bwa_mem2_index",
+    "bwa_mem2_mem",
+    "sort_sam",
+    "mark_duplicates",
     "variant_recalibrator",
     "apply_vqsr",
     "merge_bam_alignment",
     "gather_vcfs",
     "calculate_genotype_posteriors",
+    # Milestone I new tasks
+    "variant_filtration",
+    "collect_wgs_metrics",
+    "bcftools_stats",
+    "multiqc_summarize",
+    "snpeff_annotate",
 ]
 
 

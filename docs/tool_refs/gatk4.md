@@ -528,3 +528,50 @@ project; this implementation was derived directly from GATK4 documentation.
 - Composable after `genotype_refinement` (VQSR) or directly after `joint_call_gvcfs`; wired via the `post_genotyping_refinement` workflow (stage 7).
 - VQSR on the CGP output is user-composable but out of scope for this milestone.
 - Resources: 4 CPU / 16 GiB local; Slurm hints 4 CPU / 16 GiB / 02:00:00.
+
+
+## variant_filtration
+
+FLyteTest path: `flytetest.tasks.variant_calling.variant_filtration`
+Composed into: `flytetest.workflows.variant_calling.small_cohort_filter`
+
+**Purpose:** Apply GATK `VariantFiltration` with Best Practices hard-filtering defaults.
+Intended for cohorts too small for VQSR (<30k SNPs / <2k indels). Marks records with
+FILTER annotations rather than removing them.
+
+**GATK Best Practices source:** https://gatk.broadinstitute.org/hc/en-us/articles/360035531112
+
+**Default SNP filter expressions** (verbatim from Best Practices):
+```
+QD < 2.0, FS > 60.0, MQ < 40.0, MQRankSum < -12.5, ReadPosRankSum < -8.0, SOR > 3.0
+```
+
+**Default INDEL filter expressions:**
+```
+QD < 2.0, FS > 200.0, ReadPosRankSum < -20.0, SOR > 10.0
+```
+
+**Native command shape:**
+```bash
+gatk VariantFiltration \
+  -R ref.fa \
+  -V input.vcf.gz \
+  -O cohort_snp_filtered.vcf.gz \
+  --filter-name QD2 --filter-expression "QD < 2.0" \
+  --filter-name FS60 --filter-expression "FS > 60.0" \
+  ...
+```
+
+**Key argument rationale:**
+- `--filter-name / --filter-expression` pairing — each pair names the filter and its expression;
+  records matching the expression get the filter name written to their FILTER field.
+- Two passes required — run once for SNP mode then again (consuming the SNP-filtered VCF)
+  for INDEL mode. The `small_cohort_filter` workflow handles this automatically.
+- `filter_expressions` parameter — override the defaults when custom thresholds are needed.
+
+**Outputs:**
+- `filtered_vcf` — `<cohort_id>_<mode>_filtered.vcf.gz`, hard-filtered VCF.
+
+**Milestone I scope notes:**
+- `variant_filtration` is task stage 17; `small_cohort_filter` is workflow stage 8.
+- Resources: 2 CPU / 8 GiB local; Slurm hints 2 CPU / 8 GiB / 01:00:00.
