@@ -32,6 +32,13 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone G Step 01 — calculate_genotype_posteriors task (2026-04-23)
+- [x] 2026-04-23 added calculate_genotype_posteriors task (stage 16); no -R flag; --supporting-callsets optional.
+- [x] 2026-04-23 added registry entry (pipeline_stage_order=16).
+- [x] 2026-04-23 added 5 unit tests in CalculateGenotypePosteriorTests.
+- [x] 2026-04-23 extended MANIFEST_OUTPUT_KEYS with cgp_vcf.
+- [x] 2026-04-23 added calculate_genotype_posteriors to _VARIANT_CALLING_TASK_NAMES.
+
 ### GATK Milestone F — Complete (2026-04-23)
 
 Interval-scoped HaplotypeCaller: optional intervals on `haplotype_caller`,

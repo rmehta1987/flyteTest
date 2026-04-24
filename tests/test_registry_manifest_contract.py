@@ -70,6 +70,7 @@ _VARIANT_CALLING_TASK_NAMES = [
     "apply_vqsr",
     "merge_bam_alignment",
     "gather_vcfs",
+    "calculate_genotype_posteriors",
 ]
 
 
