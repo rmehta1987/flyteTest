@@ -32,6 +32,15 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone H Migration — Breaking-Change Follow-up (2026-04-23)
+
+Post-H migration sweep for external consumers of the two breaking changes.
+
+- [x] 2026-04-23 audited manifest reads repo-wide; 0 task-level reads found referencing run_manifest.json from a task output directory — all server.py and test hits are workflow-level reads.
+- [x] 2026-04-23 audited post_genotyping_refinement callers; 0 live call sites pass ref_path=; 0 saved recipes reference post_genotyping_refinement.
+- [x] 2026-04-23 doc sweep: docs/gatk_pipeline_overview.md and mcp_showcase.md are accurate; no old signature examples found.
+- [x] 2026-04-23 full pytest green (808 passed, 1 skipped).
+
 ### GATK Milestone H — Complete (2026-04-23)
 
 GATK production wiring: MCP surface exposure, P0 fixes, signature and
