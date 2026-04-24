@@ -223,6 +223,7 @@ def haplotype_caller(
     reference_fasta: File,
     aligned_bam: File,
     sample_id: str,
+    intervals: list[str] | None = None,
     gatk_sif: str = "",
 ) -> File:
     """Call per-sample germline GVCF via GATK4 HaplotypeCaller in GVCF mode."""
@@ -239,6 +240,8 @@ def haplotype_caller(
            "-I", str(bam_path),
            "-O", str(out_gvcf),
            "--emit-ref-confidence", "GVCF"]
+    for interval in (intervals or []):
+        cmd.extend(["-L", interval])
     bind_paths = [ref_path.parent, bam_path.parent, out_dir]
     run_tool(cmd, gatk_sif or "data/images/gatk4.sif", bind_paths)
 

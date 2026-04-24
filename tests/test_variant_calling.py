@@ -537,6 +537,58 @@ class HaplotypeCallerInvocationTests(TestCase):
             self.assertTrue(result.path.endswith(".g.vcf"))
             self.assertIn("sample1", result.path)
 
+    def test_haplotype_caller_with_intervals_adds_L_flags(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            ref_fa = tmp_path / "ref.fa"
+            bam_file = tmp_path / "sample.bam"
+            for p in (ref_fa, bam_file):
+                p.touch()
+
+            captured_cmd = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                captured_cmd.extend(cmd)
+                out_idx = cmd.index("-O")
+                Path(cmd[out_idx + 1]).touch()
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                haplotype_caller(
+                    reference_fasta=File(path=str(ref_fa)),
+                    aligned_bam=File(path=str(bam_file)),
+                    sample_id="sample1",
+                    intervals=["chr1", "chr2:1-1000000"],
+                )
+
+            l_indices = [i for i, v in enumerate(captured_cmd) if v == "-L"]
+            self.assertEqual(len(l_indices), 2)
+            self.assertEqual(captured_cmd[l_indices[0] + 1], "chr1")
+            self.assertEqual(captured_cmd[l_indices[1] + 1], "chr2:1-1000000")
+
+    def test_haplotype_caller_no_intervals_omits_L(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            ref_fa = tmp_path / "ref.fa"
+            bam_file = tmp_path / "sample.bam"
+            for p in (ref_fa, bam_file):
+                p.touch()
+
+            captured_cmd = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                captured_cmd.extend(cmd)
+                out_idx = cmd.index("-O")
+                Path(cmd[out_idx + 1]).touch()
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                haplotype_caller(
+                    reference_fasta=File(path=str(ref_fa)),
+                    aligned_bam=File(path=str(bam_file)),
+                    sample_id="sample1",
+                )
+
+            self.assertNotIn("-L", captured_cmd)
+
 
 class HaplotypeCallerManifestTests(TestCase):
     def test_haplotype_caller_emits_manifest(self):

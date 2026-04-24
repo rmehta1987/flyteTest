@@ -32,6 +32,10 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone F Step 01 — haplotype_caller interval support (2026-04-23)
+- [x] 2026-04-23 extended haplotype_caller with optional intervals parameter (backward compatible).
+- [x] 2026-04-23 added 2 new tests; all existing HaplotypeCaller tests pass.
+
 ### GATK Milestone E — Complete (2026-04-23)
 
 uBAM preprocessing path: `UnmappedBAM` type, `merge_bam_alignment` (task stage 14),
