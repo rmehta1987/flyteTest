@@ -20,6 +20,8 @@ from flytetest.mcp_contract import (
     RUN_SLURM_RECIPE_TOOL_NAME,
     RUN_TASK_TOOL_NAME,
     RUN_WORKFLOW_TOOL_NAME,
+    SUPPORTED_TASK_NAMES,
+    SUPPORTED_WORKFLOW_NAMES,
     TOOL_DESCRIPTIONS,
 )
 
@@ -129,3 +131,50 @@ class ToolGroupOrderTests(TestCase):
 
     def test_run_slurm_recipe_in_inspect_group(self) -> None:
         self.assertIn(RUN_SLURM_RECIPE_TOOL_NAME, INSPECT_TOOLS)
+
+
+class VariantCallingMcpSurfaceTests(TestCase):
+    """Milestone H: verify variant_calling targets are reachable through the MCP surface."""
+
+    _WORKFLOW_NAMES = [
+        "prepare_reference",
+        "preprocess_sample",
+        "germline_short_variant_discovery",
+        "genotype_refinement",
+        "preprocess_sample_from_ubam",
+        "scattered_haplotype_caller",
+        "post_genotyping_refinement",
+    ]
+
+    _TASK_NAMES = [
+        "create_sequence_dictionary",
+        "index_feature_file",
+        "base_recalibrator",
+        "apply_bqsr",
+        "haplotype_caller",
+        "combine_gvcfs",
+        "joint_call_gvcfs",
+    ]
+
+    _PLAIN_PYTHON_HELPERS = [
+        "bwa_mem2_mem",
+        "variant_recalibrator",
+        "apply_vqsr",
+        "gather_vcfs",
+        "calculate_genotype_posteriors",
+    ]
+
+    def test_variant_calling_workflows_in_supported_names(self) -> None:
+        """All 7 variant_calling workflow names are in SUPPORTED_WORKFLOW_NAMES."""
+        for name in self._WORKFLOW_NAMES:
+            self.assertIn(name, SUPPORTED_WORKFLOW_NAMES, f"{name} not in SUPPORTED_WORKFLOW_NAMES")
+
+    def test_variant_calling_tasks_in_supported_names(self) -> None:
+        """All 7 Milestone A task names are in SUPPORTED_TASK_NAMES."""
+        for name in self._TASK_NAMES:
+            self.assertIn(name, SUPPORTED_TASK_NAMES, f"{name} not in SUPPORTED_TASK_NAMES")
+
+    def test_plain_python_helpers_not_exposed(self) -> None:
+        """Plain-Python helper tasks must not appear in SUPPORTED_TASK_NAMES (deferred to Milestone I)."""
+        for name in self._PLAIN_PYTHON_HELPERS:
+            self.assertNotIn(name, SUPPORTED_TASK_NAMES, f"{name} must not be exposed until Milestone I")

@@ -69,6 +69,20 @@ The local recipe runner can currently handle:
 - task: `busco_assess_proteins`
 - task: `fastqc`
 - task: `gffread_proteins`
+- task: `create_sequence_dictionary`
+- task: `index_feature_file`
+- task: `base_recalibrator`
+- task: `apply_bqsr`
+- task: `haplotype_caller`
+- task: `combine_gvcfs`
+- task: `joint_call_gvcfs`
+- workflow: `prepare_reference`
+- workflow: `preprocess_sample`
+- workflow: `germline_short_variant_discovery`
+- workflow: `genotype_refinement`
+- workflow: `preprocess_sample_from_ubam`
+- workflow: `scattered_haplotype_caller`
+- workflow: `post_genotyping_refinement`
 
 Other registered entries still show up in the registry and typed planner,
 but they need explicit local node handlers before they can be run through

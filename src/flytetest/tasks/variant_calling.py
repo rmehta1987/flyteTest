@@ -44,6 +44,14 @@ MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
     "gathered_gvcf",
     # Milestone G
     "cgp_vcf",
+    # Milestone H — workflow-level outputs for showcased workflows
+    "prepared_ref",
+    "preprocessed_bam",
+    "preprocessed_bam_from_ubam",
+    "scattered_gvcf",
+    "refined_vcf_cgp",
+    "genotyped_vcf",
+    "refined_vcf",
 )
 
 

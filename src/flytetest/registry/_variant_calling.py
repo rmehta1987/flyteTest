@@ -42,6 +42,7 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             pipeline_family="variant_calling",
             pipeline_stage_order=1,
         ),
+        showcase_module="flytetest.tasks.variant_calling",
     ),
     RegistryEntry(
         name="index_feature_file",
@@ -76,6 +77,7 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             pipeline_family="variant_calling",
             pipeline_stage_order=2,
         ),
+        showcase_module="flytetest.tasks.variant_calling",
     ),
     RegistryEntry(
         name="base_recalibrator",
@@ -113,6 +115,7 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             pipeline_family="variant_calling",
             pipeline_stage_order=3,
         ),
+        showcase_module="flytetest.tasks.variant_calling",
     ),
     RegistryEntry(
         name="apply_bqsr",
@@ -150,6 +153,7 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             pipeline_family="variant_calling",
             pipeline_stage_order=4,
         ),
+        showcase_module="flytetest.tasks.variant_calling",
     ),
     RegistryEntry(
         name="haplotype_caller",
@@ -186,6 +190,7 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             pipeline_family="variant_calling",
             pipeline_stage_order=5,
         ),
+        showcase_module="flytetest.tasks.variant_calling",
     ),
     RegistryEntry(
         name="combine_gvcfs",
@@ -223,6 +228,7 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             pipeline_family="variant_calling",
             pipeline_stage_order=6,
         ),
+        showcase_module="flytetest.tasks.variant_calling",
     ),
     RegistryEntry(
         name="joint_call_gvcfs",
@@ -262,6 +268,7 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             pipeline_family="variant_calling",
             pipeline_stage_order=7,
         ),
+        showcase_module="flytetest.tasks.variant_calling",
     ),
     RegistryEntry(
         name="bwa_mem2_index",
@@ -445,6 +452,7 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             pipeline_family="variant_calling",
             pipeline_stage_order=1,
         ),
+        showcase_module="flytetest.workflows.variant_calling",
     ),
     RegistryEntry(
         name="preprocess_sample",
@@ -485,6 +493,7 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             pipeline_family="variant_calling",
             pipeline_stage_order=2,
         ),
+        showcase_module="flytetest.workflows.variant_calling",
     ),
     RegistryEntry(
         name="preprocess_sample_from_ubam",
@@ -528,6 +537,7 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             pipeline_family="variant_calling",
             pipeline_stage_order=5,
         ),
+        showcase_module="flytetest.workflows.variant_calling",
     ),
     RegistryEntry(
         name="scattered_haplotype_caller",
@@ -568,6 +578,7 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             pipeline_family="variant_calling",
             pipeline_stage_order=6,
         ),
+        showcase_module="flytetest.workflows.variant_calling",
     ),
     RegistryEntry(
         name="post_genotyping_refinement",
@@ -607,6 +618,7 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             pipeline_family="variant_calling",
             pipeline_stage_order=7,
         ),
+        showcase_module="flytetest.workflows.variant_calling",
     ),
     RegistryEntry(
         name="germline_short_variant_discovery",
@@ -651,6 +663,7 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             pipeline_family="variant_calling",
             pipeline_stage_order=3,
         ),
+        showcase_module="flytetest.workflows.variant_calling",
     ),
     RegistryEntry(
         name="genotype_refinement",
@@ -696,6 +709,7 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             pipeline_family="variant_calling",
             pipeline_stage_order=4,
         ),
+        showcase_module="flytetest.workflows.variant_calling",
     ),
     RegistryEntry(
         name="variant_recalibrator",

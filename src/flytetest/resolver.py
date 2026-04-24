@@ -593,7 +593,22 @@ class LocalManifestAssetResolver:
         A `ResolutionResult` result computed by this helper.
 """
         if target_type_name not in _PLANNER_TYPES_BY_NAME:
-            raise KeyError(f"Unsupported planner type for resolution: {target_type_name}")
+            return ResolutionResult(
+                target_type_name=target_type_name,
+                resolved_value=None,
+                selected_source=None,
+                candidate_count=0,
+                candidate_sources=(),
+                unresolved_requirements=(
+                    f"No resolver registered for planner type `{target_type_name}`; "
+                    f"provide an explicit binding or supply it via scalar inputs.",
+                ),
+                assumptions=(
+                    "This first resolver is local and manifest-backed only.",
+                    "Database-backed and remote-backed lookup remain out of scope in this milestone.",
+                    "When more than one discovered candidate exists, the resolver refuses to guess.",
+                ),
+            )
 
         explicit_bindings = explicit_bindings or {}
         candidates: list[ResolutionCandidate] = []
