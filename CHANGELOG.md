@@ -32,6 +32,18 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone F — Complete (2026-04-23)
+
+Interval-scoped HaplotypeCaller: optional intervals on `haplotype_caller`,
+`gather_vcfs` task (stage 15), `scattered_haplotype_caller` workflow (stage 6).
+
+- [x] 2026-04-23 `haplotype_caller` extended with optional `intervals` parameter (backward compatible).
+- [x] 2026-04-23 `gather_vcfs` task (stage 15) + 4 unit tests.
+- [x] 2026-04-23 `scattered_haplotype_caller` workflow (stage 6) + 5 unit tests.
+- [x] 2026-04-23 `docs/tool_refs/gatk4.md` — `gather_vcfs` section added.
+- [x] 2026-04-23 full pytest suite green (778 passed, 1 skipped).
+- Deferred: `CalculateGenotypePosteriors` (Milestone G), `VariantAnnotator` (Milestone G).
+
 ### GATK Milestone F Step 03 — scattered_haplotype_caller workflow (2026-04-23)
 - [x] 2026-04-23 added scattered_haplotype_caller workflow (stage 6); synchronous for-loop scatter.
 - [x] 2026-04-23 added registry entry (workflow stage 6, reusable_as_reference=True).

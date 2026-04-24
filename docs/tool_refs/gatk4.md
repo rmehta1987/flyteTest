@@ -456,3 +456,38 @@ gatk MergeBamAlignment \
 - `merge_bam_alignment` is stage 14 in the pipeline registry (a task-level stage slot distinct from the `preprocess_sample_from_ubam` workflow at stage 5).
 - uBAM path is an alternative to the `preprocess_sample` FASTQ-only path; both paths produce a BQSR-recalibrated BAM accepted by `haplotype_caller`.
 - Resources: 4 CPU / 16 GiB local; Slurm hints 4 CPU / 16 GiB / 02:00:00.
+
+---
+
+## gather_vcfs
+
+Merges a set of per-interval GVCFs produced by `haplotype_caller` into a single
+coordinate-sorted GVCF using GATK4 GatherVcfs (a Picard tool bundled in the
+GATK4 distribution). This is the gather step in an interval-scatter/gather pattern.
+
+**FLyteTest path:** `flytetest.tasks.variant_calling.gather_vcfs`
+
+**Command shape:**
+```
+gatk GatherVcfs \
+  -I <gvcf1> -I <gvcf2> ... \
+  -O <sample_id>_gathered.g.vcf.gz \
+  --CREATE_INDEX true
+```
+
+**Key argument rationale:**
+- `-I` flags are emitted in `gvcf_paths` order — GatherVcfs requires inputs to be in genomic order and non-overlapping. Ordering is the caller's responsibility (enforced by `scattered_haplotype_caller`).
+- `--CREATE_INDEX true` — writes a `.tbi` index alongside the output GVCF automatically; downstream tools require it.
+- No `-R` reference flag — GatherVcfs is a pure merge operation and does not require a reference FASTA.
+
+**Outputs:**
+- `gathered_gvcf` — `<sample_id>_gathered.g.vcf.gz`, single merged GVCF.
+
+**No Stargazer reference:** GatherVcfs is a standard Picard tool; the
+implementation was designed directly from GATK4 documentation.
+
+**Milestone F scope notes:**
+- `gather_vcfs` is task stage 15 in the pipeline registry.
+- The scatter step is a synchronous Python `for` loop inside `scattered_haplotype_caller` (workflow stage 6); there are no job arrays or async patterns.
+- `SplitIntervals` is out of scope — users supply interval lists directly.
+- Resources: 2 CPU / 8 GiB local; Slurm hints 2 CPU / 8 GiB / 01:00:00.
