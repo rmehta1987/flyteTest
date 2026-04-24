@@ -15,6 +15,7 @@ from flytetest.tasks.variant_calling import (
     base_recalibrator,
     bwa_mem2_index,
     bwa_mem2_mem,
+    calculate_genotype_posteriors,
     combine_gvcfs,
     create_sequence_dictionary,
     gather_vcfs,
@@ -36,6 +37,7 @@ MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
     "scattered_gvcf",
     "genotyped_vcf",
     "refined_vcf",
+    "refined_vcf_cgp",
 )
 
 
@@ -453,6 +455,39 @@ def scattered_haplotype_caller(
             "intervals": intervals,
         },
         outputs={"scattered_gvcf": gathered["outputs"]["gathered_gvcf"]},
+    )
+    _write_json(out_dir / "run_manifest.json", manifest)
+    return manifest
+
+
+@variant_calling_env.task
+def post_genotyping_refinement(
+    ref_path: str,
+    vcf_path: str,
+    cohort_id: str,
+    results_dir: str,
+    supporting_callsets: list[str] | None = None,
+    sif_path: str = "",
+) -> dict:
+    """Apply CalculateGenotypePosteriors to a joint-called or VQSR-filtered VCF."""
+    cgp = calculate_genotype_posteriors(
+        ref_path=ref_path,
+        vcf_path=vcf_path,
+        cohort_id=cohort_id,
+        results_dir=results_dir,
+        supporting_callsets=supporting_callsets,
+        sif_path=sif_path,
+    )
+    out_dir = Path(results_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    manifest = build_manifest_envelope(
+        stage="post_genotyping_refinement",
+        assumptions=[
+            "vcf_path is a joint-called or VQSR-filtered cohort VCF.",
+            "supporting_callsets VCFs are indexed when provided.",
+        ],
+        inputs={"vcf_path": vcf_path, "cohort_id": cohort_id},
+        outputs={"refined_vcf_cgp": cgp["outputs"]["cgp_vcf"]},
     )
     _write_json(out_dir / "run_manifest.json", manifest)
     return manifest

@@ -32,6 +32,12 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone G Step 02 — post_genotyping_refinement workflow (2026-04-23)
+- [x] 2026-04-23 added post_genotyping_refinement workflow (stage 7, single CGP call + manifest).
+- [x] 2026-04-23 added registry entry (pipeline_stage_order=7, reusable_as_reference=True).
+- [x] 2026-04-23 added 3 unit tests in PostGenotypingRefinementTests.
+- [x] 2026-04-23 extended workflows MANIFEST_OUTPUT_KEYS with refined_vcf_cgp.
+
 ### GATK Milestone G Step 01 — calculate_genotype_posteriors task (2026-04-23)
 - [x] 2026-04-23 added calculate_genotype_posteriors task (stage 16); no -R flag; --supporting-callsets optional.
 - [x] 2026-04-23 added registry entry (pipeline_stage_order=16).

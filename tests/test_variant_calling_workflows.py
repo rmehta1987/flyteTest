@@ -24,6 +24,7 @@ import flytetest.workflows.variant_calling as variant_calling_wf
 from flytetest.workflows.variant_calling import (
     MANIFEST_OUTPUT_KEYS,
     germline_short_variant_discovery,
+    post_genotyping_refinement,
     prepare_reference,
     preprocess_sample,
     preprocess_sample_from_ubam,
@@ -785,3 +786,64 @@ class ScatteredHaplotypeCallerTests(TestCase):
         output_names = tuple(f.name for f in entry.outputs)
         self.assertIn("scattered_gvcf", output_names)
         self.assertIn("scattered_gvcf", MANIFEST_OUTPUT_KEYS)
+
+
+# ---------------------------------------------------------------------------
+# Milestone G Step 02 — post_genotyping_refinement
+# ---------------------------------------------------------------------------
+
+class PostGenotypingRefinementTests(TestCase):
+    """Verify post_genotyping_refinement workflow."""
+
+    def _cgp_return(self, path: str = "/tmp/cohort1_cgp.vcf.gz") -> dict:
+        return {"stage": "calculate_genotype_posteriors", "outputs": {"cgp_vcf": path}}
+
+    def test_post_genotyping_refinement_runs(self) -> None:
+        """Manifest has refined_vcf_cgp key."""
+        with tempfile.TemporaryDirectory() as tmp:
+            results_dir = Path(tmp) / "out"
+            results_dir.mkdir()
+
+            with patch.object(variant_calling_wf, "calculate_genotype_posteriors",
+                              return_value=self._cgp_return()):
+                result = post_genotyping_refinement(
+                    ref_path="/tmp/ref.fa",
+                    vcf_path="/tmp/cohort.vcf.gz",
+                    cohort_id="cohort1",
+                    results_dir=str(results_dir),
+                )
+
+        self.assertIn("refined_vcf_cgp", result["outputs"])
+        self.assertEqual(result["outputs"]["refined_vcf_cgp"], "/tmp/cohort1_cgp.vcf.gz")
+
+    def test_registry_entry_shape(self) -> None:
+        """Registry entry exists at workflow stage 7 with refined_vcf_cgp output."""
+        from flytetest.registry import get_entry
+
+        entry = get_entry("post_genotyping_refinement")
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry.category, "workflow")
+        self.assertEqual(entry.compatibility.pipeline_family, "variant_calling")
+        self.assertEqual(entry.compatibility.pipeline_stage_order, 7)
+
+        output_names = tuple(f.name for f in entry.outputs)
+        self.assertIn("refined_vcf_cgp", output_names)
+        self.assertIn("refined_vcf_cgp", MANIFEST_OUTPUT_KEYS)
+
+    def test_supporting_callsets_forwarded(self) -> None:
+        """supporting_callsets is forwarded to calculate_genotype_posteriors."""
+        with tempfile.TemporaryDirectory() as tmp:
+            results_dir = Path(tmp) / "out"
+            results_dir.mkdir()
+
+            mock_cgp = MagicMock(return_value=self._cgp_return())
+            with patch.object(variant_calling_wf, "calculate_genotype_posteriors", mock_cgp):
+                post_genotyping_refinement(
+                    ref_path="/tmp/ref.fa",
+                    vcf_path="/tmp/cohort.vcf.gz",
+                    cohort_id="cohort1",
+                    results_dir=str(results_dir),
+                    supporting_callsets=["s.vcf"],
+                )
+
+        self.assertEqual(mock_cgp.call_args.kwargs.get("supporting_callsets"), ["s.vcf"])
