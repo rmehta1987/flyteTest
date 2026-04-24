@@ -807,7 +807,6 @@ class PostGenotypingRefinementTests(TestCase):
             with patch.object(variant_calling_wf, "calculate_genotype_posteriors",
                               return_value=self._cgp_return()):
                 result = post_genotyping_refinement(
-                    ref_path="/tmp/ref.fa",
                     vcf_path="/tmp/cohort.vcf.gz",
                     cohort_id="cohort1",
                     results_dir=str(results_dir),
@@ -839,7 +838,6 @@ class PostGenotypingRefinementTests(TestCase):
             mock_cgp = MagicMock(return_value=self._cgp_return())
             with patch.object(variant_calling_wf, "calculate_genotype_posteriors", mock_cgp):
                 post_genotyping_refinement(
-                    ref_path="/tmp/ref.fa",
                     vcf_path="/tmp/cohort.vcf.gz",
                     cohort_id="cohort1",
                     results_dir=str(results_dir),
@@ -847,3 +845,143 @@ class PostGenotypingRefinementTests(TestCase):
                 )
 
         self.assertEqual(mock_cgp.call_args.kwargs.get("supporting_callsets"), ["s.vcf"])
+
+
+class PrepareReferenceIdempotencyTests(TestCase):
+    """Milestone H: verify prepare_reference skips steps when outputs exist."""
+
+    def _fake_bwa_index(self, ref_path, results_dir, sif_path=""):
+        return {"stage": "bwa_mem2_index", "outputs": {"bwa_index_prefix": ref_path}}
+
+    def test_skips_sequence_dictionary_when_dict_exists(self) -> None:
+        """CreateSequenceDictionary is not called when .dict already exists."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ref = Path(tmp) / "genome.fa"
+            ref.write_text(">chr1\nACGT\n")
+            dict_path = ref.with_suffix(".dict")
+            dict_path.write_text("existing dict")
+            results_dir = Path(tmp) / "out"
+            results_dir.mkdir()
+
+            mock_csd = MagicMock()
+            mock_iff = MagicMock()
+            mock_bwa = MagicMock(return_value=self._fake_bwa_index(str(ref), str(results_dir)))
+
+            with patch.object(variant_calling_wf, "create_sequence_dictionary", mock_csd):
+                with patch.object(variant_calling_wf, "index_feature_file", mock_iff):
+                    with patch.object(variant_calling_wf, "bwa_mem2_index", mock_bwa):
+                        result = prepare_reference(
+                            ref_path=str(ref),
+                            known_sites=[],
+                            results_dir=str(results_dir),
+                        )
+
+        mock_csd.assert_not_called()
+        self.assertIn("create_sequence_dictionary", result["outputs"]["skipped_steps"])
+
+    def test_skips_index_feature_file_when_tbi_exists(self) -> None:
+        """IndexFeatureFile is not called for a VCF that already has a .tbi index."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ref = Path(tmp) / "genome.fa"
+            ref.write_text(">chr1\nACGT\n")
+            ref.with_suffix(".dict").write_text("dict")
+            vcf = Path(tmp) / "dbsnp.vcf.gz"
+            vcf.write_text("vcf")
+            tbi = Path(tmp) / "dbsnp.vcf.gz.tbi"
+            tbi.write_text("tbi")
+            results_dir = Path(tmp) / "out"
+            results_dir.mkdir()
+
+            mock_iff = MagicMock()
+            mock_bwa = MagicMock(return_value=self._fake_bwa_index(str(ref), str(results_dir)))
+
+            with patch.object(variant_calling_wf, "create_sequence_dictionary", MagicMock()):
+                with patch.object(variant_calling_wf, "index_feature_file", mock_iff):
+                    with patch.object(variant_calling_wf, "bwa_mem2_index", mock_bwa):
+                        result = prepare_reference(
+                            ref_path=str(ref),
+                            known_sites=[str(vcf)],
+                            results_dir=str(results_dir),
+                        )
+
+        mock_iff.assert_not_called()
+        self.assertIn("index_feature_file", result["outputs"]["skipped_steps"])
+
+    def test_skips_bwa_index_when_all_suffixes_present(self) -> None:
+        """bwa_mem2_index is not called when all 5 BWA index files exist."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ref = Path(tmp) / "genome.fa"
+            ref.write_text(">chr1\nACGT\n")
+            ref.with_suffix(".dict").write_text("dict")
+            for suffix in (".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac"):
+                Path(str(ref) + suffix).write_text("idx")
+            results_dir = Path(tmp) / "out"
+            results_dir.mkdir()
+
+            mock_bwa = MagicMock()
+
+            with patch.object(variant_calling_wf, "create_sequence_dictionary", MagicMock()):
+                with patch.object(variant_calling_wf, "index_feature_file", MagicMock()):
+                    with patch.object(variant_calling_wf, "bwa_mem2_index", mock_bwa):
+                        result = prepare_reference(
+                            ref_path=str(ref),
+                            known_sites=[],
+                            results_dir=str(results_dir),
+                        )
+
+        mock_bwa.assert_not_called()
+        self.assertIn("bwa_mem2_index", result["outputs"]["skipped_steps"])
+
+    def test_force_true_reruns_all_steps(self) -> None:
+        """With force=True all steps run even when outputs already exist."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ref = Path(tmp) / "genome.fa"
+            ref.write_text(">chr1\nACGT\n")
+            ref.with_suffix(".dict").write_text("dict")
+            for suffix in (".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac"):
+                Path(str(ref) + suffix).write_text("idx")
+            results_dir = Path(tmp) / "out"
+            results_dir.mkdir()
+
+            mock_csd = MagicMock()
+            mock_bwa = MagicMock(return_value=self._fake_bwa_index(str(ref), str(results_dir)))
+
+            with patch.object(variant_calling_wf, "create_sequence_dictionary", mock_csd):
+                with patch.object(variant_calling_wf, "index_feature_file", MagicMock()):
+                    with patch.object(variant_calling_wf, "bwa_mem2_index", mock_bwa):
+                        prepare_reference(
+                            ref_path=str(ref),
+                            known_sites=[],
+                            results_dir=str(results_dir),
+                            force=True,
+                        )
+
+        mock_csd.assert_called_once()
+        mock_bwa.assert_called_once()
+
+
+class PostGenotypingRefinementSignatureTests(TestCase):
+    """Milestone H: verify post_genotyping_refinement no longer accepts ref_path."""
+
+    def test_signature_has_no_ref_path(self) -> None:
+        """post_genotyping_refinement signature must not include ref_path."""
+        import inspect
+        sig = inspect.signature(post_genotyping_refinement)
+        self.assertNotIn("ref_path", sig.parameters,
+                         "ref_path must be dropped from post_genotyping_refinement")
+
+    def test_registry_inputs_match_signature(self) -> None:
+        """Registry inputs for post_genotyping_refinement match the function signature."""
+        import inspect
+        from flytetest.registry import get_entry
+
+        sig = inspect.signature(post_genotyping_refinement)
+        entry = get_entry("post_genotyping_refinement")
+        registry_input_names = {f.name for f in entry.inputs}
+        sig_param_names = set(sig.parameters)
+        self.assertNotIn("ref_path", registry_input_names,
+                         "ref_path must be absent from registry inputs")
+        self.assertTrue(
+            registry_input_names.issubset(sig_param_names),
+            f"Registry inputs {registry_input_names} not all in signature {sig_param_names}",
+        )

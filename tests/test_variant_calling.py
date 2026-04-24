@@ -160,8 +160,8 @@ class CreateSequenceDictionaryManifestTests(TestCase):
                 )
 
         out_dir = emitted_out_dir[0]
-        manifest_path = out_dir / "run_manifest.json"
-        self.assertTrue(manifest_path.exists(), "run_manifest.json was not written")
+        manifest_path = out_dir / "run_manifest_create_sequence_dictionary.json"
+        self.assertTrue(manifest_path.exists(), "run_manifest_create_sequence_dictionary.json was not written")
 
         manifest = json.loads(manifest_path.read_text())
         self.assertEqual(manifest["stage"], "create_sequence_dictionary")
@@ -273,8 +273,8 @@ class IndexFeatureFileManifestTests(TestCase):
                 )
 
         out_dir = emitted_out_dir[0]
-        manifest_path = out_dir / "run_manifest.json"
-        self.assertTrue(manifest_path.exists(), "run_manifest.json was not written")
+        manifest_path = out_dir / "run_manifest_index_feature_file.json"
+        self.assertTrue(manifest_path.exists(), "run_manifest_index_feature_file.json was not written")
 
         manifest = json.loads(manifest_path.read_text())
         self.assertEqual(manifest["stage"], "index_feature_file")
@@ -385,8 +385,8 @@ class BaseRecalibratorManifestTests(TestCase):
                 )
 
             out_dir = emitted_out_dir[0]
-            manifest_path = out_dir / "run_manifest.json"
-            self.assertTrue(manifest_path.exists(), "run_manifest.json was not written")
+            manifest_path = out_dir / "run_manifest_base_recalibrator.json"
+            self.assertTrue(manifest_path.exists(), "run_manifest_base_recalibrator.json was not written")
 
             manifest = json.loads(manifest_path.read_text())
             self.assertEqual(manifest["stage"], "base_recalibrator")
@@ -477,8 +477,8 @@ class ApplyBqsrManifestTests(TestCase):
                 )
 
             out_dir = emitted_out_dir[0]
-            manifest_path = out_dir / "run_manifest.json"
-            self.assertTrue(manifest_path.exists(), "run_manifest.json was not written")
+            manifest_path = out_dir / "run_manifest_apply_bqsr.json"
+            self.assertTrue(manifest_path.exists(), "run_manifest_apply_bqsr.json was not written")
 
             manifest = json.loads(manifest_path.read_text())
             self.assertEqual(manifest["stage"], "apply_bqsr")
@@ -617,8 +617,8 @@ class HaplotypeCallerManifestTests(TestCase):
                 )
 
             out_dir = emitted_out_dir[0]
-            manifest_path = out_dir / "run_manifest.json"
-            self.assertTrue(manifest_path.exists(), "run_manifest.json was not written")
+            manifest_path = out_dir / "run_manifest_haplotype_caller.json"
+            self.assertTrue(manifest_path.exists(), "run_manifest_haplotype_caller.json was not written")
 
             manifest = json.loads(manifest_path.read_text())
             self.assertEqual(manifest["stage"], "haplotype_caller")
@@ -711,8 +711,8 @@ class CombineGvcfsManifestTests(TestCase):
                 )
 
         out_dir = emitted_out_dir[0]
-        manifest_path = out_dir / "run_manifest.json"
-        self.assertTrue(manifest_path.exists(), "run_manifest.json was not written")
+        manifest_path = out_dir / "run_manifest_combine_gvcfs.json"
+        self.assertTrue(manifest_path.exists(), "run_manifest_combine_gvcfs.json was not written")
 
         manifest = json.loads(manifest_path.read_text())
         self.assertEqual(manifest["stage"], "combine_gvcfs")
@@ -891,8 +891,8 @@ class JointCallGvcfsManifestTests(TestCase):
                 )
 
         out_dir = emitted_out_dir[0]
-        manifest_path = out_dir / "run_manifest.json"
-        self.assertTrue(manifest_path.exists(), "run_manifest.json was not written")
+        manifest_path = out_dir / "run_manifest_joint_call_gvcfs.json"
+        self.assertTrue(manifest_path.exists(), "run_manifest_joint_call_gvcfs.json was not written")
 
         manifest = json.loads(manifest_path.read_text())
         self.assertEqual(manifest["stage"], "joint_call_gvcfs")
@@ -1570,7 +1570,7 @@ class VariantRecalibratorManifestTests(TestCase):
                     results_dir=str(results_dir),
                 )
 
-            manifest_path = results_dir / "run_manifest.json"
+            manifest_path = results_dir / "run_manifest_variant_recalibrator.json"
             self.assertTrue(manifest_path.exists())
             manifest = json.loads(manifest_path.read_text())
             self.assertEqual(manifest["stage"], "variant_recalibrator")
@@ -1744,7 +1744,7 @@ class ApplyVQSRManifestTests(TestCase):
                     results_dir=str(results_dir),
                 )
 
-            manifest = json.loads((results_dir / "run_manifest.json").read_text())
+            manifest = json.loads((results_dir / "run_manifest_apply_vqsr.json").read_text())
             self.assertEqual(manifest["stage"], "apply_vqsr")
             self.assertIn("vqsr_vcf", manifest["outputs"])
             self.assertTrue(manifest["outputs"]["vqsr_vcf"].endswith("_vqsr_snp.vcf.gz"))
@@ -1866,7 +1866,7 @@ class MergeBamAlignmentTests(TestCase):
                     results_dir=str(results_dir),
                 )
 
-            manifest = json.loads((results_dir / "run_manifest.json").read_text())
+            manifest = json.loads((results_dir / "run_manifest_merge_bam_alignment.json").read_text())
             self.assertEqual(manifest["stage"], "merge_bam_alignment")
             self.assertIn("merged_bam", manifest["outputs"])
 
@@ -2078,3 +2078,215 @@ class CalculateGenotypePosteriorTests(TestCase):
                 )
 
         self.assertNotIn("-R", captured_cmd)
+
+
+class BwaMem2MemShellQuotingTests(TestCase):
+    """Regression tests for shell-injection safety in bwa_mem2_mem."""
+
+    def _capture_cmd(self, ref_path, r1_path, r2_path="", sample_id="s1"):
+        import unittest.mock as mock
+        from flytetest.tasks.variant_calling import bwa_mem2_mem
+
+        captured: list[str] = []
+
+        def fake_run(cmd, shell, capture_output, text):
+            captured.append(cmd)
+            Path(ref_path).parent.mkdir(parents=True, exist_ok=True)
+            bam = Path(ref_path).parent / f"{sample_id}_aligned.bam"
+            bam.write_text("BAM")
+            return mock.MagicMock(returncode=0, stderr="")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            results_dir = Path(tmp) / "out"
+            results_dir.mkdir()
+            output_bam = results_dir / f"{sample_id}_aligned.bam"
+
+            def fake_run2(cmd, shell, capture_output, text):
+                output_bam.write_text("BAM")
+                captured.append(cmd)
+                return mock.MagicMock(returncode=0, stderr="")
+
+            Path(r1_path).parent.mkdir(parents=True, exist_ok=True)
+            Path(r1_path).write_text("@r\n")
+            Path(ref_path).parent.mkdir(parents=True, exist_ok=True)
+            Path(ref_path).write_text(">chr1\nACGT\n")
+            if r2_path:
+                Path(r2_path).write_text("@r2\n")
+
+            with mock.patch("flytetest.tasks.variant_calling.subprocess.run", side_effect=fake_run2):
+                bwa_mem2_mem(
+                    ref_path=ref_path,
+                    r1_path=r1_path,
+                    r2_path=r2_path,
+                    sample_id=sample_id,
+                    results_dir=str(results_dir),
+                )
+        return captured[0] if captured else ""
+
+    def test_bwa_mem2_mem_handles_path_with_space(self) -> None:
+        """Paths containing spaces appear shell-quoted in the pipeline string."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ref = Path(tmp) / "my ref" / "genome.fa"
+            ref.parent.mkdir()
+            ref.write_text(">chr1\nACGT\n")
+            r1 = Path(tmp) / "my ref" / "sample R1.fq.gz"
+            r1.write_text("@r\n")
+
+            import unittest.mock as mock
+            from flytetest.tasks.variant_calling import bwa_mem2_mem
+
+            captured: list[str] = []
+            results_dir = Path(tmp) / "out"
+            results_dir.mkdir()
+            output_bam = results_dir / "s1_aligned.bam"
+
+            def fake_run(cmd, shell, capture_output, text):
+                output_bam.write_text("BAM")
+                captured.append(cmd)
+                return mock.MagicMock(returncode=0, stderr="")
+
+            with mock.patch("flytetest.tasks.variant_calling.subprocess.run", side_effect=fake_run):
+                bwa_mem2_mem(
+                    ref_path=str(ref),
+                    r1_path=str(r1),
+                    sample_id="s1",
+                    results_dir=str(results_dir),
+                )
+
+        cmd = captured[0]
+        self.assertIn("bwa-mem2", cmd)
+        # Paths with spaces must be inside single quotes so the shell treats them as one token.
+        self.assertRegex(cmd, r"'[^']*my ref[^']*genome\.fa'")
+
+    def test_bwa_mem2_mem_rejects_unquoted_metacharacters(self) -> None:
+        """Shell metacharacters in paths are quoted, not interpreted as shell tokens."""
+        with tempfile.TemporaryDirectory() as tmp:
+            ref = Path(tmp) / "genome.fa"
+            ref.write_text(">chr1\nACGT\n")
+            r1 = Path(tmp) / "reads;echo pwned.fq.gz"
+            r1.write_text("@r\n")
+
+            import unittest.mock as mock
+            from flytetest.tasks.variant_calling import bwa_mem2_mem
+
+            captured: list[str] = []
+            results_dir = Path(tmp) / "out"
+            results_dir.mkdir()
+            output_bam = results_dir / "s1_aligned.bam"
+
+            def fake_run(cmd, shell, capture_output, text):
+                output_bam.write_text("BAM")
+                captured.append(cmd)
+                return mock.MagicMock(returncode=0, stderr="")
+
+            with mock.patch("flytetest.tasks.variant_calling.subprocess.run", side_effect=fake_run):
+                bwa_mem2_mem(
+                    ref_path=str(ref),
+                    r1_path=str(r1),
+                    sample_id="s1",
+                    results_dir=str(results_dir),
+                )
+
+        cmd = captured[0]
+        self.assertNotIn(";echo pwned", cmd.split("'")[0] if "'" in cmd else cmd)
+        self.assertIn("echo pwned", cmd)
+
+
+class PerStageManifestFilenameTests(TestCase):
+    """Regression tests for per-stage manifest naming in variant_calling tasks."""
+
+    TASK_STAGES = [
+        ("create_sequence_dictionary", "create_sequence_dictionary"),
+        ("index_feature_file", "index_feature_file"),
+        ("base_recalibrator", "base_recalibrator"),
+        ("apply_bqsr", "apply_bqsr"),
+        ("haplotype_caller", "haplotype_caller"),
+        ("combine_gvcfs", "combine_gvcfs"),
+        ("joint_call_gvcfs", "joint_call_gvcfs"),
+        ("bwa_mem2_index", "bwa_mem2_index"),
+        ("bwa_mem2_mem", "bwa_mem2_mem"),
+        ("sort_sam", "sort_sam"),
+        ("mark_duplicates", "mark_duplicates"),
+        ("variant_recalibrator", "variant_recalibrator"),
+        ("apply_vqsr", "apply_vqsr"),
+        ("merge_bam_alignment", "merge_bam_alignment"),
+        ("gather_vcfs", "gather_vcfs"),
+        ("calculate_genotype_posteriors", "calculate_genotype_posteriors"),
+    ]
+
+    def test_each_task_writes_namespaced_manifest(self) -> None:
+        """Each of the 16 tasks writes run_manifest_<stage>.json, not run_manifest.json."""
+        import unittest.mock as mock
+
+        written_paths: list[str] = []
+
+        def capturing_write(path, data):
+            written_paths.append(str(path))
+
+        def fake_run_tool(cmd, sif, bind_paths):
+            out_idx = cmd.index("-O")
+            Path(cmd[out_idx + 1]).touch()
+
+        with mock.patch.object(variant_calling, "_write_json", side_effect=capturing_write):
+            with tempfile.TemporaryDirectory() as tmp:
+                results_dir = Path(tmp)
+                vcf = results_dir / "cohort.vcf.gz"
+                vcf.touch()
+
+                with mock.patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                    calculate_genotype_posteriors(
+                        ref_path="/tmp/ref.fa",
+                        vcf_path=str(vcf),
+                        cohort_id="cohort1",
+                        results_dir=str(results_dir),
+                    )
+
+        self.assertTrue(
+            any("run_manifest_calculate_genotype_posteriors.json" in p for p in written_paths),
+            f"Expected run_manifest_calculate_genotype_posteriors.json, got: {written_paths}",
+        )
+        self.assertFalse(
+            any(p.endswith("run_manifest.json") for p in written_paths),
+            f"Found bare run_manifest.json: {written_paths}",
+        )
+
+    def test_manifest_filename_never_bare_run_manifest(self) -> None:
+        """bwa_mem2_mem writes run_manifest_bwa_mem2_mem.json, not run_manifest.json."""
+        import unittest.mock as mock
+        from flytetest.tasks.variant_calling import bwa_mem2_mem
+
+        written_paths: list[str] = []
+
+        def capturing_write(path, data):
+            written_paths.append(str(path))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            ref = Path(tmp) / "genome.fa"
+            ref.write_text(">chr1\nACGT\n")
+            r1 = Path(tmp) / "r1.fq.gz"
+            r1.write_text("@r\n")
+            results_dir = Path(tmp) / "out"
+            results_dir.mkdir()
+            output_bam = results_dir / "s1_aligned.bam"
+
+            def fake_run(cmd, shell, capture_output, text):
+                output_bam.write_text("BAM")
+                return mock.MagicMock(returncode=0, stderr="")
+
+            with mock.patch("flytetest.tasks.variant_calling.subprocess.run", side_effect=fake_run):
+                with mock.patch.object(variant_calling, "_write_json", side_effect=capturing_write):
+                    bwa_mem2_mem(
+                        ref_path=str(ref),
+                        r1_path=str(r1),
+                        sample_id="s1",
+                        results_dir=str(results_dir),
+                    )
+
+        self.assertTrue(
+            any("run_manifest_bwa_mem2_mem.json" in p for p in written_paths),
+            f"Expected run_manifest_bwa_mem2_mem.json, got: {written_paths}",
+        )
+        self.assertFalse(
+            any(p.endswith("run_manifest.json") for p in written_paths),
+            f"Found bare run_manifest.json in bwa_mem2_mem: {written_paths}",
+        )

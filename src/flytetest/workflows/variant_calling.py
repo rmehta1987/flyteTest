@@ -47,28 +47,53 @@ def prepare_reference(
     known_sites: list[str],
     results_dir: str,
     sif_path: str = "",
+    force: bool = False,
 ) -> dict:
     """Prepare a reference genome for GATK germline variant calling.
 
-    Steps:
-    1. CreateSequenceDictionary — produces .dict file.
-    2. IndexFeatureFile — indexes each known-sites VCF.
-    3. bwa_mem2_index — creates BWA-MEM2 index files.
+    Steps (each skipped when the expected output already exists and
+    ``force=False``):
+      1. CreateSequenceDictionary — produces .dict file.
+      2. IndexFeatureFile — indexes each known-sites VCF.
+      3. bwa_mem2_index — creates BWA-MEM2 index files.
+
+    Re-running with force=False skips steps whose outputs are present;
+    pass force=True to rerun unconditionally.
     """
-    create_sequence_dictionary(
-        reference_fasta=File(path=ref_path),
-        gatk_sif=sif_path,
-    )
-    for vcf_path in known_sites:
-        index_feature_file(
-            vcf=File(path=vcf_path),
+    skipped_steps: list[str] = []
+
+    ref = Path(ref_path)
+    dict_path = ref.with_suffix(".dict")
+    if force or not dict_path.exists():
+        create_sequence_dictionary(
+            reference_fasta=File(path=ref_path),
             gatk_sif=sif_path,
         )
-    bwa_mem2_index(
-        ref_path=ref_path,
-        results_dir=results_dir,
-        sif_path=sif_path,
-    )
+    else:
+        skipped_steps.append("create_sequence_dictionary")
+
+    for vcf_path in known_sites:
+        vcf = Path(vcf_path)
+        idx = vcf.with_suffix(vcf.suffix + ".idx")
+        tbi = vcf.with_suffix(vcf.suffix + ".tbi")
+        if force or (not idx.exists() and not tbi.exists()):
+            index_feature_file(
+                vcf=File(path=vcf_path),
+                gatk_sif=sif_path,
+            )
+        else:
+            skipped_steps.append("index_feature_file")
+
+    bwa_suffixes = (".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac")
+    all_bwa_present = all(Path(ref_path + s).exists() for s in bwa_suffixes)
+    if force or not all_bwa_present:
+        bwa_mem2_index(
+            ref_path=ref_path,
+            results_dir=results_dir,
+            sif_path=sif_path,
+        )
+    else:
+        skipped_steps.append("bwa_mem2_index")
 
     out_dir = Path(results_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -77,9 +102,10 @@ def prepare_reference(
         assumptions=[
             "Reference FASTA is readable; all known-sites VCFs are accessible.",
             "bwa_mem2_index writes index files into results_dir.",
+            "Re-running with force=False skips steps whose outputs are present; pass force=True to rerun unconditionally.",
         ],
-        inputs={"ref_path": ref_path, "known_sites": known_sites},
-        outputs={"prepared_ref": ref_path},
+        inputs={"ref_path": ref_path, "known_sites": known_sites, "force": force},
+        outputs={"prepared_ref": ref_path, "skipped_steps": skipped_steps},
     )
     _write_json(out_dir / "run_manifest.json", manifest)
     return manifest
@@ -462,7 +488,6 @@ def scattered_haplotype_caller(
 
 @variant_calling_env.task
 def post_genotyping_refinement(
-    ref_path: str,
     vcf_path: str,
     cohort_id: str,
     results_dir: str,
@@ -471,7 +496,8 @@ def post_genotyping_refinement(
 ) -> dict:
     """Apply CalculateGenotypePosteriors to a joint-called or VQSR-filtered VCF."""
     cgp = calculate_genotype_posteriors(
-        ref_path=ref_path,
+        # The underlying GATK CGP CLI has no -R flag; pass empty string.
+        ref_path="",
         vcf_path=vcf_path,
         cohort_id=cohort_id,
         results_dir=results_dir,

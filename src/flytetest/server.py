@@ -187,6 +187,35 @@ TASK_PARAMETERS: dict[str, tuple[tuple[str, bool], ...]] = {
         ("gffread_binary", False),
         ("repeat_filter_sif", False),
     ),
+    "create_sequence_dictionary": (
+        ("gatk_sif", False),
+    ),
+    "index_feature_file": (
+        ("gatk_sif", False),
+    ),
+    "base_recalibrator": (
+        ("sample_id", True),
+        ("gatk_sif", False),
+    ),
+    "apply_bqsr": (
+        ("sample_id", True),
+        ("gatk_sif", False),
+    ),
+    "haplotype_caller": (
+        ("sample_id", True),
+        ("intervals", False),
+        ("gatk_sif", False),
+    ),
+    "combine_gvcfs": (
+        ("cohort_id", False),
+        ("gatk_sif", False),
+    ),
+    "joint_call_gvcfs": (
+        ("sample_ids", True),
+        ("intervals", True),
+        ("cohort_id", False),
+        ("gatk_sif", False),
+    ),
 }
 
 
@@ -1491,6 +1520,63 @@ def _execute_task_direct(task_name: str, inputs: dict[str, object]) -> dict[str,
                 "error_type": type(exc).__name__,
                 "limitations": [
                     "The server attempted the gffread_proteins task call, but runtime dependencies or gffread may be missing.",
+                ],
+            }
+
+    if task_name in (
+        "create_sequence_dictionary",
+        "index_feature_file",
+        "base_recalibrator",
+        "apply_bqsr",
+        "haplotype_caller",
+        "combine_gvcfs",
+        "joint_call_gvcfs",
+    ):
+        try:
+            from flyte.io import File
+            import flytetest.tasks.variant_calling as _vc
+
+            fn = getattr(_vc, task_name)
+            file_inputs = {
+                k: File(path=str(v))
+                for k, v in inputs.items()
+                if isinstance(v, str) and k not in ("sample_id", "cohort_id", "gatk_sif", "intervals")
+            }
+            scalar_inputs = {
+                k: v for k, v in inputs.items()
+                if k not in file_inputs
+            }
+            result = fn(**file_inputs, **scalar_inputs)
+            result_path = (
+                result.download_sync() if hasattr(result, "download_sync")
+                else getattr(result, "path", "")
+                if not isinstance(result, dict) else ""
+            )
+            output_paths = [result_path] if result_path else []
+            return {
+                "supported": True,
+                "entry_name": task_name,
+                "entry_category": "task",
+                "execution_mode": "direct-python-call",
+                "exit_status": 0,
+                "stdout": "",
+                "stderr": "",
+                "output_paths": output_paths,
+                "limitations": [],
+            }
+        except Exception as exc:
+            return {
+                "supported": True,
+                "entry_name": task_name,
+                "entry_category": "task",
+                "execution_mode": "direct-python-call",
+                "exit_status": 1,
+                "stdout": "",
+                "stderr": str(exc),
+                "output_paths": [],
+                "error_type": type(exc).__name__,
+                "limitations": [
+                    "The server attempted the GATK task call, but runtime dependencies or GATK binaries may be missing.",
                 ],
             }
 

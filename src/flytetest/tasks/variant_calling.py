@@ -44,6 +44,14 @@ MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
     "gathered_gvcf",
     # Milestone G
     "cgp_vcf",
+    # Milestone H — workflow-level outputs for showcased workflows
+    "prepared_ref",
+    "preprocessed_bam",
+    "preprocessed_bam_from_ubam",
+    "scattered_gvcf",
+    "refined_vcf_cgp",
+    "genotyped_vcf",
+    "refined_vcf",
 )
 
 
@@ -74,7 +82,7 @@ def create_sequence_dictionary(
         inputs={"reference_fasta": str(ref_path)},
         outputs={"sequence_dict": str(dict_path)},
     )
-    _write_json(out_dir / "run_manifest.json", manifest)
+    _write_json(out_dir / f"run_manifest_{manifest['stage']}.json", manifest)
     return File(path=str(dict_path))
 
 
@@ -107,7 +115,7 @@ def index_feature_file(
         inputs={"vcf": str(vcf_path)},
         outputs={"feature_index": str(expected_index)},
     )
-    _write_json(out_dir / "run_manifest.json", manifest)
+    _write_json(out_dir / f"run_manifest_{manifest['stage']}.json", manifest)
     return File(path=str(expected_index))
 
 
@@ -163,7 +171,7 @@ def base_recalibrator(
         },
         outputs={"bqsr_report": str(recal_path)},
     )
-    _write_json(out_dir / "run_manifest.json", manifest)
+    _write_json(out_dir / f"run_manifest_{manifest['stage']}.json", manifest)
     return File(path=str(recal_path))
 
 
@@ -218,7 +226,7 @@ def apply_bqsr(
             "recalibrated_bam_index": str(out_bai) if out_bai.exists() else "",
         },
     )
-    _write_json(out_dir / "run_manifest.json", manifest)
+    _write_json(out_dir / f"run_manifest_{manifest['stage']}.json", manifest)
     return File(path=str(out_bam))
 
 
@@ -257,7 +265,7 @@ def haplotype_caller(
         assumptions=[
             "Aligned BAM is coordinate-sorted, dedup'd, and (recommended) BQSR-recalibrated.",
             "Reference has a .fai and .dict next to the FASTA.",
-            "Whole-genome pass; intervals-scoped calling is out of scope for Milestone A.",
+            "Intervals scoping is supported via the `intervals` parameter (Milestone F); whole-genome when omitted.",
         ],
         inputs={
             "reference_fasta": str(ref_path),
@@ -269,7 +277,7 @@ def haplotype_caller(
             "gvcf_index": str(out_idx) if out_idx.exists() else "",
         },
     )
-    _write_json(out_dir / "run_manifest.json", manifest)
+    _write_json(out_dir / f"run_manifest_{manifest['stage']}.json", manifest)
     return File(path=str(out_gvcf))
 
 
@@ -354,7 +362,7 @@ def joint_call_gvcfs(
             "joint_vcf_index": str(out_idx) if out_idx.exists() else "",
         },
     )
-    _write_json(out_dir / "run_manifest.json", manifest)
+    _write_json(out_dir / f"run_manifest_{manifest['stage']}.json", manifest)
     return File(path=str(out_vcf))
 
 
@@ -407,7 +415,7 @@ def combine_gvcfs(
             "combined_gvcf_index": str(out_idx) if out_idx.exists() else "",
         },
     )
-    _write_json(out_dir / "run_manifest.json", manifest)
+    _write_json(out_dir / f"run_manifest_{manifest['stage']}.json", manifest)
     return File(path=str(out_gvcf))
 
 
@@ -443,7 +451,7 @@ def bwa_mem2_index(
         inputs={"ref_path": str(ref), "results_dir": str(out_dir)},
         outputs={"bwa_index_prefix": str(index_prefix)},
     )
-    _write_json(out_dir / "run_manifest.json", manifest)
+    _write_json(out_dir / f"run_manifest_{manifest['stage']}.json", manifest)
     return manifest
 
 
@@ -468,11 +476,10 @@ def bwa_mem2_mem(
 
     rg = f"@RG\\tID:{sample_id}\\tSM:{sample_id}\\tLB:lib\\tPL:ILLUMINA"
     pipeline = (
-        f"bwa-mem2 mem "
-        f"-R '{rg}' "
-        f"-t {threads} {ref_path} {r1_path}"
-        + (f" {r2_path}" if r2_path else "")
-        + f" | samtools view -bS -o {output_bam} -"
+        f"bwa-mem2 mem -R {shlex.quote(rg)} -t {threads} "
+        f"{shlex.quote(ref_path)} {shlex.quote(r1_path)}"
+        + (f" {shlex.quote(r2_path)}" if r2_path else "")
+        + f" | samtools view -bS -o {shlex.quote(str(output_bam))} -"
     )
 
     if sif_path:
@@ -502,7 +509,7 @@ def bwa_mem2_mem(
         },
         outputs={"aligned_bam": str(output_bam)},
     )
-    _write_json(out_dir / "run_manifest.json", manifest)
+    _write_json(out_dir / f"run_manifest_{manifest['stage']}.json", manifest)
     return manifest
 
 
@@ -547,7 +554,7 @@ def sort_sam(
             "sorted_bam_index": str(out_bai) if out_bai.exists() else "",
         },
     )
-    _write_json(out_dir / "run_manifest.json", manifest)
+    _write_json(out_dir / f"run_manifest_{manifest['stage']}.json", manifest)
     return manifest
 
 
@@ -597,7 +604,7 @@ def mark_duplicates(
             "dedup_bam_index": str(out_bai) if out_bai.exists() else "",
         },
     )
-    _write_json(out_dir / "run_manifest.json", manifest)
+    _write_json(out_dir / f"run_manifest_{manifest['stage']}.json", manifest)
     return manifest
 
 
@@ -693,7 +700,7 @@ def variant_recalibrator(
             "tranches_file": str(output_tranches),
         },
     )
-    _write_json(out_dir / "run_manifest.json", manifest)
+    _write_json(out_dir / f"run_manifest_{manifest['stage']}.json", manifest)
     return manifest
 
 
@@ -780,7 +787,7 @@ def apply_vqsr(
             "vqsr_vcf_index": str(tbi_path) if tbi_path.exists() else "",
         },
     )
-    _write_json(out_dir / "run_manifest.json", manifest)
+    _write_json(out_dir / f"run_manifest_{manifest['stage']}.json", manifest)
     return manifest
 
 
@@ -860,7 +867,7 @@ def merge_bam_alignment(
             "merged_bam_index": str(out_bai) if out_bai.exists() else "",
         },
     )
-    _write_json(out_dir / "run_manifest.json", manifest)
+    _write_json(out_dir / f"run_manifest_{manifest['stage']}.json", manifest)
     return manifest
 
 
@@ -901,7 +908,7 @@ def gather_vcfs(
         inputs={"gvcf_paths": gvcf_paths, "sample_id": sample_id},
         outputs={"gathered_gvcf": str(out_vcf)},
     )
-    _write_json(out_dir / "run_manifest.json", manifest)
+    _write_json(out_dir / f"run_manifest_{manifest['stage']}.json", manifest)
     return manifest
 
 
@@ -956,5 +963,5 @@ def calculate_genotype_posteriors(
             "cgp_vcf_index": str(tbi) if tbi.exists() else "",
         },
     )
-    _write_json(out_dir / "run_manifest.json", manifest)
+    _write_json(out_dir / f"run_manifest_{manifest['stage']}.json", manifest)
     return manifest

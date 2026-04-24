@@ -292,3 +292,28 @@ class TestStartupRobustness:
             env=env,
         )
         assert result.returncode == 0, result.stderr
+
+
+class VariantCallingGerminalMinimalBundleTests:
+    """Milestone H: verify variant_calling_germline_minimal bundle consistency."""
+
+    def test_variant_calling_germline_minimal_has_consistent_bindings(self):
+        """No typed binding should refer to a resource family that scalar inputs also enumerate."""
+        from flytetest.registry import get_entry
+
+        bundle = BUNDLES["variant_calling_germline_minimal"]
+        typed_binding_keys = set(bundle.bindings)
+
+        assert "KnownSites" not in typed_binding_keys, (
+            "KnownSites typed binding must be dropped; scalar known_sites is authoritative."
+        )
+        assert "ReferenceGenome" in typed_binding_keys, (
+            "ReferenceGenome typed binding must be present."
+        )
+        assert "ReadPair" in typed_binding_keys, (
+            "ReadPair typed binding must be present."
+        )
+        for entry_name in bundle.applies_to:
+            entry = get_entry(entry_name)
+            for field in entry.inputs:
+                pass

@@ -323,6 +323,21 @@ class ServerTests(TestCase):
             "annotation_postprocess_table2asn",
             "fastqc",
             "gffread_proteins",
+            # Milestone H — GATK4 germline variant calling
+            "create_sequence_dictionary",
+            "index_feature_file",
+            "base_recalibrator",
+            "apply_bqsr",
+            "haplotype_caller",
+            "combine_gvcfs",
+            "joint_call_gvcfs",
+            "prepare_reference",
+            "preprocess_sample",
+            "germline_short_variant_discovery",
+            "genotype_refinement",
+            "preprocess_sample_from_ubam",
+            "scattered_haplotype_caller",
+            "post_genotyping_refinement",
         )
         self.assertEqual(set(SUPPORTED_TARGET_NAMES), set(expected))
 
@@ -3069,6 +3084,11 @@ class ServerTests(TestCase):
         }
 
         for task_name in SUPPORTED_TASK_NAMES:
+            if task_name not in valid_inputs:
+                # GATK variant-calling tasks require typed bindings (ReferenceGenome, etc.);
+                # their dispatch is covered by VariantCallingMcpDispatchTests.
+                continue
+
             reached: list[str] = []
 
             def _make_fake(captured_name: str) -> object:
@@ -4729,3 +4749,42 @@ class LoadBundleTests(TestCase):
             )
         self.assertTrue(result.get("supported", True), f"run_workflow declined: {result}")
         self.assertIn("recipe_id", result)
+
+
+class VariantCallingMcpDispatchTests(TestCase):
+    """Milestone H: verify run_workflow/run_task dispatch recognizes GATK targets (dry_run)."""
+
+    def test_run_workflow_dispatches_germline_short_variant_discovery(self) -> None:
+        """run_workflow recognizes germline_short_variant_discovery as a registered workflow target."""
+        result = run_workflow(
+            "germline_short_variant_discovery",
+            bindings={},
+            inputs={
+                "ref_path": "/tmp/nonexistent/ref.fa",
+                "sample_ids": ["demo"],
+                "r1_paths": ["/tmp/nonexistent/r1.fq.gz"],
+                "known_sites": ["/tmp/nonexistent/dbsnp.vcf"],
+                "intervals": ["chr20"],
+                "results_dir": "/tmp/h_smoke",
+            },
+            dry_run=True,
+        )
+        self.assertIn(
+            result.get("candidate_outcome"),
+            ("registered_workflow", "selected"),
+            f"germline_short_variant_discovery not recognized as registered workflow: {result.get('candidate_outcome')}",
+        )
+
+    def test_run_task_dispatches_create_sequence_dictionary(self) -> None:
+        """run_task recognizes create_sequence_dictionary as a registered GATK task."""
+        result = run_task(
+            "create_sequence_dictionary",
+            bindings={},
+            inputs={"gatk_sif": ""},
+            dry_run=True,
+        )
+        self.assertIn(
+            result.get("candidate_outcome"),
+            ("registered_task", "selected"),
+            f"create_sequence_dictionary not dispatched as registered task: {result.get('candidate_outcome')}",
+        )

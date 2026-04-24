@@ -37,7 +37,8 @@ artifact upload semantics.
   protein evidence, tutorial-backed BRAKER3, corrected pre-EVM contract
   assembly, deterministic EVM execution, PASA post-EVM refinement, repeat
   filtering cleanup, BUSCO-based annotation QC, EggNOG functional annotation,
-  and the AGAT statistics, conversion, and cleanup slices
+  the AGAT statistics, conversion, and cleanup slices, and GATK4 germline
+  variant calling (Milestones A–G)
 - Registry-constrained workflow composition (Milestone 15 plus Milestone 19
   execution guardrails): the planner can
   discover and gate multi-stage workflow compositions from registered stages
@@ -317,6 +318,20 @@ targets:
 - workflow: `annotation_postprocess_agat_conversion`
 - workflow: `annotation_postprocess_agat_cleanup`
 - workflow: `annotation_postprocess_table2asn`
+- task: `create_sequence_dictionary`
+- task: `index_feature_file`
+- task: `base_recalibrator`
+- task: `apply_bqsr`
+- task: `haplotype_caller`
+- task: `combine_gvcfs`
+- task: `joint_call_gvcfs`
+- workflow: `prepare_reference`
+- workflow: `preprocess_sample`
+- workflow: `germline_short_variant_discovery`
+- workflow: `genotype_refinement`
+- workflow: `preprocess_sample_from_ubam`
+- workflow: `scattered_haplotype_caller`
+- workflow: `post_genotyping_refinement`
 
 Supported tools (grouped by role):
 
