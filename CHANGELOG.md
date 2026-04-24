@@ -32,6 +32,12 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone F Step 03 — scattered_haplotype_caller workflow (2026-04-23)
+- [x] 2026-04-23 added scattered_haplotype_caller workflow (stage 6); synchronous for-loop scatter.
+- [x] 2026-04-23 added registry entry (workflow stage 6, reusable_as_reference=True).
+- [x] 2026-04-23 added 5 unit tests in ScatteredHaplotypeCallerTests.
+- [x] 2026-04-23 extended workflows MANIFEST_OUTPUT_KEYS with scattered_gvcf.
+
 ### GATK Milestone F Step 02 — gather_vcfs task (2026-04-23)
 - [x] 2026-04-23 added gather_vcfs task (stage 15) with -I loop and --CREATE_INDEX.
 - [x] 2026-04-23 added registry entry (pipeline_stage_order=15).

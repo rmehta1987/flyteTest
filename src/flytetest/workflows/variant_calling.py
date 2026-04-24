@@ -17,6 +17,7 @@ from flytetest.tasks.variant_calling import (
     bwa_mem2_mem,
     combine_gvcfs,
     create_sequence_dictionary,
+    gather_vcfs,
     haplotype_caller,
     index_feature_file,
     joint_call_gvcfs,
@@ -32,6 +33,7 @@ MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
     "prepared_ref",
     "preprocessed_bam",
     "preprocessed_bam_from_ubam",
+    "scattered_gvcf",
     "genotyped_vcf",
     "refined_vcf",
 )
@@ -400,6 +402,57 @@ def preprocess_sample_from_ubam(
             "known_sites": known_sites,
         },
         outputs={"preprocessed_bam_from_ubam": recal_bam.path},
+    )
+    _write_json(out_dir / "run_manifest.json", manifest)
+    return manifest
+
+
+@variant_calling_env.task
+def scattered_haplotype_caller(
+    ref_path: str,
+    bam_path: str,
+    sample_id: str,
+    intervals: list[str],
+    results_dir: str,
+    sif_path: str = "",
+) -> dict:
+    """Call per-sample GVCFs scattered across intervals, then gather."""
+    if not intervals:
+        raise ValueError("intervals must not be empty")
+
+    interval_gvcfs: list[str] = []
+    for interval in intervals:
+        gvcf_file = haplotype_caller(
+            reference_fasta=File(path=ref_path),
+            aligned_bam=File(path=bam_path),
+            sample_id=sample_id,
+            intervals=[interval],
+            gatk_sif=sif_path,
+        )
+        interval_gvcfs.append(gvcf_file.path)
+
+    gathered = gather_vcfs(
+        gvcf_paths=interval_gvcfs,
+        sample_id=sample_id,
+        results_dir=results_dir,
+        sif_path=sif_path,
+    )
+
+    out_dir = Path(results_dir)
+    manifest = build_manifest_envelope(
+        stage="scattered_haplotype_caller",
+        assumptions=[
+            "intervals must be non-empty and in genomic order for GatherVcfs.",
+            "Scatter is synchronous (Python for loop); no job arrays.",
+            "BAM must be BQSR-recalibrated (preprocess_sample or preprocess_sample_from_ubam must have run first).",
+        ],
+        inputs={
+            "ref_path": ref_path,
+            "bam_path": bam_path,
+            "sample_id": sample_id,
+            "intervals": intervals,
+        },
+        outputs={"scattered_gvcf": gathered["outputs"]["gathered_gvcf"]},
     )
     _write_json(out_dir / "run_manifest.json", manifest)
     return manifest
