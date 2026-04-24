@@ -87,3 +87,8 @@ joint_call_gvcfs          │  (end-to-end)        │
 - `VariantFiltration` (hard-filtering) — deferred; user-composable with existing tasks.
 - VQSR on CGP output — user-composable; out of scope for Milestone G.
 - `SplitIntervals` — out of scope; users supply interval lists directly.
+- GenomicsDB workspace incremental update — out of scope; `joint_call_gvcfs`
+  builds the workspace in a `TemporaryDirectory` and deletes it on
+  function exit, precluding GATK's `--genomicsdb-update-workspace-path`
+  re-entry pattern. Acceptable for cohorts that are re-joint-called from
+  per-sample GVCFs each run; not suitable for incremental-cohort designs.

@@ -426,6 +426,7 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             InterfaceField("known_sites", "list[str]", "List of known-sites VCF paths."),
             InterfaceField("results_dir", "str", "Output directory."),
             InterfaceField("sif_path", "str", "Optional Apptainer/Singularity image path."),
+            InterfaceField("force", "bool", "Rerun all steps even if outputs exist (default False)."),
         ),
         outputs=(
             InterfaceField("prepared_ref", "str", "Reference path (with all indices in results_dir)."),
@@ -585,7 +586,6 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
         category="workflow",
         description="Apply CalculateGenotypePosteriors to a joint-called or VQSR-filtered cohort VCF.",
         inputs=(
-            InterfaceField("ref_path", "str", "Reference FASTA path (passed through; unused by CGP)."),
             InterfaceField("vcf_path", "str", "Absolute path to input VCF (joint-called or VQSR-filtered)."),
             InterfaceField("cohort_id", "str", "Cohort identifier used to name the output VCF."),
             InterfaceField("results_dir", "str", "Output directory."),
@@ -598,7 +598,7 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
         tags=("variant_calling", "gatk4", "cgp", "genotype-refinement", "workflow"),
         compatibility=RegistryCompatibilityMetadata(
             biological_stage="GATK4 post-genotyping refinement via CalculateGenotypePosteriors",
-            accepted_planner_types=("ReferenceGenome", "VariantCallSet"),
+            accepted_planner_types=("VariantCallSet",),
             produced_planner_types=("VariantCallSet",),
             reusable_as_reference=True,
             execution_defaults={
