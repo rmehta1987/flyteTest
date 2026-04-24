@@ -32,6 +32,12 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone E Step 03 — preprocess_sample_from_ubam workflow (2026-04-23)
+- [x] 2026-04-23 added preprocess_sample_from_ubam workflow (align → merge → dedup → BQSR, no sort_sam).
+- [x] 2026-04-23 added registry entry (workflow stage 5, accepted_planner_types includes UnmappedBAM).
+- [x] 2026-04-23 extended MANIFEST_OUTPUT_KEYS with preprocessed_bam_from_ubam.
+- [x] 2026-04-23 added 4 unit tests in PreprocessSampleFromUbamWorkflowTests.
+
 ### GATK Milestone E Step 02 — merge_bam_alignment task (2026-04-23)
 - [x] 2026-04-23 added merge_bam_alignment task (stage 14) with all 9 MergeBamAlignment flags.
 - [x] 2026-04-23 added registry entry; extended MANIFEST_OUTPUT_KEYS with merged_bam.
