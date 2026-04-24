@@ -16,7 +16,7 @@ Per-step prompts: `docs/gatk_milestone_f/prompts/`
 | # | Step | Prompt | Status |
 |---|------|--------|--------|
 | 01 | Extend `haplotype_caller` with optional intervals | `prompts/step_01_haplotype_caller_intervals.md` | Complete |
-| 02 | `gather_vcfs` task | `prompts/step_02_gather_vcfs.md` | Not started |
+| 02 | `gather_vcfs` task | `prompts/step_02_gather_vcfs.md` | Complete |
 | 03 | `scattered_haplotype_caller` workflow | `prompts/step_03_scattered_haplotype_caller.md` | Not started |
 | 04 | Closure | `prompts/step_04_closure.md` | Not started |
 

@@ -32,6 +32,13 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone F Step 02 — gather_vcfs task (2026-04-23)
+- [x] 2026-04-23 added gather_vcfs task (stage 15) with -I loop and --CREATE_INDEX.
+- [x] 2026-04-23 added registry entry (pipeline_stage_order=15).
+- [x] 2026-04-23 added 4 unit tests in GatherVcfsTests.
+- [x] 2026-04-23 extended MANIFEST_OUTPUT_KEYS with gathered_gvcf.
+- [x] 2026-04-23 added gather_vcfs to _VARIANT_CALLING_TASK_NAMES in contract test.
+
 ### GATK Milestone F Step 01 — haplotype_caller interval support (2026-04-23)
 - [x] 2026-04-23 extended haplotype_caller with optional intervals parameter (backward compatible).
 - [x] 2026-04-23 added 2 new tests; all existing HaplotypeCaller tests pass.

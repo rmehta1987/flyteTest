@@ -28,6 +28,7 @@ from flytetest.tasks.variant_calling import (
     base_recalibrator,
     combine_gvcfs,
     create_sequence_dictionary,
+    gather_vcfs,
     haplotype_caller,
     index_feature_file,
     joint_call_gvcfs,
@@ -1867,3 +1868,84 @@ class MergeBamAlignmentTests(TestCase):
             manifest = json.loads((results_dir / "run_manifest.json").read_text())
             self.assertEqual(manifest["stage"], "merge_bam_alignment")
             self.assertIn("merged_bam", manifest["outputs"])
+
+
+# ---------------------------------------------------------------------------
+# Milestone F Step 02 — gather_vcfs
+# ---------------------------------------------------------------------------
+
+class GatherVcfsTests(TestCase):
+    """Tests for the gather_vcfs task."""
+
+    def test_gather_vcfs_runs(self):
+        """Manifest has gathered_gvcf ending in _gathered.g.vcf.gz."""
+        with tempfile.TemporaryDirectory() as tmp:
+            results_dir = Path(tmp) / "out"
+            results_dir.mkdir()
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                out_idx = cmd.index("-O")
+                Path(cmd[out_idx + 1]).touch()
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                result = gather_vcfs(
+                    gvcf_paths=["/tmp/s1_chr1.g.vcf", "/tmp/s1_chr2.g.vcf"],
+                    sample_id="s1",
+                    results_dir=str(results_dir),
+                )
+
+        self.assertIn("gathered_gvcf", result["outputs"])
+        self.assertTrue(result["outputs"]["gathered_gvcf"].endswith("_gathered.g.vcf.gz"))
+
+    def test_gather_vcfs_builds_I_flags(self):
+        """Each gvcf_paths entry produces one -I flag in the correct order."""
+        with tempfile.TemporaryDirectory() as tmp:
+            results_dir = Path(tmp) / "out"
+            results_dir.mkdir()
+
+            captured_cmd = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                captured_cmd.extend(cmd)
+                out_idx = cmd.index("-O")
+                Path(cmd[out_idx + 1]).touch()
+
+            paths = ["/tmp/s1_chr1.g.vcf", "/tmp/s1_chr2.g.vcf", "/tmp/s1_chr3.g.vcf"]
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                gather_vcfs(
+                    gvcf_paths=paths,
+                    sample_id="s1",
+                    results_dir=str(results_dir),
+                )
+
+        i_indices = [i for i, v in enumerate(captured_cmd) if v == "-I"]
+        self.assertEqual(len(i_indices), 3)
+        for idx, (flag_pos, expected) in enumerate(zip(i_indices, paths)):
+            self.assertEqual(captured_cmd[flag_pos + 1], expected,
+                             f"Path at position {idx} mismatch")
+
+    def test_gather_vcfs_empty_list_raises(self):
+        """ValueError raised when gvcf_paths is empty."""
+        with tempfile.TemporaryDirectory() as tmp:
+            results_dir = Path(tmp) / "out"
+            results_dir.mkdir()
+            with self.assertRaises(ValueError):
+                gather_vcfs(
+                    gvcf_paths=[],
+                    sample_id="s1",
+                    results_dir=str(results_dir),
+                )
+
+    def test_gather_vcfs_missing_output_raises(self):
+        """FileNotFoundError raised when run_tool does not produce output."""
+        with tempfile.TemporaryDirectory() as tmp:
+            results_dir = Path(tmp) / "out"
+            results_dir.mkdir()
+
+            with patch.object(variant_calling, "run_tool"):
+                with self.assertRaises(FileNotFoundError):
+                    gather_vcfs(
+                        gvcf_paths=["/tmp/s1_chr1.g.vcf"],
+                        sample_id="s1",
+                        results_dir=str(results_dir),
+                    )
