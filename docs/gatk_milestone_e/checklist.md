@@ -15,10 +15,10 @@ Per-step prompts: `docs/gatk_milestone_e/prompts/`
 
 | # | Step | Prompt | Status |
 |---|------|--------|--------|
-| 01 | `UnmappedBAM` planner type | `prompts/step_01_unmapped_bam_type.md` | Not started |
-| 02 | `merge_bam_alignment` task | `prompts/step_02_merge_bam_alignment.md` | Not started |
-| 03 | `preprocess_sample_from_ubam` workflow | `prompts/step_03_preprocess_sample_from_ubam.md` | Not started |
-| 04 | Closure | `prompts/step_04_closure.md` | Not started |
+| 01 | `UnmappedBAM` planner type | `prompts/step_01_unmapped_bam_type.md` | Complete |
+| 02 | `merge_bam_alignment` task | `prompts/step_02_merge_bam_alignment.md` | Complete |
+| 03 | `preprocess_sample_from_ubam` workflow | `prompts/step_03_preprocess_sample_from_ubam.md` | Complete |
+| 04 | Closure | `prompts/step_04_closure.md` | Complete |
 
 ## Verification Gates
 

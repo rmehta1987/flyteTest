@@ -68,6 +68,7 @@ _VARIANT_CALLING_TASK_NAMES = [
     "joint_call_gvcfs",
     "variant_recalibrator",
     "apply_vqsr",
+    "merge_bam_alignment",
 ]
 
 

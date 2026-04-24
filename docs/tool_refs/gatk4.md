@@ -407,3 +407,52 @@ gatk ApplyVQSR \
 **Milestone D scope notes:**
 - `recal_file` and `tranches_file` must come from `variant_recalibrator` for the same mode.
 - Resources: 4 CPU / 16 GiB local; Slurm hints 4 CPU / 16 GiB / 02:00:00.
+
+---
+
+## merge_bam_alignment
+
+Merges an aligned (but unsorted) BAM from `bwa_mem2_mem` with its original
+unmapped BAM (uBAM) to restore read group metadata, original base qualities,
+and tags from the sequencer, producing a coordinate-sorted merged BAM.
+
+**FLyteTest path:** `flytetest.tasks.variant_calling.merge_bam_alignment`
+
+**Command shape:**
+```
+gatk MergeBamAlignment \
+  -R <ref.fa> \
+  -ALIGNED <aligned.bam> \
+  -UNMAPPED <sample.ubam> \
+  -O <sample_id>_merged.bam \
+  --SORT_ORDER coordinate \
+  --ADD_MATE_CIGAR true \
+  --CLIP_ADAPTERS false \
+  --CLIP_OVERLAPPING_READS true \
+  --INCLUDE_SECONDARY_ALIGNMENTS true \
+  --MAX_INSERTIONS_OR_DELETIONS -1 \
+  --PRIMARY_ALIGNMENT_STRATEGY MostDistant \
+  --ATTRIBUTES_TO_RETAIN X0 \
+  --CREATE_INDEX true
+```
+
+**Key argument rationale:**
+- `--SORT_ORDER coordinate` — output is coordinate-sorted, so no separate `sort_sam` step is required. This is the key structural difference from the `preprocess_sample` path.
+- `--PRIMARY_ALIGNMENT_STRATEGY MostDistant` — GATK best-practice for WGS short reads; selects the primary alignment at the map position most distant from the mate's position, reducing mapping ambiguity near repeat boundaries.
+- `--MAX_INSERTIONS_OR_DELETIONS -1` — disables the clipping of alignments with many indels; required for accurate indel calling at low-complexity regions.
+- `--CLIP_ADAPTERS false` — adapter clipping is expected to have been performed upstream (during FASTQ preparation); hard-clipping here is destructive.
+- `--ADD_MATE_CIGAR true` — adds the MC tag required by downstream GATK tools.
+- `--CREATE_INDEX true` — writes a `.bai` companion file alongside the merged BAM.
+- `ubam_path` must be **queryname-sorted** — GATK MergeBamAlignment requirement; providing a coordinate-sorted uBAM causes a fatal error.
+
+**Outputs:**
+- `merged_bam` — `<sample_id>_merged.bam`, coordinate-sorted.
+- `merged_bam_index` — companion `.bai`; empty string in manifest if absent.
+
+**Stargazer citation:**
+`stargazer/src/stargazer/tasks/gatk/merge_bam_alignment.py`
+
+**Milestone E scope notes:**
+- `merge_bam_alignment` is stage 14 in the pipeline registry (a task-level stage slot distinct from the `preprocess_sample_from_ubam` workflow at stage 5).
+- uBAM path is an alternative to the `preprocess_sample` FASTQ-only path; both paths produce a BQSR-recalibrated BAM accepted by `haplotype_caller`.
+- Resources: 4 CPU / 16 GiB local; Slurm hints 4 CPU / 16 GiB / 02:00:00.

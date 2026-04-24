@@ -21,6 +21,7 @@ from flytetest.tasks.variant_calling import (
     index_feature_file,
     joint_call_gvcfs,
     mark_duplicates,
+    merge_bam_alignment,
     sort_sam,
     variant_recalibrator,
 )
@@ -30,6 +31,7 @@ from flytetest.tasks.variant_calling import (
 MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
     "prepared_ref",
     "preprocessed_bam",
+    "preprocessed_bam_from_ubam",
     "genotyped_vcf",
     "refined_vcf",
 )
@@ -323,6 +325,81 @@ def genotype_refinement(
             "cohort_id": cohort_id,
         },
         outputs={"refined_vcf": refined_vcf},
+    )
+    _write_json(out_dir / "run_manifest.json", manifest)
+    return manifest
+
+
+@variant_calling_env.task
+def preprocess_sample_from_ubam(
+    ref_path: str,
+    r1_path: str,
+    ubam_path: str,
+    sample_id: str,
+    known_sites: list[str],
+    results_dir: str,
+    r2_path: str = "",
+    threads: int = 4,
+    sif_path: str = "",
+) -> dict:
+    """Preprocess a sample using the uBAM path (align → merge → dedup → BQSR)."""
+    aligned = bwa_mem2_mem(
+        ref_path=ref_path,
+        r1_path=r1_path,
+        sample_id=sample_id,
+        results_dir=results_dir,
+        r2_path=r2_path,
+        threads=threads,
+        sif_path=sif_path,
+    )
+    merged = merge_bam_alignment(
+        ref_path=ref_path,
+        aligned_bam=aligned["outputs"]["aligned_bam"],
+        ubam_path=ubam_path,
+        sample_id=sample_id,
+        results_dir=results_dir,
+        sif_path=sif_path,
+    )
+    deduped = mark_duplicates(
+        bam_path=merged["outputs"]["merged_bam"],
+        sample_id=sample_id,
+        results_dir=results_dir,
+        sif_path=sif_path,
+    )
+    known_site_files = [File(path=vcf) for vcf in known_sites]
+    bqsr_table = base_recalibrator(
+        reference_fasta=File(path=ref_path),
+        aligned_bam=File(path=deduped["outputs"]["dedup_bam"]),
+        known_sites=known_site_files,
+        sample_id=sample_id,
+        gatk_sif=sif_path,
+    )
+    recal_bam = apply_bqsr(
+        reference_fasta=File(path=ref_path),
+        aligned_bam=File(path=deduped["outputs"]["dedup_bam"]),
+        bqsr_report=File(path=bqsr_table.path),
+        sample_id=sample_id,
+        gatk_sif=sif_path,
+    )
+
+    out_dir = Path(results_dir)
+    manifest = build_manifest_envelope(
+        stage="preprocess_sample_from_ubam",
+        assumptions=[
+            "Reference is prepared (prepare_reference must have run first).",
+            "All known-sites VCFs are indexed.",
+            "ubam_path is queryname-sorted (MergeBamAlignment requirement).",
+            "No sort_sam step — MergeBamAlignment --SORT_ORDER coordinate handles sorting.",
+        ],
+        inputs={
+            "ref_path": ref_path,
+            "r1_path": r1_path,
+            "r2_path": r2_path,
+            "ubam_path": ubam_path,
+            "sample_id": sample_id,
+            "known_sites": known_sites,
+        },
+        outputs={"preprocessed_bam_from_ubam": recal_bam.path},
     )
     _write_json(out_dir / "run_manifest.json", manifest)
     return manifest

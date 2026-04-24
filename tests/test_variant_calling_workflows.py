@@ -26,6 +26,7 @@ from flytetest.workflows.variant_calling import (
     germline_short_variant_discovery,
     prepare_reference,
     preprocess_sample,
+    preprocess_sample_from_ubam,
 )
 
 
@@ -543,3 +544,122 @@ class GenotypeRefinementWorkflowTests(TestCase):
             self.assertEqual(manifest["stage"], "genotype_refinement")
             self.assertIn("refined_vcf", manifest["outputs"])
             self.assertTrue(manifest["outputs"]["refined_vcf"].endswith("_vqsr_indel.vcf.gz"))
+
+
+# ---------------------------------------------------------------------------
+# Milestone E Step 03 — preprocess_sample_from_ubam
+# ---------------------------------------------------------------------------
+
+class PreprocessSampleFromUbamWorkflowTests(TestCase):
+    """Verify preprocess_sample_from_ubam calls sub-tasks in the correct order."""
+
+    def _make_fake_file(self, path: str):
+        f = MagicMock(spec=File)
+        f.path = path
+        return f
+
+    def _patch_all(self, *, sort_sam_mock=None):
+        """Return a context manager patching all 5 sub-tasks (+ optional sort_sam)."""
+        patches = [
+            patch.object(variant_calling_wf, "bwa_mem2_mem",
+                         return_value={"stage": "bwa_mem2_mem", "outputs": {"aligned_bam": "/tmp/s1_aligned.bam"}}),
+            patch.object(variant_calling_wf, "merge_bam_alignment",
+                         return_value={"stage": "merge_bam_alignment", "outputs": {"merged_bam": "/tmp/s1_merged.bam"}}),
+            patch.object(variant_calling_wf, "mark_duplicates",
+                         return_value={"stage": "mark_duplicates", "outputs": {"dedup_bam": "/tmp/s1_dedup.bam"}}),
+            patch.object(variant_calling_wf, "base_recalibrator",
+                         return_value=self._make_fake_file("/tmp/s1_bqsr.table")),
+            patch.object(variant_calling_wf, "apply_bqsr",
+                         return_value=self._make_fake_file("/tmp/s1_recal.bam")),
+        ]
+        if sort_sam_mock is not None:
+            patches.append(patch.object(variant_calling_wf, "sort_sam", sort_sam_mock))
+        from contextlib import ExitStack
+        stack = ExitStack()
+        mocks = [stack.enter_context(p) for p in patches]
+        return stack, mocks
+
+    def test_preprocess_sample_from_ubam_runs(self) -> None:
+        """Manifest has preprocessed_bam_from_ubam key."""
+        with tempfile.TemporaryDirectory() as tmp:
+            results_dir = Path(tmp) / "out"
+            results_dir.mkdir()
+
+            stack, _ = self._patch_all()
+            with stack:
+                result = preprocess_sample_from_ubam(
+                    ref_path="/tmp/ref.fa",
+                    r1_path="/tmp/r1.fq.gz",
+                    ubam_path="/tmp/sample.ubam",
+                    sample_id="s1",
+                    known_sites=["/tmp/dbsnp.vcf"],
+                    results_dir=str(results_dir),
+                )
+
+        self.assertIn("preprocessed_bam_from_ubam", result["outputs"])
+
+    def test_no_sort_sam_called(self) -> None:
+        """sort_sam is never invoked — MergeBamAlignment handles coordinate sorting."""
+        with tempfile.TemporaryDirectory() as tmp:
+            results_dir = Path(tmp) / "out"
+            results_dir.mkdir()
+
+            sort_sam_mock = MagicMock()
+            stack, _ = self._patch_all(sort_sam_mock=sort_sam_mock)
+            with stack:
+                preprocess_sample_from_ubam(
+                    ref_path="/tmp/ref.fa",
+                    r1_path="/tmp/r1.fq.gz",
+                    ubam_path="/tmp/sample.ubam",
+                    sample_id="s1",
+                    known_sites=["/tmp/dbsnp.vcf"],
+                    results_dir=str(results_dir),
+                )
+
+        sort_sam_mock.assert_not_called()
+
+    def test_merge_bam_alignment_receives_aligned_bam(self) -> None:
+        """merge_bam_alignment is called with aligned_bam from bwa_mem2_mem output."""
+        with tempfile.TemporaryDirectory() as tmp:
+            results_dir = Path(tmp) / "out"
+            results_dir.mkdir()
+
+            mock_merge = MagicMock(
+                return_value={"stage": "merge_bam_alignment", "outputs": {"merged_bam": "/tmp/s1_merged.bam"}}
+            )
+            with (
+                patch.object(variant_calling_wf, "bwa_mem2_mem",
+                             return_value={"stage": "bwa_mem2_mem", "outputs": {"aligned_bam": "/tmp/s1_aligned.bam"}}),
+                patch.object(variant_calling_wf, "merge_bam_alignment", mock_merge),
+                patch.object(variant_calling_wf, "mark_duplicates",
+                             return_value={"stage": "mark_duplicates", "outputs": {"dedup_bam": "/tmp/s1_dedup.bam"}}),
+                patch.object(variant_calling_wf, "base_recalibrator",
+                             return_value=self._make_fake_file("/tmp/s1_bqsr.table")),
+                patch.object(variant_calling_wf, "apply_bqsr",
+                             return_value=self._make_fake_file("/tmp/s1_recal.bam")),
+            ):
+                preprocess_sample_from_ubam(
+                    ref_path="/tmp/ref.fa",
+                    r1_path="/tmp/r1.fq.gz",
+                    ubam_path="/tmp/sample.ubam",
+                    sample_id="s1",
+                    known_sites=["/tmp/dbsnp.vcf"],
+                    results_dir=str(results_dir),
+                )
+
+        _call_kwargs = mock_merge.call_args
+        self.assertEqual(_call_kwargs.kwargs.get("aligned_bam"), "/tmp/s1_aligned.bam")
+
+    def test_registry_entry_shape(self) -> None:
+        """Registry entry exists at workflow stage 5 with preprocessed_bam_from_ubam output."""
+        from flytetest.registry import get_entry
+
+        entry = get_entry("preprocess_sample_from_ubam")
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry.category, "workflow")
+        self.assertEqual(entry.compatibility.pipeline_family, "variant_calling")
+        self.assertEqual(entry.compatibility.pipeline_stage_order, 5)
+
+        output_names = tuple(f.name for f in entry.outputs)
+        self.assertIn("preprocessed_bam_from_ubam", output_names)
+        self.assertIn("preprocessed_bam_from_ubam", MANIFEST_OUTPUT_KEYS)

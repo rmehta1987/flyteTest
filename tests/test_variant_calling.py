@@ -1695,3 +1695,123 @@ class ApplyVQSRManifestTests(TestCase):
             self.assertIn("vqsr_vcf", manifest["outputs"])
             self.assertTrue(manifest["outputs"]["vqsr_vcf"].endswith("_vqsr_snp.vcf.gz"))
             self.assertIn("vqsr_vcf_index", manifest["outputs"])
+
+
+# ---------------------------------------------------------------------------
+# MergeBamAlignment tests (Milestone E Step 02)
+# ---------------------------------------------------------------------------
+
+class MergeBamAlignmentRegistryTests(TestCase):
+    """Guard the merge_bam_alignment registry entry shape."""
+
+    def test_merge_bam_alignment_registry_entry_shape(self) -> None:
+        from flytetest.registry import get_entry
+        entry = get_entry("merge_bam_alignment")
+        self.assertEqual(entry.category, "task")
+        self.assertEqual(entry.compatibility.pipeline_stage_order, 14)
+        output_names = [f.name for f in entry.outputs]
+        self.assertIn("merged_bam", output_names)
+
+
+class MergeBamAlignmentTests(TestCase):
+    """Verify merge_bam_alignment command and manifest."""
+
+    def _run_mba(self, tmp_path):
+        from flytetest.tasks.variant_calling import merge_bam_alignment
+        ref_fa = tmp_path / "ref.fa"
+        aligned = tmp_path / "s1_aligned.bam"
+        ubam = tmp_path / "s1.unmapped.bam"
+        for p in (ref_fa, aligned, ubam):
+            p.write_text("stub")
+        results_dir = tmp_path / "mba_out"
+        results_dir.mkdir()
+
+        captured: list[list[str]] = []
+
+        def fake_run_tool(cmd, sif, bind_paths):
+            captured.append(list(cmd))
+            o_idx = cmd.index("-O")
+            Path(cmd[o_idx + 1]).write_text("BAM")
+
+        with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+            result = merge_bam_alignment(
+                ref_path=str(ref_fa),
+                aligned_bam=str(aligned),
+                ubam_path=str(ubam),
+                sample_id="s1",
+                results_dir=str(results_dir),
+            )
+        return captured[0], result
+
+    def test_merge_bam_alignment_runs(self) -> None:
+        """Manifest has merged_bam ending in _merged.bam."""
+        with tempfile.TemporaryDirectory() as tmp:
+            _, result = self._run_mba(Path(tmp))
+        self.assertEqual(result["stage"], "merge_bam_alignment")
+        self.assertIn("merged_bam", result["outputs"])
+        self.assertTrue(result["outputs"]["merged_bam"].endswith("_merged.bam"))
+
+    def test_merge_bam_alignment_command_shape(self) -> None:
+        """All 9 required flags present in command."""
+        with tempfile.TemporaryDirectory() as tmp:
+            cmd, _ = self._run_mba(Path(tmp))
+        self.assertIn("MergeBamAlignment", cmd)
+        self.assertIn("-ALIGNED", cmd)
+        self.assertIn("-UNMAPPED", cmd)
+        # coordinate sort
+        sort_idx = cmd.index("--SORT_ORDER")
+        self.assertEqual(cmd[sort_idx + 1], "coordinate")
+        # CLIP_ADAPTERS must be false (GATK Best Practices)
+        clip_idx = cmd.index("--CLIP_ADAPTERS")
+        self.assertEqual(cmd[clip_idx + 1], "false")
+        self.assertIn("--PRIMARY_ALIGNMENT_STRATEGY", cmd)
+        primary_idx = cmd.index("--PRIMARY_ALIGNMENT_STRATEGY")
+        self.assertEqual(cmd[primary_idx + 1], "MostDistant")
+        self.assertIn("--ATTRIBUTES_TO_RETAIN", cmd)
+        self.assertIn("X0", cmd)
+
+    def test_merge_bam_alignment_missing_output_raises(self) -> None:
+        """FileNotFoundError when output BAM absent after run."""
+        from flytetest.tasks.variant_calling import merge_bam_alignment
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            for stub in ("ref.fa", "aligned.bam", "ubam.bam"):
+                (tmp_path / stub).write_text("stub")
+            results_dir = tmp_path / "out"
+            results_dir.mkdir()
+            with patch.object(variant_calling, "run_tool", return_value=None):
+                with self.assertRaises(FileNotFoundError):
+                    merge_bam_alignment(
+                        ref_path=str(tmp_path / "ref.fa"),
+                        aligned_bam=str(tmp_path / "aligned.bam"),
+                        ubam_path=str(tmp_path / "ubam.bam"),
+                        sample_id="s1",
+                        results_dir=str(results_dir),
+                    )
+
+    def test_merge_bam_alignment_manifest_key(self) -> None:
+        """run_manifest.json contains merged_bam key."""
+        from flytetest.tasks.variant_calling import merge_bam_alignment
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            for stub in ("ref.fa", "aligned.bam", "ubam.bam"):
+                (tmp_path / stub).write_text("stub")
+            results_dir = tmp_path / "out"
+            results_dir.mkdir()
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                o_idx = cmd.index("-O")
+                Path(cmd[o_idx + 1]).write_text("BAM")
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                merge_bam_alignment(
+                    ref_path=str(tmp_path / "ref.fa"),
+                    aligned_bam=str(tmp_path / "aligned.bam"),
+                    ubam_path=str(tmp_path / "ubam.bam"),
+                    sample_id="s1",
+                    results_dir=str(results_dir),
+                )
+
+            manifest = json.loads((results_dir / "run_manifest.json").read_text())
+            self.assertEqual(manifest["stage"], "merge_bam_alignment")
+            self.assertIn("merged_bam", manifest["outputs"])

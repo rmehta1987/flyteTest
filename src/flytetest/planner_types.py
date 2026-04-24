@@ -207,6 +207,17 @@ class ReadPair(PlannerSerializable):
 
 
 @dataclass(frozen=True, slots=True)
+class UnmappedBAM(PlannerSerializable):
+    """An unmapped BAM file with original read metadata preserved.
+
+    Must be queryname-sorted (GATK MergeBamAlignment requirement).
+    """
+
+    bam_path: str
+    sample_id: str
+
+
+@dataclass(frozen=True, slots=True)
 class VariantCallSet(PlannerSerializable):
     """Planner-facing variant-call boundary spanning per-sample GVCFs and joint VCFs.
 
@@ -261,6 +272,7 @@ __all__ = [
     "QualityAssessmentTarget",
     "ReadPair",
     "ReadSet",
+    "UnmappedBAM",
     "ReferenceGenome",
     "TOP_LEVEL_PLANNER_TYPE_ADDITION_RULES",
     "TranscriptEvidenceSet",
