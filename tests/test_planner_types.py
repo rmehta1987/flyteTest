@@ -37,6 +37,7 @@ from flytetest.planner_types import (
     ReferenceGenome,
     TOP_LEVEL_PLANNER_TYPE_ADDITION_RULES,
     TranscriptEvidenceSet,
+    UnmappedBAM,
     VariantCallSet,
 )
 from flytetest.types.assets import (
@@ -518,6 +519,11 @@ class PlannerTypeTests(TestCase):
         rp = PlannerReadPair(sample_id="s1", r1_path="/r1.fq.gz")
         self.assertIsNone(rp.r2_path)
         self.assertEqual(PlannerReadPair.from_dict(rp.to_dict()), rp)
+
+    def test_unmapped_bam_round_trips(self) -> None:
+        """Round-trip UnmappedBAM through serialize/deserialize."""
+        ubam = UnmappedBAM(bam_path="/data/sample.unmapped.bam", sample_id="NA12878")
+        self.assertEqual(UnmappedBAM.from_dict(ubam.to_dict()), ubam)
 
     def test_known_sites_defaults_minimal(self) -> None:
         """Minimal KnownSites (vcf_path + resource_name) lands expected defaults."""

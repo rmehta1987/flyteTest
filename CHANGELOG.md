@@ -32,6 +32,10 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone E Step 01 — UnmappedBAM planner type (2026-04-23)
+- [x] 2026-04-23 added UnmappedBAM to src/flytetest/planner_types.py.
+- [x] 2026-04-23 added round-trip test in tests/test_planner_types.py.
+
 ### GATK Milestone D — Complete (2026-04-23)
 
 Closes Milestone D of the Phase 3 GATK port (tracker:
