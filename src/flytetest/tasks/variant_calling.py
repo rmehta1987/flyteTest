@@ -40,6 +40,8 @@ MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
     "vqsr_vcf",
     # Milestone E
     "merged_bam",
+    # Milestone F
+    "gathered_gvcf",
 )
 
 
@@ -223,6 +225,7 @@ def haplotype_caller(
     reference_fasta: File,
     aligned_bam: File,
     sample_id: str,
+    intervals: list[str] | None = None,
     gatk_sif: str = "",
 ) -> File:
     """Call per-sample germline GVCF via GATK4 HaplotypeCaller in GVCF mode."""
@@ -239,6 +242,8 @@ def haplotype_caller(
            "-I", str(bam_path),
            "-O", str(out_gvcf),
            "--emit-ref-confidence", "GVCF"]
+    for interval in (intervals or []):
+        cmd.extend(["-L", interval])
     bind_paths = [ref_path.parent, bam_path.parent, out_dir]
     run_tool(cmd, gatk_sif or "data/images/gatk4.sif", bind_paths)
 
@@ -852,6 +857,47 @@ def merge_bam_alignment(
             "merged_bam": str(out_bam),
             "merged_bam_index": str(out_bai) if out_bai.exists() else "",
         },
+    )
+    _write_json(out_dir / "run_manifest.json", manifest)
+    return manifest
+
+
+def gather_vcfs(
+    gvcf_paths: list[str],
+    sample_id: str,
+    results_dir: str,
+    sif_path: str = "",
+) -> dict:
+    """Merge ordered per-interval GVCFs into a single GVCF using GATK GatherVcfs."""
+    if not gvcf_paths:
+        raise ValueError("gvcf_paths must not be empty")
+
+    out_dir = Path(results_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_vcf = out_dir / f"{sample_id}_gathered.g.vcf.gz"
+
+    cmd = ["gatk", "GatherVcfs"]
+    for gvcf in gvcf_paths:
+        cmd.extend(["-I", gvcf])
+    cmd.extend(["-O", str(out_vcf), "--CREATE_INDEX", "true"])
+
+    bind_paths = [Path(p).parent for p in gvcf_paths] + [out_dir]
+    run_tool(cmd, sif_path or "data/images/gatk4.sif", bind_paths)
+
+    if not out_vcf.exists():
+        raise FileNotFoundError(
+            f"GatherVcfs did not produce output GVCF: {out_vcf}"
+        )
+
+    manifest = build_manifest_envelope(
+        stage="gather_vcfs",
+        assumptions=[
+            "gvcf_paths must be in genomic interval order; GatherVcfs requires non-overlapping inputs.",
+            "All input GVCFs must be indexed (.tbi or .idx next to each file).",
+            "--CREATE_INDEX true writes a .tbi companion alongside the output GVCF.",
+        ],
+        inputs={"gvcf_paths": gvcf_paths, "sample_id": sample_id},
+        outputs={"gathered_gvcf": str(out_vcf)},
     )
     _write_json(out_dir / "run_manifest.json", manifest)
     return manifest

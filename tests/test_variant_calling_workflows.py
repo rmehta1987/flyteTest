@@ -27,6 +27,7 @@ from flytetest.workflows.variant_calling import (
     prepare_reference,
     preprocess_sample,
     preprocess_sample_from_ubam,
+    scattered_haplotype_caller,
 )
 
 
@@ -663,3 +664,124 @@ class PreprocessSampleFromUbamWorkflowTests(TestCase):
         output_names = tuple(f.name for f in entry.outputs)
         self.assertIn("preprocessed_bam_from_ubam", output_names)
         self.assertIn("preprocessed_bam_from_ubam", MANIFEST_OUTPUT_KEYS)
+
+
+# ---------------------------------------------------------------------------
+# Milestone F Step 03 — scattered_haplotype_caller
+# ---------------------------------------------------------------------------
+
+class ScatteredHaplotypeCallerTests(TestCase):
+    """Verify scattered_haplotype_caller workflow."""
+
+    def _make_fake_gvcf(self, path: str):
+        f = MagicMock(spec=File)
+        f.path = path
+        return f
+
+    def _make_gather_return(self, path: str) -> dict:
+        return {"stage": "gather_vcfs", "outputs": {"gathered_gvcf": path}}
+
+    def test_scattered_haplotype_caller_runs(self) -> None:
+        """Manifest has scattered_gvcf key."""
+        with tempfile.TemporaryDirectory() as tmp:
+            results_dir = Path(tmp) / "out"
+            results_dir.mkdir()
+
+            fake_gvcf = self._make_fake_gvcf("/tmp/s1.g.vcf")
+            with (
+                patch.object(variant_calling_wf, "haplotype_caller", return_value=fake_gvcf),
+                patch.object(variant_calling_wf, "gather_vcfs",
+                             return_value=self._make_gather_return("/tmp/s1_gathered.g.vcf.gz")),
+            ):
+                result = scattered_haplotype_caller(
+                    ref_path="/tmp/ref.fa",
+                    bam_path="/tmp/s1.bam",
+                    sample_id="s1",
+                    intervals=["chr1", "chr2"],
+                    results_dir=str(results_dir),
+                )
+
+        self.assertIn("scattered_gvcf", result["outputs"])
+
+    def test_haplotype_caller_called_once_per_interval(self) -> None:
+        """haplotype_caller invoked exactly once per interval."""
+        with tempfile.TemporaryDirectory() as tmp:
+            results_dir = Path(tmp) / "out"
+            results_dir.mkdir()
+
+            fake_gvcf = self._make_fake_gvcf("/tmp/s1.g.vcf")
+            mock_hc = MagicMock(return_value=fake_gvcf)
+            with (
+                patch.object(variant_calling_wf, "haplotype_caller", mock_hc),
+                patch.object(variant_calling_wf, "gather_vcfs",
+                             return_value=self._make_gather_return("/tmp/s1_gathered.g.vcf.gz")),
+            ):
+                scattered_haplotype_caller(
+                    ref_path="/tmp/ref.fa",
+                    bam_path="/tmp/s1.bam",
+                    sample_id="s1",
+                    intervals=["chr1", "chr2", "chr3"],
+                    results_dir=str(results_dir),
+                )
+
+        self.assertEqual(mock_hc.call_count, 3)
+
+    def test_gather_vcfs_receives_gvcfs_in_interval_order(self) -> None:
+        """gather_vcfs receives gvcf_paths in the same order as intervals."""
+        with tempfile.TemporaryDirectory() as tmp:
+            results_dir = Path(tmp) / "out"
+            results_dir.mkdir()
+
+            gvcf_paths = [f"/tmp/s1_interval_{i}.g.vcf" for i in range(3)]
+            call_idx = [0]
+
+            def fake_hc(**kwargs):
+                f = self._make_fake_gvcf(gvcf_paths[call_idx[0]])
+                call_idx[0] += 1
+                return f
+
+            mock_gather = MagicMock(
+                return_value=self._make_gather_return("/tmp/s1_gathered.g.vcf.gz")
+            )
+            with (
+                patch.object(variant_calling_wf, "haplotype_caller", side_effect=fake_hc),
+                patch.object(variant_calling_wf, "gather_vcfs", mock_gather),
+            ):
+                scattered_haplotype_caller(
+                    ref_path="/tmp/ref.fa",
+                    bam_path="/tmp/s1.bam",
+                    sample_id="s1",
+                    intervals=["chr1", "chr2", "chr3"],
+                    results_dir=str(results_dir),
+                )
+
+        passed_paths = mock_gather.call_args.kwargs["gvcf_paths"]
+        self.assertEqual(passed_paths, gvcf_paths)
+
+    def test_empty_intervals_raises(self) -> None:
+        """ValueError raised when intervals is empty."""
+        with tempfile.TemporaryDirectory() as tmp:
+            results_dir = Path(tmp) / "out"
+            results_dir.mkdir()
+            with self.assertRaises(ValueError):
+                scattered_haplotype_caller(
+                    ref_path="/tmp/ref.fa",
+                    bam_path="/tmp/s1.bam",
+                    sample_id="s1",
+                    intervals=[],
+                    results_dir=str(results_dir),
+                )
+
+    def test_registry_entry_shape(self) -> None:
+        """Registry entry exists at workflow stage 6 with scattered_gvcf output."""
+        from flytetest.registry import get_entry
+
+        entry = get_entry("scattered_haplotype_caller")
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry.category, "workflow")
+        self.assertEqual(entry.compatibility.pipeline_family, "variant_calling")
+        self.assertEqual(entry.compatibility.pipeline_stage_order, 6)
+
+        output_names = tuple(f.name for f in entry.outputs)
+        self.assertIn("scattered_gvcf", output_names)
+        self.assertIn("scattered_gvcf", MANIFEST_OUTPUT_KEYS)

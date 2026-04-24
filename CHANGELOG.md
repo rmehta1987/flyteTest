@@ -32,6 +32,35 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone F — Complete (2026-04-23)
+
+Interval-scoped HaplotypeCaller: optional intervals on `haplotype_caller`,
+`gather_vcfs` task (stage 15), `scattered_haplotype_caller` workflow (stage 6).
+
+- [x] 2026-04-23 `haplotype_caller` extended with optional `intervals` parameter (backward compatible).
+- [x] 2026-04-23 `gather_vcfs` task (stage 15) + 4 unit tests.
+- [x] 2026-04-23 `scattered_haplotype_caller` workflow (stage 6) + 5 unit tests.
+- [x] 2026-04-23 `docs/tool_refs/gatk4.md` — `gather_vcfs` section added.
+- [x] 2026-04-23 full pytest suite green (778 passed, 1 skipped).
+- Deferred: `CalculateGenotypePosteriors` (Milestone G), `VariantAnnotator` (Milestone G).
+
+### GATK Milestone F Step 03 — scattered_haplotype_caller workflow (2026-04-23)
+- [x] 2026-04-23 added scattered_haplotype_caller workflow (stage 6); synchronous for-loop scatter.
+- [x] 2026-04-23 added registry entry (workflow stage 6, reusable_as_reference=True).
+- [x] 2026-04-23 added 5 unit tests in ScatteredHaplotypeCallerTests.
+- [x] 2026-04-23 extended workflows MANIFEST_OUTPUT_KEYS with scattered_gvcf.
+
+### GATK Milestone F Step 02 — gather_vcfs task (2026-04-23)
+- [x] 2026-04-23 added gather_vcfs task (stage 15) with -I loop and --CREATE_INDEX.
+- [x] 2026-04-23 added registry entry (pipeline_stage_order=15).
+- [x] 2026-04-23 added 4 unit tests in GatherVcfsTests.
+- [x] 2026-04-23 extended MANIFEST_OUTPUT_KEYS with gathered_gvcf.
+- [x] 2026-04-23 added gather_vcfs to _VARIANT_CALLING_TASK_NAMES in contract test.
+
+### GATK Milestone F Step 01 — haplotype_caller interval support (2026-04-23)
+- [x] 2026-04-23 extended haplotype_caller with optional intervals parameter (backward compatible).
+- [x] 2026-04-23 added 2 new tests; all existing HaplotypeCaller tests pass.
+
 ### GATK Milestone E — Complete (2026-04-23)
 
 uBAM preprocessing path: `UnmappedBAM` type, `merge_bam_alignment` (task stage 14),
