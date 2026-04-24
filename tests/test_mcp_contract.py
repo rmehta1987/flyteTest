@@ -134,7 +134,7 @@ class ToolGroupOrderTests(TestCase):
 
 
 class VariantCallingMcpSurfaceTests(TestCase):
-    """Milestone H: verify variant_calling targets are reachable through the MCP surface."""
+    """Milestone I: verify variant_calling targets are reachable through the MCP surface."""
 
     _WORKFLOW_NAMES = [
         "prepare_reference",
@@ -142,8 +142,13 @@ class VariantCallingMcpSurfaceTests(TestCase):
         "germline_short_variant_discovery",
         "genotype_refinement",
         "preprocess_sample_from_ubam",
-        "scattered_haplotype_caller",
+        "sequential_interval_haplotype_caller",
         "post_genotyping_refinement",
+        # Milestone I new workflows
+        "small_cohort_filter",
+        "pre_call_coverage_qc",
+        "post_call_qc_summary",
+        "annotate_variants_snpeff",
     ]
 
     _TASK_NAMES = [
@@ -154,27 +159,34 @@ class VariantCallingMcpSurfaceTests(TestCase):
         "haplotype_caller",
         "combine_gvcfs",
         "joint_call_gvcfs",
-    ]
-
-    _PLAIN_PYTHON_HELPERS = [
+        # Milestone I ported tasks (now exposed)
+        "bwa_mem2_index",
         "bwa_mem2_mem",
+        "sort_sam",
+        "mark_duplicates",
         "variant_recalibrator",
         "apply_vqsr",
+        "merge_bam_alignment",
         "gather_vcfs",
         "calculate_genotype_posteriors",
+        # Milestone I new tasks
+        "variant_filtration",
+        "collect_wgs_metrics",
+        "bcftools_stats",
+        "multiqc_summarize",
+        "snpeff_annotate",
     ]
 
     def test_variant_calling_workflows_in_supported_names(self) -> None:
-        """All 7 variant_calling workflow names are in SUPPORTED_WORKFLOW_NAMES."""
+        """All 11 variant_calling workflow names are in SUPPORTED_WORKFLOW_NAMES."""
         for name in self._WORKFLOW_NAMES:
             self.assertIn(name, SUPPORTED_WORKFLOW_NAMES, f"{name} not in SUPPORTED_WORKFLOW_NAMES")
 
     def test_variant_calling_tasks_in_supported_names(self) -> None:
-        """All 7 Milestone A task names are in SUPPORTED_TASK_NAMES."""
+        """All variant_calling task names (Milestones A–I) are in SUPPORTED_TASK_NAMES."""
         for name in self._TASK_NAMES:
             self.assertIn(name, SUPPORTED_TASK_NAMES, f"{name} not in SUPPORTED_TASK_NAMES")
 
-    def test_plain_python_helpers_not_exposed(self) -> None:
-        """Plain-Python helper tasks must not appear in SUPPORTED_TASK_NAMES (deferred to Milestone I)."""
-        for name in self._PLAIN_PYTHON_HELPERS:
-            self.assertNotIn(name, SUPPORTED_TASK_NAMES, f"{name} must not be exposed until Milestone I")
+    def test_scattered_haplotype_caller_removed(self) -> None:
+        """scattered_haplotype_caller must no longer appear in SUPPORTED_WORKFLOW_NAMES (renamed to sequential_interval_haplotype_caller)."""
+        self.assertNotIn("scattered_haplotype_caller", SUPPORTED_WORKFLOW_NAMES)

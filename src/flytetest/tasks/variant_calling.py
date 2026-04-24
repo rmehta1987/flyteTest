@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import shlex
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 
-from flyte.io import File
+from flyte.io import Dir, File
 
 from flytetest.config import (
     variant_calling_env,
@@ -52,6 +53,19 @@ MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
     "refined_vcf_cgp",
     "genotyped_vcf",
     "refined_vcf",
+    # Milestone I — new tasks (Steps 04–06)
+    "filtered_vcf",
+    "wgs_metrics",
+    "insert_size_metrics",
+    "bcftools_stats_txt",
+    "multiqc_report_html",
+    "snpeff_vcf",
+    "snpeff_genes_txt",
+    # Milestone I — new workflow outputs (Steps 04–06)
+    "small_cohort_filtered_vcf",
+    "pre_call_qc_bundle",
+    "post_call_qc_bundle",
+    "annotated_vcf",
 )
 
 
@@ -419,80 +433,68 @@ def combine_gvcfs(
     return File(path=str(out_gvcf))
 
 
+@variant_calling_env.task
 def bwa_mem2_index(
-    ref_path: str,
-    results_dir: str,
-    sif_path: str = "",
-) -> dict:
+    reference_fasta: File,
+    gatk_sif: str = "",
+) -> Dir:
     """Index a reference FASTA for BWA-MEM2 alignment."""
-    ref = require_path(Path(ref_path), "Reference genome FASTA")
-    out_dir = Path(results_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
+    ref = require_path(Path(reference_fasta.download_sync()), "Reference FASTA")
+    out_dir = project_mkdtemp("bwa_mem2_index_")
     index_prefix = out_dir / ref.stem
 
     cmd = ["bwa-mem2", "index", "-p", str(index_prefix), str(ref)]
-    bind_paths = [ref.parent, out_dir]
-    run_tool(cmd, sif_path or "data/images/gatk4.sif", bind_paths)
+    run_tool(cmd, gatk_sif or "data/images/gatk4.sif", [ref.parent, out_dir])
 
-    expected_suffixes = (".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac")
-    for suffix in expected_suffixes:
-        index_file = Path(str(index_prefix) + suffix)
-        if not index_file.exists():
-            raise FileNotFoundError(
-                f"bwa-mem2 index missing expected file: {index_file}"
-            )
+    for suffix in (".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac"):
+        if not Path(f"{index_prefix}{suffix}").exists():
+            raise FileNotFoundError(f"bwa-mem2 index missing: {index_prefix}{suffix}")
 
     manifest = build_manifest_envelope(
         stage="bwa_mem2_index",
-        assumptions=[
-            "Reference FASTA is readable and has no conflicting index files at the output prefix.",
-        ],
-        inputs={"ref_path": str(ref), "results_dir": str(out_dir)},
+        assumptions=["Reference FASTA readable; no pre-existing conflicting index files."],
+        inputs={"reference_fasta": str(ref)},
         outputs={"bwa_index_prefix": str(index_prefix)},
     )
-    _write_json(out_dir / f"run_manifest_{manifest['stage']}.json", manifest)
-    return manifest
+    _write_json(out_dir / "run_manifest_bwa_mem2_index.json", manifest)
+    return Dir(path=str(out_dir))
 
 
+@variant_calling_env.task
 def bwa_mem2_mem(
-    ref_path: str,
-    r1_path: str,
+    reference_fasta: File,
+    r1: File,
     sample_id: str,
-    results_dir: str,
-    r2_path: str = "",
+    r2: File | None = None,
     threads: int = 4,
-    sif_path: str = "",
-) -> dict:
+    library_id: str | None = None,
+    platform: str = "ILLUMINA",
+    gatk_sif: str = "",
+) -> File:
     """Align paired-end FASTQ reads to a reference using BWA-MEM2."""
-    require_path(Path(ref_path), "Reference genome FASTA")
-    require_path(Path(r1_path), "R1 FASTQ")
-    if r2_path:
-        require_path(Path(r2_path), "R2 FASTQ")
+    ref = require_path(Path(reference_fasta.download_sync()), "Reference FASTA")
+    r1_path = require_path(Path(r1.download_sync()), "R1 FASTQ")
+    r2_path = require_path(Path(r2.download_sync()), "R2 FASTQ") if r2 is not None else None
+    lib = library_id or f"{sample_id}_lib"
 
-    out_dir = Path(results_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    output_bam = out_dir / f"{sample_id}_aligned.bam"
+    out_dir = project_mkdtemp("bwa_mem2_mem_")
+    out_bam = out_dir / f"{sample_id}_aligned.bam"
 
-    rg = f"@RG\\tID:{sample_id}\\tSM:{sample_id}\\tLB:lib\\tPL:ILLUMINA"
+    rg = f"@RG\\tID:{sample_id}\\tSM:{sample_id}\\tLB:{lib}\\tPL:{platform}"
     pipeline = (
         f"bwa-mem2 mem -R {shlex.quote(rg)} -t {threads} "
-        f"{shlex.quote(ref_path)} {shlex.quote(r1_path)}"
-        + (f" {shlex.quote(r2_path)}" if r2_path else "")
-        + f" | samtools view -bS -o {shlex.quote(str(output_bam))} -"
+        f"{shlex.quote(str(ref))} {shlex.quote(str(r1_path))}"
+        + (f" {shlex.quote(str(r2_path))}" if r2_path is not None else "")
+        + f" | samtools view -bS -o {shlex.quote(str(out_bam))} -"
     )
 
-    if sif_path:
-        cmd = f"apptainer exec {sif_path} bash -c {shlex.quote(pipeline)}"
-    else:
-        cmd = pipeline
+    bind_paths = [ref.parent, r1_path.parent, out_dir]
+    if r2_path is not None:
+        bind_paths.append(r2_path.parent)
+    run_tool(["bash", "-c", pipeline], gatk_sif, bind_paths)
 
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise RuntimeError(f"bwa_mem2_mem failed:\n{result.stderr}")
-
-    if not output_bam.exists():
-        raise FileNotFoundError(f"bwa_mem2_mem produced no BAM: {output_bam}")
+    if not out_bam.exists():
+        raise FileNotFoundError(f"bwa_mem2_mem produced no BAM: {out_bam}")
 
     manifest = build_manifest_envelope(
         stage="bwa_mem2_mem",
@@ -501,28 +503,29 @@ def bwa_mem2_mem(
             "R1 (and R2 if provided) are readable FASTQ files.",
         ],
         inputs={
-            "ref_path": ref_path,
-            "r1_path": r1_path,
-            "r2_path": r2_path,
+            "reference_fasta": str(ref),
+            "r1": str(r1_path),
+            "r2": str(r2_path) if r2_path is not None else "",
             "sample_id": sample_id,
+            "library_id": lib,
+            "platform": platform,
             "threads": threads,
         },
-        outputs={"aligned_bam": str(output_bam)},
+        outputs={"aligned_bam": str(out_bam)},
     )
-    _write_json(out_dir / f"run_manifest_{manifest['stage']}.json", manifest)
-    return manifest
+    _write_json(out_dir / "run_manifest_bwa_mem2_mem.json", manifest)
+    return File(path=str(out_bam))
 
 
+@variant_calling_env.task
 def sort_sam(
-    bam_path: str,
+    aligned_bam: File,
     sample_id: str,
-    results_dir: str,
-    sif_path: str = "",
-) -> dict:
+    gatk_sif: str = "",
+) -> File:
     """Coordinate-sort a BAM file using GATK SortSam."""
-    in_bam = require_path(Path(bam_path), "Input BAM for SortSam")
-    out_dir = Path(results_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    in_bam = require_path(Path(aligned_bam.download_sync()), "Input BAM for SortSam")
+    out_dir = project_mkdtemp("gatk_sort_sam_")
     out_bam = out_dir / f"{sample_id}_sorted.bam"
 
     cmd = [
@@ -532,8 +535,7 @@ def sort_sam(
         "--SORT_ORDER", "coordinate",
         "--CREATE_INDEX", "true",
     ]
-    bind_paths = [in_bam.parent, out_dir]
-    run_tool(cmd, sif_path or "data/images/gatk4.sif", bind_paths)
+    run_tool(cmd, gatk_sif or "data/images/gatk4.sif", [in_bam.parent, out_dir])
 
     require_path(out_bam, "GATK SortSam output BAM")
     out_bai = out_bam.with_suffix(".bai")
@@ -548,26 +550,25 @@ def sort_sam(
             "Input BAM is an unsorted aligned BAM produced by bwa_mem2_mem.",
             "--CREATE_INDEX true writes the index alongside the sorted BAM.",
         ],
-        inputs={"bam_path": str(in_bam), "sample_id": sample_id},
+        inputs={"aligned_bam": str(in_bam), "sample_id": sample_id},
         outputs={
             "sorted_bam": str(out_bam),
             "sorted_bam_index": str(out_bai) if out_bai.exists() else "",
         },
     )
-    _write_json(out_dir / f"run_manifest_{manifest['stage']}.json", manifest)
-    return manifest
+    _write_json(out_dir / "run_manifest_sort_sam.json", manifest)
+    return File(path=str(out_bam))
 
 
+@variant_calling_env.task
 def mark_duplicates(
-    bam_path: str,
+    sorted_bam: File,
     sample_id: str,
-    results_dir: str,
-    sif_path: str = "",
-) -> dict:
-    """Mark PCR and optical duplicate reads using GATK MarkDuplicates."""
-    in_bam = require_path(Path(bam_path), "Coordinate-sorted BAM for MarkDuplicates")
-    out_dir = Path(results_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    gatk_sif: str = "",
+) -> tuple[File, File]:
+    """Mark PCR/optical duplicates; returns (dedup_bam, metrics_file)."""
+    in_bam = require_path(Path(sorted_bam.download_sync()), "Coordinate-sorted BAM for MarkDuplicates")
+    out_dir = project_mkdtemp("gatk_mark_dup_")
 
     out_bam = out_dir / f"{sample_id}_marked_duplicates.bam"
     metrics = out_dir / f"{sample_id}_duplicate_metrics.txt"
@@ -579,8 +580,7 @@ def mark_duplicates(
         "-M", str(metrics),
         "--CREATE_INDEX", "true",
     ]
-    bind_paths = [in_bam.parent, out_dir]
-    run_tool(cmd, sif_path or "data/images/gatk4.sif", bind_paths)
+    run_tool(cmd, gatk_sif or "data/images/gatk4.sif", [in_bam.parent, out_dir])
 
     require_path(out_bam, "GATK MarkDuplicates output BAM")
     require_path(metrics, "GATK MarkDuplicates metrics file")
@@ -597,37 +597,62 @@ def mark_duplicates(
             "Input BAM is coordinate-sorted (sort_sam must have run first).",
             "--CREATE_INDEX true writes the BAI alongside the output BAM.",
         ],
-        inputs={"bam_path": str(in_bam), "sample_id": sample_id},
+        inputs={"sorted_bam": str(in_bam), "sample_id": sample_id},
         outputs={
             "dedup_bam": str(out_bam),
             "duplicate_metrics": str(metrics),
             "dedup_bam_index": str(out_bai) if out_bai.exists() else "",
         },
     )
-    _write_json(out_dir / f"run_manifest_{manifest['stage']}.json", manifest)
-    return manifest
+    _write_json(out_dir / "run_manifest_mark_duplicates.json", manifest)
+    return File(path=str(out_bam)), File(path=str(metrics))
 
 
 _DEFAULT_VQSR_FILTER_LEVEL: dict[str, float] = {"SNP": 99.5, "INDEL": 99.0}
-_SNP_ANNOTATIONS = ["QD", "MQ", "MQRankSum", "ReadPosRankSum", "FS", "SOR"]
-_INDEL_ANNOTATIONS = ["QD", "FS", "SOR"]
+_DEFAULT_SNP_ANNOTATIONS = ("QD", "MQ", "MQRankSum", "ReadPosRankSum", "FS", "SOR")
+_DEFAULT_INDEL_ANNOTATIONS = ("QD", "FS", "SOR")
+_INBREEDING_COEFF_MIN_SAMPLES = 10
 
 
+def _resolve_vqsr_annotations(
+    mode: str,
+    sample_count: int,
+    annotations: list[str] | None,
+) -> list[str]:
+    """Return the effective -an list for VariantRecalibrator."""
+    if annotations is not None:
+        return list(annotations)
+    if mode == "SNP":
+        base = list(_DEFAULT_SNP_ANNOTATIONS)
+    elif mode == "INDEL":
+        base = list(_DEFAULT_INDEL_ANNOTATIONS)
+    else:
+        raise ValueError(f"mode must be 'SNP' or 'INDEL', got {mode!r}")
+    if mode == "SNP" and sample_count >= _INBREEDING_COEFF_MIN_SAMPLES:
+        if "InbreedingCoeff" not in base:
+            base.append("InbreedingCoeff")
+    return base
+
+
+@variant_calling_env.task
 def variant_recalibrator(
-    ref_path: str,
-    vcf_path: str,
-    known_sites: list[str],
+    reference_fasta: File,
+    cohort_vcf: File,
+    known_sites: list[File],
     known_sites_flags: list[dict],
     mode: str,
     cohort_id: str,
-    results_dir: str,
-    sif_path: str = "",
-) -> dict:
-    """Build a VQSR recalibration model using GATK4 VariantRecalibrator.
+    sample_count: int,
+    annotations: list[str] | None = None,
+    gatk_sif: str = "",
+) -> tuple[File, File]:
+    """Build a VQSR recalibration model; returns (recal_file, tranches_file).
 
     ``known_sites`` and ``known_sites_flags`` are parallel lists — each entry
     in ``known_sites_flags`` must carry keys ``resource_name``, ``known``,
     ``training``, ``truth``, and ``prior`` (all strings).
+    InbreedingCoeff is auto-added to SNP-mode annotations when sample_count >= 10
+    (GATK Best Practices).
     """
     if mode not in ("SNP", "INDEL"):
         raise ValueError(f"mode must be 'SNP' or 'INDEL', got {mode!r}")
@@ -639,41 +664,42 @@ def variant_recalibrator(
             f"({len(known_sites_flags)}) must have the same length"
         )
 
-    require_path(Path(ref_path), "Reference genome FASTA")
-    require_path(Path(vcf_path), "Input VCF for VariantRecalibrator")
+    ref = require_path(Path(reference_fasta.download_sync()), "Reference genome FASTA")
+    vcf = require_path(Path(cohort_vcf.download_sync()), "Input VCF for VariantRecalibrator")
+    site_paths = [
+        require_path(Path(s.download_sync()), f"KnownSites VCF #{i}")
+        for i, s in enumerate(known_sites)
+    ]
 
-    out_dir = Path(results_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
+    out_dir = project_mkdtemp("gatk_vqsr_")
     output_recal = out_dir / f"{cohort_id}_{mode.lower()}.recal"
     output_tranches = out_dir / f"{cohort_id}_{mode.lower()}.tranches"
 
-    annotations = _SNP_ANNOTATIONS if mode == "SNP" else _INDEL_ANNOTATIONS
+    effective = _resolve_vqsr_annotations(mode, sample_count, annotations)
 
     cmd = [
         "gatk", "VariantRecalibrator",
-        "-R", ref_path,
-        "-V", vcf_path,
+        "-R", str(ref),
+        "-V", str(vcf),
         "-mode", mode,
         "-O", str(output_recal),
         "--tranches-file", str(output_tranches),
     ]
-    for vcf, flags in zip(known_sites, known_sites_flags):
+    for site, flags in zip(site_paths, known_sites_flags):
         name = flags.get("resource_name", "unknown")
-        known = flags.get("known", "false")
+        known_flag = flags.get("known", "false")
         training = flags.get("training", "false")
         truth = flags.get("truth", "false")
         prior = flags.get("prior", "10")
         cmd.extend([
-            f"--resource:{name},known={known},training={training},truth={truth},prior={prior}",
-            vcf,
+            f"--resource:{name},known={known_flag},training={training},truth={truth},prior={prior}",
+            str(site),
         ])
-    for ann in annotations:
+    for ann in effective:
         cmd.extend(["-an", ann])
 
-    bind_paths = [Path(ref_path).parent, Path(vcf_path).parent, out_dir,
-                  *[Path(s).parent for s in known_sites]]
-    run_tool(cmd, sif_path or "data/images/gatk4.sif", bind_paths)
+    bind_paths = [ref.parent, vcf.parent, out_dir, *[s.parent for s in site_paths]]
+    run_tool(cmd, gatk_sif or "data/images/gatk4.sif", bind_paths)
 
     if not output_recal.exists():
         raise FileNotFoundError(
@@ -683,39 +709,42 @@ def variant_recalibrator(
     manifest = build_manifest_envelope(
         stage="variant_recalibrator",
         assumptions=[
+            "InbreedingCoeff is auto-added to SNP-mode annotations when sample_count >= 10 (GATK Best Practices).",
+            "Override via the `annotations` parameter when non-default sets are needed.",
             "Input VCF is a joint-called cohort VCF with sufficient variant count "
             "(≥30k SNPs for SNP mode; ≥2k indels for INDEL mode).",
             "All known-sites VCFs are indexed (.tbi or .idx present next to each VCF).",
             "Reference has .fai and .dict next to the FASTA.",
         ],
         inputs={
-            "ref_path": ref_path,
-            "vcf_path": vcf_path,
+            "reference_fasta": str(ref),
+            "cohort_vcf": str(vcf),
             "mode": mode,
             "cohort_id": cohort_id,
-            "known_sites": known_sites,
+            "sample_count": sample_count,
+            "effective_annotations": effective,
         },
         outputs={
             "recal_file": str(output_recal),
             "tranches_file": str(output_tranches),
         },
     )
-    _write_json(out_dir / f"run_manifest_{manifest['stage']}.json", manifest)
-    return manifest
+    _write_json(out_dir / "run_manifest_variant_recalibrator.json", manifest)
+    return File(path=str(output_recal)), File(path=str(output_tranches))
 
 
+@variant_calling_env.task
 def apply_vqsr(
-    ref_path: str,
-    vcf_path: str,
-    recal_file: str,
-    tranches_file: str,
+    reference_fasta: File,
+    input_vcf: File,
+    recal_file: File,
+    tranches_file: File,
     mode: str,
     cohort_id: str,
-    results_dir: str,
     truth_sensitivity_filter_level: float = 0.0,
-    sif_path: str = "",
-) -> dict:
-    """Apply a VQSR recalibration model to a VCF using GATK4 ApplyVQSR.
+    gatk_sif: str = "",
+) -> File:
+    """Apply a VQSR recalibration model to a VCF via ApplyVQSR.
 
     ``truth_sensitivity_filter_level`` defaults to 99.5 for SNP and 99.0 for
     INDEL when passed as 0.0.  ``recal_file`` and ``tranches_file`` must come
@@ -724,10 +753,10 @@ def apply_vqsr(
     if mode not in ("SNP", "INDEL"):
         raise ValueError(f"mode must be 'SNP' or 'INDEL', got {mode!r}")
 
-    require_path(Path(ref_path), "Reference genome FASTA")
-    require_path(Path(vcf_path), "Input VCF for ApplyVQSR")
-    require_path(Path(recal_file), "VQSR recalibration file")
-    require_path(Path(tranches_file), "VQSR tranches file")
+    ref = require_path(Path(reference_fasta.download_sync()), "Reference genome FASTA")
+    vcf = require_path(Path(input_vcf.download_sync()), "Input VCF for ApplyVQSR")
+    recal = require_path(Path(recal_file.download_sync()), "VQSR recalibration file")
+    tranches = require_path(Path(tranches_file.download_sync()), "VQSR tranches file")
 
     filter_level = (
         truth_sensitivity_filter_level
@@ -735,36 +764,27 @@ def apply_vqsr(
         else _DEFAULT_VQSR_FILTER_LEVEL[mode]
     )
 
-    out_dir = Path(results_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = project_mkdtemp("gatk_apply_vqsr_")
     output_vcf = out_dir / f"{cohort_id}_vqsr_{mode.lower()}.vcf.gz"
     tbi_path = Path(str(output_vcf) + ".tbi")
 
     cmd = [
         "gatk", "ApplyVQSR",
-        "-R", ref_path,
-        "-V", vcf_path,
-        "--recal-file", recal_file,
-        "--tranches-file", tranches_file,
+        "-R", str(ref),
+        "-V", str(vcf),
+        "--recal-file", str(recal),
+        "--tranches-file", str(tranches),
         "--truth-sensitivity-filter-level", str(filter_level),
         "--create-output-variant-index", "true",
         "-mode", mode,
         "-O", str(output_vcf),
     ]
 
-    bind_paths = [
-        Path(ref_path).parent,
-        Path(vcf_path).parent,
-        Path(recal_file).parent,
-        Path(tranches_file).parent,
-        out_dir,
-    ]
-    run_tool(cmd, sif_path or "data/images/gatk4.sif", bind_paths)
+    bind_paths = [ref.parent, vcf.parent, recal.parent, tranches.parent, out_dir]
+    run_tool(cmd, gatk_sif or "data/images/gatk4.sif", bind_paths)
 
     if not output_vcf.exists():
-        raise FileNotFoundError(
-            f"ApplyVQSR did not produce output VCF: {output_vcf}"
-        )
+        raise FileNotFoundError(f"ApplyVQSR did not produce output VCF: {output_vcf}")
 
     manifest = build_manifest_envelope(
         stage="apply_vqsr",
@@ -774,10 +794,10 @@ def apply_vqsr(
             "--create-output-variant-index true writes a .vcf.gz.tbi companion automatically.",
         ],
         inputs={
-            "ref_path": ref_path,
-            "vcf_path": vcf_path,
-            "recal_file": recal_file,
-            "tranches_file": tranches_file,
+            "reference_fasta": str(ref),
+            "input_vcf": str(vcf),
+            "recal_file": str(recal),
+            "tranches_file": str(tranches),
             "mode": mode,
             "cohort_id": cohort_id,
             "truth_sensitivity_filter_level": filter_level,
@@ -787,37 +807,36 @@ def apply_vqsr(
             "vqsr_vcf_index": str(tbi_path) if tbi_path.exists() else "",
         },
     )
-    _write_json(out_dir / f"run_manifest_{manifest['stage']}.json", manifest)
-    return manifest
+    _write_json(out_dir / "run_manifest_apply_vqsr.json", manifest)
+    return File(path=str(output_vcf))
 
 
+@variant_calling_env.task
 def merge_bam_alignment(
-    ref_path: str,
-    aligned_bam: str,
-    ubam_path: str,
+    reference_fasta: File,
+    aligned_bam: File,
+    ubam: File,
     sample_id: str,
-    results_dir: str,
-    sif_path: str = "",
-) -> dict:
-    """Merge aligned BAM with unmapped BAM using GATK4 MergeBamAlignment.
+    gatk_sif: str = "",
+) -> File:
+    """Merge aligned BAM with unmapped BAM via GATK4 MergeBamAlignment.
 
-    ``ubam_path`` must be queryname-sorted.  ``--SORT_ORDER coordinate``
+    ``ubam`` must be queryname-sorted.  ``--SORT_ORDER coordinate``
     produces a coordinate-sorted merged BAM so no separate sort_sam step
     is needed.
     """
-    require_path(Path(ref_path), "Reference genome FASTA")
-    require_path(Path(aligned_bam), "Aligned BAM for MergeBamAlignment")
-    require_path(Path(ubam_path), "Unmapped BAM for MergeBamAlignment")
+    ref = require_path(Path(reference_fasta.download_sync()), "Reference genome FASTA")
+    aln = require_path(Path(aligned_bam.download_sync()), "Aligned BAM for MergeBamAlignment")
+    ubam_path = require_path(Path(ubam.download_sync()), "Unmapped BAM for MergeBamAlignment")
 
-    out_dir = Path(results_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = project_mkdtemp("gatk_merge_bam_")
     out_bam = out_dir / f"{sample_id}_merged.bam"
 
     cmd = [
         "gatk", "MergeBamAlignment",
-        "-R", ref_path,
-        "-ALIGNED", aligned_bam,
-        "-UNMAPPED", ubam_path,
+        "-R", str(ref),
+        "-ALIGNED", str(aln),
+        "-UNMAPPED", str(ubam_path),
         "-O", str(out_bam),
         "--SORT_ORDER", "coordinate",
         "--ADD_MATE_CIGAR", "true",
@@ -830,18 +849,11 @@ def merge_bam_alignment(
         "--CREATE_INDEX", "true",
     ]
 
-    bind_paths = [
-        Path(ref_path).parent,
-        Path(aligned_bam).parent,
-        Path(ubam_path).parent,
-        out_dir,
-    ]
-    run_tool(cmd, sif_path or "data/images/gatk4.sif", bind_paths)
+    bind_paths = [ref.parent, aln.parent, ubam_path.parent, out_dir]
+    run_tool(cmd, gatk_sif or "data/images/gatk4.sif", bind_paths)
 
     if not out_bam.exists():
-        raise FileNotFoundError(
-            f"MergeBamAlignment did not produce output BAM: {out_bam}"
-        )
+        raise FileNotFoundError(f"MergeBamAlignment did not produce output BAM: {out_bam}")
 
     out_bai = out_bam.with_suffix(".bai")
     if not out_bai.exists():
@@ -852,14 +864,14 @@ def merge_bam_alignment(
     manifest = build_manifest_envelope(
         stage="merge_bam_alignment",
         assumptions=[
-            "ubam_path is queryname-sorted (GATK requirement).",
+            "ubam is queryname-sorted (GATK requirement).",
             "--SORT_ORDER coordinate eliminates the need for sort_sam.",
             "--CREATE_INDEX true writes a .bai companion alongside the BAM.",
         ],
         inputs={
-            "ref_path": ref_path,
-            "aligned_bam": aligned_bam,
-            "ubam_path": ubam_path,
+            "reference_fasta": str(ref),
+            "aligned_bam": str(aln),
+            "ubam": str(ubam_path),
             "sample_id": sample_id,
         },
         outputs={
@@ -867,77 +879,81 @@ def merge_bam_alignment(
             "merged_bam_index": str(out_bai) if out_bai.exists() else "",
         },
     )
-    _write_json(out_dir / f"run_manifest_{manifest['stage']}.json", manifest)
-    return manifest
+    _write_json(out_dir / "run_manifest_merge_bam_alignment.json", manifest)
+    return File(path=str(out_bam))
 
 
+@variant_calling_env.task
 def gather_vcfs(
-    gvcf_paths: list[str],
+    gvcfs: list[File],
     sample_id: str,
-    results_dir: str,
-    sif_path: str = "",
-) -> dict:
-    """Merge ordered per-interval GVCFs into a single GVCF using GATK GatherVcfs."""
-    if not gvcf_paths:
-        raise ValueError("gvcf_paths must not be empty")
+    gatk_sif: str = "",
+) -> File:
+    """Merge ordered per-interval GVCFs into a single GVCF via GatherVcfs."""
+    if not gvcfs:
+        raise ValueError("gvcfs must not be empty")
 
-    out_dir = Path(results_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    gvcf_paths = [
+        require_path(Path(g.download_sync()), f"Input GVCF #{i}")
+        for i, g in enumerate(gvcfs)
+    ]
+
+    out_dir = project_mkdtemp("gatk_gather_vcfs_")
     out_vcf = out_dir / f"{sample_id}_gathered.g.vcf.gz"
 
     cmd = ["gatk", "GatherVcfs"]
-    for gvcf in gvcf_paths:
-        cmd.extend(["-I", gvcf])
+    for gp in gvcf_paths:
+        cmd.extend(["-I", str(gp)])
     cmd.extend(["-O", str(out_vcf), "--CREATE_INDEX", "true"])
 
-    bind_paths = [Path(p).parent for p in gvcf_paths] + [out_dir]
-    run_tool(cmd, sif_path or "data/images/gatk4.sif", bind_paths)
+    bind_paths = [gp.parent for gp in gvcf_paths] + [out_dir]
+    run_tool(cmd, gatk_sif or "data/images/gatk4.sif", bind_paths)
 
     if not out_vcf.exists():
-        raise FileNotFoundError(
-            f"GatherVcfs did not produce output GVCF: {out_vcf}"
-        )
+        raise FileNotFoundError(f"GatherVcfs did not produce output GVCF: {out_vcf}")
 
     manifest = build_manifest_envelope(
         stage="gather_vcfs",
         assumptions=[
-            "gvcf_paths must be in genomic interval order; GatherVcfs requires non-overlapping inputs.",
+            "gvcfs must be in genomic interval order; GatherVcfs requires non-overlapping inputs.",
             "All input GVCFs must be indexed (.tbi or .idx next to each file).",
             "--CREATE_INDEX true writes a .tbi companion alongside the output GVCF.",
         ],
-        inputs={"gvcf_paths": gvcf_paths, "sample_id": sample_id},
+        inputs={"gvcfs": [str(gp) for gp in gvcf_paths], "sample_id": sample_id},
         outputs={"gathered_gvcf": str(out_vcf)},
     )
-    _write_json(out_dir / f"run_manifest_{manifest['stage']}.json", manifest)
-    return manifest
+    _write_json(out_dir / "run_manifest_gather_vcfs.json", manifest)
+    return File(path=str(out_vcf))
 
 
+@variant_calling_env.task
 def calculate_genotype_posteriors(
-    ref_path: str,
-    vcf_path: str,
+    input_vcf: File,
     cohort_id: str,
-    results_dir: str,
-    supporting_callsets: list[str] | None = None,
-    sif_path: str = "",
-) -> dict:
-    """Refine genotype posteriors using population priors (GATK4 CGP)."""
-    require_path(Path(vcf_path), "Input VCF for CalculateGenotypePosteriors")
+    supporting_callsets: list[File] | None = None,
+    gatk_sif: str = "",
+) -> File:
+    """Refine genotype posteriors via GATK4 CalculateGenotypePosteriors."""
+    vcf = require_path(Path(input_vcf.download_sync()), "Input VCF for CalculateGenotypePosteriors")
+    callset_paths = [
+        require_path(Path(cs.download_sync()), f"Supporting callset #{i}")
+        for i, cs in enumerate(supporting_callsets or [])
+    ]
 
-    out_dir = Path(results_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = project_mkdtemp("gatk_cgp_")
     out_vcf = out_dir / f"{cohort_id}_cgp.vcf.gz"
 
     cmd = [
         "gatk", "CalculateGenotypePosteriors",
-        "-V", vcf_path,
+        "-V", str(vcf),
         "-O", str(out_vcf),
         "--create-output-variant-index", "true",
     ]
-    for callset in (supporting_callsets or []):
-        cmd.extend(["--supporting-callsets", callset])
+    for csp in callset_paths:
+        cmd.extend(["--supporting-callsets", str(csp)])
 
-    bind_paths = [Path(vcf_path).parent, out_dir]
-    run_tool(cmd, sif_path or "data/images/gatk4.sif", bind_paths)
+    bind_paths = [vcf.parent, out_dir, *[csp.parent for csp in callset_paths]]
+    run_tool(cmd, gatk_sif or "data/images/gatk4.sif", bind_paths)
 
     if not out_vcf.exists():
         raise FileNotFoundError(
@@ -954,14 +970,297 @@ def calculate_genotype_posteriors(
             "No -R flag; CalculateGenotypePosteriors does not require a reference FASTA.",
         ],
         inputs={
-            "vcf_path": vcf_path,
+            "input_vcf": str(vcf),
             "cohort_id": cohort_id,
-            "supporting_callsets": supporting_callsets or [],
+            "supporting_callsets": [str(csp) for csp in callset_paths],
         },
         outputs={
             "cgp_vcf": str(out_vcf),
             "cgp_vcf_index": str(tbi) if tbi.exists() else "",
         },
     )
-    _write_json(out_dir / f"run_manifest_{manifest['stage']}.json", manifest)
-    return manifest
+    _write_json(out_dir / "run_manifest_calculate_genotype_posteriors.json", manifest)
+    return File(path=str(out_vcf))
+
+
+# ---------------------------------------------------------------------------
+# Step 04 — Hard-filtering fallback
+# ---------------------------------------------------------------------------
+
+# GATK Best Practices hard-filtering defaults.
+# Source: https://gatk.broadinstitute.org/hc/en-us/articles/360035531112
+_DEFAULT_SNP_FILTER_EXPRESSIONS: tuple[tuple[str, str], ...] = (
+    ("QD2", "QD < 2.0"),
+    ("FS60", "FS > 60.0"),
+    ("MQ40", "MQ < 40.0"),
+    ("MQRankSum-12.5", "MQRankSum < -12.5"),
+    ("ReadPosRankSum-8", "ReadPosRankSum < -8.0"),
+    ("SOR3", "SOR > 3.0"),
+)
+_DEFAULT_INDEL_FILTER_EXPRESSIONS: tuple[tuple[str, str], ...] = (
+    ("QD2", "QD < 2.0"),
+    ("FS200", "FS > 200.0"),
+    ("ReadPosRankSum-20", "ReadPosRankSum < -20.0"),
+    ("SOR10", "SOR > 10.0"),
+)
+
+
+@variant_calling_env.task
+def variant_filtration(
+    reference_fasta: File,
+    input_vcf: File,
+    mode: str,
+    cohort_id: str,
+    filter_expressions: list[tuple[str, str]] | None = None,
+    gatk_sif: str = "",
+) -> File:
+    """Apply GATK VariantFiltration with Best Practices defaults.
+
+    ``mode``: 'SNP' or 'INDEL' — selects default filter expressions when
+    ``filter_expressions`` is None.
+    ``filter_expressions``: parallel list of (filter_name, expression)
+    tuples. Overrides defaults when provided.
+    Source: https://gatk.broadinstitute.org/hc/en-us/articles/360035531112
+    """
+    if mode not in ("SNP", "INDEL"):
+        raise ValueError(f"mode must be 'SNP' or 'INDEL', got {mode!r}")
+
+    effective = list(filter_expressions) if filter_expressions is not None else (
+        list(_DEFAULT_SNP_FILTER_EXPRESSIONS) if mode == "SNP"
+        else list(_DEFAULT_INDEL_FILTER_EXPRESSIONS)
+    )
+
+    ref = require_path(Path(reference_fasta.download_sync()), "Reference FASTA")
+    vcf = require_path(Path(input_vcf.download_sync()), f"VCF for {mode} filtration")
+
+    out_dir = project_mkdtemp(f"gatk_filt_{mode.lower()}_")
+    out_vcf = out_dir / f"{cohort_id}_{mode.lower()}_filtered.vcf.gz"
+
+    cmd = ["gatk", "VariantFiltration",
+           "-R", str(ref),
+           "-V", str(vcf),
+           "-O", str(out_vcf)]
+    for name, expression in effective:
+        cmd.extend(["--filter-name", name, "--filter-expression", expression])
+
+    run_tool(cmd, gatk_sif or "data/images/gatk4.sif",
+             [ref.parent, vcf.parent, out_dir])
+
+    require_path(out_vcf, "VariantFiltration output VCF")
+    tbi = Path(str(out_vcf) + ".tbi")
+
+    manifest = build_manifest_envelope(
+        stage="variant_filtration",
+        assumptions=[
+            "Filter expressions default to GATK Best Practices hard-filtering thresholds.",
+            "Input VCF should be joint-called; filtration marks records rather than removing them.",
+            "--create-output-variant-index is implied by .vcf.gz output.",
+        ],
+        inputs={
+            "reference_fasta": str(ref),
+            "input_vcf": str(vcf),
+            "mode": mode,
+            "cohort_id": cohort_id,
+            "effective_filter_expressions": effective,
+        },
+        outputs={
+            "filtered_vcf": str(out_vcf),
+            "filtered_vcf_index": str(tbi) if tbi.exists() else "",
+        },
+    )
+    _write_json(out_dir / "run_manifest_variant_filtration.json", manifest)
+    return File(path=str(out_vcf))
+
+
+# ---------------------------------------------------------------------------
+# Step 05 — QC bookends
+# ---------------------------------------------------------------------------
+
+@variant_calling_env.task
+def collect_wgs_metrics(
+    reference_fasta: File,
+    aligned_bam: File,
+    sample_id: str,
+    picard_sif: str = "",
+) -> tuple[File, File]:
+    """Picard CollectWgsMetrics + CollectInsertSizeMetrics on one BAM.
+
+    Returns (wgs_metrics_txt, insert_size_metrics_txt).
+    """
+    ref = require_path(Path(reference_fasta.download_sync()), "Reference FASTA")
+    bam = require_path(Path(aligned_bam.download_sync()), "Aligned BAM")
+
+    out_dir = project_mkdtemp("picard_wgs_")
+    wgs_out = out_dir / f"{sample_id}_wgs_metrics.txt"
+    insert_out = out_dir / f"{sample_id}_insert_size_metrics.txt"
+    insert_hist = out_dir / f"{sample_id}_insert_size_histogram.pdf"
+
+    run_tool(
+        ["gatk", "CollectWgsMetrics",
+         "-R", str(ref), "-I", str(bam), "-O", str(wgs_out)],
+        picard_sif or "data/images/gatk4.sif",
+        [ref.parent, bam.parent, out_dir],
+    )
+    run_tool(
+        ["gatk", "CollectInsertSizeMetrics",
+         "-I", str(bam), "-O", str(insert_out), "-H", str(insert_hist)],
+        picard_sif or "data/images/gatk4.sif",
+        [bam.parent, out_dir],
+    )
+
+    require_path(wgs_out, "WGS metrics output")
+    require_path(insert_out, "Insert size metrics output")
+
+    manifest = build_manifest_envelope(
+        stage="collect_wgs_metrics",
+        assumptions=[
+            "Input BAM must be coordinate-sorted and indexed.",
+            "Reference has .fai and .dict present.",
+            "Both Picard tools are bundled in the GATK4 SIF.",
+        ],
+        inputs={"reference_fasta": str(ref), "aligned_bam": str(bam), "sample_id": sample_id},
+        outputs={"wgs_metrics": str(wgs_out), "insert_size_metrics": str(insert_out)},
+    )
+    _write_json(out_dir / "run_manifest_collect_wgs_metrics.json", manifest)
+    return File(path=str(wgs_out)), File(path=str(insert_out))
+
+
+@variant_calling_env.task
+def bcftools_stats(
+    input_vcf: File,
+    cohort_id: str,
+    bcftools_sif: str = "",
+) -> File:
+    """Run bcftools stats on a VCF/GVCF; return the stats text file."""
+    vcf = require_path(Path(input_vcf.download_sync()), "Input VCF")
+    out_dir = project_mkdtemp("bcftools_stats_")
+    out_txt = out_dir / f"{cohort_id}_bcftools_stats.txt"
+
+    # bcftools stats writes to stdout; redirect via bash -c.
+    cmd_str = f"bcftools stats {shlex.quote(str(vcf))} > {shlex.quote(str(out_txt))}"
+    run_tool(["bash", "-c", cmd_str], bcftools_sif, [vcf.parent, out_dir])
+
+    require_path(out_txt, "bcftools stats output")
+
+    manifest = build_manifest_envelope(
+        stage="bcftools_stats",
+        assumptions=[
+            "Input VCF must be valid; malformed records cause non-zero exit.",
+            "Output is plain text; MultiQC parses the standard format.",
+        ],
+        inputs={"input_vcf": str(vcf), "cohort_id": cohort_id},
+        outputs={"bcftools_stats_txt": str(out_txt)},
+    )
+    _write_json(out_dir / "run_manifest_bcftools_stats.json", manifest)
+    return File(path=str(out_txt))
+
+
+@variant_calling_env.task
+def multiqc_summarize(
+    qc_inputs: list[File],
+    cohort_id: str,
+    multiqc_sif: str = "",
+) -> File:
+    """Aggregate one or more QC tool outputs into a single MultiQC HTML report.
+
+    Copies each input into a fresh scan directory before running MultiQC so
+    the report is self-contained and deterministic regardless of original
+    file locations.
+    """
+    if not qc_inputs:
+        raise ValueError("qc_inputs must not be empty")
+
+    out_dir = project_mkdtemp("multiqc_")
+    scan_root = out_dir / "scan"
+    scan_root.mkdir()
+    for qc_file in qc_inputs:
+        src = require_path(Path(qc_file.download_sync()), "MultiQC input")
+        shutil.copy2(src, scan_root / src.name)
+
+    report_html = out_dir / f"{cohort_id}_multiqc.html"
+    run_tool(
+        ["multiqc", str(scan_root), "-n", report_html.name, "-o", str(out_dir)],
+        multiqc_sif,
+        [scan_root, out_dir],
+    )
+    require_path(report_html, "MultiQC HTML report")
+
+    manifest = build_manifest_envelope(
+        stage="multiqc_summarize",
+        assumptions=[
+            "MultiQC auto-detects Picard, bcftools, FastQC, and GATK MarkDuplicates outputs by filename patterns.",
+            "Scan root is populated deterministically by copying inputs; no reliance on caller directory layouts.",
+        ],
+        inputs={"qc_input_count": len(qc_inputs), "cohort_id": cohort_id},
+        outputs={"multiqc_report_html": str(report_html)},
+    )
+    _write_json(out_dir / "run_manifest_multiqc_summarize.json", manifest)
+    return File(path=str(report_html))
+
+
+# ---------------------------------------------------------------------------
+# Step 06 — Variant annotation (SnpEff)
+# ---------------------------------------------------------------------------
+
+@variant_calling_env.task
+def snpeff_annotate(
+    input_vcf: File,
+    cohort_id: str,
+    snpeff_database: str,
+    snpeff_data_dir: str,
+    snpeff_sif: str = "",
+) -> tuple[File, File]:
+    """Annotate a VCF with SnpEff; return (annotated_vcf, genes_summary_txt).
+
+    snpeff_database: database identifier (e.g. "GRCh38.105", "hg38").
+    snpeff_data_dir: directory containing the pre-downloaded database
+        cache. Must be staged on shared FS for Slurm runs (see
+        check_offline_staging).
+    """
+    vcf = require_path(Path(input_vcf.download_sync()), "Input VCF")
+    data_dir = require_path(Path(snpeff_data_dir), "SnpEff data directory")
+
+    out_dir = project_mkdtemp("snpeff_")
+    annotated_vcf = out_dir / f"{cohort_id}_snpeff.vcf"
+    stats_html = out_dir / f"{cohort_id}_snpeff_summary.html"
+    genes_txt = out_dir / f"{cohort_id}_snpeff_summary.genes.txt"
+
+    # snpEff writes to stdout; shell redirect is standard.
+    cmd_str = (
+        f"snpEff ann "
+        f"-dataDir {shlex.quote(str(data_dir))} "
+        f"-stats {shlex.quote(str(stats_html))} "
+        f"{shlex.quote(snpeff_database)} "
+        f"{shlex.quote(str(vcf))} "
+        f"> {shlex.quote(str(annotated_vcf))}"
+    )
+    run_tool(
+        ["bash", "-c", cmd_str],
+        snpeff_sif,
+        [vcf.parent, data_dir, out_dir],
+    )
+
+    require_path(annotated_vcf, "SnpEff annotated VCF")
+    genes_path_str = str(genes_txt) if genes_txt.exists() else ""
+
+    manifest = build_manifest_envelope(
+        stage="snpeff_annotate",
+        assumptions=[
+            "snpeff_data_dir contains the pre-downloaded database for snpeff_database.",
+            "SnpEff writes annotation fields into INFO; original VCF records are preserved.",
+            "Database cache is NOT downloaded at runtime; compute nodes typically have no internet.",
+        ],
+        inputs={
+            "input_vcf": str(vcf),
+            "cohort_id": cohort_id,
+            "snpeff_database": snpeff_database,
+            "snpeff_data_dir": str(data_dir),
+        },
+        outputs={
+            "snpeff_vcf": str(annotated_vcf),
+            "snpeff_genes_txt": genes_path_str,
+            "snpeff_summary_html": str(stats_html) if stats_html.exists() else "",
+        },
+    )
+    _write_json(out_dir / "run_manifest_snpeff_annotate.json", manifest)
+    return File(path=str(annotated_vcf)), File(path=str(genes_txt))

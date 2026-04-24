@@ -323,7 +323,7 @@ class ServerTests(TestCase):
             "annotation_postprocess_table2asn",
             "fastqc",
             "gffread_proteins",
-            # Milestone H — GATK4 germline variant calling
+            # Milestone H — GATK4 germline variant calling (original 7 tasks + 7 workflows)
             "create_sequence_dictionary",
             "index_feature_file",
             "base_recalibrator",
@@ -336,8 +336,27 @@ class ServerTests(TestCase):
             "germline_short_variant_discovery",
             "genotype_refinement",
             "preprocess_sample_from_ubam",
-            "scattered_haplotype_caller",
             "post_genotyping_refinement",
+            # Milestone I — ported tasks (9) + new tasks (5) + renamed workflow + 4 new workflows
+            "bwa_mem2_index",
+            "bwa_mem2_mem",
+            "sort_sam",
+            "mark_duplicates",
+            "variant_recalibrator",
+            "apply_vqsr",
+            "merge_bam_alignment",
+            "gather_vcfs",
+            "calculate_genotype_posteriors",
+            "variant_filtration",
+            "collect_wgs_metrics",
+            "bcftools_stats",
+            "multiqc_summarize",
+            "snpeff_annotate",
+            "sequential_interval_haplotype_caller",
+            "small_cohort_filter",
+            "pre_call_coverage_qc",
+            "post_call_qc_summary",
+            "annotate_variants_snpeff",
         )
         self.assertEqual(set(SUPPORTED_TARGET_NAMES), set(expected))
 
@@ -4760,19 +4779,18 @@ class VariantCallingMcpDispatchTests(TestCase):
             "germline_short_variant_discovery",
             bindings={},
             inputs={
-                "ref_path": "/tmp/nonexistent/ref.fa",
                 "sample_ids": ["demo"],
-                "r1_paths": ["/tmp/nonexistent/r1.fq.gz"],
-                "known_sites": ["/tmp/nonexistent/dbsnp.vcf"],
                 "intervals": ["chr20"],
-                "results_dir": "/tmp/h_smoke",
             },
             dry_run=True,
         )
-        self.assertIn(
-            result.get("candidate_outcome"),
-            ("registered_workflow", "selected"),
-            f"germline_short_variant_discovery not recognized as registered workflow: {result.get('candidate_outcome')}",
+        self.assertEqual(
+            result.get("target"), "germline_short_variant_discovery",
+            f"germline_short_variant_discovery not recognized as workflow target: {result}",
+        )
+        self.assertEqual(
+            result.get("pipeline_family"), "variant_calling",
+            f"germline_short_variant_discovery not in variant_calling family: {result}",
         )
 
     def test_run_task_dispatches_create_sequence_dictionary(self) -> None:

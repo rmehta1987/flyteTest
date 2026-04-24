@@ -216,6 +216,73 @@ TASK_PARAMETERS: dict[str, tuple[tuple[str, bool], ...]] = {
         ("cohort_id", False),
         ("gatk_sif", False),
     ),
+    # Milestone I — ported task parameters
+    "bwa_mem2_index": (
+        ("gatk_sif", False),
+    ),
+    "bwa_mem2_mem": (
+        ("sample_id", True),
+        ("threads", False),
+        ("library_id", False),
+        ("platform", False),
+        ("gatk_sif", False),
+    ),
+    "sort_sam": (
+        ("sample_id", True),
+        ("gatk_sif", False),
+    ),
+    "mark_duplicates": (
+        ("sample_id", True),
+        ("gatk_sif", False),
+    ),
+    "merge_bam_alignment": (
+        ("sample_id", True),
+        ("gatk_sif", False),
+    ),
+    "gather_vcfs": (
+        ("sample_id", True),
+        ("gatk_sif", False),
+    ),
+    "variant_recalibrator": (
+        ("mode", True),
+        ("cohort_id", True),
+        ("sample_count", True),
+        ("gatk_sif", False),
+    ),
+    "apply_vqsr": (
+        ("mode", True),
+        ("cohort_id", True),
+        ("truth_sensitivity_filter_level", False),
+        ("gatk_sif", False),
+    ),
+    "calculate_genotype_posteriors": (
+        ("cohort_id", True),
+        ("gatk_sif", False),
+    ),
+    # Milestone I — new task parameters (Steps 04–06)
+    "variant_filtration": (
+        ("mode", True),
+        ("cohort_id", True),
+        ("gatk_sif", False),
+    ),
+    "collect_wgs_metrics": (
+        ("sample_id", True),
+        ("picard_sif", False),
+    ),
+    "bcftools_stats": (
+        ("cohort_id", True),
+        ("bcftools_sif", False),
+    ),
+    "multiqc_summarize": (
+        ("cohort_id", True),
+        ("multiqc_sif", False),
+    ),
+    "snpeff_annotate": (
+        ("cohort_id", True),
+        ("snpeff_database", True),
+        ("snpeff_data_dir", True),
+        ("snpeff_sif", False),
+    ),
 }
 
 

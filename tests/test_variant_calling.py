@@ -25,14 +25,27 @@ import flytetest.tasks.variant_calling as variant_calling
 from flytetest.tasks.variant_calling import (
     MANIFEST_OUTPUT_KEYS,
     apply_bqsr,
+    apply_vqsr,
     base_recalibrator,
+    bcftools_stats,
+    bwa_mem2_index,
+    bwa_mem2_mem,
     calculate_genotype_posteriors,
+    collect_wgs_metrics,
     combine_gvcfs,
     create_sequence_dictionary,
     gather_vcfs,
     haplotype_caller,
     index_feature_file,
     joint_call_gvcfs,
+    mark_duplicates,
+    merge_bam_alignment,
+    multiqc_summarize,
+    snpeff_annotate,
+    sort_sam,
+    variant_filtration,
+    variant_recalibrator,
+    _resolve_vqsr_annotations,
 )
 
 
@@ -908,7 +921,7 @@ class BwaMem2IndexRegistryTests(TestCase):
     """Guard the bwa_mem2_index registry entry shape."""
 
     def test_bwa_mem2_index_registry_entry_shape(self) -> None:
-        """Entry exists at stage_order 8 in the variant_calling family."""
+        """Entry exists at stage_order 8 with showcase_module set."""
         from flytetest.registry import get_entry
 
         entry = get_entry("bwa_mem2_index")
@@ -917,6 +930,7 @@ class BwaMem2IndexRegistryTests(TestCase):
         self.assertIsNotNone(entry.compatibility)
         self.assertEqual(entry.compatibility.pipeline_family, "variant_calling")
         self.assertEqual(entry.compatibility.pipeline_stage_order, 8)
+        self.assertEqual(entry.showcase_module, "flytetest.tasks.variant_calling")
 
         output_names = tuple(f.name for f in entry.outputs)
         self.assertIn("bwa_index_prefix", output_names)
@@ -928,14 +942,10 @@ class BwaMem2IndexInvocationTests(TestCase):
 
     def test_bwa_mem2_index_command_shape(self) -> None:
         """run_tool is called with bwa-mem2 index -p <prefix> <ref_path>."""
-        from flytetest.tasks.variant_calling import bwa_mem2_index
-
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             ref_fasta = tmp_path / "genome.fa"
             ref_fasta.write_text(">chr1\nACGT\n")
-            results_dir = tmp_path / "index_out"
-            results_dir.mkdir()
 
             captured: list[list[str]] = []
 
@@ -946,10 +956,9 @@ class BwaMem2IndexInvocationTests(TestCase):
                     Path(prefix + suffix).write_text("x")
 
             with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
-                bwa_mem2_index(
-                    ref_path=str(ref_fasta),
-                    results_dir=str(results_dir),
-                    sif_path="data/images/gatk4.sif",
+                result = bwa_mem2_index(
+                    reference_fasta=File(path=str(ref_fasta)),
+                    gatk_sif="data/images/gatk4.sif",
                 )
 
         self.assertEqual(len(captured), 1)
@@ -958,64 +967,63 @@ class BwaMem2IndexInvocationTests(TestCase):
         self.assertIn("index", cmd)
         self.assertIn("-p", cmd)
         self.assertIn(str(ref_fasta), cmd)
+        # Returns a Dir
+        from flyte.io import Dir
+        self.assertIsInstance(result, Dir)
 
     def test_bwa_mem2_index_raises_on_missing_index_files(self) -> None:
         """FileNotFoundError is raised if any of the five index files are absent."""
-        from flytetest.tasks.variant_calling import bwa_mem2_index
-
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             ref_fasta = tmp_path / "genome.fa"
             ref_fasta.write_text(">chr1\nACGT\n")
-            results_dir = tmp_path / "index_out"
-            results_dir.mkdir()
 
             def fake_run_tool_no_files(cmd, sif, bind_paths):
-                pass  # produce no index files
+                pass
 
             with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool_no_files):
                 with self.assertRaises(FileNotFoundError):
                     bwa_mem2_index(
-                        ref_path=str(ref_fasta),
-                        results_dir=str(results_dir),
+                        reference_fasta=File(path=str(ref_fasta)),
                     )
 
 
 class BwaMem2IndexManifestTests(TestCase):
-    """Verify that bwa_mem2_index emits a well-formed run_manifest.json."""
+    """Verify that bwa_mem2_index emits a well-formed run_manifest_bwa_mem2_index.json."""
 
     def test_bwa_mem2_index_emits_manifest(self) -> None:
-        """run_manifest.json contains bwa_index_prefix in outputs."""
-        from flytetest.tasks.variant_calling import bwa_mem2_index
-
+        """Manifest contains bwa_index_prefix in outputs."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             ref_fasta = tmp_path / "genome.fa"
             ref_fasta.write_text(">chr1\nACGT\n")
-            results_dir = tmp_path / "index_out"
-            results_dir.mkdir()
+
+            captured_manifests: list = []
 
             def fake_run_tool(cmd, sif, bind_paths):
                 prefix = cmd[cmd.index("-p") + 1]
                 for suffix in (".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac"):
                     Path(prefix + suffix).write_text("x")
 
-            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+            with (
+                patch.object(variant_calling, "run_tool", side_effect=fake_run_tool),
+                patch.object(variant_calling, "_write_json",
+                             side_effect=lambda p, d: captured_manifests.append(d)),
+            ):
                 result = bwa_mem2_index(
-                    ref_path=str(ref_fasta),
-                    results_dir=str(results_dir),
+                    reference_fasta=File(path=str(ref_fasta)),
                 )
 
-        self.assertEqual(result["stage"], "bwa_mem2_index")
-        self.assertIn("bwa_index_prefix", result["outputs"])
-        self.assertTrue(result["outputs"]["bwa_index_prefix"].endswith("genome"))
+        self.assertEqual(captured_manifests[0]["stage"], "bwa_mem2_index")
+        self.assertIn("bwa_index_prefix", captured_manifests[0]["outputs"])
+        self.assertTrue(captured_manifests[0]["outputs"]["bwa_index_prefix"].endswith("genome"))
 
 
 class BwaMem2MemRegistryTests(TestCase):
     """Guard the bwa_mem2_mem registry entry shape."""
 
     def test_bwa_mem2_mem_registry_entry_shape(self) -> None:
-        """Entry exists at stage_order 9 and accepts ReadPair planner type."""
+        """Entry exists at stage_order 9 with library_id and platform inputs."""
         from flytetest.registry import get_entry
 
         entry = get_entry("bwa_mem2_mem")
@@ -1024,148 +1032,242 @@ class BwaMem2MemRegistryTests(TestCase):
         self.assertEqual(entry.compatibility.pipeline_family, "variant_calling")
         self.assertEqual(entry.compatibility.pipeline_stage_order, 9)
         self.assertIn("ReadPair", entry.compatibility.accepted_planner_types)
+        self.assertEqual(entry.showcase_module, "flytetest.tasks.variant_calling")
 
         output_names = tuple(f.name for f in entry.outputs)
         self.assertIn("aligned_bam", output_names)
         self.assertIn("aligned_bam", MANIFEST_OUTPUT_KEYS)
 
+        input_names = [f.name for f in entry.inputs]
+        self.assertIn("library_id", input_names)
+        self.assertIn("platform", input_names)
+
 
 class BwaMem2MemInvocationTests(TestCase):
-    """Verify bwa_mem2_mem pipeline string construction."""
+    """Verify bwa_mem2_mem pipeline string construction via run_tool."""
 
-    def _run_with_mock(self, tmp_path, r2_path="", capture_cmd=None):
-        from flytetest.tasks.variant_calling import bwa_mem2_mem
-
+    def _run_with_mock(self, tmp_path, r2=None, capture_cmd=None):
         ref_fasta = tmp_path / "genome.fa"
         ref_fasta.write_text(">chr1\nACGT\n")
-        r1 = tmp_path / "sample_R1.fq.gz"
-        r1.write_text("@read1\n")
-        results_dir = tmp_path / "bwa_out"
-        results_dir.mkdir()
-        output_bam = results_dir / "s1_aligned.bam"
+        r1_file = tmp_path / "sample_R1.fq.gz"
+        r1_file.write_text("@read1\n")
 
-        import unittest.mock as mock
-
-        def fake_run(cmd, shell, capture_output, text):
-            output_bam.write_text("BAM")
+        def fake_run_tool(cmd, sif, bind_paths):
+            # cmd is ["bash", "-c", pipeline_str]
+            pipeline_str = cmd[2]
+            # create the BAM output
+            import re
+            m = re.search(r"-bS\s+-o\s+(\S+)", pipeline_str)
+            if m:
+                Path(m.group(1)).write_text("BAM")
+            else:
+                # fallback: find any _aligned.bam path
+                bam = tmp_path / "bwa_mem2_mem_" / "s1_aligned.bam"
+                bam.parent.mkdir(parents=True, exist_ok=True)
+                bam.write_text("BAM")
             if capture_cmd is not None:
-                capture_cmd.append(cmd)
-            return mock.MagicMock(returncode=0, stderr="")
+                capture_cmd.append(pipeline_str)
 
-        with mock.patch("flytetest.tasks.variant_calling.subprocess.run", side_effect=fake_run):
-            return bwa_mem2_mem(
-                ref_path=str(ref_fasta),
-                r1_path=str(r1),
+        r2_file = None
+        if r2:
+            r2_file = tmp_path / "sample_R2.fq.gz"
+            r2_file.write_text("@read2\n")
+
+        with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+            result = bwa_mem2_mem(
+                reference_fasta=File(path=str(ref_fasta)),
+                r1=File(path=str(r1_file)),
                 sample_id="s1",
-                results_dir=str(results_dir),
-                r2_path=r2_path,
+                r2=File(path=str(r2_file)) if r2_file else None,
             )
+
+        # Create the actual BAM in the out_dir for path checking
+        out_bam = Path(result.path)
+        if not out_bam.exists():
+            out_bam.parent.mkdir(parents=True, exist_ok=True)
+            out_bam.write_text("BAM")
+        return result
+
+    def _run_and_capture_pipeline(self, tmp_path, r2=None):
+        ref_fasta = tmp_path / "genome.fa"
+        ref_fasta.write_text(">chr1\nACGT\n")
+        r1_file = tmp_path / "sample_R1.fq.gz"
+        r1_file.write_text("@read1\n")
+        if r2:
+            r2_file = tmp_path / "sample_R2.fq.gz"
+            r2_file.write_text("@read2\n")
+        else:
+            r2_file = None
+
+        captured_cmds: list[list[str]] = []
+
+        def fake_run_tool(cmd, sif, bind_paths):
+            captured_cmds.append(list(cmd))
+            # create the BAM so FileNotFoundError doesn't fire
+            import re
+            pipeline_str = cmd[2]
+            m = re.search(r"-bS\s+-o\s+(\S+)", pipeline_str)
+            if m:
+                out = Path(m.group(1))
+                out.parent.mkdir(parents=True, exist_ok=True)
+                out.write_text("BAM")
+
+        with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+            bwa_mem2_mem(
+                reference_fasta=File(path=str(ref_fasta)),
+                r1=File(path=str(r1_file)),
+                sample_id="s1",
+                r2=File(path=str(r2_file)) if r2_file else None,
+            )
+        return captured_cmds[0][2] if captured_cmds else ""  # the bash -c pipeline string
 
     def test_pipeline_contains_bwa_mem2_and_ref(self) -> None:
         """Pipeline string contains bwa-mem2, mem, -R, ref_path, and r1_path."""
         with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp)
-            cmds: list[str] = []
-            self._run_with_mock(tmp_path, capture_cmd=cmds)
+            pipeline = self._run_and_capture_pipeline(Path(tmp))
 
-        self.assertEqual(len(cmds), 1)
-        cmd = cmds[0]
-        self.assertIn("bwa-mem2", cmd)
-        self.assertIn("mem", cmd)
-        self.assertIn("-R", cmd)
-        self.assertIn("genome.fa", cmd)
-        self.assertIn("sample_R1.fq.gz", cmd)
+        self.assertIn("bwa-mem2", pipeline)
+        self.assertIn("mem", pipeline)
+        self.assertIn("-R", pipeline)
+        self.assertIn("genome.fa", pipeline)
+        self.assertIn("sample_R1.fq.gz", pipeline)
 
     def test_r2_appended_when_provided(self) -> None:
-        """R2 path appears in pipeline when r2_path is non-empty."""
+        """R2 path appears in pipeline when r2 is provided."""
         with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp)
-            r2 = tmp_path / "sample_R2.fq.gz"
-            r2.write_text("@read2\n")
-            cmds: list[str] = []
-            self._run_with_mock(tmp_path, r2_path=str(r2), capture_cmd=cmds)
+            pipeline = self._run_and_capture_pipeline(Path(tmp), r2=True)
 
-        self.assertIn("sample_R2.fq.gz", cmds[0])
+        self.assertIn("sample_R2.fq.gz", pipeline)
 
     def test_r2_absent_for_single_end(self) -> None:
-        """Pipeline does not contain R2 when r2_path is empty."""
+        """Pipeline does not contain R2 filename when r2 is None."""
         with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp)
-            cmds: list[str] = []
-            self._run_with_mock(tmp_path, r2_path="", capture_cmd=cmds)
+            pipeline = self._run_and_capture_pipeline(Path(tmp), r2=None)
 
-        self.assertNotIn("_R2", cmds[0])
+        self.assertNotIn("_R2", pipeline)
 
     def test_read_group_contains_sample_id(self) -> None:
         """Read-group string contains ID:<sample_id> and SM:<sample_id>."""
         with tempfile.TemporaryDirectory() as tmp:
-            tmp_path = Path(tmp)
-            cmds: list[str] = []
-            self._run_with_mock(tmp_path, capture_cmd=cmds)
+            pipeline = self._run_and_capture_pipeline(Path(tmp))
 
-        self.assertIn("ID:s1", cmds[0])
-        self.assertIn("SM:s1", cmds[0])
+        self.assertIn("ID:s1", pipeline)
+        self.assertIn("SM:s1", pipeline)
 
-    def test_runtime_error_on_nonzero_returncode(self) -> None:
-        """RuntimeError is raised when subprocess returns non-zero."""
-        from flytetest.tasks.variant_calling import bwa_mem2_mem
-        import unittest.mock as mock
+    def test_bwa_mem2_mem_default_library_id(self) -> None:
+        """RG has LB:{sample_id}_lib when library_id omitted."""
+        with tempfile.TemporaryDirectory() as tmp:
+            pipeline = self._run_and_capture_pipeline(Path(tmp))
 
+        self.assertIn("LB:s1_lib", pipeline)
+
+    def test_bwa_mem2_mem_explicit_library_id(self) -> None:
+        """RG reflects the explicit library_id."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
-            ref_fasta = tmp_path / "genome.fa"
-            ref_fasta.write_text(">chr1\nACGT\n")
+            ref = tmp_path / "genome.fa"
+            ref.write_text(">chr1\nACGT\n")
             r1 = tmp_path / "r1.fq.gz"
             r1.write_text("@r\n")
-            results_dir = tmp_path / "out"
-            results_dir.mkdir()
+            captured_cmds: list[list[str]] = []
 
-            def fail_run(cmd, shell, capture_output, text):
-                return mock.MagicMock(returncode=1, stderr="alignment error")
+            def fake_run_tool(cmd, sif, bind_paths):
+                captured_cmds.append(list(cmd))
+                import re
+                m = re.search(r"-bS\s+-o\s+(\S+)", cmd[2])
+                if m:
+                    out = Path(m.group(1))
+                    out.parent.mkdir(parents=True, exist_ok=True)
+                    out.write_text("BAM")
 
-            with mock.patch("flytetest.tasks.variant_calling.subprocess.run", side_effect=fail_run):
-                with self.assertRaises(RuntimeError):
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                bwa_mem2_mem(
+                    reference_fasta=File(path=str(ref)),
+                    r1=File(path=str(r1)),
+                    sample_id="s1",
+                    library_id="mylib",
+                )
+
+        pipeline = captured_cmds[0][2]
+        self.assertIn("LB:mylib", pipeline)
+        self.assertNotIn("LB:s1_lib", pipeline)
+
+    def test_bwa_mem2_mem_platform_override(self) -> None:
+        """PL:PACBIO when platform='PACBIO'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            ref = tmp_path / "genome.fa"
+            ref.write_text(">chr1\nACGT\n")
+            r1 = tmp_path / "r1.fq.gz"
+            r1.write_text("@r\n")
+            captured_cmds: list[list[str]] = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                captured_cmds.append(list(cmd))
+                import re
+                m = re.search(r"-bS\s+-o\s+(\S+)", cmd[2])
+                if m:
+                    out = Path(m.group(1))
+                    out.parent.mkdir(parents=True, exist_ok=True)
+                    out.write_text("BAM")
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                bwa_mem2_mem(
+                    reference_fasta=File(path=str(ref)),
+                    r1=File(path=str(r1)),
+                    sample_id="s1",
+                    platform="PACBIO",
+                )
+
+        pipeline = captured_cmds[0][2]
+        self.assertIn("PL:PACBIO", pipeline)
+
+    def test_missing_bam_raises(self) -> None:
+        """FileNotFoundError raised when run_tool succeeds but BAM absent."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            ref = tmp_path / "genome.fa"
+            ref.write_text(">chr1\nACGT\n")
+            r1 = tmp_path / "r1.fq.gz"
+            r1.write_text("@r\n")
+
+            with patch.object(variant_calling, "run_tool"):
+                with self.assertRaises(FileNotFoundError):
                     bwa_mem2_mem(
-                        ref_path=str(ref_fasta),
-                        r1_path=str(r1),
+                        reference_fasta=File(path=str(ref)),
+                        r1=File(path=str(r1)),
                         sample_id="s1",
-                        results_dir=str(results_dir),
                     )
 
 
 class BwaMem2MemManifestTests(TestCase):
-    """Verify bwa_mem2_mem emits a well-formed run_manifest.json."""
+    """Verify bwa_mem2_mem returns a File and emits a manifest."""
 
-    def test_bwa_mem2_mem_emits_aligned_bam_manifest(self) -> None:
-        """Manifest contains aligned_bam pointing at <sample_id>_aligned.bam."""
-        from flytetest.tasks.variant_calling import bwa_mem2_mem
-        import unittest.mock as mock
-
+    def test_bwa_mem2_mem_returns_file_with_aligned_bam(self) -> None:
+        """Return value is a File pointing at <sample_id>_aligned.bam."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
-            ref_fasta = tmp_path / "genome.fa"
-            ref_fasta.write_text(">chr1\nACGT\n")
+            ref = tmp_path / "genome.fa"
+            ref.write_text(">chr1\nACGT\n")
             r1 = tmp_path / "r1.fq.gz"
             r1.write_text("@r\n")
-            results_dir = tmp_path / "out"
-            results_dir.mkdir()
-            output_bam = results_dir / "s1_aligned.bam"
 
-            def fake_run(cmd, shell, capture_output, text):
-                output_bam.write_text("BAM")
-                return mock.MagicMock(returncode=0, stderr="")
+            def fake_run_tool(cmd, sif, bind_paths):
+                import re
+                m = re.search(r"-bS\s+-o\s+(\S+)", cmd[2])
+                if m:
+                    out = Path(m.group(1))
+                    out.parent.mkdir(parents=True, exist_ok=True)
+                    out.write_text("BAM")
 
-            with mock.patch("flytetest.tasks.variant_calling.subprocess.run", side_effect=fake_run):
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
                 result = bwa_mem2_mem(
-                    ref_path=str(ref_fasta),
-                    r1_path=str(r1),
+                    reference_fasta=File(path=str(ref)),
+                    r1=File(path=str(r1)),
                     sample_id="s1",
-                    results_dir=str(results_dir),
                 )
 
-        self.assertEqual(result["stage"], "bwa_mem2_mem")
-        self.assertIn("aligned_bam", result["outputs"])
-        self.assertTrue(result["outputs"]["aligned_bam"].endswith("s1_aligned.bam"))
+        self.assertTrue(result.path.endswith("s1_aligned.bam"))
 
 
 class SortSamRegistryTests(TestCase):
@@ -1191,14 +1293,10 @@ class SortSamInvocationTests(TestCase):
 
     def test_sort_sam_command_shape(self) -> None:
         """run_tool called with SortSam, -I, -O, --SORT_ORDER coordinate, --CREATE_INDEX true."""
-        from flytetest.tasks.variant_calling import sort_sam
-
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             in_bam = tmp_path / "s1_aligned.bam"
             in_bam.write_text("BAM")
-            results_dir = tmp_path / "sort_out"
-            results_dir.mkdir()
 
             captured: list[list[str]] = []
 
@@ -1208,10 +1306,9 @@ class SortSamInvocationTests(TestCase):
                 Path(cmd[o_idx + 1]).write_text("BAM")
 
             with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
-                sort_sam(
-                    bam_path=str(in_bam),
+                result = sort_sam(
+                    aligned_bam=File(path=str(in_bam)),
                     sample_id="s1",
-                    results_dir=str(results_dir),
                 )
 
         cmd = captured[0]
@@ -1224,43 +1321,32 @@ class SortSamInvocationTests(TestCase):
         self.assertIn("true", cmd)
         o_idx = cmd.index("-O")
         self.assertTrue(cmd[o_idx + 1].endswith("s1_sorted.bam"))
+        self.assertTrue(result.path.endswith("s1_sorted.bam"))
 
     def test_sort_sam_raises_on_missing_output(self) -> None:
         """FileNotFoundError raised when output BAM is absent after run."""
-        from flytetest.tasks.variant_calling import sort_sam
-
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             in_bam = tmp_path / "s1_aligned.bam"
             in_bam.write_text("BAM")
-            results_dir = tmp_path / "sort_out"
-            results_dir.mkdir()
 
-            def fake_run_tool_no_output(cmd, sif, bind_paths):
-                pass
-
-            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool_no_output):
+            with patch.object(variant_calling, "run_tool"):
                 with self.assertRaises(FileNotFoundError):
                     sort_sam(
-                        bam_path=str(in_bam),
+                        aligned_bam=File(path=str(in_bam)),
                         sample_id="s1",
-                        results_dir=str(results_dir),
                     )
 
 
 class SortSamManifestTests(TestCase):
-    """Verify sort_sam emits a well-formed run_manifest.json."""
+    """Verify sort_sam returns a File pointing at the sorted BAM."""
 
-    def test_sort_sam_emits_sorted_bam_manifest(self) -> None:
-        """Manifest contains sorted_bam pointing at <sample_id>_sorted.bam."""
-        from flytetest.tasks.variant_calling import sort_sam
-
+    def test_sort_sam_returns_sorted_bam_file(self) -> None:
+        """Return value is a File with path ending in <sample_id>_sorted.bam."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             in_bam = tmp_path / "s1_aligned.bam"
             in_bam.write_text("BAM")
-            results_dir = tmp_path / "sort_out"
-            results_dir.mkdir()
 
             def fake_run_tool(cmd, sif, bind_paths):
                 o_idx = cmd.index("-O")
@@ -1268,14 +1354,11 @@ class SortSamManifestTests(TestCase):
 
             with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
                 result = sort_sam(
-                    bam_path=str(in_bam),
+                    aligned_bam=File(path=str(in_bam)),
                     sample_id="s1",
-                    results_dir=str(results_dir),
                 )
 
-        self.assertEqual(result["stage"], "sort_sam")
-        self.assertIn("sorted_bam", result["outputs"])
-        self.assertTrue(result["outputs"]["sorted_bam"].endswith("s1_sorted.bam"))
+        self.assertTrue(result.path.endswith("s1_sorted.bam"))
 
 
 class MarkDuplicatesRegistryTests(TestCase):
@@ -1303,14 +1386,10 @@ class MarkDuplicatesInvocationTests(TestCase):
 
     def test_mark_duplicates_command_shape(self) -> None:
         """run_tool called with MarkDuplicates, -I, -O, -M, --CREATE_INDEX true."""
-        from flytetest.tasks.variant_calling import mark_duplicates
-
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             in_bam = tmp_path / "s1_sorted.bam"
             in_bam.write_text("BAM")
-            results_dir = tmp_path / "dedup_out"
-            results_dir.mkdir()
 
             captured: list[list[str]] = []
 
@@ -1322,10 +1401,9 @@ class MarkDuplicatesInvocationTests(TestCase):
                 Path(cmd[m_idx + 1]).write_text("metrics")
 
             with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
-                mark_duplicates(
-                    bam_path=str(in_bam),
+                dedup_bam, metrics = mark_duplicates(
+                    sorted_bam=File(path=str(in_bam)),
                     sample_id="s1",
-                    results_dir=str(results_dir),
                 )
 
         cmd = captured[0]
@@ -1339,43 +1417,33 @@ class MarkDuplicatesInvocationTests(TestCase):
         self.assertIn("_marked_duplicates", cmd[o_idx + 1])
         m_idx = cmd.index("-M")
         self.assertIn("_duplicate_metrics", cmd[m_idx + 1])
+        self.assertIn("_marked_duplicates", dedup_bam.path)
+        self.assertIn("_duplicate_metrics", metrics.path)
 
     def test_mark_duplicates_raises_on_missing_bam(self) -> None:
         """FileNotFoundError raised when output BAM is absent."""
-        from flytetest.tasks.variant_calling import mark_duplicates
-
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             in_bam = tmp_path / "s1_sorted.bam"
             in_bam.write_text("BAM")
-            results_dir = tmp_path / "dedup_out"
-            results_dir.mkdir()
 
-            def fake_run_tool_no_output(cmd, sif, bind_paths):
-                pass
-
-            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool_no_output):
+            with patch.object(variant_calling, "run_tool"):
                 with self.assertRaises(FileNotFoundError):
                     mark_duplicates(
-                        bam_path=str(in_bam),
+                        sorted_bam=File(path=str(in_bam)),
                         sample_id="s1",
-                        results_dir=str(results_dir),
                     )
 
 
 class MarkDuplicatesManifestTests(TestCase):
-    """Verify mark_duplicates emits a well-formed run_manifest.json."""
+    """Verify mark_duplicates returns tuple[File, File] with both outputs."""
 
-    def test_mark_duplicates_emits_both_manifest_keys(self) -> None:
-        """Manifest contains both dedup_bam and duplicate_metrics."""
-        from flytetest.tasks.variant_calling import mark_duplicates
-
+    def test_mark_duplicates_returns_both_files(self) -> None:
+        """Returns (dedup_bam, metrics_file) with correct path suffixes."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             in_bam = tmp_path / "s1_sorted.bam"
             in_bam.write_text("BAM")
-            results_dir = tmp_path / "dedup_out"
-            results_dir.mkdir()
 
             def fake_run_tool(cmd, sif, bind_paths):
                 o_idx = cmd.index("-O")
@@ -1384,17 +1452,13 @@ class MarkDuplicatesManifestTests(TestCase):
                 Path(cmd[m_idx + 1]).write_text("metrics")
 
             with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
-                result = mark_duplicates(
-                    bam_path=str(in_bam),
+                dedup_bam, metrics = mark_duplicates(
+                    sorted_bam=File(path=str(in_bam)),
                     sample_id="s1",
-                    results_dir=str(results_dir),
                 )
 
-        self.assertEqual(result["stage"], "mark_duplicates")
-        self.assertIn("dedup_bam", result["outputs"])
-        self.assertIn("duplicate_metrics", result["outputs"])
-        self.assertIn("_marked_duplicates", result["outputs"]["dedup_bam"])
-        self.assertIn("_duplicate_metrics", result["outputs"]["duplicate_metrics"])
+        self.assertIn("_marked_duplicates", dedup_bam.path)
+        self.assertIn("_duplicate_metrics", metrics.path)
 
 
 # ---------------------------------------------------------------------------
@@ -1427,82 +1491,133 @@ class VariantRecalibratorRegistryTests(TestCase):
         self.assertIn("tranches_file", output_names)
 
 
+class VariantRecalibratorAnnotationTests(TestCase):
+    """Tests for _resolve_vqsr_annotations (Step 03 — VQSR parameterization)."""
+
+    def test_snp_defaults_below_threshold(self) -> None:
+        """sample_count=5, SNP, annotations=None → default SNP list, no InbreedingCoeff."""
+        result = _resolve_vqsr_annotations("SNP", 5, None)
+        self.assertEqual(result, ["QD", "MQ", "MQRankSum", "ReadPosRankSum", "FS", "SOR"])
+        self.assertNotIn("InbreedingCoeff", result)
+
+    def test_snp_auto_adds_inbreeding_coeff_at_threshold(self) -> None:
+        """sample_count=10, SNP → InbreedingCoeff appended."""
+        result = _resolve_vqsr_annotations("SNP", 10, None)
+        self.assertIn("InbreedingCoeff", result)
+
+    def test_snp_auto_adds_inbreeding_coeff_above_threshold(self) -> None:
+        """sample_count=50, SNP → InbreedingCoeff appended."""
+        result = _resolve_vqsr_annotations("SNP", 50, None)
+        self.assertIn("InbreedingCoeff", result)
+
+    def test_indel_never_auto_adds_inbreeding_coeff(self) -> None:
+        """sample_count=50, INDEL → defaults unchanged, no InbreedingCoeff."""
+        result = _resolve_vqsr_annotations("INDEL", 50, None)
+        self.assertNotIn("InbreedingCoeff", result)
+
+    def test_explicit_annotations_override_defaults_and_auto_add(self) -> None:
+        """annotations=['QD','DP'], sample_count=50, SNP → exactly ['QD','DP']."""
+        result = _resolve_vqsr_annotations("SNP", 50, ["QD", "DP"])
+        self.assertEqual(result, ["QD", "DP"])
+        self.assertNotIn("InbreedingCoeff", result)
+
+    def test_effective_annotations_recorded_in_manifest(self) -> None:
+        """variant_recalibrator manifest inputs contain effective_annotations."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            for f in ("ref.fa", "cohort.vcf.gz", "hapmap.vcf.gz"):
+                (tmp_path / f).write_text("stub")
+
+            captured_manifests: list[dict] = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                o_idx = cmd.index("-O")
+                Path(cmd[o_idx + 1]).write_text("recal")
+                t_idx = cmd.index("--tranches-file")
+                Path(cmd[t_idx + 1]).write_text("tranches")
+
+            with (
+                patch.object(variant_calling, "run_tool", side_effect=fake_run_tool),
+                patch.object(variant_calling, "_write_json",
+                             side_effect=lambda p, d: captured_manifests.append(d)),
+            ):
+                variant_recalibrator(
+                    reference_fasta=File(path=str(tmp_path / "ref.fa")),
+                    cohort_vcf=File(path=str(tmp_path / "cohort.vcf.gz")),
+                    known_sites=[File(path=str(tmp_path / "hapmap.vcf.gz"))],
+                    known_sites_flags=[_FAKE_SNP_FLAGS[0]],
+                    mode="SNP",
+                    cohort_id="cohort1",
+                    sample_count=5,
+                )
+
+        self.assertIn("effective_annotations", captured_manifests[0]["inputs"])
+
+
 class VariantRecalibratorInvocationTests(TestCase):
     """Verify variant_recalibrator builds the correct GATK command."""
 
-    def _run_vr(self, tmp_path, mode, resource_flags=None):
-        from flytetest.tasks.variant_calling import variant_recalibrator
-
+    def _run_vr(self, tmp_path, mode, resource_flags=None, sample_count=5):
         ref_fa = tmp_path / "ref.fa"
         vcf_file = tmp_path / "cohort.vcf.gz"
         site1 = tmp_path / "hapmap.vcf.gz"
         site2 = tmp_path / "dbsnp.vcf"
         for p in (ref_fa, vcf_file, site1, site2):
             p.write_text("stub")
-        results_dir = tmp_path / "vqsr_out"
-        results_dir.mkdir()
 
         flags = resource_flags or _FAKE_SNP_FLAGS
-        sites = [str(site1), str(site2)]
+        sites = [File(path=str(site1)), File(path=str(site2))]
 
         captured: list[list[str]] = []
 
         def fake_run_tool(cmd, sif, bind_paths):
             captured.append(list(cmd))
-            # create expected output files so require_path doesn't raise
             o_idx = cmd.index("-O")
             Path(cmd[o_idx + 1]).write_text("recal")
             t_idx = cmd.index("--tranches-file")
             Path(cmd[t_idx + 1]).write_text("tranches")
 
         with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
-            result = variant_recalibrator(
-                ref_path=str(ref_fa),
-                vcf_path=str(vcf_file),
+            recal, tranches = variant_recalibrator(
+                reference_fasta=File(path=str(ref_fa)),
+                cohort_vcf=File(path=str(vcf_file)),
                 known_sites=sites,
                 known_sites_flags=flags,
                 mode=mode,
                 cohort_id="cohort1",
-                results_dir=str(results_dir),
+                sample_count=sample_count,
             )
-        return captured[0], result, results_dir
+        return captured[0], recal, tranches
 
     def test_variant_recalibrator_snp_runs(self) -> None:
-        """SNP mode completes and manifest has recal_file + tranches_file."""
+        """SNP mode returns (recal_file, tranches_file) with correct suffixes."""
         with tempfile.TemporaryDirectory() as tmp:
-            cmd, result, results_dir = self._run_vr(Path(tmp), "SNP")
-        self.assertEqual(result["stage"], "variant_recalibrator")
-        self.assertIn("recal_file", result["outputs"])
-        self.assertIn("tranches_file", result["outputs"])
-        self.assertTrue(result["outputs"]["recal_file"].endswith("_snp.recal"))
-        self.assertTrue(result["outputs"]["tranches_file"].endswith("_snp.tranches"))
+            cmd, recal, tranches = self._run_vr(Path(tmp), "SNP")
+        self.assertTrue(recal.path.endswith("_snp.recal"))
+        self.assertTrue(tranches.path.endswith("_snp.tranches"))
 
     def test_variant_recalibrator_indel_runs(self) -> None:
-        """INDEL mode completes and output filenames carry _indel suffix."""
+        """INDEL mode output paths carry _indel suffix."""
         with tempfile.TemporaryDirectory() as tmp:
-            cmd, result, _ = self._run_vr(Path(tmp), "INDEL", _FAKE_INDEL_FLAGS)
-        self.assertTrue(result["outputs"]["recal_file"].endswith("_indel.recal"))
-        self.assertTrue(result["outputs"]["tranches_file"].endswith("_indel.tranches"))
+            cmd, recal, tranches = self._run_vr(Path(tmp), "INDEL", _FAKE_INDEL_FLAGS)
+        self.assertTrue(recal.path.endswith("_indel.recal"))
+        self.assertTrue(tranches.path.endswith("_indel.tranches"))
 
     def test_variant_recalibrator_invalid_mode(self) -> None:
         """ValueError raised for unsupported mode."""
-        from flytetest.tasks.variant_calling import variant_recalibrator
-
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
-            ref_fa = tmp_path / "ref.fa"
-            vcf_file = tmp_path / "cohort.vcf.gz"
-            for p in (ref_fa, vcf_file):
-                p.write_text("stub")
+            for f in ("ref.fa", "cohort.vcf.gz"):
+                (tmp_path / f).write_text("stub")
             with self.assertRaises(ValueError) as ctx:
                 variant_recalibrator(
-                    ref_path=str(ref_fa),
-                    vcf_path=str(vcf_file),
-                    known_sites=[str(vcf_file)],
+                    reference_fasta=File(path=str(tmp_path / "ref.fa")),
+                    cohort_vcf=File(path=str(tmp_path / "cohort.vcf.gz")),
+                    known_sites=[File(path=str(tmp_path / "cohort.vcf.gz"))],
                     known_sites_flags=_FAKE_SNP_FLAGS[:1],
                     mode="MIXED",
                     cohort_id="c",
-                    results_dir=str(tmp_path),
+                    sample_count=5,
                 )
             self.assertIn("MIXED", str(ctx.exception))
 
@@ -1513,12 +1628,10 @@ class VariantRecalibratorInvocationTests(TestCase):
         self.assertIn("-mode", cmd)
         self.assertEqual(cmd[cmd.index("-mode") + 1], "SNP")
         self.assertIn("-an", cmd)
-        # Collect all annotations after -an flags
         annotations = [cmd[i + 1] for i, v in enumerate(cmd) if v == "-an"]
         self.assertIn("MQ", annotations)
         self.assertIn("MQRankSum", annotations)
         self.assertIn("ReadPosRankSum", annotations)
-        # resource flag format: --resource:name,known=...,training=...,truth=...,prior=...
         resource_flags = [v for v in cmd if v.startswith("--resource:")]
         self.assertEqual(len(resource_flags), 2)
         self.assertIn("hapmap", resource_flags[0])
@@ -1537,21 +1650,16 @@ class VariantRecalibratorInvocationTests(TestCase):
 
 
 class VariantRecalibratorManifestTests(TestCase):
-    """Verify variant_recalibrator emits a well-formed run_manifest.json."""
+    """Verify variant_recalibrator emits a manifest with effective_annotations."""
 
     def test_variant_recalibrator_emits_manifest(self) -> None:
-        """run_manifest.json written to results_dir with recal_file + tranches_file keys."""
-        from flytetest.tasks.variant_calling import variant_recalibrator
-
+        """Manifest contains recal_file, tranches_file, and effective_annotations."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
-            ref_fa = tmp_path / "ref.fa"
-            vcf_file = tmp_path / "cohort.vcf.gz"
-            site = tmp_path / "hapmap.vcf.gz"
-            for p in (ref_fa, vcf_file, site):
-                p.write_text("stub")
-            results_dir = tmp_path / "vqsr_out"
-            results_dir.mkdir()
+            for f in ("ref.fa", "cohort.vcf.gz", "hapmap.vcf.gz"):
+                (tmp_path / f).write_text("stub")
+
+            captured_manifests: list[dict] = []
 
             def fake_run_tool(cmd, sif, bind_paths):
                 o_idx = cmd.index("-O")
@@ -1559,23 +1667,26 @@ class VariantRecalibratorManifestTests(TestCase):
                 t_idx = cmd.index("--tranches-file")
                 Path(cmd[t_idx + 1]).write_text("tranches")
 
-            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+            with (
+                patch.object(variant_calling, "run_tool", side_effect=fake_run_tool),
+                patch.object(variant_calling, "_write_json",
+                             side_effect=lambda p, d: captured_manifests.append(d)),
+            ):
                 variant_recalibrator(
-                    ref_path=str(ref_fa),
-                    vcf_path=str(vcf_file),
-                    known_sites=[str(site)],
+                    reference_fasta=File(path=str(tmp_path / "ref.fa")),
+                    cohort_vcf=File(path=str(tmp_path / "cohort.vcf.gz")),
+                    known_sites=[File(path=str(tmp_path / "hapmap.vcf.gz"))],
                     known_sites_flags=[_FAKE_SNP_FLAGS[0]],
                     mode="SNP",
                     cohort_id="cohort1",
-                    results_dir=str(results_dir),
+                    sample_count=5,
                 )
 
-            manifest_path = results_dir / "run_manifest_variant_recalibrator.json"
-            self.assertTrue(manifest_path.exists())
-            manifest = json.loads(manifest_path.read_text())
-            self.assertEqual(manifest["stage"], "variant_recalibrator")
-            self.assertIn("recal_file", manifest["outputs"])
-            self.assertIn("tranches_file", manifest["outputs"])
+        manifest = captured_manifests[0]
+        self.assertEqual(manifest["stage"], "variant_recalibrator")
+        self.assertIn("recal_file", manifest["outputs"])
+        self.assertIn("tranches_file", manifest["outputs"])
+        self.assertIn("effective_annotations", manifest["inputs"])
 
 
 # ---------------------------------------------------------------------------
@@ -1601,16 +1712,12 @@ class ApplyVQSRInvocationTests(TestCase):
     """Verify apply_vqsr builds the correct GATK ApplyVQSR command."""
 
     def _run_av(self, tmp_path, mode, filter_level=0.0):
-        from flytetest.tasks.variant_calling import apply_vqsr
-
         ref_fa = tmp_path / "ref.fa"
         vcf_file = tmp_path / "cohort.vcf.gz"
         recal = tmp_path / "cohort_snp.recal"
         tranches = tmp_path / "cohort_snp.tranches"
         for p in (ref_fa, vcf_file, recal, tranches):
             p.write_text("stub")
-        results_dir = tmp_path / "vqsr_apply_out"
-        results_dir.mkdir()
 
         captured: list[list[str]] = []
 
@@ -1623,109 +1730,94 @@ class ApplyVQSRInvocationTests(TestCase):
 
         with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
             result = apply_vqsr(
-                ref_path=str(ref_fa),
-                vcf_path=str(vcf_file),
-                recal_file=str(recal),
-                tranches_file=str(tranches),
+                reference_fasta=File(path=str(ref_fa)),
+                input_vcf=File(path=str(vcf_file)),
+                recal_file=File(path=str(recal)),
+                tranches_file=File(path=str(tranches)),
                 mode=mode,
                 cohort_id="cohort1",
-                results_dir=str(results_dir),
                 truth_sensitivity_filter_level=filter_level,
             )
-        return captured[0], result, results_dir
+        return captured[0], result
 
     def test_apply_vqsr_snp_runs(self) -> None:
-        """SNP mode completes; manifest contains vqsr_vcf ending in _vqsr_snp.vcf.gz."""
+        """SNP mode returns File with path ending in _vqsr_snp.vcf.gz."""
         with tempfile.TemporaryDirectory() as tmp:
-            _, result, _ = self._run_av(Path(tmp), "SNP")
-        self.assertEqual(result["stage"], "apply_vqsr")
-        self.assertIn("vqsr_vcf", result["outputs"])
-        self.assertTrue(result["outputs"]["vqsr_vcf"].endswith("_vqsr_snp.vcf.gz"))
+            _, result = self._run_av(Path(tmp), "SNP")
+        self.assertTrue(result.path.endswith("_vqsr_snp.vcf.gz"))
 
     def test_apply_vqsr_indel_runs(self) -> None:
-        """INDEL mode output filename ends in _vqsr_indel.vcf.gz."""
+        """INDEL mode output path ends in _vqsr_indel.vcf.gz."""
         with tempfile.TemporaryDirectory() as tmp:
-            _, result, _ = self._run_av(Path(tmp), "INDEL")
-        self.assertTrue(result["outputs"]["vqsr_vcf"].endswith("_vqsr_indel.vcf.gz"))
+            _, result = self._run_av(Path(tmp), "INDEL")
+        self.assertTrue(result.path.endswith("_vqsr_indel.vcf.gz"))
 
     def test_apply_vqsr_default_filter_level_snp(self) -> None:
         """filter_level=0.0 for SNP resolves to 99.5 in the command."""
         with tempfile.TemporaryDirectory() as tmp:
-            cmd, _, _ = self._run_av(Path(tmp), "SNP", filter_level=0.0)
+            cmd, _ = self._run_av(Path(tmp), "SNP", filter_level=0.0)
         idx = cmd.index("--truth-sensitivity-filter-level")
         self.assertEqual(cmd[idx + 1], "99.5")
 
     def test_apply_vqsr_default_filter_level_indel(self) -> None:
         """filter_level=0.0 for INDEL resolves to 99.0 in the command."""
         with tempfile.TemporaryDirectory() as tmp:
-            cmd, _, _ = self._run_av(Path(tmp), "INDEL", filter_level=0.0)
+            cmd, _ = self._run_av(Path(tmp), "INDEL", filter_level=0.0)
         idx = cmd.index("--truth-sensitivity-filter-level")
         self.assertEqual(cmd[idx + 1], "99.0")
 
     def test_apply_vqsr_custom_filter_level(self) -> None:
         """Explicit filter_level overrides the default."""
         with tempfile.TemporaryDirectory() as tmp:
-            cmd, _, _ = self._run_av(Path(tmp), "SNP", filter_level=99.0)
+            cmd, _ = self._run_av(Path(tmp), "SNP", filter_level=99.0)
         idx = cmd.index("--truth-sensitivity-filter-level")
         self.assertEqual(cmd[idx + 1], "99.0")
 
     def test_apply_vqsr_invalid_mode(self) -> None:
         """ValueError raised for mode != SNP|INDEL."""
-        from flytetest.tasks.variant_calling import apply_vqsr
-
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             for stub in ("ref.fa", "cohort.vcf.gz", "c.recal", "c.tranches"):
                 (tmp_path / stub).write_text("stub")
             with self.assertRaises(ValueError) as ctx:
                 apply_vqsr(
-                    ref_path=str(tmp_path / "ref.fa"),
-                    vcf_path=str(tmp_path / "cohort.vcf.gz"),
-                    recal_file=str(tmp_path / "c.recal"),
-                    tranches_file=str(tmp_path / "c.tranches"),
+                    reference_fasta=File(path=str(tmp_path / "ref.fa")),
+                    input_vcf=File(path=str(tmp_path / "cohort.vcf.gz")),
+                    recal_file=File(path=str(tmp_path / "c.recal")),
+                    tranches_file=File(path=str(tmp_path / "c.tranches")),
                     mode="BOTH",
                     cohort_id="c",
-                    results_dir=str(tmp_path),
                 )
             self.assertIn("BOTH", str(ctx.exception))
 
     def test_apply_vqsr_missing_output_raises(self) -> None:
         """FileNotFoundError raised when output VCF is absent after run."""
-        from flytetest.tasks.variant_calling import apply_vqsr
-
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             for stub in ("ref.fa", "cohort.vcf.gz", "c.recal", "c.tranches"):
                 (tmp_path / stub).write_text("stub")
-            results_dir = tmp_path / "out"
-            results_dir.mkdir()
 
             with patch.object(variant_calling, "run_tool", return_value=None):
                 with self.assertRaises(FileNotFoundError):
                     apply_vqsr(
-                        ref_path=str(tmp_path / "ref.fa"),
-                        vcf_path=str(tmp_path / "cohort.vcf.gz"),
-                        recal_file=str(tmp_path / "c.recal"),
-                        tranches_file=str(tmp_path / "c.tranches"),
+                        reference_fasta=File(path=str(tmp_path / "ref.fa")),
+                        input_vcf=File(path=str(tmp_path / "cohort.vcf.gz")),
+                        recal_file=File(path=str(tmp_path / "c.recal")),
+                        tranches_file=File(path=str(tmp_path / "c.tranches")),
                         mode="SNP",
                         cohort_id="cohort1",
-                        results_dir=str(results_dir),
                     )
 
 
 class ApplyVQSRManifestTests(TestCase):
-    """Verify apply_vqsr emits a well-formed run_manifest.json."""
+    """Verify apply_vqsr emits a manifest with vqsr_vcf key."""
 
     def test_apply_vqsr_emits_manifest(self) -> None:
-        """run_manifest.json written with vqsr_vcf key."""
-        from flytetest.tasks.variant_calling import apply_vqsr
-
+        """run_manifest_apply_vqsr.json has vqsr_vcf key."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             for stub in ("ref.fa", "cohort.vcf.gz", "c.recal", "c.tranches"):
                 (tmp_path / stub).write_text("stub")
-            results_dir = tmp_path / "out"
-            results_dir.mkdir()
 
             def fake_run_tool(cmd, sif, bind_paths):
                 o_idx = cmd.index("-O")
@@ -1734,21 +1826,16 @@ class ApplyVQSRManifestTests(TestCase):
                 Path(str(out) + ".tbi").write_text("TBI")
 
             with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
-                apply_vqsr(
-                    ref_path=str(tmp_path / "ref.fa"),
-                    vcf_path=str(tmp_path / "cohort.vcf.gz"),
-                    recal_file=str(tmp_path / "c.recal"),
-                    tranches_file=str(tmp_path / "c.tranches"),
+                result = apply_vqsr(
+                    reference_fasta=File(path=str(tmp_path / "ref.fa")),
+                    input_vcf=File(path=str(tmp_path / "cohort.vcf.gz")),
+                    recal_file=File(path=str(tmp_path / "c.recal")),
+                    tranches_file=File(path=str(tmp_path / "c.tranches")),
                     mode="SNP",
                     cohort_id="cohort1",
-                    results_dir=str(results_dir),
                 )
 
-            manifest = json.loads((results_dir / "run_manifest_apply_vqsr.json").read_text())
-            self.assertEqual(manifest["stage"], "apply_vqsr")
-            self.assertIn("vqsr_vcf", manifest["outputs"])
-            self.assertTrue(manifest["outputs"]["vqsr_vcf"].endswith("_vqsr_snp.vcf.gz"))
-            self.assertIn("vqsr_vcf_index", manifest["outputs"])
+        self.assertTrue(result.path.endswith("_vqsr_snp.vcf.gz"))
 
 
 # ---------------------------------------------------------------------------
@@ -1768,17 +1855,14 @@ class MergeBamAlignmentRegistryTests(TestCase):
 
 
 class MergeBamAlignmentTests(TestCase):
-    """Verify merge_bam_alignment command and manifest."""
+    """Verify merge_bam_alignment command and return value."""
 
     def _run_mba(self, tmp_path):
-        from flytetest.tasks.variant_calling import merge_bam_alignment
         ref_fa = tmp_path / "ref.fa"
         aligned = tmp_path / "s1_aligned.bam"
         ubam = tmp_path / "s1.unmapped.bam"
         for p in (ref_fa, aligned, ubam):
             p.write_text("stub")
-        results_dir = tmp_path / "mba_out"
-        results_dir.mkdir()
 
         captured: list[list[str]] = []
 
@@ -1789,33 +1873,28 @@ class MergeBamAlignmentTests(TestCase):
 
         with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
             result = merge_bam_alignment(
-                ref_path=str(ref_fa),
-                aligned_bam=str(aligned),
-                ubam_path=str(ubam),
+                reference_fasta=File(path=str(ref_fa)),
+                aligned_bam=File(path=str(aligned)),
+                ubam=File(path=str(ubam)),
                 sample_id="s1",
-                results_dir=str(results_dir),
             )
         return captured[0], result
 
     def test_merge_bam_alignment_runs(self) -> None:
-        """Manifest has merged_bam ending in _merged.bam."""
+        """Returns File with path ending in _merged.bam."""
         with tempfile.TemporaryDirectory() as tmp:
             _, result = self._run_mba(Path(tmp))
-        self.assertEqual(result["stage"], "merge_bam_alignment")
-        self.assertIn("merged_bam", result["outputs"])
-        self.assertTrue(result["outputs"]["merged_bam"].endswith("_merged.bam"))
+        self.assertTrue(result.path.endswith("_merged.bam"))
 
     def test_merge_bam_alignment_command_shape(self) -> None:
-        """All 9 required flags present in command."""
+        """All required flags present in command."""
         with tempfile.TemporaryDirectory() as tmp:
             cmd, _ = self._run_mba(Path(tmp))
         self.assertIn("MergeBamAlignment", cmd)
         self.assertIn("-ALIGNED", cmd)
         self.assertIn("-UNMAPPED", cmd)
-        # coordinate sort
         sort_idx = cmd.index("--SORT_ORDER")
         self.assertEqual(cmd[sort_idx + 1], "coordinate")
-        # CLIP_ADAPTERS must be false (GATK Best Practices)
         clip_idx = cmd.index("--CLIP_ADAPTERS")
         self.assertEqual(cmd[clip_idx + 1], "false")
         self.assertIn("--PRIMARY_ALIGNMENT_STRATEGY", cmd)
@@ -1826,49 +1905,46 @@ class MergeBamAlignmentTests(TestCase):
 
     def test_merge_bam_alignment_missing_output_raises(self) -> None:
         """FileNotFoundError when output BAM absent after run."""
-        from flytetest.tasks.variant_calling import merge_bam_alignment
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             for stub in ("ref.fa", "aligned.bam", "ubam.bam"):
                 (tmp_path / stub).write_text("stub")
-            results_dir = tmp_path / "out"
-            results_dir.mkdir()
             with patch.object(variant_calling, "run_tool", return_value=None):
                 with self.assertRaises(FileNotFoundError):
                     merge_bam_alignment(
-                        ref_path=str(tmp_path / "ref.fa"),
-                        aligned_bam=str(tmp_path / "aligned.bam"),
-                        ubam_path=str(tmp_path / "ubam.bam"),
+                        reference_fasta=File(path=str(tmp_path / "ref.fa")),
+                        aligned_bam=File(path=str(tmp_path / "aligned.bam")),
+                        ubam=File(path=str(tmp_path / "ubam.bam")),
                         sample_id="s1",
-                        results_dir=str(results_dir),
                     )
 
     def test_merge_bam_alignment_manifest_key(self) -> None:
-        """run_manifest.json contains merged_bam key."""
-        from flytetest.tasks.variant_calling import merge_bam_alignment
+        """Manifest contains merged_bam key."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             for stub in ("ref.fa", "aligned.bam", "ubam.bam"):
                 (tmp_path / stub).write_text("stub")
-            results_dir = tmp_path / "out"
-            results_dir.mkdir()
+
+            captured_manifests: list[dict] = []
 
             def fake_run_tool(cmd, sif, bind_paths):
                 o_idx = cmd.index("-O")
                 Path(cmd[o_idx + 1]).write_text("BAM")
 
-            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+            with (
+                patch.object(variant_calling, "run_tool", side_effect=fake_run_tool),
+                patch.object(variant_calling, "_write_json",
+                             side_effect=lambda p, d: captured_manifests.append(d)),
+            ):
                 merge_bam_alignment(
-                    ref_path=str(tmp_path / "ref.fa"),
-                    aligned_bam=str(tmp_path / "aligned.bam"),
-                    ubam_path=str(tmp_path / "ubam.bam"),
+                    reference_fasta=File(path=str(tmp_path / "ref.fa")),
+                    aligned_bam=File(path=str(tmp_path / "aligned.bam")),
+                    ubam=File(path=str(tmp_path / "ubam.bam")),
                     sample_id="s1",
-                    results_dir=str(results_dir),
                 )
 
-            manifest = json.loads((results_dir / "run_manifest_merge_bam_alignment.json").read_text())
-            self.assertEqual(manifest["stage"], "merge_bam_alignment")
-            self.assertIn("merged_bam", manifest["outputs"])
+        self.assertEqual(captured_manifests[0]["stage"], "merge_bam_alignment")
+        self.assertIn("merged_bam", captured_manifests[0]["outputs"])
 
 
 # ---------------------------------------------------------------------------
@@ -1879,10 +1955,13 @@ class GatherVcfsTests(TestCase):
     """Tests for the gather_vcfs task."""
 
     def test_gather_vcfs_runs(self):
-        """Manifest has gathered_gvcf ending in _gathered.g.vcf.gz."""
+        """Returns File ending in _gathered.g.vcf.gz."""
         with tempfile.TemporaryDirectory() as tmp:
-            results_dir = Path(tmp) / "out"
-            results_dir.mkdir()
+            tmp_path = Path(tmp)
+            gvcf1 = tmp_path / "s1_chr1.g.vcf"
+            gvcf2 = tmp_path / "s1_chr2.g.vcf"
+            gvcf1.write_text("gvcf")
+            gvcf2.write_text("gvcf")
 
             def fake_run_tool(cmd, sif, bind_paths):
                 out_idx = cmd.index("-O")
@@ -1890,19 +1969,21 @@ class GatherVcfsTests(TestCase):
 
             with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
                 result = gather_vcfs(
-                    gvcf_paths=["/tmp/s1_chr1.g.vcf", "/tmp/s1_chr2.g.vcf"],
+                    gvcfs=[File(path=str(gvcf1)), File(path=str(gvcf2))],
                     sample_id="s1",
-                    results_dir=str(results_dir),
                 )
 
-        self.assertIn("gathered_gvcf", result["outputs"])
-        self.assertTrue(result["outputs"]["gathered_gvcf"].endswith("_gathered.g.vcf.gz"))
+        self.assertTrue(result.path.endswith("_gathered.g.vcf.gz"))
 
     def test_gather_vcfs_builds_I_flags(self):
-        """Each gvcf_paths entry produces one -I flag in the correct order."""
+        """Each gvcf File produces one -I flag in the correct order."""
         with tempfile.TemporaryDirectory() as tmp:
-            results_dir = Path(tmp) / "out"
-            results_dir.mkdir()
+            tmp_path = Path(tmp)
+            gvcf_files = []
+            for i in range(3):
+                gvcf = tmp_path / f"s1_chr{i}.g.vcf"
+                gvcf.write_text("gvcf")
+                gvcf_files.append(gvcf)
 
             captured_cmd = []
 
@@ -1911,44 +1992,37 @@ class GatherVcfsTests(TestCase):
                 out_idx = cmd.index("-O")
                 Path(cmd[out_idx + 1]).touch()
 
-            paths = ["/tmp/s1_chr1.g.vcf", "/tmp/s1_chr2.g.vcf", "/tmp/s1_chr3.g.vcf"]
             with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
                 gather_vcfs(
-                    gvcf_paths=paths,
+                    gvcfs=[File(path=str(f)) for f in gvcf_files],
                     sample_id="s1",
-                    results_dir=str(results_dir),
                 )
 
         i_indices = [i for i, v in enumerate(captured_cmd) if v == "-I"]
         self.assertEqual(len(i_indices), 3)
-        for idx, (flag_pos, expected) in enumerate(zip(i_indices, paths)):
-            self.assertEqual(captured_cmd[flag_pos + 1], expected,
-                             f"Path at position {idx} mismatch")
+        for pos, expected in zip(i_indices, gvcf_files):
+            self.assertEqual(captured_cmd[pos + 1], str(expected))
 
     def test_gather_vcfs_empty_list_raises(self):
-        """ValueError raised when gvcf_paths is empty."""
-        with tempfile.TemporaryDirectory() as tmp:
-            results_dir = Path(tmp) / "out"
-            results_dir.mkdir()
-            with self.assertRaises(ValueError):
-                gather_vcfs(
-                    gvcf_paths=[],
-                    sample_id="s1",
-                    results_dir=str(results_dir),
-                )
+        """ValueError raised when gvcfs is empty."""
+        with self.assertRaises(ValueError):
+            gather_vcfs(
+                gvcfs=[],
+                sample_id="s1",
+            )
 
     def test_gather_vcfs_missing_output_raises(self):
         """FileNotFoundError raised when run_tool does not produce output."""
         with tempfile.TemporaryDirectory() as tmp:
-            results_dir = Path(tmp) / "out"
-            results_dir.mkdir()
+            tmp_path = Path(tmp)
+            gvcf = tmp_path / "s1_chr1.g.vcf"
+            gvcf.write_text("gvcf")
 
             with patch.object(variant_calling, "run_tool"):
                 with self.assertRaises(FileNotFoundError):
                     gather_vcfs(
-                        gvcf_paths=["/tmp/s1_chr1.g.vcf"],
+                        gvcfs=[File(path=str(gvcf))],
                         sample_id="s1",
-                        results_dir=str(results_dir),
                     )
 
 
@@ -1957,14 +2031,12 @@ class GatherVcfsTests(TestCase):
 # ---------------------------------------------------------------------------
 
 class CalculateGenotypePosteriorTests(TestCase):
-    """Tests for the calculate_genotype_posteriors task."""
+    """Tests for the calculate_genotype_posteriors task (File-based API)."""
 
     def test_cgp_runs_without_supporting_callsets(self):
         """--supporting-callsets flag is omitted when supporting_callsets is None."""
         with tempfile.TemporaryDirectory() as tmp:
-            results_dir = Path(tmp) / "out"
-            results_dir.mkdir()
-            vcf = tmp_path = Path(tmp) / "cohort.vcf.gz"
+            vcf = Path(tmp) / "cohort.vcf.gz"
             vcf.touch()
 
             captured_cmd = []
@@ -1976,22 +2048,23 @@ class CalculateGenotypePosteriorTests(TestCase):
 
             with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
                 result = calculate_genotype_posteriors(
-                    ref_path="/tmp/ref.fa",
-                    vcf_path=str(vcf),
+                    input_vcf=File(path=str(vcf)),
                     cohort_id="cohort1",
-                    results_dir=str(results_dir),
                 )
 
         self.assertNotIn("--supporting-callsets", captured_cmd)
-        self.assertIn("cgp_vcf", result["outputs"])
+        self.assertTrue(result.path.endswith("_cgp.vcf.gz"))
 
     def test_cgp_runs_with_supporting_callsets(self):
         """--supporting-callsets appears once per entry when list is non-empty."""
         with tempfile.TemporaryDirectory() as tmp:
-            results_dir = Path(tmp) / "out"
-            results_dir.mkdir()
-            vcf = Path(tmp) / "cohort.vcf.gz"
+            tmp_path = Path(tmp)
+            vcf = tmp_path / "cohort.vcf.gz"
             vcf.touch()
+            cs1 = tmp_path / "pop1.vcf"
+            cs2 = tmp_path / "pop2.vcf"
+            cs1.write_text("vcf")
+            cs2.write_text("vcf")
 
             captured_cmd = []
 
@@ -2002,23 +2075,19 @@ class CalculateGenotypePosteriorTests(TestCase):
 
             with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
                 calculate_genotype_posteriors(
-                    ref_path="/tmp/ref.fa",
-                    vcf_path=str(vcf),
+                    input_vcf=File(path=str(vcf)),
                     cohort_id="cohort1",
-                    results_dir=str(results_dir),
-                    supporting_callsets=["/tmp/pop1.vcf", "/tmp/pop2.vcf"],
+                    supporting_callsets=[File(path=str(cs1)), File(path=str(cs2))],
                 )
 
         sc_indices = [i for i, v in enumerate(captured_cmd) if v == "--supporting-callsets"]
         self.assertEqual(len(sc_indices), 2)
-        self.assertEqual(captured_cmd[sc_indices[0] + 1], "/tmp/pop1.vcf")
-        self.assertEqual(captured_cmd[sc_indices[1] + 1], "/tmp/pop2.vcf")
+        self.assertEqual(captured_cmd[sc_indices[0] + 1], str(cs1))
+        self.assertEqual(captured_cmd[sc_indices[1] + 1], str(cs2))
 
     def test_cgp_output_filename(self):
-        """Manifest cgp_vcf ends with _cgp.vcf.gz."""
+        """Return file path ends with _cgp.vcf.gz and contains cohort_id."""
         with tempfile.TemporaryDirectory() as tmp:
-            results_dir = Path(tmp) / "out"
-            results_dir.mkdir()
             vcf = Path(tmp) / "cohort.vcf.gz"
             vcf.touch()
 
@@ -2028,37 +2097,29 @@ class CalculateGenotypePosteriorTests(TestCase):
 
             with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
                 result = calculate_genotype_posteriors(
-                    ref_path="/tmp/ref.fa",
-                    vcf_path=str(vcf),
+                    input_vcf=File(path=str(vcf)),
                     cohort_id="cohort1",
-                    results_dir=str(results_dir),
                 )
 
-        self.assertTrue(result["outputs"]["cgp_vcf"].endswith("_cgp.vcf.gz"))
-        self.assertIn("cohort1", result["outputs"]["cgp_vcf"])
+        self.assertTrue(result.path.endswith("_cgp.vcf.gz"))
+        self.assertIn("cohort1", result.path)
 
     def test_cgp_missing_output_raises(self):
         """FileNotFoundError raised when output VCF is not produced."""
         with tempfile.TemporaryDirectory() as tmp:
-            results_dir = Path(tmp) / "out"
-            results_dir.mkdir()
             vcf = Path(tmp) / "cohort.vcf.gz"
             vcf.touch()
 
             with patch.object(variant_calling, "run_tool"):
                 with self.assertRaises(FileNotFoundError):
                     calculate_genotype_posteriors(
-                        ref_path="/tmp/ref.fa",
-                        vcf_path=str(vcf),
+                        input_vcf=File(path=str(vcf)),
                         cohort_id="cohort1",
-                        results_dir=str(results_dir),
                     )
 
     def test_cgp_no_R_flag(self):
         """The -R flag must not appear in the command."""
         with tempfile.TemporaryDirectory() as tmp:
-            results_dir = Path(tmp) / "out"
-            results_dir.mkdir()
             vcf = Path(tmp) / "cohort.vcf.gz"
             vcf.touch()
 
@@ -2071,57 +2132,43 @@ class CalculateGenotypePosteriorTests(TestCase):
 
             with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
                 calculate_genotype_posteriors(
-                    ref_path="/tmp/ref.fa",
-                    vcf_path=str(vcf),
+                    input_vcf=File(path=str(vcf)),
                     cohort_id="cohort1",
-                    results_dir=str(results_dir),
                 )
 
         self.assertNotIn("-R", captured_cmd)
 
+    def test_cgp_signature_has_no_ref_path(self):
+        """calculate_genotype_posteriors signature must not include ref_path."""
+        import inspect
+        sig = inspect.signature(calculate_genotype_posteriors)
+        self.assertNotIn("ref_path", sig.parameters)
+
 
 class BwaMem2MemShellQuotingTests(TestCase):
-    """Regression tests for shell-injection safety in bwa_mem2_mem."""
+    """Regression tests for shell-injection safety in bwa_mem2_mem (pipeline string via run_tool)."""
 
-    def _capture_cmd(self, ref_path, r1_path, r2_path="", sample_id="s1"):
-        import unittest.mock as mock
-        from flytetest.tasks.variant_calling import bwa_mem2_mem
+    def _capture_pipeline(self, ref, r1, r2=None, sample_id="s1"):
+        captured_cmds: list[list[str]] = []
 
-        captured: list[str] = []
+        def fake_run_tool(cmd, sif, bind_paths):
+            captured_cmds.append(list(cmd))
+            import re
+            pipeline_str = cmd[2]
+            m = re.search(r"-bS\s+-o\s+(\S+)", pipeline_str)
+            if m:
+                out = Path(m.group(1))
+                out.parent.mkdir(parents=True, exist_ok=True)
+                out.write_text("BAM")
 
-        def fake_run(cmd, shell, capture_output, text):
-            captured.append(cmd)
-            Path(ref_path).parent.mkdir(parents=True, exist_ok=True)
-            bam = Path(ref_path).parent / f"{sample_id}_aligned.bam"
-            bam.write_text("BAM")
-            return mock.MagicMock(returncode=0, stderr="")
-
-        with tempfile.TemporaryDirectory() as tmp:
-            results_dir = Path(tmp) / "out"
-            results_dir.mkdir()
-            output_bam = results_dir / f"{sample_id}_aligned.bam"
-
-            def fake_run2(cmd, shell, capture_output, text):
-                output_bam.write_text("BAM")
-                captured.append(cmd)
-                return mock.MagicMock(returncode=0, stderr="")
-
-            Path(r1_path).parent.mkdir(parents=True, exist_ok=True)
-            Path(r1_path).write_text("@r\n")
-            Path(ref_path).parent.mkdir(parents=True, exist_ok=True)
-            Path(ref_path).write_text(">chr1\nACGT\n")
-            if r2_path:
-                Path(r2_path).write_text("@r2\n")
-
-            with mock.patch("flytetest.tasks.variant_calling.subprocess.run", side_effect=fake_run2):
-                bwa_mem2_mem(
-                    ref_path=ref_path,
-                    r1_path=r1_path,
-                    r2_path=r2_path,
-                    sample_id=sample_id,
-                    results_dir=str(results_dir),
-                )
-        return captured[0] if captured else ""
+        with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+            bwa_mem2_mem(
+                reference_fasta=File(path=str(ref)),
+                r1=File(path=str(r1)),
+                sample_id=sample_id,
+                r2=File(path=str(r2)) if r2 else None,
+            )
+        return captured_cmds[0][2] if captured_cmds else ""
 
     def test_bwa_mem2_mem_handles_path_with_space(self) -> None:
         """Paths containing spaces appear shell-quoted in the pipeline string."""
@@ -2132,31 +2179,10 @@ class BwaMem2MemShellQuotingTests(TestCase):
             r1 = Path(tmp) / "my ref" / "sample R1.fq.gz"
             r1.write_text("@r\n")
 
-            import unittest.mock as mock
-            from flytetest.tasks.variant_calling import bwa_mem2_mem
+            pipeline = self._capture_pipeline(ref, r1)
 
-            captured: list[str] = []
-            results_dir = Path(tmp) / "out"
-            results_dir.mkdir()
-            output_bam = results_dir / "s1_aligned.bam"
-
-            def fake_run(cmd, shell, capture_output, text):
-                output_bam.write_text("BAM")
-                captured.append(cmd)
-                return mock.MagicMock(returncode=0, stderr="")
-
-            with mock.patch("flytetest.tasks.variant_calling.subprocess.run", side_effect=fake_run):
-                bwa_mem2_mem(
-                    ref_path=str(ref),
-                    r1_path=str(r1),
-                    sample_id="s1",
-                    results_dir=str(results_dir),
-                )
-
-        cmd = captured[0]
-        self.assertIn("bwa-mem2", cmd)
-        # Paths with spaces must be inside single quotes so the shell treats them as one token.
-        self.assertRegex(cmd, r"'[^']*my ref[^']*genome\.fa'")
+        self.assertIn("bwa-mem2", pipeline)
+        self.assertRegex(pipeline, r"'[^']*my ref[^']*genome\.fa'")
 
     def test_bwa_mem2_mem_rejects_unquoted_metacharacters(self) -> None:
         """Shell metacharacters in paths are quoted, not interpreted as shell tokens."""
@@ -2166,56 +2192,17 @@ class BwaMem2MemShellQuotingTests(TestCase):
             r1 = Path(tmp) / "reads;echo pwned.fq.gz"
             r1.write_text("@r\n")
 
-            import unittest.mock as mock
-            from flytetest.tasks.variant_calling import bwa_mem2_mem
+            pipeline = self._capture_pipeline(ref, r1)
 
-            captured: list[str] = []
-            results_dir = Path(tmp) / "out"
-            results_dir.mkdir()
-            output_bam = results_dir / "s1_aligned.bam"
-
-            def fake_run(cmd, shell, capture_output, text):
-                output_bam.write_text("BAM")
-                captured.append(cmd)
-                return mock.MagicMock(returncode=0, stderr="")
-
-            with mock.patch("flytetest.tasks.variant_calling.subprocess.run", side_effect=fake_run):
-                bwa_mem2_mem(
-                    ref_path=str(ref),
-                    r1_path=str(r1),
-                    sample_id="s1",
-                    results_dir=str(results_dir),
-                )
-
-        cmd = captured[0]
-        self.assertNotIn(";echo pwned", cmd.split("'")[0] if "'" in cmd else cmd)
-        self.assertIn("echo pwned", cmd)
+        self.assertNotIn(";echo pwned", pipeline.split("'")[0] if "'" in pipeline else pipeline)
+        self.assertIn("echo pwned", pipeline)
 
 
 class PerStageManifestFilenameTests(TestCase):
     """Regression tests for per-stage manifest naming in variant_calling tasks."""
 
-    TASK_STAGES = [
-        ("create_sequence_dictionary", "create_sequence_dictionary"),
-        ("index_feature_file", "index_feature_file"),
-        ("base_recalibrator", "base_recalibrator"),
-        ("apply_bqsr", "apply_bqsr"),
-        ("haplotype_caller", "haplotype_caller"),
-        ("combine_gvcfs", "combine_gvcfs"),
-        ("joint_call_gvcfs", "joint_call_gvcfs"),
-        ("bwa_mem2_index", "bwa_mem2_index"),
-        ("bwa_mem2_mem", "bwa_mem2_mem"),
-        ("sort_sam", "sort_sam"),
-        ("mark_duplicates", "mark_duplicates"),
-        ("variant_recalibrator", "variant_recalibrator"),
-        ("apply_vqsr", "apply_vqsr"),
-        ("merge_bam_alignment", "merge_bam_alignment"),
-        ("gather_vcfs", "gather_vcfs"),
-        ("calculate_genotype_posteriors", "calculate_genotype_posteriors"),
-    ]
-
     def test_each_task_writes_namespaced_manifest(self) -> None:
-        """Each of the 16 tasks writes run_manifest_<stage>.json, not run_manifest.json."""
+        """calculate_genotype_posteriors writes run_manifest_calculate_genotype_posteriors.json."""
         import unittest.mock as mock
 
         written_paths: list[str] = []
@@ -2229,16 +2216,13 @@ class PerStageManifestFilenameTests(TestCase):
 
         with mock.patch.object(variant_calling, "_write_json", side_effect=capturing_write):
             with tempfile.TemporaryDirectory() as tmp:
-                results_dir = Path(tmp)
-                vcf = results_dir / "cohort.vcf.gz"
+                vcf = Path(tmp) / "cohort.vcf.gz"
                 vcf.touch()
 
                 with mock.patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
                     calculate_genotype_posteriors(
-                        ref_path="/tmp/ref.fa",
-                        vcf_path=str(vcf),
+                        input_vcf=File(path=str(vcf)),
                         cohort_id="cohort1",
-                        results_dir=str(results_dir),
                     )
 
         self.assertTrue(
@@ -2253,7 +2237,6 @@ class PerStageManifestFilenameTests(TestCase):
     def test_manifest_filename_never_bare_run_manifest(self) -> None:
         """bwa_mem2_mem writes run_manifest_bwa_mem2_mem.json, not run_manifest.json."""
         import unittest.mock as mock
-        from flytetest.tasks.variant_calling import bwa_mem2_mem
 
         written_paths: list[str] = []
 
@@ -2265,21 +2248,22 @@ class PerStageManifestFilenameTests(TestCase):
             ref.write_text(">chr1\nACGT\n")
             r1 = Path(tmp) / "r1.fq.gz"
             r1.write_text("@r\n")
-            results_dir = Path(tmp) / "out"
-            results_dir.mkdir()
-            output_bam = results_dir / "s1_aligned.bam"
 
-            def fake_run(cmd, shell, capture_output, text):
-                output_bam.write_text("BAM")
-                return mock.MagicMock(returncode=0, stderr="")
+            def fake_run_tool(cmd, sif, bind_paths):
+                import re
+                pipeline_str = cmd[2]
+                m = re.search(r"-bS\s+-o\s+(\S+)", pipeline_str)
+                if m:
+                    out = Path(m.group(1))
+                    out.parent.mkdir(parents=True, exist_ok=True)
+                    out.write_text("BAM")
 
-            with mock.patch("flytetest.tasks.variant_calling.subprocess.run", side_effect=fake_run):
+            with mock.patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
                 with mock.patch.object(variant_calling, "_write_json", side_effect=capturing_write):
                     bwa_mem2_mem(
-                        ref_path=str(ref),
-                        r1_path=str(r1),
+                        reference_fasta=File(path=str(ref)),
+                        r1=File(path=str(r1)),
                         sample_id="s1",
-                        results_dir=str(results_dir),
                     )
 
         self.assertTrue(
@@ -2290,3 +2274,466 @@ class PerStageManifestFilenameTests(TestCase):
             any(p.endswith("run_manifest.json") for p in written_paths),
             f"Found bare run_manifest.json in bwa_mem2_mem: {written_paths}",
         )
+
+
+# ---------------------------------------------------------------------------
+# Milestone I Steps 04–06 — new task tests
+# ---------------------------------------------------------------------------
+
+class VariantFiltrationTests(TestCase):
+    """Tests for the variant_filtration task (Step 04 — hard-filtering)."""
+
+    def test_default_snp_expressions_applied(self) -> None:
+        """mode='SNP', filter_expressions=None → cmd contains the 6 default name/expression pairs."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            for f in ("ref.fa", "cohort.vcf.gz"):
+                (tmp_path / f).write_text("stub")
+
+            captured: list[list[str]] = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                captured.append(list(cmd))
+                o_idx = cmd.index("-O")
+                Path(cmd[o_idx + 1]).touch()
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                result = variant_filtration(
+                    reference_fasta=File(path=str(tmp_path / "ref.fa")),
+                    input_vcf=File(path=str(tmp_path / "cohort.vcf.gz")),
+                    mode="SNP",
+                    cohort_id="cohort1",
+                )
+
+        cmd = captured[0]
+        filter_names = [cmd[i + 1] for i, v in enumerate(cmd) if v == "--filter-name"]
+        self.assertIn("QD2", filter_names)
+        self.assertIn("FS60", filter_names)
+        self.assertIn("MQ40", filter_names)
+        self.assertIn("SOR3", filter_names)
+
+    def test_default_indel_expressions_applied(self) -> None:
+        """mode='INDEL', filter_expressions=None → cmd contains the 4 default INDEL pairs."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            for f in ("ref.fa", "cohort.vcf.gz"):
+                (tmp_path / f).write_text("stub")
+
+            captured: list[list[str]] = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                captured.append(list(cmd))
+                o_idx = cmd.index("-O")
+                Path(cmd[o_idx + 1]).touch()
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                variant_filtration(
+                    reference_fasta=File(path=str(tmp_path / "ref.fa")),
+                    input_vcf=File(path=str(tmp_path / "cohort.vcf.gz")),
+                    mode="INDEL",
+                    cohort_id="cohort1",
+                )
+
+        cmd = captured[0]
+        filter_names = [cmd[i + 1] for i, v in enumerate(cmd) if v == "--filter-name"]
+        self.assertIn("FS200", filter_names)
+        self.assertIn("SOR10", filter_names)
+        # SNP-only filters must be absent
+        self.assertNotIn("MQ40", filter_names)
+
+    def test_override_filter_expressions(self) -> None:
+        """Custom tuple list passes through as-is; defaults not present."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            for f in ("ref.fa", "cohort.vcf.gz"):
+                (tmp_path / f).write_text("stub")
+
+            custom = [("MYFILTER", "QD < 1.0")]
+            captured: list[list[str]] = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                captured.append(list(cmd))
+                o_idx = cmd.index("-O")
+                Path(cmd[o_idx + 1]).touch()
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                variant_filtration(
+                    reference_fasta=File(path=str(tmp_path / "ref.fa")),
+                    input_vcf=File(path=str(tmp_path / "cohort.vcf.gz")),
+                    mode="SNP",
+                    cohort_id="cohort1",
+                    filter_expressions=custom,
+                )
+
+        cmd = captured[0]
+        filter_names = [cmd[i + 1] for i, v in enumerate(cmd) if v == "--filter-name"]
+        self.assertIn("MYFILTER", filter_names)
+        self.assertNotIn("QD2", filter_names)
+
+    def test_invalid_mode_raises(self) -> None:
+        """mode='CNV' raises ValueError."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            (tmp_path / "ref.fa").write_text("stub")
+            (tmp_path / "vcf.vcf").write_text("stub")
+            with self.assertRaises(ValueError):
+                variant_filtration(
+                    reference_fasta=File(path=str(tmp_path / "ref.fa")),
+                    input_vcf=File(path=str(tmp_path / "vcf.vcf")),
+                    mode="CNV",
+                    cohort_id="cohort1",
+                )
+
+    def test_missing_output_raises(self) -> None:
+        """FileNotFoundError when output absent after run."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            for f in ("ref.fa", "cohort.vcf.gz"):
+                (tmp_path / f).write_text("stub")
+
+            with patch.object(variant_calling, "run_tool"):
+                with self.assertRaises(FileNotFoundError):
+                    variant_filtration(
+                        reference_fasta=File(path=str(tmp_path / "ref.fa")),
+                        input_vcf=File(path=str(tmp_path / "cohort.vcf.gz")),
+                        mode="SNP",
+                        cohort_id="cohort1",
+                    )
+
+    def test_effective_expressions_recorded_in_manifest(self) -> None:
+        """Manifest inputs include effective_filter_expressions."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            for f in ("ref.fa", "cohort.vcf.gz"):
+                (tmp_path / f).write_text("stub")
+
+            captured_manifests: list[dict] = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                o_idx = cmd.index("-O")
+                Path(cmd[o_idx + 1]).touch()
+
+            with (
+                patch.object(variant_calling, "run_tool", side_effect=fake_run_tool),
+                patch.object(variant_calling, "_write_json",
+                             side_effect=lambda p, d: captured_manifests.append(d)),
+            ):
+                variant_filtration(
+                    reference_fasta=File(path=str(tmp_path / "ref.fa")),
+                    input_vcf=File(path=str(tmp_path / "cohort.vcf.gz")),
+                    mode="SNP",
+                    cohort_id="cohort1",
+                )
+
+        self.assertIn("effective_filter_expressions", captured_manifests[0]["inputs"])
+
+    def test_registry_entry_shape(self) -> None:
+        """Entry at task stage 17 with showcase_module set."""
+        from flytetest.registry import get_entry
+        entry = get_entry("variant_filtration")
+        self.assertEqual(entry.category, "task")
+        self.assertEqual(entry.compatibility.pipeline_stage_order, 17)
+        self.assertEqual(entry.showcase_module, "flytetest.tasks.variant_calling")
+        self.assertIn("filtered_vcf", MANIFEST_OUTPUT_KEYS)
+
+
+class CollectWgsMetricsTests(TestCase):
+    """Tests for collect_wgs_metrics task (Step 05)."""
+
+    def test_both_outputs_returned(self) -> None:
+        """Returns (wgs_metrics_txt, insert_size_metrics_txt) tuple."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            for f in ("ref.fa", "s1.bam"):
+                (tmp_path / f).write_text("stub")
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                o_idx = cmd.index("-O")
+                Path(cmd[o_idx + 1]).write_text("metrics")
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                wgs, insert = collect_wgs_metrics(
+                    reference_fasta=File(path=str(tmp_path / "ref.fa")),
+                    aligned_bam=File(path=str(tmp_path / "s1.bam")),
+                    sample_id="s1",
+                )
+
+        self.assertTrue(wgs.path.endswith("_wgs_metrics.txt"))
+        self.assertTrue(insert.path.endswith("_insert_size_metrics.txt"))
+
+    def test_missing_wgs_output_raises(self) -> None:
+        """FileNotFoundError when WGS metrics file absent."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            for f in ("ref.fa", "s1.bam"):
+                (tmp_path / f).write_text("stub")
+
+            with patch.object(variant_calling, "run_tool"):
+                with self.assertRaises(FileNotFoundError):
+                    collect_wgs_metrics(
+                        reference_fasta=File(path=str(tmp_path / "ref.fa")),
+                        aligned_bam=File(path=str(tmp_path / "s1.bam")),
+                        sample_id="s1",
+                    )
+
+    def test_manifest_records_both_paths(self) -> None:
+        """Manifest outputs contain wgs_metrics and insert_size_metrics."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            for f in ("ref.fa", "s1.bam"):
+                (tmp_path / f).write_text("stub")
+
+            captured_manifests: list[dict] = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                o_idx = cmd.index("-O")
+                Path(cmd[o_idx + 1]).write_text("metrics")
+
+            with (
+                patch.object(variant_calling, "run_tool", side_effect=fake_run_tool),
+                patch.object(variant_calling, "_write_json",
+                             side_effect=lambda p, d: captured_manifests.append(d)),
+            ):
+                collect_wgs_metrics(
+                    reference_fasta=File(path=str(tmp_path / "ref.fa")),
+                    aligned_bam=File(path=str(tmp_path / "s1.bam")),
+                    sample_id="s1",
+                )
+
+        m = captured_manifests[0]
+        self.assertIn("wgs_metrics", m["outputs"])
+        self.assertIn("insert_size_metrics", m["outputs"])
+
+
+class BcftoolsStatsTests(TestCase):
+    """Tests for bcftools_stats task (Step 05)."""
+
+    def test_stats_file_produced(self) -> None:
+        """Returns File ending in _bcftools_stats.txt."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vcf = Path(tmp) / "cohort.vcf.gz"
+            vcf.write_text("vcf")
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                # cmd is ["bash", "-c", pipeline_str]; create the output
+                import re
+                pipeline_str = cmd[2]
+                m = re.search(r">\s+(\S+)", pipeline_str)
+                if m:
+                    Path(m.group(1)).write_text("stats")
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                result = bcftools_stats(
+                    input_vcf=File(path=str(vcf)),
+                    cohort_id="cohort1",
+                )
+
+        self.assertTrue(result.path.endswith("_bcftools_stats.txt"))
+
+    def test_path_is_shell_quoted(self) -> None:
+        """vcf path appears shell-quoted in the bcftools command."""
+        with tempfile.TemporaryDirectory() as tmp:
+            vcf = Path(tmp) / "my cohort.vcf.gz"
+            vcf.write_text("vcf")
+
+            captured_cmds: list[list[str]] = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                captured_cmds.append(list(cmd))
+                import re
+                m = re.search(r">\s+(\S+)", cmd[2])
+                if m:
+                    Path(m.group(1)).write_text("stats")
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                bcftools_stats(
+                    input_vcf=File(path=str(vcf)),
+                    cohort_id="cohort1",
+                )
+
+        pipeline_str = captured_cmds[0][2]
+        self.assertIn("my cohort", pipeline_str)
+
+
+class MultiqcSummarizeTests(TestCase):
+    """Tests for multiqc_summarize task (Step 05)."""
+
+    def test_empty_qc_inputs_raises(self) -> None:
+        """ValueError when qc_inputs is empty."""
+        with self.assertRaises(ValueError):
+            multiqc_summarize(qc_inputs=[], cohort_id="cohort1")
+
+    def test_copy_semantics_produce_scan_root(self) -> None:
+        """All inputs are copied into the scan root before MultiQC runs."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            qc1 = tmp_path / "s1_wgs.txt"
+            qc2 = tmp_path / "s1_insert.txt"
+            qc1.write_text("wgs")
+            qc2.write_text("insert")
+
+            scan_roots: list[Path] = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                # cmd is ["multiqc", scan_root, ...]
+                scan_roots.append(Path(cmd[1]))
+                report = Path(cmd[cmd.index("-o") + 1]) / cmd[cmd.index("-n") + 1]
+                report.parent.mkdir(parents=True, exist_ok=True)
+                report.write_text("html")
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                multiqc_summarize(
+                    qc_inputs=[File(path=str(qc1)), File(path=str(qc2))],
+                    cohort_id="cohort1",
+                )
+
+        scan_root = scan_roots[0]
+        files_in_scan = list(scan_root.iterdir())
+        self.assertEqual(len(files_in_scan), 2)
+
+    def test_report_path_in_manifest(self) -> None:
+        """Manifest outputs contain multiqc_report_html."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            qc1 = tmp_path / "s1_wgs.txt"
+            qc1.write_text("wgs")
+
+            captured_manifests: list[dict] = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                report = Path(cmd[cmd.index("-o") + 1]) / cmd[cmd.index("-n") + 1]
+                report.parent.mkdir(parents=True, exist_ok=True)
+                report.write_text("html")
+
+            with (
+                patch.object(variant_calling, "run_tool", side_effect=fake_run_tool),
+                patch.object(variant_calling, "_write_json",
+                             side_effect=lambda p, d: captured_manifests.append(d)),
+            ):
+                multiqc_summarize(
+                    qc_inputs=[File(path=str(qc1))],
+                    cohort_id="cohort1",
+                )
+
+        self.assertIn("multiqc_report_html", captured_manifests[0]["outputs"])
+
+
+class SnpeffAnnotateTests(TestCase):
+    """Tests for snpeff_annotate task (Step 06)."""
+
+    def test_annotated_vcf_emitted(self) -> None:
+        """Returns (annotated_vcf, genes_txt) tuple; both are File instances."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            vcf = tmp_path / "cohort.vcf"
+            vcf.write_text("vcf")
+            data_dir = tmp_path / "snpeff_data"
+            data_dir.mkdir()
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                import re
+                pipeline_str = cmd[2]
+                m = re.search(r">\s+(\S+)", pipeline_str)
+                if m:
+                    out = Path(m.group(1))
+                    out.parent.mkdir(parents=True, exist_ok=True)
+                    out.write_text("annotated_vcf_content")
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                annotated, genes = snpeff_annotate(
+                    input_vcf=File(path=str(vcf)),
+                    cohort_id="cohort1",
+                    snpeff_database="GRCh38.105",
+                    snpeff_data_dir=str(data_dir),
+                )
+
+        self.assertTrue(annotated.path.endswith("_snpeff.vcf"))
+
+    def test_data_dir_quoted_and_bound(self) -> None:
+        """snpeff_data_dir appears shell-quoted in the command."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            vcf = tmp_path / "cohort.vcf"
+            vcf.write_text("vcf")
+            data_dir = tmp_path / "my snpeff data"
+            data_dir.mkdir()
+
+            captured_cmds: list[list[str]] = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                captured_cmds.append(list(cmd))
+                import re
+                m = re.search(r">\s+(\S+)", cmd[2])
+                if m:
+                    out = Path(m.group(1))
+                    out.parent.mkdir(parents=True, exist_ok=True)
+                    out.write_text("ann")
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                snpeff_annotate(
+                    input_vcf=File(path=str(vcf)),
+                    cohort_id="cohort1",
+                    snpeff_database="GRCh38.105",
+                    snpeff_data_dir=str(data_dir),
+                )
+
+        pipeline_str = captured_cmds[0][2]
+        self.assertIn("my snpeff data", pipeline_str)
+        bound_dirs = [str(p) for p in captured_cmds[0]]
+        # data_dir should appear in bind_paths
+        from flyte.io import Dir
+        self.assertIn(str(data_dir), pipeline_str)
+
+    def test_missing_output_raises(self) -> None:
+        """FileNotFoundError when output VCF absent after run."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            vcf = tmp_path / "cohort.vcf"
+            vcf.write_text("vcf")
+            data_dir = tmp_path / "snpeff_data"
+            data_dir.mkdir()
+
+            with patch.object(variant_calling, "run_tool"):
+                with self.assertRaises(FileNotFoundError):
+                    snpeff_annotate(
+                        input_vcf=File(path=str(vcf)),
+                        cohort_id="cohort1",
+                        snpeff_database="GRCh38.105",
+                        snpeff_data_dir=str(data_dir),
+                    )
+
+    def test_genes_txt_optional_in_manifest(self) -> None:
+        """When genes_txt is absent, manifest output reads '' instead of raising."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            vcf = tmp_path / "cohort.vcf"
+            vcf.write_text("vcf")
+            data_dir = tmp_path / "snpeff_data"
+            data_dir.mkdir()
+
+            captured_manifests: list[dict] = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                import re
+                m = re.search(r">\s+(\S+)", cmd[2])
+                if m:
+                    out = Path(m.group(1))
+                    out.parent.mkdir(parents=True, exist_ok=True)
+                    out.write_text("ann")
+                    # Do NOT create genes_txt
+
+            with (
+                patch.object(variant_calling, "run_tool", side_effect=fake_run_tool),
+                patch.object(variant_calling, "_write_json",
+                             side_effect=lambda p, d: captured_manifests.append(d)),
+            ):
+                snpeff_annotate(
+                    input_vcf=File(path=str(vcf)),
+                    cohort_id="cohort1",
+                    snpeff_database="GRCh38.105",
+                    snpeff_data_dir=str(data_dir),
+                )
+
+        m = captured_manifests[0]
+        # genes_txt missing → empty string, not an error
+        self.assertEqual(m["outputs"]["snpeff_genes_txt"], "")

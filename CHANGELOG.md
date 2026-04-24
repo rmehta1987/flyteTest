@@ -32,6 +32,26 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone I — Complete (2026-04-24)
+
+Scientific completeness + task-pattern unification. Every GATK task is
+now `@variant_calling_env.task`-decorated with `File`/`Dir` I/O; hard-filter
+fallback, QC bookends, and SnpEff annotation fill the remaining biology
+gaps from the 2026-04-23 review.
+
+- [x] 2026-04-24 Step 01: ported bwa_mem2_index, bwa_mem2_mem, sort_sam, mark_duplicates to @variant_calling_env.task with File/Dir I/O; added library_id (default f"{sample_id}_lib") and platform (default "ILLUMINA") to bwa_mem2_mem; preprocess_sample workflow updated to consume File returns; signature now returns File instead of dict.
+- [x] 2026-04-24 Step 02: ported merge_bam_alignment, gather_vcfs, variant_recalibrator, apply_vqsr, calculate_genotype_posteriors to @variant_calling_env.task; added sample_count (int) and annotations (list[str] | None) to variant_recalibrator; four workflows updated (preprocess_sample_from_ubam, genotype_refinement, scattered_haplotype_caller, post_genotyping_refinement).
+- [x] 2026-04-24 Step 03: variant_recalibrator: annotations override + auto-add InbreedingCoeff when mode==SNP and sample_count>=10 (GATK Best Practices); effective annotation list recorded in manifest inputs; renamed scattered_haplotype_caller → sequential_interval_haplotype_caller everywhere (src, tests, docs); manifest assumptions updated to describe synchronous-serial execution explicitly (Milestone K HPC work).
+- [x] 2026-04-24 Step 04: added variant_filtration task (stage 17) wrapping GATK VariantFiltration with GATK Best Practices hard-filtering defaults; added small_cohort_filter workflow (stage 8) with two-pass SNP→INDEL structure; registry entries wired with showcase_module; docs/tool_refs/gatk4.md updated.
+- [x] 2026-04-24 Step 05: added collect_wgs_metrics (Picard, stage 18), bcftools_stats (stage 19), multiqc_summarize (stage 20); added pre_call_coverage_qc (workflow stage 9) and post_call_qc_summary (workflow stage 10); MultiQC aggregates via deterministic copy-into-scan-root; tool refs authored (picard_wgs_metrics.md, bcftools.md, multiqc.md).
+- [x] 2026-04-24 Step 06: added snpeff_annotate task (stage 21) and annotate_variants_snpeff workflow (stage 11); snpeff_data_dir declared as offline-staging-checkable; scripts/rcc/download_snpeff_db.sh added; docs/tool_refs/snpeff.md authored.
+- [x] 2026-04-24 Step 07: all 14 new/ported tasks added to TASK_PARAMETERS; planning intent extended for filter/QC/annotation keywords (GATK-specific only to avoid cross-family conflicts); docs/gatk_pipeline_overview.md refreshed (21 tasks + 11 workflows + new DAG).
+- [x] 2026-04-24 full pytest green (858 passed, 1 skipped).
+- [!] Breaking: bwa_mem2_index, bwa_mem2_mem, sort_sam, mark_duplicates, merge_bam_alignment, gather_vcfs, variant_recalibrator, apply_vqsr, calculate_genotype_posteriors signatures changed from (str, ..., results_dir) → (File, ...). External callers must migrate.
+- [!] Breaking: preprocess_sample, preprocess_sample_from_ubam, genotype_refinement, post_genotyping_refinement return File not dict.
+- [!] Breaking: scattered_haplotype_caller no longer exists; use sequential_interval_haplotype_caller.
+- Remaining deferred: real scheduler-level scatter (Milestone K), VEP annotation (Milestone K), MultiQC config customization (Milestone K), somatic/CNV/SV families (out of scope).
+
 ### GATK Milestone H Migration — Breaking-Change Follow-up (2026-04-23)
 
 Post-H migration sweep for external consumers of the two breaking changes.

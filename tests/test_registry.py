@@ -133,6 +133,15 @@ class RegistryTests(TestCase):
                         entry.compatibility.composition_constraints[0],
                     )
                     continue
+                # QC-only workflows that produce reports, not pipeline state, are exempt.
+                _qc_only_workflows = {"pre_call_coverage_qc", "post_call_qc_summary"}
+                if entry.name in _qc_only_workflows:
+                    self.assertEqual(entry.compatibility.produced_planner_types, ())
+                    self.assertTrue(any(
+                        "does not produce pipeline-state planner types" in c
+                        for c in entry.compatibility.composition_constraints
+                    ))
+                    continue
                 self.assertTrue(entry.compatibility.produced_planner_types)
 
     def test_protein_workflow_metadata_links_planner_input_and_output_types(self) -> None:
