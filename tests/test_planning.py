@@ -792,16 +792,21 @@ class PlanningTests(TestCase):
         self.assertIn("No source_prompt was supplied", payload["limitations"][0])
 
     def test_typed_plan_declines_unsupported_biology(self) -> None:
-        """Reject unsupported biology instead of inventing registry entries.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
-"""
-        payload = plan_request("Run SNP variant calling and emit a VCF.")
+        """Reject unsupported biology (non-GATK, non-annotation) instead of inventing registry entries."""
+        payload = plan_request("Run some exotic CRISPR off-target analysis pipeline.")
 
         self.assertFalse(payload["supported"])
         self.assertEqual(payload["planning_outcome"], "declined")
         self.assertEqual(payload["matched_entry_names"], [])
-        self.assertIn("does not map to a supported typed biology goal", payload["missing_requirements"][0])
+
+    def test_variant_calling_prompt_declines_with_target_hint(self) -> None:
+        """SNP/VCF prompts now decline with a GATK target hint instead of a generic decline."""
+        payload = plan_request("Run SNP variant calling and emit a VCF.")
+
+        self.assertFalse(payload["supported"])
+        self.assertEqual(payload["planning_outcome"], "declined")
+        self.assertGreater(len(payload["matched_entry_names"]), 0,
+                           "Expected a matched GATK entry name")
 
     def test_supported_entry_parameters_match_current_workflow_signature(self) -> None:
         """Treat the current BRAKER3 showcase workflow signature as compatibility-critical.
@@ -941,6 +946,22 @@ class PlanningTests(TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             recipe_dir = Path(tmp) / "specs"
             reply = plan_request_reshape(
+                "Run some completely unknown analysis XYZ-1234.",
+                recipe_dir=recipe_dir,
+            )
+
+            self.assertIsInstance(reply, PlanDecline)
+            assert isinstance(reply, PlanDecline)
+            self.assertFalse(reply.supported)
+            self.assertFalse(recipe_dir.exists())
+            self.assertEqual(reply.suggested_prior_runs, ())
+            self.assertGreater(len(reply.next_steps), 0)
+
+    def test_plan_request_reshape_variant_calling_routes_to_gatk_target(self) -> None:
+        """Variant-calling prompts now route to GATK targets rather than a generic decline."""
+        with tempfile.TemporaryDirectory() as tmp:
+            recipe_dir = Path(tmp) / "specs"
+            reply = plan_request_reshape(
                 "Run variant calling for SNV detection on these reads.",
                 recipe_dir=recipe_dir,
             )
@@ -949,8 +970,50 @@ class PlanningTests(TestCase):
             assert isinstance(reply, PlanDecline)
             self.assertFalse(reply.supported)
             self.assertFalse(recipe_dir.exists())
-            self.assertGreater(len(reply.suggested_bundles), 0)
-            for bundle in reply.suggested_bundles:
-                self.assertTrue(bundle.available)
-            self.assertEqual(reply.suggested_prior_runs, ())
+            self.assertEqual(reply.pipeline_family, "variant_calling")
             self.assertGreater(len(reply.next_steps), 0)
+
+
+class VariantCallingIntentTests(TestCase):
+    """Milestone H: verify variant_calling prompts route to GATK targets."""
+
+    def test_germline_discovery_prompt_maps_to_end_to_end_workflow(self) -> None:
+        """Prompt with 'germline variant calling' maps to germline_short_variant_discovery."""
+        result = plan_request("Run GATK germline variant calling on paired-end reads")
+        self.assertEqual(
+            result.get("matched_entry_names"),
+            ["germline_short_variant_discovery"],
+            f"Expected germline_short_variant_discovery, got: {result.get('matched_entry_names')}",
+        )
+
+    def test_bqsr_prompt_maps_to_base_recalibrator(self) -> None:
+        """Prompt about BQSR recalibration table maps to base_recalibrator."""
+        result = plan_request(
+            "Generate a BQSR recalibration table for a BAM with dbSNP and Mills known sites"
+        )
+        self.assertEqual(
+            result.get("matched_entry_names"),
+            ["base_recalibrator"],
+            f"Expected base_recalibrator, got: {result.get('matched_entry_names')}",
+        )
+
+    def test_vqsr_prompt_maps_to_genotype_refinement(self) -> None:
+        """Prompt about VQSR on a cohort VCF maps to genotype_refinement."""
+        result = plan_request(
+            "Recalibrate variants with VQSR on a joint-called cohort VCF"
+        )
+        self.assertEqual(
+            result.get("matched_entry_names"),
+            ["genotype_refinement"],
+            f"Expected genotype_refinement, got: {result.get('matched_entry_names')}",
+        )
+
+    def test_ambiguous_prompt_declines_with_bundle_hint(self) -> None:
+        """A vague variant calling prompt declines and hints at the germline bundle."""
+        result = plan_request("variant calling please")
+        self.assertFalse(result.get("supported"), "Expected decline for vague variant calling prompt")
+        next_steps = result.get("next_steps", [])
+        self.assertTrue(
+            any("variant_calling_germline_minimal" in str(s) for s in next_steps),
+            f"Expected bundle hint in next_steps: {next_steps}",
+        )

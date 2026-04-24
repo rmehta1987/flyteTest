@@ -265,7 +265,7 @@ def haplotype_caller(
         assumptions=[
             "Aligned BAM is coordinate-sorted, dedup'd, and (recommended) BQSR-recalibrated.",
             "Reference has a .fai and .dict next to the FASTA.",
-            "Whole-genome pass; intervals-scoped calling is out of scope for Milestone A.",
+            "Intervals scoping is supported via the `intervals` parameter (Milestone F); whole-genome when omitted.",
         ],
         inputs={
             "reference_fasta": str(ref_path),

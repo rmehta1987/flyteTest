@@ -735,6 +735,50 @@ def _target_name_advisories(biological_goal: str, target_name: str) -> tuple[str
     )
 
 
+_VARIANT_CALLING_KEYWORDS: frozenset[str] = frozenset({
+    "variant", "variants", "vcf", "gvcf", "germline",
+    "haplotype", "haplotypecaller",
+    "genotype", "genotyping", "joint calling", "joint call",
+    "vqsr", "bqsr", "recalibration", "recalibrator",
+    "dedup", "mark duplicates",
+    "bwa", "bwa mem", "bwa mem2",
+    "gatk", "gatk4",
+})
+
+_VARIANT_CALLING_TARGET_MAP: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("prepare reference", "index reference", "create sequence dictionary", "sequence dictionary"), "prepare_reference"),
+    (("preprocess from ubam", "ubam", "unmapped bam"), "preprocess_sample_from_ubam"),
+    (("scatter haplotype", "scatter gvcf", "interval scatter"), "scattered_haplotype_caller"),
+    (("refine genotype", "calculate genotype posterior", "cgp", "population prior"), "post_genotyping_refinement"),
+    (("vqsr", "recalibrate variant", "filter cohort", "genotype refinement", "snp indel filter"), "genotype_refinement"),
+    (("germline short variant", "end to end", "full pipeline", "germline discovery"), "germline_short_variant_discovery"),
+    (("haplotype caller", "per sample gvcf", "haplotypecaller"), "haplotype_caller"),
+    (("combine gvcf", "cohort gvcf", "merge gvcf"), "combine_gvcfs"),
+    (("joint call", "genomicsdb", "genotypegvcfs", "joint genotyp"), "joint_call_gvcfs"),
+    (("apply bqsr", "apply recal"), "apply_bqsr"),
+    (("base recalibrat", "bqsr table", "recalibration table", "bqsr recal", "bqsr"), "base_recalibrator"),
+    (("preprocess", "align", "sort", "dedup", "recalibrate reads", "bwa mem"), "preprocess_sample"),
+    (("index vcf", "index feature file", "index feature"), "index_feature_file"),
+)
+
+
+def _match_variant_calling_target(normalized_request: str) -> str | None:
+    """Return a variant_calling target name when the prompt matches GATK keywords.
+
+    Args:
+        normalized_request: Normalized (lowercase, alphanumeric) request text.
+
+    Returns:
+        A registered variant_calling target name, or ``None`` when no match.
+    """
+    if not any(kw in normalized_request for kw in _VARIANT_CALLING_KEYWORDS):
+        return None
+    for phrase_cluster, target in _VARIANT_CALLING_TARGET_MAP:
+        if any(phrase in normalized_request for phrase in phrase_cluster):
+            return target
+    return "germline_short_variant_discovery"
+
+
 def _try_composition_fallback(request: str, normalized_request: str) -> TypedPlanningGoal | None:
     """Look for a registry-based composition when direct matches do not fit.
 
@@ -1270,6 +1314,7 @@ def _unsupported_typed_plan(
     produced_planner_types: Sequence[str] = (),
     limitations: Sequence[str] = (),
     next_steps: Sequence[str] = (),
+    suggested_bundles: Sequence[SuggestedBundle] = (),
 ) -> dict[str, object]:
     """Build one honest typed-planning decline without guessing or parsing prose."""
     close_matches = _find_close_target_matches(request)
@@ -1312,7 +1357,10 @@ def _unsupported_typed_plan(
         "metadata_only": True,
         "requires_user_approval": False,
         "limitations": decline_limitations,
-        "suggested_bundles": [],
+        "suggested_bundles": [
+            {"name": b.name, "description": b.description, "applies_to": list(b.applies_to)}
+            for b in suggested_bundles
+        ],
         "suggested_prior_runs": [],
         "next_steps": list(next_steps or _default_recovery_steps()),
     }
@@ -1542,14 +1590,42 @@ def plan_request(
         )
 
     normalized_request = _normalize(request)
-    if any(keyword in normalized_request for keyword in ("variant calling", "snv", "snp", "vcf")):
+    variant_target = _match_variant_calling_target(normalized_request)
+    if variant_target is not None:
+        from flytetest.bundles import BUNDLES
+        suggested = [
+            SuggestedBundle(
+                name=b.name,
+                description=b.description,
+                applies_to=tuple(b.applies_to),
+                available=False,
+            )
+            for b in BUNDLES.values()
+            if b.pipeline_family == "variant_calling" and variant_target in b.applies_to
+        ]
+        if not suggested:
+            suggested = [
+                SuggestedBundle(
+                    name="variant_calling_germline_minimal",
+                    description="Minimal germline variant calling demo bundle.",
+                    applies_to=(variant_target,),
+                    available=False,
+                )
+            ]
         return _unsupported_typed_plan(
             request,
-            reason="The request does not map to a supported typed biology goal, so the planner declines instead of inventing steps.",
+            reason=f"Variant-calling prompt matched target `{variant_target}`; use run_workflow or run_task with that target directly.",
             rationale=(
-                "The current showcase planner does not expose variant-calling workflows through the MCP recipe path.",
+                f"Prompt heuristics map this request to the registered GATK target `{variant_target}`.",
+                "Supply explicit scalar inputs and bindings to proceed; bundle load is the recommended path.",
             ),
             biological_goal=request,
+            matched_entry_names=[variant_target],
+            next_steps=(
+                f"Call load_bundle('variant_calling_germline_minimal') to get starter inputs.",
+                f"Then call run_workflow('{variant_target}', **bundle) or run_task('{variant_target}', **bundle).",
+            ),
+            suggested_bundles=suggested,
         )
 
     composition_goal = _try_composition_fallback(request, normalized_request)
@@ -1818,11 +1894,18 @@ def plan_request_reshape(
         )
 
     normalized_request = _normalize(request)
-    if any(keyword in normalized_request for keyword in ("variant calling", "snv", "snp", "vcf")):
+    variant_target = _match_variant_calling_target(normalized_request)
+    if variant_target is not None:
         return _plan_decline(
             reason=(
-                "The request does not map to a supported typed biology goal, "
-                "so the planner declines instead of inventing steps."
+                f"Variant-calling prompt matched target `{variant_target}`; "
+                f"use run_workflow or run_task with that target directly."
+            ),
+            pipeline_family="variant_calling",
+            next_steps=(
+                f"Call load_bundle('variant_calling_germline_minimal') to get starter inputs.",
+                f"Then call run_workflow('{variant_target}', **bundle) or run_task('{variant_target}', **bundle).",
+                "Or supply explicit bindings and scalar inputs directly to run_workflow/run_task.",
             ),
         )
 

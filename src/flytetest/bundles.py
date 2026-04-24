@@ -128,6 +128,8 @@ BUNDLES: dict[str, ResourceBundle] = {
         description=(
             "Minimal germline variant calling demo: chr20 slice of NA12878 "
             "with reference, known-sites VCFs, and paired reads. "
+            "Known-sites VCFs are supplied via the scalar `known_sites` input "
+            "(tuple typed-binding is Milestone I work). "
             "Documentation-only — no fixture data is stored in the repo."
         ),
         pipeline_family="variant_calling",
@@ -138,10 +140,7 @@ BUNDLES: dict[str, ResourceBundle] = {
                 "r1_path": "data/reads/NA12878_chr20_R1.fastq.gz",
                 "r2_path": "data/reads/NA12878_chr20_R2.fastq.gz",
             },
-            "KnownSites": {
-                "vcf_path": "data/references/hg38/dbsnp_138.hg38.vcf",
-                "resource_name": "dbsnp",
-            },
+            # KnownSites dropped — use scalar `known_sites` list below.
         },
         inputs={
             "ref_path": "data/references/hg38/chr20.fa",
