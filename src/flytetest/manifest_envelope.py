@@ -22,9 +22,11 @@ def build_manifest_envelope(
 ) -> dict[str, Any]:
     """Assemble the shared skeleton that every stage manifest must carry.
 
-    All task result bundles in this repo write a ``run_manifest.json`` that
-    starts with this envelope so downstream stages and the MCP result-inspection
-    tools can rely on a common structure.  Task modules add their own fields
+    All task result bundles in this repo write a manifest file (typically
+    ``run_manifest.json`` at the workflow level; ``run_manifest_<stage>.json``
+    for individual variant-calling tasks) that starts with this envelope so
+    downstream stages and the MCP result-inspection tools can rely on a
+    common structure.  Task modules add their own fields
     after calling this function when they need extra provenance or tool-level
     metadata (PASA assembly IDs, BRAKER3 run directories, etc.).
 
