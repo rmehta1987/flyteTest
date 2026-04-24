@@ -74,7 +74,7 @@ class PrepareReferenceInvocationTests(TestCase):
         def fake_index_feature(vcf, gatk_sif=""):
             return fake_result
 
-        def fake_bwa_index(reference_fasta, gatk_sif=""):
+        def fake_bwa_index(reference_fasta, bwa_sif=""):
             return MagicMock(path=str(ref_fasta))
 
         with (

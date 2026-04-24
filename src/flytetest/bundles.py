@@ -127,10 +127,9 @@ BUNDLES: dict[str, ResourceBundle] = {
         name="variant_calling_germline_minimal",
         description=(
             "Minimal germline variant calling demo: chr20 slice of NA12878 "
-            "with reference, known-sites VCFs, and paired reads. "
-            "Known-sites VCFs are supplied via the scalar `known_sites` input "
-            "(tuple typed-binding is Milestone I work). "
-            "Documentation-only — no fixture data is stored in the repo."
+            "with reference, known-sites VCFs (bgzipped + tabix indexed), "
+            "and paired reads (synthetic by default, real via REAL_READS=1). "
+            "Stage all data with: bash scripts/rcc/stage_gatk_local.sh"
         ),
         pipeline_family="variant_calling",
         bindings={
@@ -145,8 +144,8 @@ BUNDLES: dict[str, ResourceBundle] = {
         inputs={
             "ref_path": "data/references/hg38/chr20.fa",
             "known_sites": [
-                "data/references/hg38/dbsnp_138.hg38.vcf",
-                "data/references/hg38/Mills_and_1000G_gold_standard.indels.hg38.vcf",
+                "data/references/hg38/dbsnp_138.hg38.vcf.gz",
+                "data/references/hg38/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz",
             ],
             "r1_path": "data/reads/NA12878_chr20_R1.fastq.gz",
             "r2_path": "data/reads/NA12878_chr20_R2.fastq.gz",
@@ -154,10 +153,13 @@ BUNDLES: dict[str, ResourceBundle] = {
             "intervals": ["chr20"],
             "cohort_id": "NA12878_chr20",
         },
-        runtime_images={"sif_path": "data/images/gatk4.sif"},
+        runtime_images={
+            "sif_path": "data/images/gatk4.sif",
+            "bwa_sif": "data/images/bwa_mem2.sif",
+        },
         tool_databases={
-            "dbsnp": "data/references/hg38/dbsnp_138.hg38.vcf",
-            "mills": "data/references/hg38/Mills_and_1000G_gold_standard.indels.hg38.vcf",
+            "dbsnp": "data/references/hg38/dbsnp_138.hg38.vcf.gz",
+            "mills": "data/references/hg38/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz",
         },
         applies_to=(
             "prepare_reference",
@@ -165,10 +167,10 @@ BUNDLES: dict[str, ResourceBundle] = {
             "germline_short_variant_discovery",
         ),
         fetch_hints=(
-            "Pull the GATK4 SIF image: bash scripts/rcc/pull_gatk_image.sh",
-            "Stage chr20 reference FASTA under data/references/hg38/chr20.fa",
-            "Stage dbSNP and Mills VCFs under data/references/hg38/",
-            "Stage NA12878 chr20 FASTQ slices under data/reads/",
+            "Stage reference data + reads: bash scripts/rcc/stage_gatk_local.sh",
+            "Pull GATK4 SIF (~8 GB):        bash scripts/rcc/pull_gatk_image.sh",
+            "Build bwa-mem2+samtools SIF:   bash scripts/rcc/build_bwa_mem2_sif.sh",
+            "Verify all fixtures:           bash scripts/rcc/check_gatk_fixtures.sh",
         ),
     ),
     "variant_calling_vqsr_chr20": ResourceBundle(
@@ -231,7 +233,7 @@ BUNDLES: dict[str, ResourceBundle] = {
         ),
         fetch_hints=(
             "Download training VCFs: bash scripts/rcc/download_vqsr_training_vcfs.sh",
-            "Stage NA12878 chr20 BAM via SCP; run germline_short_variant_discovery to produce the joint VCF at data/vcf/NA12878_chr20_joint.vcf.gz",
+            "Stage NA12878 chr20 BAM via SCP (if running on HPC or download on HPC); run germline_short_variant_discovery to produce the joint VCF at data/vcf/NA12878_chr20_joint.vcf.gz",
             "Pull GATK4 SIF image: bash scripts/rcc/pull_gatk_image.sh",
             "chr20.fa must match the Homo_sapiens_assembly38.fasta reference used for alignment (contig name 'chr20', not '20')",
         ),

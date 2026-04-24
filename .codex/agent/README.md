@@ -30,6 +30,12 @@ These guides complement, but do not override:
 - `code-review.md`
   Use for strict review passes focused on bugs, regressions, hidden assumptions,
   and testing gaps.
+- `scaffold.md`
+  Use to turn a stated user intent into a coordinated patch (task wrapper +
+  registry entry + test stub + CHANGELOG line) inside an existing pipeline
+  family. Delegates depth to `task.md`, `workflow.md`, `registry.md`, and
+  `test.md`; escalates to `architecture.md` when the intent needs a new
+  planner type, a new family, or an MCP-surface change.
 
 ## Delegation Rules
 

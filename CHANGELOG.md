@@ -32,6 +32,12 @@ Entry template:
 
 ## Unreleased
 
+### User-authoring on-ramp — guide + scaffolding agent (2026-04-24)
+
+- [x] 2026-04-24 added `.codex/user_tasks.md` — condensed user-facing walkthrough for bringing custom Python logic into an existing pipeline family; covers module layout, binding contract via `accepted_planner_types`, `MANIFEST_OUTPUT_KEYS`, three SIF modes (pure-Python / native / containerized), and three-layer no-SIF testing strategy; worked example uses a custom variant filter after `joint_call_gvcfs`.
+- [x] 2026-04-24 added `.codex/agent/scaffold.md` — unified specialist role prompt that turns a stated user intent into a coordinated patch (task wrapper + registry entry + test stub + CHANGELOG line); enforces signature/registry mirroring, MANIFEST_OUTPUT_KEYS contract, and decline conditions for new planner types / new families / MCP-surface edits.
+- [x] 2026-04-24 updated `CLAUDE.md` specialist-guides table and `.codex/agent/README.md` role index to list the new guide and scaffolding role.
+
 ### GATK Milestone I — Complete (2026-04-24)
 
 Scientific completeness + task-pattern unification. Every GATK task is

@@ -1279,7 +1279,7 @@ def _normalize_slurm_memory(memory: str | None) -> str | None:
 # Slurm resource-escalation retry helpers
 # ---------------------------------------------------------------------------
 
-DEFAULT_SLURM_MODULE_LOADS: tuple[str, ...] = ("python/3.11.9", "apptainer/1.4.1")
+DEFAULT_SLURM_MODULE_LOADS: tuple[str, ...] = ("python/3.11.9", "apptainer/1.4.1", "gatk/4.5.0", "samtools/1.22.1")
 """Default environment modules loaded when none are specified in the recipe."""
 
 _RETRY_RESOURCE_OVERRIDE_FIELDS: frozenset[str] = frozenset(

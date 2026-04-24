@@ -116,8 +116,8 @@ class CreateSequenceDictionaryInvocationTests(TestCase):
         # The returned File path points at the .dict file.
         self.assertTrue(result.path.endswith(".dict"))
 
-    def test_create_sequence_dictionary_uses_default_sif_when_empty(self) -> None:
-        """Empty gatk_sif falls back to data/images/gatk4.sif."""
+    def test_create_sequence_dictionary_empty_sif_passes_through(self) -> None:
+        """Empty gatk_sif passes "" to run_tool, enabling native/module execution."""
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             ref_fasta = tmp_path / "genome.fa"
@@ -140,7 +140,7 @@ class CreateSequenceDictionaryInvocationTests(TestCase):
                     gatk_sif="",
                 )
 
-        self.assertEqual(captured_sif[0], "data/images/gatk4.sif")
+        self.assertEqual(captured_sif[0], "")
 
 
 class CreateSequenceDictionaryManifestTests(TestCase):
@@ -958,7 +958,7 @@ class BwaMem2IndexInvocationTests(TestCase):
             with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
                 result = bwa_mem2_index(
                     reference_fasta=File(path=str(ref_fasta)),
-                    gatk_sif="data/images/gatk4.sif",
+                    bwa_sif="data/images/bwa_mem2.sif",
                 )
 
         self.assertEqual(len(captured), 1)

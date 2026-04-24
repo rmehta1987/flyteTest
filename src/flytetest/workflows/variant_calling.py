@@ -56,6 +56,7 @@ def prepare_reference(
     reference_fasta: File,
     known_sites: list[File],
     gatk_sif: str = "",
+    bwa_sif: str = "",
     force: bool = False,
 ) -> File:
     """Prepare a reference genome for GATK germline variant calling.
@@ -101,7 +102,7 @@ def prepare_reference(
     if force or not all_bwa_present:
         bwa_mem2_index(
             reference_fasta=reference_fasta,
-            gatk_sif=gatk_sif,
+            bwa_sif=bwa_sif,
         )
     else:
         skipped_steps.append("bwa_mem2_index")
@@ -131,6 +132,7 @@ def preprocess_sample(
     library_id: str | None = None,
     platform: str = "ILLUMINA",
     gatk_sif: str = "",
+    bwa_sif: str = "",
 ) -> File:
     """Preprocess a sample from raw reads to BQSR-recalibrated BAM.
 
@@ -146,7 +148,7 @@ def preprocess_sample(
     aligned = bwa_mem2_mem(
         reference_fasta=reference_fasta, r1=r1, r2=r2,
         sample_id=sample_id, threads=threads,
-        library_id=library_id, platform=platform, gatk_sif=gatk_sif,
+        library_id=library_id, platform=platform, bwa_sif=bwa_sif,
     )
     sorted_bam = sort_sam(aligned_bam=aligned, sample_id=sample_id, gatk_sif=gatk_sif)
     dedup_bam, _metrics = mark_duplicates(sorted_bam=sorted_bam, sample_id=sample_id, gatk_sif=gatk_sif)
@@ -189,6 +191,7 @@ def germline_short_variant_discovery(
     cohort_id: str = "cohort",
     threads: int = 4,
     gatk_sif: str = "",
+    bwa_sif: str = "",
 ) -> File:
     """End-to-end germline short variant discovery from raw reads to joint VCF.
 
@@ -213,7 +216,7 @@ def germline_short_variant_discovery(
         recal_bam = preprocess_sample(
             reference_fasta=reference_fasta, r1=r1, r2=r2,
             sample_id=sample_id, known_sites=known_sites,
-            threads=threads, gatk_sif=gatk_sif,
+            threads=threads, gatk_sif=gatk_sif, bwa_sif=bwa_sif,
         )
         gvcf = haplotype_caller(
             reference_fasta=reference_fasta, aligned_bam=recal_bam,
@@ -331,6 +334,7 @@ def preprocess_sample_from_ubam(
     library_id: str | None = None,
     platform: str = "ILLUMINA",
     gatk_sif: str = "",
+    bwa_sif: str = "",
 ) -> File:
     """Preprocess a sample using the uBAM path (align → merge → dedup → BQSR)."""
     from flytetest.config import project_mkdtemp
@@ -338,7 +342,7 @@ def preprocess_sample_from_ubam(
     aligned = bwa_mem2_mem(
         reference_fasta=reference_fasta, r1=r1, r2=r2,
         sample_id=sample_id, threads=threads,
-        library_id=library_id, platform=platform, gatk_sif=gatk_sif,
+        library_id=library_id, platform=platform, bwa_sif=bwa_sif,
     )
     merged = merge_bam_alignment(
         reference_fasta=reference_fasta, aligned_bam=aligned,
@@ -532,7 +536,7 @@ def pre_call_coverage_qc(
     aligned_bams: list[File],
     sample_ids: list[str],
     cohort_id: str,
-    picard_sif: str = "",
+    gatk_sif: str = "",
     multiqc_sif: str = "",
 ) -> File:
     """Per-sample WGS + insert-size metrics aggregated into one MultiQC report."""
@@ -545,7 +549,7 @@ def pre_call_coverage_qc(
     for bam, sid in zip(aligned_bams, sample_ids):
         wgs, insert = collect_wgs_metrics(
             reference_fasta=reference_fasta, aligned_bam=bam,
-            sample_id=sid, picard_sif=picard_sif,
+            sample_id=sid, gatk_sif=gatk_sif,
         )
         qc_files.extend([wgs, insert])
 

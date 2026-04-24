@@ -218,14 +218,14 @@ TASK_PARAMETERS: dict[str, tuple[tuple[str, bool], ...]] = {
     ),
     # Milestone I — ported task parameters
     "bwa_mem2_index": (
-        ("gatk_sif", False),
+        ("bwa_sif", False),
     ),
     "bwa_mem2_mem": (
         ("sample_id", True),
         ("threads", False),
         ("library_id", False),
         ("platform", False),
-        ("gatk_sif", False),
+        ("bwa_sif", False),
     ),
     "sort_sam": (
         ("sample_id", True),
@@ -267,7 +267,7 @@ TASK_PARAMETERS: dict[str, tuple[tuple[str, bool], ...]] = {
     ),
     "collect_wgs_metrics": (
         ("sample_id", True),
-        ("picard_sif", False),
+        ("gatk_sif", False),
     ),
     "bcftools_stats": (
         ("cohort_id", True),
@@ -1607,7 +1607,7 @@ def _execute_task_direct(task_name: str, inputs: dict[str, object]) -> dict[str,
             file_inputs = {
                 k: File(path=str(v))
                 for k, v in inputs.items()
-                if isinstance(v, str) and k not in ("sample_id", "cohort_id", "gatk_sif", "intervals")
+                if isinstance(v, str) and k not in ("sample_id", "cohort_id", "gatk_sif", "bwa_sif", "bcftools_sif", "multiqc_sif", "snpeff_sif", "intervals")
             }
             scalar_inputs = {
                 k: v for k, v in inputs.items()

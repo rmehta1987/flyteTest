@@ -83,7 +83,7 @@ def create_sequence_dictionary(
     cmd = ["gatk", "CreateSequenceDictionary",
            "-R", str(ref_path), "-O", str(dict_path)]
     bind_paths = [ref_path.parent, out_dir]
-    run_tool(cmd, gatk_sif or "data/images/gatk4.sif", bind_paths)
+    run_tool(cmd, gatk_sif, bind_paths)
 
     require_path(dict_path, "GATK CreateSequenceDictionary output")
 
@@ -117,7 +117,7 @@ def index_feature_file(
 
     cmd = ["gatk", "IndexFeatureFile", "-I", str(vcf_path)]
     bind_paths = [vcf_path.parent, out_dir]
-    run_tool(cmd, gatk_sif or "data/images/gatk4.sif", bind_paths)
+    run_tool(cmd, gatk_sif, bind_paths)
 
     require_path(expected_index, "GATK IndexFeatureFile output index")
 
@@ -166,7 +166,7 @@ def base_recalibrator(
 
     bind_paths = [ref_path.parent, bam_path.parent, out_dir,
                   *[s.parent for s in site_paths]]
-    run_tool(cmd, gatk_sif or "data/images/gatk4.sif", bind_paths)
+    run_tool(cmd, gatk_sif, bind_paths)
 
     require_path(recal_path, "GATK BaseRecalibrator output table")
 
@@ -214,7 +214,7 @@ def apply_bqsr(
            "--bqsr-recal-file", str(recal_path),
            "-O", str(out_bam)]
     bind_paths = [ref_path.parent, bam_path.parent, recal_path.parent, out_dir]
-    run_tool(cmd, gatk_sif or "data/images/gatk4.sif", bind_paths)
+    run_tool(cmd, gatk_sif, bind_paths)
 
     require_path(out_bam, "GATK ApplyBQSR output BAM")
     out_bai = out_bam.with_suffix(".bai")  # GATK writes this; may also be .bam.bai
@@ -269,7 +269,7 @@ def haplotype_caller(
     for interval in (intervals or []):
         cmd.extend(["-L", interval])
     bind_paths = [ref_path.parent, bam_path.parent, out_dir]
-    run_tool(cmd, gatk_sif or "data/images/gatk4.sif", bind_paths)
+    run_tool(cmd, gatk_sif, bind_paths)
 
     require_path(out_gvcf, "GATK HaplotypeCaller output GVCF")
     out_idx = out_dir / f"{out_gvcf.name}.idx"
@@ -345,14 +345,14 @@ def joint_call_gvcfs(
 
         bind_paths = [ref_path.parent, out_dir, tmp,
                       *[g.parent for g in gvcf_paths]]
-        run_tool(import_cmd, gatk_sif or "data/images/gatk4.sif", bind_paths)
+        run_tool(import_cmd, gatk_sif, bind_paths)
         require_path(workspace, "GenomicsDBImport workspace")
 
         genotype_cmd = ["gatk", "GenotypeGVCFs",
                         "-R", str(ref_path),
                         "-V", f"gendb://{workspace}",
                         "-O", str(out_vcf)]
-        run_tool(genotype_cmd, gatk_sif or "data/images/gatk4.sif", bind_paths)
+        run_tool(genotype_cmd, gatk_sif, bind_paths)
 
     require_path(out_vcf, "GATK GenotypeGVCFs output VCF")
     out_idx = out_dir / f"{out_vcf.name}.idx"
@@ -408,7 +408,7 @@ def combine_gvcfs(
         cmd.extend(["-V", str(gp)])
 
     bind_paths = [ref_path.parent, out_dir, *[g.parent for g in gvcf_paths]]
-    run_tool(cmd, gatk_sif or "data/images/gatk4.sif", bind_paths)
+    run_tool(cmd, gatk_sif, bind_paths)
 
     require_path(out_gvcf, "GATK CombineGVCFs output GVCF")
     out_idx = out_dir / f"{out_gvcf.name}.idx"
@@ -436,7 +436,7 @@ def combine_gvcfs(
 @variant_calling_env.task
 def bwa_mem2_index(
     reference_fasta: File,
-    gatk_sif: str = "",
+    bwa_sif: str = "",
 ) -> Dir:
     """Index a reference FASTA for BWA-MEM2 alignment."""
     ref = require_path(Path(reference_fasta.download_sync()), "Reference FASTA")
@@ -444,7 +444,7 @@ def bwa_mem2_index(
     index_prefix = out_dir / ref.stem
 
     cmd = ["bwa-mem2", "index", "-p", str(index_prefix), str(ref)]
-    run_tool(cmd, gatk_sif or "data/images/gatk4.sif", [ref.parent, out_dir])
+    run_tool(cmd, bwa_sif, [ref.parent, out_dir])
 
     for suffix in (".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac"):
         if not Path(f"{index_prefix}{suffix}").exists():
@@ -469,7 +469,7 @@ def bwa_mem2_mem(
     threads: int = 4,
     library_id: str | None = None,
     platform: str = "ILLUMINA",
-    gatk_sif: str = "",
+    bwa_sif: str = "",
 ) -> File:
     """Align paired-end FASTQ reads to a reference using BWA-MEM2."""
     ref = require_path(Path(reference_fasta.download_sync()), "Reference FASTA")
@@ -491,7 +491,7 @@ def bwa_mem2_mem(
     bind_paths = [ref.parent, r1_path.parent, out_dir]
     if r2_path is not None:
         bind_paths.append(r2_path.parent)
-    run_tool(["bash", "-c", pipeline], gatk_sif, bind_paths)
+    run_tool(["bash", "-c", pipeline], bwa_sif, bind_paths)
 
     if not out_bam.exists():
         raise FileNotFoundError(f"bwa_mem2_mem produced no BAM: {out_bam}")
@@ -535,7 +535,7 @@ def sort_sam(
         "--SORT_ORDER", "coordinate",
         "--CREATE_INDEX", "true",
     ]
-    run_tool(cmd, gatk_sif or "data/images/gatk4.sif", [in_bam.parent, out_dir])
+    run_tool(cmd, gatk_sif, [in_bam.parent, out_dir])
 
     require_path(out_bam, "GATK SortSam output BAM")
     out_bai = out_bam.with_suffix(".bai")
@@ -580,7 +580,7 @@ def mark_duplicates(
         "-M", str(metrics),
         "--CREATE_INDEX", "true",
     ]
-    run_tool(cmd, gatk_sif or "data/images/gatk4.sif", [in_bam.parent, out_dir])
+    run_tool(cmd, gatk_sif, [in_bam.parent, out_dir])
 
     require_path(out_bam, "GATK MarkDuplicates output BAM")
     require_path(metrics, "GATK MarkDuplicates metrics file")
@@ -699,7 +699,7 @@ def variant_recalibrator(
         cmd.extend(["-an", ann])
 
     bind_paths = [ref.parent, vcf.parent, out_dir, *[s.parent for s in site_paths]]
-    run_tool(cmd, gatk_sif or "data/images/gatk4.sif", bind_paths)
+    run_tool(cmd, gatk_sif, bind_paths)
 
     if not output_recal.exists():
         raise FileNotFoundError(
@@ -781,7 +781,7 @@ def apply_vqsr(
     ]
 
     bind_paths = [ref.parent, vcf.parent, recal.parent, tranches.parent, out_dir]
-    run_tool(cmd, gatk_sif or "data/images/gatk4.sif", bind_paths)
+    run_tool(cmd, gatk_sif, bind_paths)
 
     if not output_vcf.exists():
         raise FileNotFoundError(f"ApplyVQSR did not produce output VCF: {output_vcf}")
@@ -850,7 +850,7 @@ def merge_bam_alignment(
     ]
 
     bind_paths = [ref.parent, aln.parent, ubam_path.parent, out_dir]
-    run_tool(cmd, gatk_sif or "data/images/gatk4.sif", bind_paths)
+    run_tool(cmd, gatk_sif, bind_paths)
 
     if not out_bam.exists():
         raise FileNotFoundError(f"MergeBamAlignment did not produce output BAM: {out_bam}")
@@ -907,7 +907,7 @@ def gather_vcfs(
     cmd.extend(["-O", str(out_vcf), "--CREATE_INDEX", "true"])
 
     bind_paths = [gp.parent for gp in gvcf_paths] + [out_dir]
-    run_tool(cmd, gatk_sif or "data/images/gatk4.sif", bind_paths)
+    run_tool(cmd, gatk_sif, bind_paths)
 
     if not out_vcf.exists():
         raise FileNotFoundError(f"GatherVcfs did not produce output GVCF: {out_vcf}")
@@ -953,7 +953,7 @@ def calculate_genotype_posteriors(
         cmd.extend(["--supporting-callsets", str(csp)])
 
     bind_paths = [vcf.parent, out_dir, *[csp.parent for csp in callset_paths]]
-    run_tool(cmd, gatk_sif or "data/images/gatk4.sif", bind_paths)
+    run_tool(cmd, gatk_sif, bind_paths)
 
     if not out_vcf.exists():
         raise FileNotFoundError(
@@ -1043,7 +1043,7 @@ def variant_filtration(
     for name, expression in effective:
         cmd.extend(["--filter-name", name, "--filter-expression", expression])
 
-    run_tool(cmd, gatk_sif or "data/images/gatk4.sif",
+    run_tool(cmd, gatk_sif,
              [ref.parent, vcf.parent, out_dir])
 
     require_path(out_vcf, "VariantFiltration output VCF")
@@ -1081,7 +1081,7 @@ def collect_wgs_metrics(
     reference_fasta: File,
     aligned_bam: File,
     sample_id: str,
-    picard_sif: str = "",
+    gatk_sif: str = "",
 ) -> tuple[File, File]:
     """Picard CollectWgsMetrics + CollectInsertSizeMetrics on one BAM.
 
@@ -1098,13 +1098,13 @@ def collect_wgs_metrics(
     run_tool(
         ["gatk", "CollectWgsMetrics",
          "-R", str(ref), "-I", str(bam), "-O", str(wgs_out)],
-        picard_sif or "data/images/gatk4.sif",
+        gatk_sif,
         [ref.parent, bam.parent, out_dir],
     )
     run_tool(
         ["gatk", "CollectInsertSizeMetrics",
          "-I", str(bam), "-O", str(insert_out), "-H", str(insert_hist)],
-        picard_sif or "data/images/gatk4.sif",
+        gatk_sif,
         [bam.parent, out_dir],
     )
 

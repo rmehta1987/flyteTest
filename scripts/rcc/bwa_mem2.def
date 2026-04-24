@@ -1,0 +1,42 @@
+# Apptainer definition: bwa-mem2 2.3 + samtools
+#
+# Lean (~300 MB) container for BWA-MEM2 alignment tasks.
+# Kept separate from gatk4.sif so bwa-mem2 and GATK can be updated independently.
+#
+# The bwa_mem2_mem task pipes bwa-mem2 output directly to samtools view,
+# so both tools must be in the same container.
+#
+# Build: bash scripts/rcc/pull_bwa_mem2_sif.sh
+# Output: data/images/bwa_mem2.sif
+
+Bootstrap: docker
+From: ubuntu:22.04
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -qq && apt-get install -y --no-install-recommends \
+        samtools wget bzip2 ca-certificates \
+        && rm -rf /var/lib/apt/lists/*
+
+    cd /tmp
+    wget -q \
+        https://github.com/bwa-mem2/bwa-mem2/releases/download/v2.3/bwa-mem2-2.3_x64-linux.tar.bz2
+    tar -xjf bwa-mem2-2.3_x64-linux.tar.bz2
+
+    install -m 755 bwa-mem2-2.3_x64-linux/bwa-mem2           /usr/local/bin/bwa-mem2
+    install -m 755 bwa-mem2-2.3_x64-linux/bwa-mem2.avx       /usr/local/bin/bwa-mem2.avx
+    install -m 755 bwa-mem2-2.3_x64-linux/bwa-mem2.avx2      /usr/local/bin/bwa-mem2.avx2
+    install -m 755 bwa-mem2-2.3_x64-linux/bwa-mem2.avx512bw  /usr/local/bin/bwa-mem2.avx512bw
+    install -m 755 bwa-mem2-2.3_x64-linux/bwa-mem2.sse41     /usr/local/bin/bwa-mem2.sse41
+    install -m 755 bwa-mem2-2.3_x64-linux/bwa-mem2.sse42     /usr/local/bin/bwa-mem2.sse42
+
+    rm -rf /tmp/bwa-mem2*
+
+%test
+    bwa-mem2 version
+    samtools --version | head -1
+
+%labels
+    Author FLyteTest
+    bwa-mem2 2.3
+    samtools ubuntu-22.04-apt
