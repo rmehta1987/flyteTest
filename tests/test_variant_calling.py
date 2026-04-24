@@ -26,6 +26,7 @@ from flytetest.tasks.variant_calling import (
     MANIFEST_OUTPUT_KEYS,
     apply_bqsr,
     base_recalibrator,
+    calculate_genotype_posteriors,
     combine_gvcfs,
     create_sequence_dictionary,
     gather_vcfs,
@@ -1949,3 +1950,131 @@ class GatherVcfsTests(TestCase):
                         sample_id="s1",
                         results_dir=str(results_dir),
                     )
+
+
+# ---------------------------------------------------------------------------
+# Milestone G Step 01 — calculate_genotype_posteriors
+# ---------------------------------------------------------------------------
+
+class CalculateGenotypePosteriorTests(TestCase):
+    """Tests for the calculate_genotype_posteriors task."""
+
+    def test_cgp_runs_without_supporting_callsets(self):
+        """--supporting-callsets flag is omitted when supporting_callsets is None."""
+        with tempfile.TemporaryDirectory() as tmp:
+            results_dir = Path(tmp) / "out"
+            results_dir.mkdir()
+            vcf = tmp_path = Path(tmp) / "cohort.vcf.gz"
+            vcf.touch()
+
+            captured_cmd = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                captured_cmd.extend(cmd)
+                out_idx = cmd.index("-O")
+                Path(cmd[out_idx + 1]).touch()
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                result = calculate_genotype_posteriors(
+                    ref_path="/tmp/ref.fa",
+                    vcf_path=str(vcf),
+                    cohort_id="cohort1",
+                    results_dir=str(results_dir),
+                )
+
+        self.assertNotIn("--supporting-callsets", captured_cmd)
+        self.assertIn("cgp_vcf", result["outputs"])
+
+    def test_cgp_runs_with_supporting_callsets(self):
+        """--supporting-callsets appears once per entry when list is non-empty."""
+        with tempfile.TemporaryDirectory() as tmp:
+            results_dir = Path(tmp) / "out"
+            results_dir.mkdir()
+            vcf = Path(tmp) / "cohort.vcf.gz"
+            vcf.touch()
+
+            captured_cmd = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                captured_cmd.extend(cmd)
+                out_idx = cmd.index("-O")
+                Path(cmd[out_idx + 1]).touch()
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                calculate_genotype_posteriors(
+                    ref_path="/tmp/ref.fa",
+                    vcf_path=str(vcf),
+                    cohort_id="cohort1",
+                    results_dir=str(results_dir),
+                    supporting_callsets=["/tmp/pop1.vcf", "/tmp/pop2.vcf"],
+                )
+
+        sc_indices = [i for i, v in enumerate(captured_cmd) if v == "--supporting-callsets"]
+        self.assertEqual(len(sc_indices), 2)
+        self.assertEqual(captured_cmd[sc_indices[0] + 1], "/tmp/pop1.vcf")
+        self.assertEqual(captured_cmd[sc_indices[1] + 1], "/tmp/pop2.vcf")
+
+    def test_cgp_output_filename(self):
+        """Manifest cgp_vcf ends with _cgp.vcf.gz."""
+        with tempfile.TemporaryDirectory() as tmp:
+            results_dir = Path(tmp) / "out"
+            results_dir.mkdir()
+            vcf = Path(tmp) / "cohort.vcf.gz"
+            vcf.touch()
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                out_idx = cmd.index("-O")
+                Path(cmd[out_idx + 1]).touch()
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                result = calculate_genotype_posteriors(
+                    ref_path="/tmp/ref.fa",
+                    vcf_path=str(vcf),
+                    cohort_id="cohort1",
+                    results_dir=str(results_dir),
+                )
+
+        self.assertTrue(result["outputs"]["cgp_vcf"].endswith("_cgp.vcf.gz"))
+        self.assertIn("cohort1", result["outputs"]["cgp_vcf"])
+
+    def test_cgp_missing_output_raises(self):
+        """FileNotFoundError raised when output VCF is not produced."""
+        with tempfile.TemporaryDirectory() as tmp:
+            results_dir = Path(tmp) / "out"
+            results_dir.mkdir()
+            vcf = Path(tmp) / "cohort.vcf.gz"
+            vcf.touch()
+
+            with patch.object(variant_calling, "run_tool"):
+                with self.assertRaises(FileNotFoundError):
+                    calculate_genotype_posteriors(
+                        ref_path="/tmp/ref.fa",
+                        vcf_path=str(vcf),
+                        cohort_id="cohort1",
+                        results_dir=str(results_dir),
+                    )
+
+    def test_cgp_no_R_flag(self):
+        """The -R flag must not appear in the command."""
+        with tempfile.TemporaryDirectory() as tmp:
+            results_dir = Path(tmp) / "out"
+            results_dir.mkdir()
+            vcf = Path(tmp) / "cohort.vcf.gz"
+            vcf.touch()
+
+            captured_cmd = []
+
+            def fake_run_tool(cmd, sif, bind_paths):
+                captured_cmd.extend(cmd)
+                out_idx = cmd.index("-O")
+                Path(cmd[out_idx + 1]).touch()
+
+            with patch.object(variant_calling, "run_tool", side_effect=fake_run_tool):
+                calculate_genotype_posteriors(
+                    ref_path="/tmp/ref.fa",
+                    vcf_path=str(vcf),
+                    cohort_id="cohort1",
+                    results_dir=str(results_dir),
+                )
+
+        self.assertNotIn("-R", captured_cmd)

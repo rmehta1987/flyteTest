@@ -491,3 +491,40 @@ implementation was designed directly from GATK4 documentation.
 - The scatter step is a synchronous Python `for` loop inside `scattered_haplotype_caller` (workflow stage 6); there are no job arrays or async patterns.
 - `SplitIntervals` is out of scope — users supply interval lists directly.
 - Resources: 2 CPU / 8 GiB local; Slurm hints 2 CPU / 8 GiB / 01:00:00.
+
+---
+
+## calculate_genotype_posteriors
+
+Refines per-sample genotype posteriors using population frequency priors
+via GATK4 CalculateGenotypePosteriors (CGP). Downstream of joint calling;
+optionally consumes population VCFs to improve posterior estimates.
+
+**FLyteTest path:** `flytetest.tasks.variant_calling.calculate_genotype_posteriors`
+
+**Command shape:**
+```
+gatk CalculateGenotypePosteriors \
+  -V <vcf_path> \
+  -O <cohort_id>_cgp.vcf.gz \
+  --create-output-variant-index true \
+  [--supporting-callsets <vcf>]   # one flag per supporting callset
+```
+
+**Key argument rationale:**
+- No `-R` flag — CGP is a VCF-level operation and does not require a reference FASTA; including it would cause an error with some GATK4 builds.
+- `--supporting-callsets` — provide one flag per population VCF (e.g. `1000G_omni2.5.hg38.vcf.gz`). CGP uses allele frequencies from these VCFs to sharpen genotype posteriors beyond pedigree-only priors. Omit entirely when no supporting data is available; CGP will apply pedigree-derived priors only.
+- `--create-output-variant-index true` — writes a `.tbi` index automatically; required by downstream tools.
+
+**Outputs:**
+- `cgp_vcf` — `<cohort_id>_cgp.vcf.gz`, CGP-refined VCF.
+- `cgp_vcf_index` — companion `.tbi`; empty string in manifest if absent.
+
+**No Stargazer reference:** CGP was not implemented in the Stargazer reference
+project; this implementation was derived directly from GATK4 documentation.
+
+**Milestone G scope notes:**
+- `calculate_genotype_posteriors` is task stage 16 in the pipeline registry.
+- Composable after `genotype_refinement` (VQSR) or directly after `joint_call_gvcfs`; wired via the `post_genotyping_refinement` workflow (stage 7).
+- VQSR on the CGP output is user-composable but out of scope for this milestone.
+- Resources: 4 CPU / 16 GiB local; Slurm hints 4 CPU / 16 GiB / 02:00:00.

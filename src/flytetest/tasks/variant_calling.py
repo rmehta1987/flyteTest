@@ -42,6 +42,8 @@ MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
     "merged_bam",
     # Milestone F
     "gathered_gvcf",
+    # Milestone G
+    "cgp_vcf",
 )
 
 
@@ -898,6 +900,61 @@ def gather_vcfs(
         ],
         inputs={"gvcf_paths": gvcf_paths, "sample_id": sample_id},
         outputs={"gathered_gvcf": str(out_vcf)},
+    )
+    _write_json(out_dir / "run_manifest.json", manifest)
+    return manifest
+
+
+def calculate_genotype_posteriors(
+    ref_path: str,
+    vcf_path: str,
+    cohort_id: str,
+    results_dir: str,
+    supporting_callsets: list[str] | None = None,
+    sif_path: str = "",
+) -> dict:
+    """Refine genotype posteriors using population priors (GATK4 CGP)."""
+    require_path(Path(vcf_path), "Input VCF for CalculateGenotypePosteriors")
+
+    out_dir = Path(results_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_vcf = out_dir / f"{cohort_id}_cgp.vcf.gz"
+
+    cmd = [
+        "gatk", "CalculateGenotypePosteriors",
+        "-V", vcf_path,
+        "-O", str(out_vcf),
+        "--create-output-variant-index", "true",
+    ]
+    for callset in (supporting_callsets or []):
+        cmd.extend(["--supporting-callsets", callset])
+
+    bind_paths = [Path(vcf_path).parent, out_dir]
+    run_tool(cmd, sif_path or "data/images/gatk4.sif", bind_paths)
+
+    if not out_vcf.exists():
+        raise FileNotFoundError(
+            f"CalculateGenotypePosteriors did not produce output VCF: {out_vcf}"
+        )
+
+    tbi = Path(str(out_vcf) + ".tbi")
+
+    manifest = build_manifest_envelope(
+        stage="calculate_genotype_posteriors",
+        assumptions=[
+            "Input VCF should be joint-called (joint_call_gvcfs) or VQSR-filtered (genotype_refinement).",
+            "supporting_callsets VCFs must be indexed (.tbi or .idx present).",
+            "No -R flag; CalculateGenotypePosteriors does not require a reference FASTA.",
+        ],
+        inputs={
+            "vcf_path": vcf_path,
+            "cohort_id": cohort_id,
+            "supporting_callsets": supporting_callsets or [],
+        },
+        outputs={
+            "cgp_vcf": str(out_vcf),
+            "cgp_vcf_index": str(tbi) if tbi.exists() else "",
+        },
     )
     _write_json(out_dir / "run_manifest.json", manifest)
     return manifest

@@ -32,6 +32,31 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone G — Complete (2026-04-23)
+
+CalculateGenotypePosteriors and full GATK pipeline closure.
+
+- [x] 2026-04-23 `calculate_genotype_posteriors` task (stage 16) + 5 unit tests.
+- [x] 2026-04-23 `post_genotyping_refinement` workflow (stage 7) + 3 unit tests.
+- [x] 2026-04-23 `docs/gatk_pipeline_overview.md` written (89 lines, ≤150).
+- [x] 2026-04-23 `docs/tool_refs/gatk4.md` updated with CGP section.
+- [x] 2026-04-23 full pytest suite green (787 passed, 1 skipped).
+- Phase 3 GATK pipeline: complete (Milestones A–G, 16 tasks, 7 workflows).
+- Remaining deferred: job arrays, hard-filtering (`VariantFiltration`), VQSR-on-CGP.
+
+### GATK Milestone G Step 02 — post_genotyping_refinement workflow (2026-04-23)
+- [x] 2026-04-23 added post_genotyping_refinement workflow (stage 7, single CGP call + manifest).
+- [x] 2026-04-23 added registry entry (pipeline_stage_order=7, reusable_as_reference=True).
+- [x] 2026-04-23 added 3 unit tests in PostGenotypingRefinementTests.
+- [x] 2026-04-23 extended workflows MANIFEST_OUTPUT_KEYS with refined_vcf_cgp.
+
+### GATK Milestone G Step 01 — calculate_genotype_posteriors task (2026-04-23)
+- [x] 2026-04-23 added calculate_genotype_posteriors task (stage 16); no -R flag; --supporting-callsets optional.
+- [x] 2026-04-23 added registry entry (pipeline_stage_order=16).
+- [x] 2026-04-23 added 5 unit tests in CalculateGenotypePosteriorTests.
+- [x] 2026-04-23 extended MANIFEST_OUTPUT_KEYS with cgp_vcf.
+- [x] 2026-04-23 added calculate_genotype_posteriors to _VARIANT_CALLING_TASK_NAMES.
+
 ### GATK Milestone F — Complete (2026-04-23)
 
 Interval-scoped HaplotypeCaller: optional intervals on `haplotype_caller`,
