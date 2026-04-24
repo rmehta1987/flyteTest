@@ -32,6 +32,51 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone H — Complete (2026-04-23)
+
+GATK production wiring: MCP surface exposure, P0 fixes, signature and
+idempotency cleanups. Closes the claim-vs-reality gap from the
+2026-04-23 review — GATK is now reachable through the experiment loop.
+
+- [x] 2026-04-23 Step 01: bwa_mem2_mem shell quoting (shlex.quote) + per-stage manifest filenames (run_manifest_<stage>.json) on all 16 tasks.
+- [x] 2026-04-23 Step 02: 14 showcase_module assignments + 7 TASK_PARAMETERS entries + README/mcp_showcase.md update + resolver gracefully handles unregistered planner types.
+- [x] 2026-04-23 Step 03: variant_calling planning intent branch covering all 14 MCP targets; variant_calling_germline_minimal KnownSites typed binding dropped; haplotype_caller stale assumption refreshed.
+- [x] 2026-04-23 Step 04: post_genotyping_refinement ref_path dropped; prepare_reference idempotency (force=False); GenomicsDB ephemeral-only documented in pipeline overview.
+- [x] 2026-04-23 full pytest green (808 passed, 1 skipped).
+- Breaking: task-level manifests moved from run_manifest.json to run_manifest_<stage>.json. Workflow-level manifests unchanged.
+- Breaking: post_genotyping_refinement no longer accepts ref_path. Any caller passing it must drop the keyword.
+- Deferred to Milestone I: port 9 plain-Python helpers to Flyte task pattern; biology gaps (hard-filtering, variant annotation, post-call stats, pre-call coverage QC); true scatter parallelism; VQSR annotation parameterization; read-group parameterization.
+
+### GATK Milestone H Step 04 — Workflow cleanups (2026-04-23)
+- [x] 2026-04-23 dropped unused ref_path from post_genotyping_refinement; registry inputs and accepted_planner_types updated.
+- [x] 2026-04-23 prepare_reference gained force=False idempotency; steps skip when outputs present; manifest tracks skipped_steps.
+- [x] 2026-04-23 documented GenomicsDB ephemeral-only workspace as non-goal in pipeline overview.
+- [x] 2026-04-23 added 4 PrepareReferenceIdempotencyTests + 2 PostGenotypingRefinementSignatureTests.
+- [!] Breaking: post_genotyping_refinement no longer accepts ref_path. Any caller passing it must drop the keyword.
+
+### GATK Milestone H Step 03 — Planning intent + bundle integrity (2026-04-23)
+- [x] 2026-04-23 added variant_calling intent branch to planning.py covering all 14 MCP targets.
+- [x] 2026-04-23 fixed variant_calling_germline_minimal: dropped stale KnownSites typed binding; scalar known_sites is authoritative.
+- [x] 2026-04-23 swept haplotype_caller manifest assumption (Milestone F intervals now documented inline).
+- [x] 2026-04-23 added 4 VariantCallingIntentTests + 1 bundle-consistency test.
+
+### GATK Milestone H Step 02 — MCP surface wiring (2026-04-23)
+- [x] 2026-04-23 set showcase_module on 7 variant_calling workflow entries.
+- [x] 2026-04-23 set showcase_module on 7 Milestone A task entries.
+- [x] 2026-04-23 added TASK_PARAMETERS entries for the 7 exposed tasks.
+- [x] 2026-04-23 README "Current local MCP execution" list updated; biological scope updated.
+- [x] 2026-04-23 mcp_showcase.md updated with 14 new entries.
+- [x] 2026-04-23 added 5 MCP contract + server dispatch tests.
+- [x] 2026-04-23 resolver gracefully handles unregistered planner types as missing requirements (instead of KeyError).
+- Plain-Python helper tasks remain workflow-internal; full port deferred to Milestone I.
+
+### GATK Milestone H Step 01 — P0 security + provenance fixes (2026-04-23)
+- [x] 2026-04-23 bwa_mem2_mem: shlex.quote on ref_path, r1_path, r2_path, rg, output_bam.
+- [x] 2026-04-23 per-stage manifest filenames (run_manifest_<stage>.json) on all 16 variant_calling tasks.
+- [x] 2026-04-23 added BwaMem2MemShellQuotingTests (2 tests) and PerStageManifestFilenameTests (2 tests).
+- [x] 2026-04-23 updated existing manifest tests to use per-stage filenames.
+- [!] Breaking: task-level manifests moved from {results_dir}/run_manifest.json to {results_dir}/run_manifest_<stage>.json. Workflow-level manifests unchanged.
+
 ### GATK Milestone G — Complete (2026-04-23)
 
 CalculateGenotypePosteriors and full GATK pipeline closure.
