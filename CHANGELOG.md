@@ -32,6 +32,18 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone E — Complete (2026-04-23)
+
+uBAM preprocessing path: `UnmappedBAM` type, `merge_bam_alignment` (task stage 14),
+`preprocess_sample_from_ubam` workflow (stage 5).
+
+- [x] 2026-04-23 `UnmappedBAM` planner type + round-trip serialization test.
+- [x] 2026-04-23 `merge_bam_alignment` task (stage 14) + 5 unit tests.
+- [x] 2026-04-23 `preprocess_sample_from_ubam` workflow (stage 5) + 4 unit tests.
+- [x] 2026-04-23 `docs/tool_refs/gatk4.md` — `merge_bam_alignment` section added.
+- [x] 2026-04-23 full pytest suite green (766 passed, 1 skipped).
+- Deferred: interval-scoped `HaplotypeCaller` (Milestone F), `CalculateGenotypePosteriors` (Milestone G).
+
 ### GATK Milestone E Step 03 — preprocess_sample_from_ubam workflow (2026-04-23)
 - [x] 2026-04-23 added preprocess_sample_from_ubam workflow (align → merge → dedup → BQSR, no sort_sam).
 - [x] 2026-04-23 added registry entry (workflow stage 5, accepted_planner_types includes UnmappedBAM).
