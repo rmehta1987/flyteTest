@@ -17,7 +17,7 @@ Per-step prompts: `docs/gatk_milestone_g/prompts/`
 |---|------|--------|--------|
 | 01 | `calculate_genotype_posteriors` task | `prompts/step_01_calculate_genotype_posteriors.md` | Complete |
 | 02 | `post_genotyping_refinement` workflow | `prompts/step_02_post_genotyping_refinement.md` | Complete |
-| 03 | End-to-end pipeline reference + GATK closure | `prompts/step_03_closure.md` | Not started |
+| 03 | End-to-end pipeline reference + GATK closure | `prompts/step_03_closure.md` | Complete |
 
 ## Verification Gates
 
