@@ -32,6 +32,11 @@ Entry template:
 
 ## Unreleased
 
+### GATK Milestone E Step 02 — merge_bam_alignment task (2026-04-23)
+- [x] 2026-04-23 added merge_bam_alignment task (stage 14) with all 9 MergeBamAlignment flags.
+- [x] 2026-04-23 added registry entry; extended MANIFEST_OUTPUT_KEYS with merged_bam.
+- [x] 2026-04-23 added 5 unit tests in MergeBamAlignmentTests.
+
 ### GATK Milestone E Step 01 — UnmappedBAM planner type (2026-04-23)
 - [x] 2026-04-23 added UnmappedBAM to src/flytetest/planner_types.py.
 - [x] 2026-04-23 added round-trip test in tests/test_planner_types.py.

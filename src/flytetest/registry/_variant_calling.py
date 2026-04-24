@@ -663,4 +663,43 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             pipeline_stage_order=13,
         ),
     ),
+    RegistryEntry(
+        name="merge_bam_alignment",
+        category="task",
+        description="Merge aligned BAM with unmapped BAM using GATK4 MergeBamAlignment.",
+        inputs=(
+            InterfaceField("ref_path", "str", "Absolute path to reference FASTA."),
+            InterfaceField("aligned_bam", "str", "Absolute path to aligned (unsorted) BAM from bwa_mem2_mem."),
+            InterfaceField("ubam_path", "str", "Absolute path to queryname-sorted unmapped BAM."),
+            InterfaceField("sample_id", "str", "Sample identifier used to name the output BAM."),
+            InterfaceField("results_dir", "str", "Output directory."),
+            InterfaceField("sif_path", "str", "Optional Apptainer/Singularity image path."),
+        ),
+        outputs=(
+            InterfaceField("merged_bam", "str", "Path to the coordinate-sorted merged BAM."),
+        ),
+        tags=("variant_calling", "gatk4", "preprocessing"),
+        compatibility=RegistryCompatibilityMetadata(
+            biological_stage="GATK4 BAM alignment merging (uBAM path)",
+            accepted_planner_types=("ReferenceGenome", "AlignmentSet", "UnmappedBAM"),
+            produced_planner_types=("AlignmentSet",),
+            reusable_as_reference=False,
+            execution_defaults={
+                "profile": "local",
+                "result_manifest": "run_manifest.json",
+                "resources": {"cpu": "4", "memory": "16Gi", "execution_class": "local"},
+                "slurm_resource_hints": {"cpu": "4", "memory": "16Gi", "walltime": "02:00:00"},
+                "runtime_images": {"sif_path": "data/images/gatk4.sif"},
+                "module_loads": ("python/3.11.9", "apptainer/1.4.1"),
+            },
+            supported_execution_profiles=("local", "slurm"),
+            synthesis_eligible=True,
+            composition_constraints=(
+                "ubam_path must be queryname-sorted (GATK MergeBamAlignment requirement).",
+                "Output is coordinate-sorted; no sort_sam step needed after this task.",
+            ),
+            pipeline_family="variant_calling",
+            pipeline_stage_order=14,
+        ),
+    ),
 )

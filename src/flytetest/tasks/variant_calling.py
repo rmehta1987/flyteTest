@@ -38,6 +38,8 @@ MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
     "recal_file",
     "tranches_file",
     "vqsr_vcf",
+    # Milestone E
+    "merged_bam",
 )
 
 
@@ -769,6 +771,86 @@ def apply_vqsr(
         outputs={
             "vqsr_vcf": str(output_vcf),
             "vqsr_vcf_index": str(tbi_path) if tbi_path.exists() else "",
+        },
+    )
+    _write_json(out_dir / "run_manifest.json", manifest)
+    return manifest
+
+
+def merge_bam_alignment(
+    ref_path: str,
+    aligned_bam: str,
+    ubam_path: str,
+    sample_id: str,
+    results_dir: str,
+    sif_path: str = "",
+) -> dict:
+    """Merge aligned BAM with unmapped BAM using GATK4 MergeBamAlignment.
+
+    ``ubam_path`` must be queryname-sorted.  ``--SORT_ORDER coordinate``
+    produces a coordinate-sorted merged BAM so no separate sort_sam step
+    is needed.
+    """
+    require_path(Path(ref_path), "Reference genome FASTA")
+    require_path(Path(aligned_bam), "Aligned BAM for MergeBamAlignment")
+    require_path(Path(ubam_path), "Unmapped BAM for MergeBamAlignment")
+
+    out_dir = Path(results_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_bam = out_dir / f"{sample_id}_merged.bam"
+
+    cmd = [
+        "gatk", "MergeBamAlignment",
+        "-R", ref_path,
+        "-ALIGNED", aligned_bam,
+        "-UNMAPPED", ubam_path,
+        "-O", str(out_bam),
+        "--SORT_ORDER", "coordinate",
+        "--ADD_MATE_CIGAR", "true",
+        "--CLIP_ADAPTERS", "false",
+        "--CLIP_OVERLAPPING_READS", "true",
+        "--INCLUDE_SECONDARY_ALIGNMENTS", "true",
+        "--MAX_INSERTIONS_OR_DELETIONS", "-1",
+        "--PRIMARY_ALIGNMENT_STRATEGY", "MostDistant",
+        "--ATTRIBUTES_TO_RETAIN", "X0",
+        "--CREATE_INDEX", "true",
+    ]
+
+    bind_paths = [
+        Path(ref_path).parent,
+        Path(aligned_bam).parent,
+        Path(ubam_path).parent,
+        out_dir,
+    ]
+    run_tool(cmd, sif_path or "data/images/gatk4.sif", bind_paths)
+
+    if not out_bam.exists():
+        raise FileNotFoundError(
+            f"MergeBamAlignment did not produce output BAM: {out_bam}"
+        )
+
+    out_bai = out_bam.with_suffix(".bai")
+    if not out_bai.exists():
+        alt_bai = Path(str(out_bam) + ".bai")
+        if alt_bai.exists():
+            out_bai = alt_bai
+
+    manifest = build_manifest_envelope(
+        stage="merge_bam_alignment",
+        assumptions=[
+            "ubam_path is queryname-sorted (GATK requirement).",
+            "--SORT_ORDER coordinate eliminates the need for sort_sam.",
+            "--CREATE_INDEX true writes a .bai companion alongside the BAM.",
+        ],
+        inputs={
+            "ref_path": ref_path,
+            "aligned_bam": aligned_bam,
+            "ubam_path": ubam_path,
+            "sample_id": sample_id,
+        },
+        outputs={
+            "merged_bam": str(out_bam),
+            "merged_bam_index": str(out_bai) if out_bai.exists() else "",
         },
     )
     _write_json(out_dir / "run_manifest.json", manifest)
