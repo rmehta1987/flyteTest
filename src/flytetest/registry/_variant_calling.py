@@ -1305,4 +1305,42 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
         ),
         showcase_module="flytetest.workflows.variant_calling",
     ),
+    RegistryEntry(
+        name="my_custom_filter",
+        category="task",
+        description=(
+            "Pure-Python QUAL threshold filter for plain-text VCFs. "
+            "On-ramp reference example for user-authored tasks: no container, "
+            "no external binary, invoked via run_tool Python-callable mode."
+        ),
+        inputs=(
+            InterfaceField("vcf_path", "File", "Input VCF (uncompressed plain text)."),
+            InterfaceField("min_qual", "float", "Minimum QUAL to retain a record (inclusive). Default 30.0."),
+        ),
+        outputs=(
+            InterfaceField("my_filtered_vcf", "File", "QUAL-filtered output VCF."),
+        ),
+        tags=("variant_calling", "filter", "pure-python", "on-ramp"),
+        compatibility=RegistryCompatibilityMetadata(
+            biological_stage="custom QUAL filter",
+            accepted_planner_types=("VariantCallSet",),
+            produced_planner_types=("VariantCallSet",),
+            reusable_as_reference=False,
+            execution_defaults={
+                "profile": "local",
+                "result_manifest": "run_manifest.json",
+                "resources": {"cpu": "1", "memory": "4Gi", "execution_class": "local"},
+                "slurm_resource_hints": {"cpu": "1", "memory": "4Gi", "walltime": "00:30:00"},
+                "runtime_images": {},
+                "tool_databases": {},
+                "module_loads": ("python/3.11.9",),
+            },
+            supported_execution_profiles=("local", "slurm"),
+            synthesis_eligible=True,
+            composition_constraints=(),
+            pipeline_family="variant_calling",
+            pipeline_stage_order=22,
+        ),
+        showcase_module="flytetest.tasks.variant_calling",
+    ),
 )

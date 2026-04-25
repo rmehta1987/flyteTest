@@ -283,6 +283,9 @@ TASK_PARAMETERS: dict[str, tuple[tuple[str, bool], ...]] = {
         ("snpeff_data_dir", True),
         ("snpeff_sif", False),
     ),
+    "my_custom_filter": (
+        ("min_qual", False),
+    ),
 }
 
 

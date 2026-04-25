@@ -16,6 +16,7 @@ from flytetest.config import (
     require_path,
     run_tool,
 )
+from flytetest.tasks._filter_helpers import filter_vcf
 from flytetest.manifest_envelope import build_manifest_envelope
 from flytetest.manifest_io import write_json as _write_json
 
@@ -66,6 +67,8 @@ MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
     "pre_call_qc_bundle",
     "post_call_qc_bundle",
     "annotated_vcf",
+    # On-ramp reference task
+    "my_filtered_vcf",
 )
 
 
@@ -1264,3 +1267,44 @@ def snpeff_annotate(
     )
     _write_json(out_dir / "run_manifest_snpeff_annotate.json", manifest)
     return File(path=str(annotated_vcf)), File(path=str(genes_txt))
+
+
+@variant_calling_env.task
+def my_custom_filter(
+    vcf_path: File,
+    min_qual: float = 30.0,
+) -> File:
+    """Apply a pure-Python QUAL threshold filter to a plain-text VCF.
+
+    Records with QUAL below ``min_qual`` or with missing QUAL (``.``) are
+    dropped. Header lines are always preserved. This task is the on-ramp
+    reference example for user-authored pure-Python logic; it goes through
+    ``run_tool`` in Python-callable mode so the execution pattern is uniform
+    across all task families.
+    """
+    in_vcf = require_path(Path(vcf_path.download_sync()), "Input VCF")
+    out_dir = project_mkdtemp("my_custom_filter_")
+    out_vcf = out_dir / "my_filtered.vcf"
+
+    run_tool(
+        python_callable=filter_vcf,
+        callable_kwargs={
+            "in_path": in_vcf,
+            "out_path": out_vcf,
+            "min_qual": min_qual,
+        },
+    )
+
+    require_path(out_vcf, "Filtered VCF output")
+
+    manifest = build_manifest_envelope(
+        stage="my_custom_filter",
+        assumptions=[
+            "Input VCF is uncompressed plain text.",
+            "QUAL field is numeric or '.' (missing QUAL treated as below threshold).",
+        ],
+        inputs={"vcf_path": str(in_vcf), "min_qual": min_qual},
+        outputs={"my_filtered_vcf": str(out_vcf)},
+    )
+    _write_json(out_dir / "run_manifest_my_custom_filter.json", manifest)
+    return File(path=str(out_vcf))

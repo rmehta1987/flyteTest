@@ -41,6 +41,7 @@ from flytetest.tasks.variant_calling import (
     mark_duplicates,
     merge_bam_alignment,
     multiqc_summarize,
+    my_custom_filter,
     snpeff_annotate,
     sort_sam,
     variant_filtration,
@@ -2737,3 +2738,154 @@ class SnpeffAnnotateTests(TestCase):
         m = captured_manifests[0]
         # genes_txt missing → empty string, not an error
         self.assertEqual(m["outputs"]["snpeff_genes_txt"], "")
+
+
+# ---------------------------------------------------------------------------
+# On-ramp reference task: my_custom_filter
+# ---------------------------------------------------------------------------
+
+_MY_FILTER_SYNTHETIC_VCF = (
+    "##fileformat=VCFv4.2\n"
+    "##FILTER=<ID=PASS,Description=\"All filters passed\">\n"
+    "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+    "chr20\t100\t.\tA\tT\t10.0\tPASS\t.\n"
+    "chr20\t200\t.\tC\tG\t50.0\tPASS\t.\n"
+    "chr20\t300\t.\tT\tA\t.\tPASS\t.\n"
+)
+
+
+class MyCustomFilterInvocationTests(TestCase):
+    """Layer 2: invoke my_custom_filter directly via flyte_stub File.
+
+    This is the first pure-Python task in the repo: no run_tool subprocess,
+    no patch.object(config, 'run_tool', ...). Call directly and assert outputs.
+    """
+
+    def _run(self, min_qual: float = 30.0) -> tuple[str, dict, str]:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            vcf_file = tmp_path / "input.vcf"
+            vcf_file.write_text(_MY_FILTER_SYNTHETIC_VCF)
+
+            result = my_custom_filter(
+                vcf_path=File(path=str(vcf_file)),
+                min_qual=min_qual,
+            )
+            out_path = Path(result.path)
+            out_content = out_path.read_text()
+            manifest_path = out_path.parent / "run_manifest_my_custom_filter.json"
+            manifest = json.loads(manifest_path.read_text())
+        return out_content, manifest, str(out_path)
+
+    def test_returns_vcf_file(self):
+        _, _, out_path = self._run()
+        self.assertTrue(out_path.endswith(".vcf"))
+
+    def test_low_qual_record_filtered_out(self):
+        content, _, _ = self._run(min_qual=30.0)
+        self.assertNotIn("chr20\t100\t", content)
+
+    def test_high_qual_record_retained(self):
+        content, _, _ = self._run(min_qual=30.0)
+        self.assertIn("chr20\t200\t", content)
+
+    def test_missing_qual_filtered_out(self):
+        content, _, _ = self._run(min_qual=30.0)
+        # chr20 pos 300 has QUAL=. → dropped
+        self.assertNotIn("chr20\t300\t", content)
+
+    def test_headers_preserved(self):
+        content, _, _ = self._run()
+        header_lines = [l for l in content.splitlines() if l.startswith("#")]
+        self.assertGreater(len(header_lines), 0)
+
+    def test_manifest_stage_name(self):
+        _, manifest, _ = self._run()
+        self.assertEqual(manifest["stage"], "my_custom_filter")
+
+    def test_manifest_contains_output_key(self):
+        _, manifest, out_path = self._run()
+        self.assertIn("my_filtered_vcf", manifest["outputs"])
+        self.assertEqual(manifest["outputs"]["my_filtered_vcf"], out_path)
+
+    def test_manifest_file_written_alongside_output(self):
+        _, _, out_path = self._run()
+        manifest_path = Path(out_path).parent / "run_manifest_my_custom_filter.json"
+        self.assertTrue(manifest_path.exists())
+
+
+class MyCustomFilterRegistryTests(TestCase):
+    """Layer 3: assert RegistryEntry shape and manifest-output consistency."""
+
+    def setUp(self) -> None:
+        from flytetest.registry import get_entry
+        self.entry = get_entry("my_custom_filter")
+
+    def test_entry_exists(self):
+        self.assertIsNotNone(self.entry)
+
+    def test_category_is_task(self):
+        self.assertEqual(self.entry.category, "task")
+
+    def test_pipeline_family(self):
+        self.assertEqual(self.entry.compatibility.pipeline_family, "variant_calling")
+
+    def test_accepted_planner_types(self):
+        self.assertEqual(
+            self.entry.compatibility.accepted_planner_types, ("VariantCallSet",)
+        )
+
+    def test_produced_planner_types(self):
+        self.assertEqual(
+            self.entry.compatibility.produced_planner_types, ("VariantCallSet",)
+        )
+
+    def test_showcase_module(self):
+        self.assertEqual(self.entry.showcase_module, "flytetest.tasks.variant_calling")
+
+    def test_output_key_in_manifest_output_keys(self):
+        output_names = {f.name for f in self.entry.outputs}
+        self.assertIn("my_filtered_vcf", output_names)
+        self.assertIn("my_filtered_vcf", MANIFEST_OUTPUT_KEYS)
+
+    def test_input_names_match_task_signature(self):
+        input_names = {f.name for f in self.entry.inputs}
+        self.assertIn("vcf_path", input_names)
+        self.assertIn("min_qual", input_names)
+
+    def test_runtime_images_empty_for_pure_python(self):
+        images = self.entry.compatibility.execution_defaults.get("runtime_images", {})
+        self.assertEqual(images, {})
+
+    def test_pipeline_stage_order(self):
+        self.assertEqual(self.entry.compatibility.pipeline_stage_order, 22)
+
+
+class MyCustomFilterMCPExposureTests(TestCase):
+    """Layer 4: MCP discovery and scalar-parameter subtraction."""
+
+    def test_appears_in_supported_task_names(self):
+        from flytetest.mcp_contract import SUPPORTED_TASK_NAMES
+        self.assertIn("my_custom_filter", SUPPORTED_TASK_NAMES)
+
+    def test_task_parameters_entry_exact(self):
+        from flytetest.server import TASK_PARAMETERS
+        self.assertIn("my_custom_filter", TASK_PARAMETERS)
+        self.assertEqual(
+            TASK_PARAMETERS["my_custom_filter"],
+            (("min_qual", False),),
+        )
+
+    def test_scalar_params_excludes_file_binding(self):
+        """vcf_path is a File binding — it must not appear in scalar params."""
+        from flytetest.server import _scalar_params_for_task
+        params = _scalar_params_for_task("my_custom_filter", bindings={})
+        param_names = [name for name, _ in params]
+        self.assertIn("min_qual", param_names)
+        self.assertNotIn("vcf_path", param_names)
+
+    def test_min_qual_is_not_required(self):
+        from flytetest.server import TASK_PARAMETERS
+        for name, required in TASK_PARAMETERS["my_custom_filter"]:
+            if name == "min_qual":
+                self.assertFalse(required, "min_qual has a default and must not be required")

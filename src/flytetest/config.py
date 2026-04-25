@@ -11,9 +11,10 @@ import os
 import shutil
 import subprocess
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import flyte
 
@@ -243,21 +244,54 @@ def container_runtime() -> str:
 
 
 def run_tool(
-    cmd: list[str],
-    sif: str,
-    bind_paths: list[Path],
+    cmd: list[str] | None = None,
+    sif: str = "",
+    bind_paths: list[Path] | None = None,
     cwd: Path | None = None,
     stdout_path: Path | None = None,
+    *,
+    python_callable: Callable[..., Any] | None = None,
+    callable_kwargs: dict[str, Any] | None = None,
 ) -> None:
-    """Run a tool natively or inside a bound Singularity or Apptainer image.
+    """Run a tool natively, inside a container, or as a pure-Python callable.
+
+    Three execution modes — pick exactly one per call:
+
+    **SIF/container** — ``sif`` non-empty:
+        Runs ``cmd`` inside an Apptainer/Singularity image with the given
+        ``bind_paths`` mounted read-write.  Requires Apptainer or Singularity
+        on the host PATH.
+
+    **Native executable** — ``sif`` empty, ``cmd`` provided:
+        Runs ``cmd`` directly via ``subprocess.run``.  Use for binaries on
+        PATH (``Rscript``, compiled C++, ``samtools``) or absolute executable
+        paths.  No container overhead; the binary must be available on the
+        compute node.
+
+    **Python callable** — ``python_callable`` provided:
+        Calls ``python_callable(**callable_kwargs)`` in-process.  No
+        subprocess, no container.  Use for pure-Python logic that has no
+        external binary dependency.  ``cmd``, ``sif``, and ``bind_paths``
+        are ignored when this mode is active.
 
     Args:
-        cmd: Command arguments passed to the native or containerized runner.
-        sif: Optional container image path; empty string means native execution.
-        bind_paths: Paths to bind into the container before execution.
-        cwd: Working directory for the subprocess, if any.
-        stdout_path: Optional file that receives captured stdout.
+        cmd: Command arguments for native or containerised execution.
+        sif: Container image path; empty string means native execution.
+        bind_paths: Host paths to bind into the container (SIF mode only).
+        cwd: Working directory for subprocess execution.
+        stdout_path: Optional file that receives captured stdout (subprocess modes only).
+        python_callable: A Python callable to invoke directly (callable mode).
+        callable_kwargs: Keyword arguments forwarded to ``python_callable``.
     """
+    if python_callable is not None:
+        python_callable(**(callable_kwargs or {}))
+        return
+
+    if cmd is None:
+        raise ValueError(
+            "run_tool: 'cmd' is required when 'python_callable' is not provided."
+        )
+
     if not sif:
         run(cmd, cwd=cwd, stdout_path=stdout_path)
         return
@@ -267,7 +301,7 @@ def run_tool(
         sif_path = Path(__file__).resolve().parents[2] / sif_path
     sif_abs = str(sif_path)
     mounts: set[str] = set()
-    for path in bind_paths:
+    for path in (bind_paths or []):
         resolved = str(path.resolve())
         mounts.add(f"{resolved}:{resolved}")
 

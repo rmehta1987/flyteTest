@@ -38,10 +38,16 @@ You are responsible for:
 
 ## Core Principles
 
-1. **One intent, one patch.** A scaffolding run produces up to four file
-   edits: the task wrapper, the registry entry, the test stub, and the
-   `CHANGELOG.md` line. Optionally a workflow edit if the user asked to
-   wire it into a composed entrypoint.
+1. **One intent, one coordinated patch.** A scaffolding run produces exactly
+   these touch points:
+   (a) task wrapper appended to the family task module,
+   (b) `MANIFEST_OUTPUT_KEYS` append in that same module,
+   (c) `RegistryEntry` appended to the family registry file,
+   (d) `TASK_PARAMETERS` append in `server.py` (tasks only; workflows skip this),
+   (e) test stubs appended to the family test file,
+   (f) `CHANGELOG.md` dated entry.
+   Optionally (g) a workflow wiring edit if the user explicitly asked for it.
+   Never produce fewer than (a)–(f). Never produce more without an explicit request.
 2. **Signatures stay `File`/`Dir` + scalars.** Never put planner dataclasses
    in a task signature. The resolver materializes bindings from
    `accepted_planner_types` into matching parameter names.
@@ -87,9 +93,12 @@ Produce the patch in this order so inconsistencies are caught early:
 1. **Task wrapper** — append to `src/flytetest/tasks/<family>.py`. Follow
    the reference pattern at `src/flytetest/tasks/variant_calling.py:72`:
    `download_sync()` + `require_path()` at the top, `project_mkdtemp()`
-   for output staging, `run_tool(cmd, sif_or_default, bind_paths)` or a
-   direct Python call for pure-Python tasks, then
-   `build_manifest_envelope()` + `_write_json()`, returning `File` or `Dir`.
+   for output staging, then one of three `run_tool` modes:
+   - SIF/container: `run_tool(cmd, sif_or_default, bind_paths)`
+   - Native executable: `run_tool(cmd, sif="", bind_paths=[])`
+   - Python callable: `run_tool(python_callable=fn, callable_kwargs={...})`
+   Then `build_manifest_envelope()` + `_write_json()`, returning `File` or `Dir`.
+   For pure-Python tasks see also `my_custom_filter` in the same file.
 2. **Append new output keys to `MANIFEST_OUTPUT_KEYS`** at the top of the
    tasks file (e.g. `src/flytetest/tasks/variant_calling.py:25`).
 3. **Registry entry** — append to the family's entries tuple (e.g.

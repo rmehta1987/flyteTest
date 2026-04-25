@@ -32,6 +32,17 @@ Entry template:
 
 ## Unreleased
 
+### On-ramp implementation — run_tool extension + my_custom_filter (2026-04-24)
+
+- [x] 2026-04-24 `config.py`: extended `run_tool` with `python_callable` + `callable_kwargs` keyword-only parameters; Python-callable mode invokes a function in-process with no subprocess overhead; native executable mode (Rscript, compiled C++, system binary) now explicitly documented alongside the existing SIF/container path; all three modes tested in `tests/test_run_tool.py` (10 tests).
+- [x] 2026-04-24 `tasks/_filter_helpers.py` (new): pure-Python `filter_vcf` — plain-text VCF QUAL threshold filter; no external dependencies; missing QUAL (`.`) treated as below threshold; 8 unit tests in `tests/test_my_filter.py`.
+- [x] 2026-04-24 `tasks/variant_calling.py`: added `my_custom_filter` task (Python-callable mode, `vcf_path: File → File`, `min_qual: float = 30.0`); appended `"my_filtered_vcf"` to `MANIFEST_OUTPUT_KEYS`; manifest written as `run_manifest_my_custom_filter.json`.
+- [x] 2026-04-24 `registry/_variant_calling.py`: added `RegistryEntry` for `my_custom_filter` (`pipeline_stage_order=22`, `accepted/produced=VariantCallSet`, `runtime_images={}`, `module_loads=("python/3.11.9",)`).
+- [x] 2026-04-24 `server.py`: appended `"my_custom_filter": (("min_qual", False),)` to `TASK_PARAMETERS`; no other server changes.
+- [x] 2026-04-24 Tests: `MyCustomFilterInvocationTests` (Layer 2), `MyCustomFilterRegistryTests` (Layer 3), `MyCustomFilterMCPExposureTests` (Layer 4) — 22 tests total across all three layers in `tests/test_variant_calling.py`.
+- [x] 2026-04-24 `.codex/user_tasks.md`: replaced "SIF images — three cases" with a three-mode execution table (SIF, native, Python callable) including the new `run_tool` callable form; updated testing section to document that pure-Python tasks need no `run_tool` patch; linked to `my_custom_filter` as the copyable template.
+- [x] 2026-04-24 `.codex/agent/scaffold.md`: corrected Core Principle 1 from "four file edits" to the accurate six required touch points; updated Generation Order step 1 to list all three `run_tool` modes.
+
 ### Docs polish — bug fixes, README rewrite, SCIENTIST_GUIDE GATK runbook, rcc README (2026-04-24)
 
 - [x] 2026-04-24 Bug fixes (pre-existing in `8c513f5`): stale `build_gatk_local_sif.sh` reference replaced in `bundles.py` fetch_hints (`pull_gatk_image.sh` + `build_bwa_mem2_sif.sh`); duplicate step-3 numbering and stale `target=` MCP snippet removed from `stage_gatk_local.sh`; `module_loads` corrected for `pre_call_coverage_qc` (added `multiqc`), `post_call_qc_summary` (bcftools + multiqc, no gatk), and `annotate_variants_snpeff` (snpeff only).

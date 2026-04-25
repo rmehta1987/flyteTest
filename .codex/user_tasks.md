@@ -115,33 +115,37 @@ planner); mark `required=True` for params without a default and `False`
 otherwise. Workflows do not need this — `showcase_module` alone is
 sufficient to expose them through MCP.
 
-## SIF images — three cases
+## Execution modes — choosing the right `run_tool` path
 
-Which one applies is driven by *how* your task invokes its underlying logic.
+`run_tool` in `src/flytetest/config.py` supports three modes. Pick exactly one.
 
-1. **Pure-Python task** — your wrapper imports your own module and calls a
-   function. No container needed.
-   - Omit any `_sif` param from the function signature.
-   - In the registry entry: `"runtime_images": {}` and
-     `"module_loads": ("python/3.11.9",)` (drop `apptainer/1.4.1`).
-   - `check_offline_staging` will not block Slurm submission on a missing image.
+| Mode | When to use | Call shape |
+|---|---|---|
+| **SIF / container** | tool ships in a container (GATK, bwa-mem2, SnpEff, BRAKER3) | `run_tool(cmd, sif_path, bind_paths)` |
+| **Native executable** | binary on PATH or at an explicit path (Rscript, compiled C++, samtools) | `run_tool(cmd, sif="", bind_paths=[])` |
+| **Python callable** | pure-Python logic, no external binary | `run_tool(python_callable=fn, callable_kwargs={...})` |
 
-2. **Native binary already on PATH (or via module load)** — your wrapper
-   shells out but the binary is available natively.
-   - Keep a `<tool>_sif: str = ""` parameter for forward-compatibility.
-   - Pass `""` into `run_tool` — it falls back to native execution at
-     `src/flytetest/config.py:261` (`if not sif: run(cmd, ...)`).
-   - In the registry entry, still declare the tool-specific `module_loads`
-     if applicable.
+**SIF mode:** declare a `<tool>_sif: str = ""` parameter and register the
+default path under `runtime_images` in the registry entry (e.g.
+`{"gatk_sif": "data/images/gatk4.sif"}`). Pass the parameter into
+`run_tool(cmd, sif, bind_paths)`.
 
-3. **Containerized tool** — normal case for existing GATK/Picard/samtools
-   tasks.
-   - Declare a `<tool>_sif: str = ""` parameter; default-path it in the
-     registry under `runtime_images` (e.g.
-     `{"gatk_sif": "data/images/gatk4.sif"}`).
-   - Call `run_tool(cmd, tool_sif or "<default>", bind_paths)`.
+**Native executable mode:** omit the `_sif` parameter or keep it as an
+optional fallback. Pass `sif=""` to `run_tool` — it calls the binary directly
+via `subprocess.run`. Use for system binaries (`Rscript`, compiled C++,
+`samtools`) or any binary available as a cluster module. Declare the relevant
+`module_loads` in the registry entry.
 
-`run_tool` itself is defined at `src/flytetest/config.py:245`.
+**Python callable mode:** import your pure-Python function and pass it to
+`run_tool(python_callable=fn, callable_kwargs={...})`. No subprocess is
+started. Use this for threshold filters, format converters, statistics
+aggregations, or any logic with no external binary dependency. In the registry
+entry: `"runtime_images": {}` and `"module_loads": ("python/3.11.9",)`.
+`check_offline_staging` will not block Slurm submission on a missing image.
+
+The reference implementation of the Python-callable pattern is `my_custom_filter`
+in `src/flytetest/tasks/variant_calling.py`. Read it before writing your own
+pure-Python task — it is the copyable template.
 
 ## Testing — no-SIF workflow integration
 
@@ -149,11 +153,14 @@ Three layers, cheapest first:
 
 1. **Unit-test the pure-Python module** directly with `pytest` against a tiny
    fixture (a hand-written VCF/BED/BAM header). No Flyte, no containers.
-2. **Call the task function directly** with a fixture `File`. Patch `run_tool`
-   out with a fake that captures the command and writes a synthetic output —
-   the pattern is at `tests/test_variant_calling.py:78`
-   (`patch.object(variant_calling, "run_tool", side_effect=fake_run_tool)`).
-   Works on your laptop with no SIF available.
+2. **Call the task function directly** with a fixture `File`.
+   - *SIF/native tasks*: patch `run_tool` with a fake that captures the command
+     and writes a synthetic output — pattern at `tests/test_variant_calling.py:78`
+     (`patch.object(variant_calling, "run_tool", side_effect=fake_run_tool)`).
+   - *Python-callable tasks*: no patch needed. `run_tool` calls your function
+     in-process, so just call the task with a `File` stub and assert on the
+     output file and manifest. See `MyCustomFilterInvocationTests` in
+     `tests/test_variant_calling.py` for this simpler pattern.
 3. **Run the task standalone via the MCP surface** by freezing a prior run's
    output into a bundle and calling `load_bundle` → `run_task`. You iterate on
    the downstream step without re-running upstream GATK. See `.codex/testing.md`
