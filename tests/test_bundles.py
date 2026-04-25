@@ -255,7 +255,7 @@ class TestSeedBundleHonesty:
             )
 
     def test_showcase_bundle_is_available_in_repo(self):
-        """The bundle cited as the primary worked example in ``docs/mcp_showcase.md``
+        """The bundle cited as the primary worked example in ``SCIENTIST_GUIDE.md``
         must either be available on a fresh clone, or expose ``fetch_hints`` so the
         scientist gets a concrete recovery path rather than a dead end.
 
@@ -264,11 +264,11 @@ class TestSeedBundleHonesty:
         reasons list points to a specific fetch/stage action.
         """
         showcase = (
-            Path(__file__).resolve().parent.parent / "docs" / "mcp_showcase.md"
+            Path(__file__).resolve().parent.parent / "SCIENTIST_GUIDE.md"
         ).read_text()
         showcase_bundle_name = "braker3_small_eukaryote"
         assert showcase_bundle_name in showcase, (
-            f"mcp_showcase.md no longer cites {showcase_bundle_name!r} as the "
+            f"SCIENTIST_GUIDE.md no longer cites {showcase_bundle_name!r} as the "
             "primary worked example — update this test to match the new citation"
         )
         assert showcase_bundle_name in BUNDLES
@@ -292,6 +292,21 @@ class TestStartupRobustness:
             env=env,
         )
         assert result.returncode == 0, result.stderr
+
+
+class TestVariantCallingBundleRuntimeImageKeys:
+    """Step 01 guard: GATK bundle runtime_images must use parameter-matching keys."""
+
+    def test_germline_minimal_has_gatk_sif_not_sif_path(self):
+        ri = BUNDLES["variant_calling_germline_minimal"].runtime_images
+        assert "sif_path" not in ri, "variant_calling_germline_minimal still uses sif_path key"
+        assert "gatk_sif" in ri, "variant_calling_germline_minimal missing gatk_sif key"
+        assert "bwa_sif" in ri, "variant_calling_germline_minimal missing bwa_sif key"
+
+    def test_vqsr_chr20_has_gatk_sif_not_sif_path(self):
+        ri = BUNDLES["variant_calling_vqsr_chr20"].runtime_images
+        assert "sif_path" not in ri, "variant_calling_vqsr_chr20 still uses sif_path key"
+        assert "gatk_sif" in ri, "variant_calling_vqsr_chr20 missing gatk_sif key"
 
 
 class VariantCallingGerminalMinimalBundleTests:

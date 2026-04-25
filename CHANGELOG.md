@@ -32,6 +32,12 @@ Entry template:
 
 ## Unreleased
 
+### MCP surface polish — runtime_images key, shared_fs_roots, dry_run staging (2026-04-24)
+
+- [x] 2026-04-24 `bundles.py`: renamed `"sif_path"` → `"gatk_sif"` in GATK bundle `runtime_images` so `load_bundle(**bundle)` spreads the GATK SIF to the correct task parameter without manual override; affects `variant_calling_germline_minimal` and `variant_calling_vqsr_chr20`.
+- [x] 2026-04-24 `server.py`: `run_slurm_recipe` now accepts `shared_fs_roots: list[str] | None = None` and passes it to `SlurmWorkflowSpecExecutor.submit`; matches `validate_run_recipe` behaviour so scientists get staging enforcement at submission time, not only at validation time.
+- [x] 2026-04-24 `server.py`: `run_task` and `run_workflow` `dry_run=True` now call `check_offline_staging` on the frozen artifact and populate `staging_findings` in the `DryRunReply`; `supported` remains `True` regardless of findings (informational only); scientists can inspect staging issues before committing to submission.
+
 ### User-authoring on-ramp — guide + scaffolding agent (2026-04-24)
 
 - [x] 2026-04-24 added `.codex/user_tasks.md` — condensed user-facing walkthrough for bringing custom Python logic into an existing pipeline family; covers module layout, binding contract via `accepted_planner_types`, `MANIFEST_OUTPUT_KEYS`, three SIF modes (pure-Python / native / containerized), and three-layer no-SIF testing strategy; worked example uses a custom variant filter after `joint_call_gvcfs`.

@@ -1921,6 +1921,11 @@ def run_task(
             plan_limitations = plan_limitations + (_EMPTY_PROMPT_ADVISORY,)
 
         if dry_run:
+            _dry_findings = check_offline_staging(
+                artifact.workflow_spec,
+                tuple(Path(r) for r in ((resources or {}).get("shared_fs_roots") or [])),
+                execution_profile=execution_profile if execution_profile == "slurm" else "local",
+            )
             return asdict(
                 DryRunReply(
                     supported=True,
@@ -1933,7 +1938,10 @@ def run_task(
                         bindings_in, explicit_bindings
                     ),
                     resolved_environment=dict(plan.get("resolved_environment") or {}),
-                    staging_findings=(),
+                    staging_findings=tuple(
+                        {"kind": sf.kind, "key": sf.key, "path": sf.path, "reason": sf.reason}
+                        for sf in _dry_findings
+                    ),
                     limitations=plan_limitations,
                     task_name=task_name,
                 )
@@ -2201,6 +2209,11 @@ def run_workflow(
             plan_limitations = plan_limitations + (_EMPTY_PROMPT_ADVISORY,)
 
         if dry_run:
+            _dry_findings = check_offline_staging(
+                artifact.workflow_spec,
+                tuple(Path(r) for r in ((resources or {}).get("shared_fs_roots") or [])),
+                execution_profile=execution_profile if execution_profile == "slurm" else "local",
+            )
             return asdict(
                 DryRunReply(
                     supported=True,
@@ -2213,7 +2226,10 @@ def run_workflow(
                         bindings_in, explicit_bindings
                     ),
                     resolved_environment=dict(plan.get("resolved_environment") or {}),
-                    staging_findings=(),
+                    staging_findings=tuple(
+                        {"kind": sf.kind, "key": sf.key, "path": sf.path, "reason": sf.reason}
+                        for sf in _dry_findings
+                    ),
                     limitations=plan_limitations,
                     workflow_name=workflow_name,
                 )
@@ -2792,6 +2808,7 @@ def _run_slurm_recipe_impl(
     sbatch_runner: Any = subprocess.run,
     command_available: Any = None,
     resume_from_local_record: str | Path | None = None,
+    shared_fs_roots: list[str] | None = None,
 ) -> dict[str, object]:
     """Submit one frozen workflow-spec recipe through `sbatch`.
 
@@ -2803,6 +2820,10 @@ def _run_slurm_recipe_impl(
         resume_from_local_record: Optional path to a prior local run record whose
             completed node state is carried forward into the Slurm submission so
             already-finished stages are not re-executed on the compute node.
+        shared_fs_roots: Filesystem prefixes visible to compute nodes. When
+            provided, runs check_offline_staging before sbatch to verify
+            containers, tool databases, and input paths are reachable from
+            compute nodes. Omit to skip staging preflight.
 """
     # Check approval for composed recipes before submission.
     try:
@@ -2831,6 +2852,7 @@ def _run_slurm_recipe_impl(
     ).submit(
         Path(artifact_path),
         resume_from_local_record=Path(resume_from_local_record) if resume_from_local_record is not None else None,
+        shared_fs_roots=tuple(Path(r) for r in (shared_fs_roots or [])),
     )
     active_run_dir = run_dir or DEFAULT_RUN_DIR
     if result.supported and result.run_record is not None:
@@ -2850,9 +2872,20 @@ def _run_slurm_recipe_impl(
     }
 
 
-def run_slurm_recipe(artifact_path: str) -> dict[str, object]:
-    """Submit a previously frozen workflow-spec recipe artifact to Slurm."""
-    return _run_slurm_recipe_impl(artifact_path)
+def run_slurm_recipe(
+    artifact_path: str,
+    shared_fs_roots: list[str] | None = None,
+) -> dict[str, object]:
+    """Submit a previously frozen workflow-spec recipe artifact to Slurm.
+
+    Args:
+        artifact_path: Path to the frozen recipe artifact to submit.
+        shared_fs_roots: Filesystem prefixes visible to compute nodes. When
+            provided, runs check_offline_staging before sbatch to verify
+            containers, tool databases, and input paths are reachable from
+            compute nodes. Omit to skip staging preflight.
+    """
+    return _run_slurm_recipe_impl(artifact_path, shared_fs_roots=shared_fs_roots)
 
 
 def validate_run_recipe(

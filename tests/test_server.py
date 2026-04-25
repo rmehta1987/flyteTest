@@ -1197,6 +1197,43 @@ class ServerTests(TestCase):
         self.assertFalse(submitted["supported"])
         self.assertIn("already-authenticated scheduler environment", submitted["limitations"][0])
 
+    def test_run_slurm_recipe_passes_shared_fs_roots_to_submit(self) -> None:
+        """shared_fs_roots provided to run_slurm_recipe must reach SlurmWorkflowSpecExecutor.submit."""
+        from flytetest.spec_executor import SlurmWorkflowSpecExecutor
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result_dir = _repeat_filter_manifest_dir(tmp_path)
+            prepared = _prepare_run_recipe_impl(
+                BUSCO_GOAL_PROMPT,
+                manifest_sources=(result_dir,),
+                runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                execution_profile="slurm",
+                recipe_dir=tmp_path,
+            )
+            captured_roots: list[tuple[Path, ...]] = []
+            original_submit = SlurmWorkflowSpecExecutor.submit
+
+            def capturing_submit(self_inner, artifact_source, *, resume_from_local_record=None, shared_fs_roots=()):
+                captured_roots.append(shared_fs_roots)
+                return original_submit(
+                    self_inner,
+                    artifact_source,
+                    resume_from_local_record=resume_from_local_record,
+                    shared_fs_roots=shared_fs_roots,
+                )
+
+            with patch.object(SlurmWorkflowSpecExecutor, "submit", capturing_submit):
+                _run_slurm_recipe_impl(
+                    str(prepared["artifact_path"]),
+                    run_dir=tmp_path / "runs",
+                    shared_fs_roots=["/scratch", "/projects"],
+                    command_available=lambda command: False,
+                )
+
+        self.assertEqual(len(captured_roots), 1)
+        self.assertEqual(captured_roots[0], (Path("/scratch"), Path("/projects")))
+
     def test_monitor_slurm_job_reports_missing_scheduler_commands_as_unsupported_environment(self) -> None:
         """Expose an authenticated-environment diagnostic when monitoring commands are unavailable.
 
@@ -4365,6 +4402,89 @@ class StagingPreflightServerTests(TestCase):
 
         self.assertTrue(result_2["supported"])
         self.assertEqual(len(sbatch_calls), 1, "sbatch must be called exactly once after the path is fixed")
+
+    def test_run_task_dry_run_staging_findings_non_empty_for_missing_sif(self) -> None:
+        """dry_run=True must populate staging_findings when runtime_images paths don't exist."""
+        with tempfile.TemporaryDirectory() as tmp:
+            dummy_fasta = Path(tmp) / "proteins.fa"
+            dummy_fasta.write_text(">seq\nACGT\n")
+            reply = run_task(
+                task_name="busco_assess_proteins",
+                inputs={
+                    "proteins_fasta": str(dummy_fasta),
+                    "lineage_dataset": "eukaryota_odb10",
+                },
+                runtime_images={"busco_sif": "/nonexistent/busco.sif"},
+                dry_run=True,
+            )
+        self.assertTrue(reply["supported"], msg=reply.get("limitations"))
+        self.assertGreater(len(reply["staging_findings"]), 0)
+        kinds = {f["kind"] for f in reply["staging_findings"]}
+        self.assertIn("container", kinds)
+
+    def test_run_task_dry_run_staging_findings_empty_when_all_paths_exist(self) -> None:
+        """dry_run=True must return empty staging_findings when all paths exist."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_p = Path(tmp)
+            dummy_fasta = tmp_p / "proteins.fa"
+            dummy_fasta.write_text(">seq\nACGT\n")
+            dummy_sif = tmp_p / "busco.sif"
+            dummy_sif.write_bytes(b"fake-sif")
+            dummy_db = tmp_p / "eukaryota_odb10"
+            dummy_db.mkdir()
+            reply = run_task(
+                task_name="busco_assess_proteins",
+                inputs={
+                    "proteins_fasta": str(dummy_fasta),
+                    "lineage_dataset": "eukaryota_odb10",
+                },
+                runtime_images={"busco_sif": str(dummy_sif)},
+                tool_databases={"busco_lineage_dir": str(dummy_db)},
+                dry_run=True,
+            )
+        self.assertTrue(reply["supported"])
+        self.assertEqual(reply["staging_findings"], ())
+
+    def test_run_task_dry_run_supported_true_even_with_staging_findings(self) -> None:
+        """staging_findings must not block dry_run — supported must remain True."""
+        with tempfile.TemporaryDirectory() as tmp:
+            dummy_fasta = Path(tmp) / "proteins.fa"
+            dummy_fasta.write_text(">seq\nACGT\n")
+            reply = run_task(
+                task_name="busco_assess_proteins",
+                inputs={
+                    "proteins_fasta": str(dummy_fasta),
+                    "lineage_dataset": "eukaryota_odb10",
+                },
+                runtime_images={"busco_sif": "/nonexistent/busco.sif"},
+                dry_run=True,
+            )
+        self.assertTrue(reply["supported"])
+
+    def test_run_workflow_dry_run_staging_findings_non_empty_for_missing_sif(self) -> None:
+        """run_workflow dry_run must also populate staging_findings for missing paths."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_p = Path(tmp)
+            genome = tmp_p / "genome.fa"
+            proteins = tmp_p / "proteins.fa"
+            for p in (genome, proteins):
+                p.write_bytes(b"fake")
+            reply = run_workflow(
+                workflow_name="ab_initio_annotation_braker3",
+                bindings={
+                    "ReferenceGenome": {"fasta_path": str(genome)},
+                    "TranscriptEvidenceSet": {"reference_genome": {"fasta_path": str(genome)}},
+                    "ProteinEvidenceSet": {
+                        "reference_genome": {"fasta_path": str(genome)},
+                        "protein_fasta_path": str(proteins),
+                    },
+                },
+                inputs={"braker_species": "demo_species", "genome": str(genome)},
+                runtime_images={"braker_sif": "/nonexistent/braker3.sif"},
+                dry_run=True,
+            )
+        self.assertTrue(reply["supported"], msg=reply.get("limitations"))
+        self.assertGreater(len(reply["staging_findings"]), 0)
 
 
 class ValidateRunRecipeTests(TestCase):

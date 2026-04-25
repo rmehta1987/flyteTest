@@ -154,7 +154,7 @@ BUNDLES: dict[str, ResourceBundle] = {
             "cohort_id": "NA12878_chr20",
         },
         runtime_images={
-            "sif_path": "data/images/gatk4.sif",
+            "gatk_sif": "data/images/gatk4.sif",
             "bwa_sif": "data/images/bwa_mem2.sif",
         },
         tool_databases={
@@ -218,7 +218,7 @@ BUNDLES: dict[str, ResourceBundle] = {
             "cohort_id": "NA12878_chr20",
             "results_dir": "results/vqsr_chr20/",
         },
-        runtime_images={"sif_path": "data/images/gatk4.sif"},
+        runtime_images={"gatk_sif": "data/images/gatk4.sif"},
         tool_databases={
             "hapmap": "data/references/hg38/hapmap_3.3.hg38.vcf.gz",
             "omni":   "data/references/hg38/1000G_omni2.5.hg38.vcf.gz",
