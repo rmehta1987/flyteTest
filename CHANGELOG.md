@@ -32,8 +32,9 @@ Entry template:
 
 ## Unreleased
 
-### Docs polish — README rewrite, SCIENTIST_GUIDE GATK runbook, rcc README (2026-04-24)
+### Docs polish — bug fixes, README rewrite, SCIENTIST_GUIDE GATK runbook, rcc README (2026-04-24)
 
+- [x] 2026-04-24 Bug fixes (pre-existing in `8c513f5`): stale `build_gatk_local_sif.sh` reference replaced in `bundles.py` fetch_hints (`pull_gatk_image.sh` + `build_bwa_mem2_sif.sh`); duplicate step-3 numbering and stale `target=` MCP snippet removed from `stage_gatk_local.sh`; `module_loads` corrected for `pre_call_coverage_qc` (added `multiqc`), `post_call_qc_summary` (bcftools + multiqc, no gatk), and `annotate_variants_snpeff` (snpeff only).
 - [x] 2026-04-24 `README.md`: rewrote from 656 → 103 lines; now a stable landing page with 7 sections (summary, orientation table, scope snapshot, quick start, doc map, limits, repo layout); removed task/workflow enumeration, milestone history, and MCP parameter galleries.
 - [x] 2026-04-24 `SCIENTIST_GUIDE.md`: added "GATK Germline Variant Calling" section (~118 lines); covers prerequisites, 5-step runbook (prepare_reference → preprocess_sample → germline_short_variant_discovery → QC → annotation), key parameter notes (module_loads escape hatch, run_record_path, scontrol vs sacct distinction), further reading links.
 - [x] 2026-04-24 `scripts/rcc/README.md`: added four new sections — Container images (SIF table + module-first priority rule), module_loads (full-replacement semantics + escape hatch), GATK data staging sequence (5-step ordered guide), Slurm job lifecycle commands (scontrol vs sacct distinction).
