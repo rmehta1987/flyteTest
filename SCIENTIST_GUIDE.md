@@ -156,3 +156,122 @@ The old `prepare_run_recipe` → `approve_composed_recipe` → `run_local_recipe
 - Copy-paste a result path from one run into the next — use `$ref`.
 - Discover a BUSCO lineage download is missing only after a 2-hour Slurm wait — staging preflight catches it before submission.
 - Remember that BRAKER3 wants a BAM for RNA-seq evidence and a FASTA for protein evidence — bundles package these for you.
+
+---
+
+## GATK Germline Variant Calling
+
+End-to-end runbook for running the chr20 NA12878 germline variant calling
+smoke test on HPC. For the full biological inventory (21 tasks, 11 workflows),
+see `docs/gatk_pipeline_overview.md`.
+
+### Prerequisites
+
+Before starting, ensure the following are in place:
+
+- **Reference data and reads staged:**
+  `bash scripts/rcc/stage_gatk_local.sh` (downloads chr20 FASTA, known-sites VCF slices via tabix, generates synthetic reads with wgsim)
+- **Container images:**
+  - GATK: `bash scripts/rcc/pull_gatk_image.sh` OR `module load gatk/4.5.0`
+  - bwa-mem2: `bash scripts/rcc/build_bwa_mem2_sif.sh`
+- **Fixtures verified:** `bash scripts/rcc/check_gatk_fixtures.sh`
+- **MCP server running:** `PYTHONPATH=src python3 -m flytetest.server`
+- **Queue and account** obtained from your HPC admin (required for Slurm submission; never inferred)
+
+### Step 1 — Load the starter bundle
+
+```python
+bundle = load_bundle("variant_calling_germline_minimal")
+# Returns: bindings, inputs, runtime_images, tool_databases, fetch_hints
+```
+
+The bundle pre-fills paths for chr20 data and SIF locations. Inspect it before
+proceeding. If `available=False`, follow the `fetch_hints` in the reply.
+
+### Step 2 — Prepare reference (dry run first)
+
+```python
+recipe = run_workflow(
+    workflow_name="prepare_reference",
+    **bundle,
+    execution_profile="slurm",
+    resource_request={"queue": "<your-queue>", "account": "<your-account>"},
+    dry_run=True,
+)
+# Returns a DryRunReply with recipe_id, artifact_path, and staging_findings
+```
+
+Inspect the frozen recipe and staging preflight results:
+
+```python
+validate = validate_run_recipe(artifact_path=recipe["artifact_path"])
+```
+
+If validation passes (`validate["supported"] == True`), submit:
+
+```python
+result = run_slurm_recipe(artifact_path=recipe["artifact_path"])
+```
+
+### Step 3 — Monitor and proceed
+
+```python
+status = monitor_slurm_job(run_record_path=result["run_record_path"])
+```
+
+Note: `scontrol show job <id>` only works while the job is **running**.
+Use `sacct -j <id>` for completed or failed jobs:
+
+```bash
+sacct -j <job_id> --format=JobID,State,ExitCode,Elapsed,MaxRSS
+```
+
+If the job fails with OOM or TIMEOUT:
+
+```python
+retry = retry_slurm_job(
+    run_record_path=result["run_record_path"],
+    resource_overrides={"memory": "64Gi", "walltime": "04:00:00"},
+)
+```
+
+### Step 4 — Preprocess sample then call variants
+
+Repeat the `dry_run=True` → `validate_run_recipe` → `run_slurm_recipe` pattern for:
+
+```
+workflow_name="preprocess_sample"
+workflow_name="germline_short_variant_discovery"
+```
+
+Each workflow builds on outputs from the previous. The bundle provides sensible
+defaults; override `resource_request` as needed for your cluster.
+
+### Step 5 — Post-call QC and annotation (optional)
+
+```
+workflow_name="post_call_qc_summary"     # bcftools stats + MultiQC report
+workflow_name="annotate_variants_snpeff" # SnpEff functional annotation
+```
+
+For `post_call_qc_summary`, ensure `bcftools` and `multiqc` modules are loaded or
+their SIFs are provided. For `annotate_variants_snpeff`, ensure the SnpEff database
+is pre-staged: `bash scripts/rcc/download_snpeff_db.sh GRCh38.105`.
+
+### Key parameter notes
+
+- `workflow_name` — the registered workflow name (not `target`)
+- `execution_profile` — `"local"` for testing, `"slurm"` for cluster submission
+- `resource_request.queue` and `resource_request.account` — must come from the user; never inferred
+- `module_loads` — full replacement of defaults; use the escape hatch to extend:
+  ```python
+  from flytetest.spec_executor import DEFAULT_SLURM_MODULE_LOADS
+  resource_request = {"module_loads": [*DEFAULT_SLURM_MODULE_LOADS, "bcftools/1.20"], ...}
+  ```
+- `run_record_path` — durable path returned by `run_slurm_recipe`; required for `monitor_slurm_job` and `retry_slurm_job`
+
+### Further reading
+
+- `docs/gatk_pipeline_overview.md` — full biological inventory (21 tasks, 11 workflows)
+- `scripts/rcc/README.md` — SIF management, module configuration, and Slurm lifecycle commands
+- `AGENTS.md` — MCP/Slurm behavioural rules for coding agents

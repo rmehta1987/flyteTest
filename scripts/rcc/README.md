@@ -596,6 +596,93 @@ Image provenance:
 - `data/images/braker3.sif` was built from `teambraker/braker3:latest`
 - `data/images/busco_v6.0.0_cv1.sif` was built from `ezlabgva/busco:v6.0.0_cv1`
 
+## Container Images (SIFs)
+
+FLyteTest uses one SIF per tool family. Never bundle unrelated tools into a
+single image. The priority rule: prefer `module load <tool>/<version>` when the
+cluster provides the module; use a SIF as the fallback.
+
+| Tool | Script | Approx. size | When to use instead of module |
+|---|---|---|---|
+| GATK 4.x | `pull_gatk_image.sh` | ~8 GB | cluster has no `gatk` module |
+| bwa-mem2 + samtools | `build_bwa_mem2_sif.sh` | ~300 MB | always (not a standard module) |
+| bcftools | `pull_bcftools_sif.sh` | ~200 MB | cluster has no `bcftools` module |
+| MultiQC | `pull_multiqc_sif.sh` | ~400 MB | cluster has no `multiqc` module |
+| SnpEff | `pull_snpeff_sif.sh` | ~600 MB | always (not a standard module) |
+
+When both a module and a SIF are available, modules load faster and avoid SIF
+startup overhead — prefer them when the version is appropriate.
+
+## module_loads
+
+`module_loads` in `resource_request` is a **full replacement** of
+`DEFAULT_SLURM_MODULE_LOADS`. It does not merge or append; if you supply it,
+every module in the default list is dropped.
+
+To extend the defaults rather than replace them:
+
+```python
+from flytetest.spec_executor import DEFAULT_SLURM_MODULE_LOADS
+resource_request = {
+    "queue": "caslake",
+    "account": "rcc-staff",
+    "module_loads": [*DEFAULT_SLURM_MODULE_LOADS, "gatk/4.5.0"],
+}
+```
+
+`DEFAULT_SLURM_MODULE_LOADS` is the authoritative source — do not hardcode
+the version list in scripts or runbooks. Import it and extend.
+
+## GATK Data Staging Sequence
+
+Run these steps in order before submitting any GATK workflow:
+
+```bash
+# 1. Stage reference data + synthetic reads
+bash scripts/rcc/stage_gatk_local.sh
+
+# 2. Pull/build container images
+bash scripts/rcc/pull_gatk_image.sh          # or use: module load gatk/4.5.0
+bash scripts/rcc/build_bwa_mem2_sif.sh
+
+# 3. (optional) Pull tool SIFs if cluster modules are unavailable
+bash scripts/rcc/pull_bcftools_sif.sh
+bash scripts/rcc/pull_multiqc_sif.sh
+bash scripts/rcc/pull_snpeff_sif.sh
+
+# 4. Download SnpEff database if using annotation
+bash scripts/rcc/download_snpeff_db.sh GRCh38.105
+
+# 5. Verify all required files are present
+bash scripts/rcc/check_gatk_fixtures.sh
+```
+
+After staging succeeds, load the bundle and proceed with the MCP experiment
+loop — see `SCIENTIST_GUIDE.md` (GATK Germline Variant Calling section) for
+the step-by-step runbook.
+
+## Slurm Job Lifecycle Commands
+
+Use `squeue` and `scontrol` while a job is running; switch to `sacct` once it
+completes or fails.
+
+```bash
+# While the job is running:
+squeue -j <job_id>
+scontrol show job <job_id>     # returns nothing for completed jobs
+
+# After the job completes or fails:
+sacct -j <job_id> --format=JobID,State,ExitCode,Elapsed,MaxRSS
+```
+
+`scontrol` returns empty output for completed jobs — always use `sacct` for
+postmortem investigation. `sacct` works for running jobs too, but `scontrol`
+gives richer detail while the job is active.
+
+FLyteTest also exposes `monitor_slurm_job` via MCP, which wraps `sacct` and
+returns a structured JSON lifecycle summary. Use it when you want the durable
+run-record path automatically resolved rather than looking it up manually.
+
 ## Notes
 
 - The Slurm smoke job writes stdout and stderr under

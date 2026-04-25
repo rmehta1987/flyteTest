@@ -32,6 +32,12 @@ Entry template:
 
 ## Unreleased
 
+### Docs polish — README rewrite, SCIENTIST_GUIDE GATK runbook, rcc README (2026-04-24)
+
+- [x] 2026-04-24 `README.md`: rewrote from 656 → 103 lines; now a stable landing page with 7 sections (summary, orientation table, scope snapshot, quick start, doc map, limits, repo layout); removed task/workflow enumeration, milestone history, and MCP parameter galleries.
+- [x] 2026-04-24 `SCIENTIST_GUIDE.md`: added "GATK Germline Variant Calling" section (~118 lines); covers prerequisites, 5-step runbook (prepare_reference → preprocess_sample → germline_short_variant_discovery → QC → annotation), key parameter notes (module_loads escape hatch, run_record_path, scontrol vs sacct distinction), further reading links.
+- [x] 2026-04-24 `scripts/rcc/README.md`: added four new sections — Container images (SIF table + module-first priority rule), module_loads (full-replacement semantics + escape hatch), GATK data staging sequence (5-step ordered guide), Slurm job lifecycle commands (scontrol vs sacct distinction).
+
 ### MCP surface polish — runtime_images key, shared_fs_roots, dry_run staging (2026-04-24)
 
 - [x] 2026-04-24 `bundles.py`: renamed `"sif_path"` → `"gatk_sif"` in GATK bundle `runtime_images` so `load_bundle(**bundle)` spreads the GATK SIF to the correct task parameter without manual override; affects `variant_calling_germline_minimal` and `variant_calling_vqsr_chr20`.
