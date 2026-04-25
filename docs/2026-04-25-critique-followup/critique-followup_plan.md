@@ -1,0 +1,74 @@
+# Critique follow-up — milestone plan
+
+**Source review:** `CRITIQUE_REPORT.md` (repo root, branch `critique`).
+**Scope of this milestone:** the top-5 ranked recommendations from the
+synthesis section of the report. Findings 6–8 are tracked in `checklist.md`
+but are not part of this milestone's primary execution.
+
+## Goal
+
+Reduce surface area and onboarding friction without touching biology, the
+Slurm submission invariant, or `classify_slurm_failure` semantics. Every step
+in this plan is documentation-shaped or a localized rename / delete; none
+require changes to task or workflow modules under `src/flytetest/tasks/` or
+`src/flytetest/workflows/`.
+
+## Sequencing
+
+The steps are independent except for step 02, which assumes step 01 has
+chosen a winner between `prompt_and_run` and the experiment loop. Run them
+in order:
+
+1. **Step 01 — pick one entry point.** Decide whether `prompt_and_run` /
+   `plan_request` stay registered or whether the experiment loop is the only
+   start path. Based on usage telemetry or maintainer judgement; report
+   answer before proceeding. See `prompts/step_01_choose_entry_point.md`.
+
+2. **Step 02 — apply the entry-point decision.** Either un-register the
+   redundant tools (preferred default) or update AGENTS.md to remove the
+   experiment loop language. See `prompts/step_02_apply_entry_point.md`.
+
+3. **Step 03 — collapse duplicate `ReferenceGenome`.** Delete one of the
+   two definitions; update imports. See `prompts/step_03_dedupe_reference_genome.md`.
+
+4. **Step 04 — strip boilerplate test docstrings + retention-prune
+   `docs/archive/` and `CHANGELOG.md`.** Three small mechanical passes.
+   See `prompts/step_04_prune_docs_and_tests.md`.
+
+5. **Step 05 — scientist-onboarding glossary + end-to-end FASTQ walkthrough
+   in `SCIENTIST_GUIDE.md`.** No new files. See
+   `prompts/step_05_scientist_onboarding.md`.
+
+6. **Step 06 — `format_finding(...)` helper for `StagingFinding`.** Additive;
+   callers opt in. See `prompts/step_06_staging_finding_formatter.md`.
+
+## Out of scope
+
+- Refactoring `server.py` or `planning.py` into smaller modules.
+- Splitting `spec_executor.py`. The report explicitly recommends leaving it
+  alone (CRITIQUE_REPORT.md §4 "What I would NOT change").
+- Adding new MCP tools, bundles, or biology coverage.
+- Touching `classify_slurm_failure` or any frozen-recipe invariant.
+
+## Acceptance
+
+The milestone is done when:
+
+- One of `prompt_and_run` / `plan_request` is no longer in `MCP_TOOL_NAMES`,
+  *or* `AGENTS.md` no longer documents the experiment loop as the canonical
+  flow (whichever the maintainer chooses in step 01).
+- `rg 'class ReferenceGenome' src/flytetest/` returns one match.
+- `rg -c 'This test keeps the current contract explicit' tests/` returns
+  zero hits.
+- `docs/archive/` retention policy is documented and enforced.
+- `SCIENTIST_GUIDE.md` opens with a glossary block and a numbered first-run
+  walkthrough.
+- `staging.py` exports a `format_finding` (or equivalent) callable, with at
+  least one caller using it.
+- All 887 existing tests still pass.
+
+## Estimated effort
+
+~1 engineering day total, distributed across the six steps. The largest
+single time sink is step 04 (retention pruning), which is mostly mechanical
+file operations + git history checks.
