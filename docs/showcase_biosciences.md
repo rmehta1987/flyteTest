@@ -45,12 +45,15 @@ SnpEff annotation — is registered and ready. Describe what you want:
 # In an MCP-connected Claude session:
 
 bundle = load_bundle("variant_calling_germline_minimal")
-# Returns: reference paths, read paths, SIF locations, known-sites VCFs
+# Returns: bindings, inputs, runtime_images, tool_databases, fetch_hints
 # All pre-filled for the chr20 NA12878 smoke test
 
 recipe = run_workflow(
     workflow_name="germline_short_variant_discovery",
-    **bundle,
+    bindings=bundle["bindings"],
+    inputs=bundle["inputs"],
+    runtime_images=bundle["runtime_images"],
+    tool_databases=bundle["tool_databases"],
     execution_profile="slurm",
     resource_request={
         "queue": "caslake",
@@ -137,7 +140,9 @@ The chain of evidence is complete.
 
 ### 4. It enforces GATK Best Practices — not your memory of them
 
-The 21 registered GATK tasks span the full germline calling pipeline:
+21 registered GATK tool wrappers span the full germline calling pipeline (plus one
+pure-Python custom filter reference task, bringing the total variant-calling family
+to 22):
 
 | Stage | Tasks |
 |---|---|
@@ -149,14 +154,17 @@ The 21 registered GATK tasks span the full germline calling pipeline:
 | QC | `collect_wgs_metrics`, `bcftools_stats`, `multiqc_summarize` |
 | Annotation | `snpeff_annotate` |
 
-And 10 registered workflows that compose them into biologically ordered stages:
+And 11 registered workflows that compose them into biologically ordered stages:
 
 | Workflow | What it does |
 |---|---|
 | `prepare_reference` | dict + known-sites index + BWA-MEM2 index |
-| `preprocess_sample` | align → sort → dedup → BQSR |
+| `preprocess_sample` | align → sort → dedup → BQSR (from paired FASTQs) |
+| `preprocess_sample_from_ubam` | align → sort → dedup → BQSR (from uBAM) |
 | `germline_short_variant_discovery` | per-interval HaplotypeCaller → joint call |
+| `sequential_interval_haplotype_caller` | scatter HaplotypeCaller across intervals |
 | `genotype_refinement` | CGP posterior refinement |
+| `post_genotyping_refinement` | post-genotyping QC and filtration |
 | `small_cohort_filter` | VQSR or hard-filter for small cohorts |
 | `pre_call_coverage_qc` | WGS metrics before calling |
 | `post_call_qc_summary` | bcftools stats + MultiQC report |
@@ -217,7 +225,7 @@ same retry path. You wrote Python, not Nextflow DSL.
 ```python
 # What analyses are registered?
 entries = list_entries()
-# → 44 registered tasks and workflows across annotation and variant calling families
+# → 45 registered tasks and workflows across annotation and variant calling families
 
 # What starter kits exist?
 bundles = list_bundles(pipeline_family="variant_calling")
@@ -227,8 +235,8 @@ bundles = list_bundles(pipeline_family="variant_calling")
 # Load the germline kit
 bundle = load_bundle("variant_calling_germline_minimal")
 # → bindings: ReferenceGenome (chr20.fa), ReadPair (NA12878 reads)
-# → runtime_images: gatk_sif, bwa_sif
-# → fetch_hints if data not staged
+# → runtime_images: {gatk_sif: ..., bwa_sif: ...}
+# → fetch_hints if data not staged yet
 ```
 
 **What to say:** "This is the catalogue. Every entry is typed — not a string you hope
@@ -242,7 +250,10 @@ is correct, but a validated biological contract. If the data isn't staged, the
 ```python
 recipe = run_workflow(
     workflow_name="prepare_reference",
-    **bundle,
+    bindings=bundle["bindings"],
+    inputs=bundle["inputs"],
+    runtime_images=bundle["runtime_images"],
+    tool_databases=bundle["tool_databases"],
     execution_profile="slurm",
     resource_request={"queue": "caslake", "account": "rcc-staff",
                       "memory": "16Gi", "walltime": "01:00:00"},
@@ -373,8 +384,9 @@ git clone <repo> && cd flyteTest
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements-cluster.txt
 
-# 2. Stage the GATK chr20 smoke data (~2 GB)
+# 2. Stage reference data (~400 MB: chr20 FASTA + known-sites VCF slices + synthetic reads)
 bash scripts/rcc/stage_gatk_local.sh
+# Pull container images (GATK SIF ~8 GB; bwa-mem2 SIF ~300 MB)
 bash scripts/rcc/pull_gatk_image.sh          # or: module load gatk/4.5.0
 bash scripts/rcc/build_bwa_mem2_sif.sh
 bash scripts/rcc/check_gatk_fixtures.sh      # all green?
