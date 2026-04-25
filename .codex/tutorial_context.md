@@ -85,7 +85,7 @@ Use this section when you want a copy-paste starting point for the
 `bindings={...}` argument to `run_task` / `run_workflow`.  One entry per
 supported planner type.  Each template shows the raw-path form and
 points to the `$manifest` and `$ref` alternatives documented in
-[docs/mcp_showcase.md → Binding Grammar](mcp_showcase.md#binding-grammar).
+[SCIENTIST_GUIDE.md](../../SCIENTIST_GUIDE.md).
 
 All three forms are accepted anywhere a binding value appears:
 
@@ -950,7 +950,7 @@ Validation:
 
 Running stages on the RCC cluster goes through the MCP Slurm path. The
 full lifecycle — prepare, submit, monitor, retry, cancel — is documented in
-`docs/mcp_showcase.md` under **Validated Slurm Walkthrough**.
+`SCIENTIST_GUIDE.md` under **Step 4 — Check Slurm submissions before they burn queue time**.
 
 Key points for tutorial-oriented work:
 

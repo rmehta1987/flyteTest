@@ -357,6 +357,8 @@ class ServerTests(TestCase):
             "pre_call_coverage_qc",
             "post_call_qc_summary",
             "annotate_variants_snpeff",
+            # On-ramp reference task
+            "my_custom_filter",
         )
         self.assertEqual(set(SUPPORTED_TARGET_NAMES), set(expected))
 
