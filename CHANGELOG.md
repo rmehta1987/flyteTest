@@ -32,6 +32,11 @@ Entry template:
 
 ## Unreleased
 
+### Critique follow-up — collapse MCP entry points (2026-04-26)
+
+- [x] 2026-04-26 Step 01 decision: keep the experiment loop (`list_entries → list_bundles → load_bundle → run_task / run_workflow`) as the canonical scientist entry point; un-register `prompt_and_run` and `plan_request` from the MCP surface. Decision document in `docs/2026-04-25-critique-followup/critique-followup_plan.md`.
+- [x] 2026-04-26 Step 02: removed `"plan_request"` and `PRIMARY_TOOL_NAME` from `LIFECYCLE_TOOLS` in `src/flytetest/mcp_contract.py`; removed the corresponding `TOOL_DESCRIPTIONS` entries; deleted the two `mcp.tool(...)` registration lines in `src/flytetest/server.py:create_mcp_server`. Python definitions for `plan_request` and `prompt_and_run` retained for internal callers and existing tests; `PRIMARY_TOOL_NAME` constant retained because four MCP resource functions still surface it as `"primary_tool"`. 902 tests pass.
+
 ### On-ramp implementation — run_tool extension + my_custom_filter (2026-04-24)
 
 - [x] 2026-04-24 `config.py`: extended `run_tool` with `python_callable` + `callable_kwargs` keyword-only parameters; Python-callable mode invokes a function in-process with no subprocess overhead; native executable mode (Rscript, compiled C++, system binary) now explicitly documented alongside the existing SIF/container path; all three modes tested in `tests/test_run_tool.py` (10 tests).

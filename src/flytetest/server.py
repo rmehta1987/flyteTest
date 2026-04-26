@@ -4415,7 +4415,6 @@ def create_mcp_server(fastmcp_cls: Any | None = None) -> Any:
     mcp = fastmcp(SHOWCASE_SERVER_NAME)
 
     mcp.tool(description=TOOL_DESCRIPTIONS["list_entries"])(list_entries)
-    mcp.tool(description=TOOL_DESCRIPTIONS["plan_request"])(plan_request)
     mcp.tool(description=TOOL_DESCRIPTIONS[PREPARE_RECIPE_TOOL_NAME])(prepare_run_recipe)
     mcp.tool(description=TOOL_DESCRIPTIONS[RUN_RECIPE_TOOL_NAME])(run_local_recipe)
     mcp.tool(description=TOOL_DESCRIPTIONS[RUN_SLURM_RECIPE_TOOL_NAME])(run_slurm_recipe)
@@ -4425,7 +4424,6 @@ def create_mcp_server(fastmcp_cls: Any | None = None) -> Any:
     mcp.tool(description=TOOL_DESCRIPTIONS[RETRY_SLURM_JOB_TOOL_NAME])(retry_slurm_job)
     mcp.tool(description=TOOL_DESCRIPTIONS[CANCEL_SLURM_JOB_TOOL_NAME])(cancel_slurm_job)
     mcp.tool(description=TOOL_DESCRIPTIONS[APPROVE_COMPOSED_RECIPE_TOOL_NAME])(approve_composed_recipe)
-    mcp.tool(description=TOOL_DESCRIPTIONS[PRIMARY_TOOL_NAME])(prompt_and_run)
     mcp.tool(description=TOOL_DESCRIPTIONS[LIST_AVAILABLE_BINDINGS_TOOL_NAME])(list_available_bindings)
     mcp.tool(description=TOOL_DESCRIPTIONS[LIST_BUNDLES_TOOL_NAME])(list_bundles)
     mcp.tool(description=TOOL_DESCRIPTIONS[LOAD_BUNDLE_TOOL_NAME])(load_bundle)

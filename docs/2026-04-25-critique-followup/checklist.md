@@ -9,8 +9,11 @@ Source: `CRITIQUE_REPORT.md`, ranked synthesis.
   load_bundle → run_task / run_workflow` loop. [ENG-01]
   (2026-04-26: experiment loop wins; un-register `prompt_and_run` and
   `plan_request`. Decision recorded in `critique-followup_plan.md`.)
-- [ ] **Step 02 — apply the decision.** Un-register the loser from
+- [x] **Step 02 — apply the decision.** Un-register the loser from
   `MCP_TOOL_NAMES` *or* edit AGENTS.md to drop the loop language. [ENG-01]
+  (2026-04-26: removed `plan_request` and `PRIMARY_TOOL_NAME` from
+  `LIFECYCLE_TOOLS`; deleted both `mcp.tool` registrations in
+  `server.py:create_mcp_server`; Python definitions retained.)
 - [ ] **Step 03 — collapse duplicate `ReferenceGenome`.** Delete one
   definition (`src/flytetest/planner_types.py:42` *or*
   `src/flytetest/types/assets.py:49`); update imports. [ENG-02]
