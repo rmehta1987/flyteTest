@@ -72,3 +72,33 @@ The milestone is done when:
 ~1 engineering day total, distributed across the six steps. The largest
 single time sink is step 04 (retention pruning), which is mostly mechanical
 file operations + git history checks.
+
+## Step 01 decision (recorded 2026-04-26)
+
+**Canonical entry point: the experiment loop**
+(`list_entries → list_bundles → load_bundle → run_task / run_workflow`).
+
+**Loser: `prompt_and_run` and `plan_request`** — un-register from
+`MCP_TOOL_NAMES` (drop from `LIFECYCLE_TOOLS` in `mcp_contract.py:87–100`
+and the `mcp.tool` registrations in `server.py:4417–4438`). Keep the
+Python function definitions so the ~36 existing tests and any internal
+callers continue to work; only the MCP surface registration goes away.
+Also drop `PRIMARY_TOOL_NAME` since nothing should claim primacy on the
+inspect-before-execute lane.
+
+**Evidence:**
+- `AGENTS.md:138` documents only the experiment loop as the scientist's
+  flow. `SCIENTIST_GUIDE.md` and `README.md` reference neither
+  `prompt_and_run` nor `plan_request` (zero matches).
+- `mcp_contract.py:69–75` already groups the loop tools under a dedicated
+  `EXPERIMENT_LOOP_TOOLS` tuple with a docstring describing it as the
+  scientist's path.
+- `prompts/step_02_apply_entry_point.md:9` labels "drop `prompt_and_run` /
+  `plan_request`" as the **default case** — the plan author already
+  anticipated this outcome.
+- No telemetry available; absence from all user-facing docs is the
+  best available proxy that no external client has wired into them.
+
+**Risk acknowledged:** if a script or external client is calling
+`prompt_and_run` over MCP, it will get an unknown-tool error after step
+02. Reversible by re-adding to the tuple.

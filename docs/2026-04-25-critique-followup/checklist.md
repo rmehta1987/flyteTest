@@ -4,9 +4,11 @@ Source: `CRITIQUE_REPORT.md`, ranked synthesis.
 
 ## Primary milestone (this folder's plan)
 
-- [ ] **Step 01 — choose entry point.** Decide between `prompt_and_run` /
+- [x] **Step 01 — choose entry point.** Decide between `prompt_and_run` /
   `plan_request` and the documented `list_entries → list_bundles →
   load_bundle → run_task / run_workflow` loop. [ENG-01]
+  (2026-04-26: experiment loop wins; un-register `prompt_and_run` and
+  `plan_request`. Decision recorded in `critique-followup_plan.md`.)
 - [ ] **Step 02 — apply the decision.** Un-register the loser from
   `MCP_TOOL_NAMES` *or* edit AGENTS.md to drop the loop language. [ENG-01]
 - [ ] **Step 03 — collapse duplicate `ReferenceGenome`.** Delete one
