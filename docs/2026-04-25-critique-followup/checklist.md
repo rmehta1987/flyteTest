@@ -45,8 +45,10 @@ Source: `CRITIQUE_REPORT.md`, ranked synthesis.
   (2026-04-26: 7-call walkthrough inserted between experiment-loop
   overview and prior-run reuse; each step cites failure modes;
   preflight step cites staging.py:check_offline_staging.)
-- [ ] **Step 06 — `format_finding(...)` helper in
+- [x] **Step 06 — `format_finding(...)` helper in
   `src/flytetest/staging.py`.** Additive; one caller updated. [SCI-04]
+  (2026-04-26: helper added; `validate_run_recipe` now adds a `message`
+  key to each staging finding dict; 3 new unit tests pass; total 905.)
 
 ## Secondary (track but not this milestone)
 

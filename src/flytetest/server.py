@@ -143,7 +143,7 @@ from flytetest.spec_executor import (
     load_local_run_record,
     load_slurm_run_record,
 )
-from flytetest.staging import check_offline_staging
+from flytetest.staging import StagingFinding, check_offline_staging, format_finding
 from flytetest.specs import ResourceSpec, RuntimeImageSpec
 
 
@@ -2960,7 +2960,13 @@ def validate_run_recipe(
             roots,
             execution_profile=execution_profile,
         ):
-            findings.append({"kind": sf.kind, "key": sf.key, "path": sf.path, "reason": sf.reason})
+            findings.append({
+                "kind": sf.kind,
+                "key": sf.key,
+                "path": sf.path,
+                "reason": sf.reason,
+                "message": format_finding(sf),
+            })
 
     recipe_id = Path(artifact_path).stem
     return asdict(ValidateRecipeReply(

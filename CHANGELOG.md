@@ -32,6 +32,10 @@ Entry template:
 
 ## Unreleased
 
+### Critique follow-up — format_finding helper for staging preflight (2026-04-26)
+
+- [x] 2026-04-26 Step 06: added `format_finding(finding: StagingFinding) -> str` to `src/flytetest/staging.py`. Renders one actionable line per finding ("Container 'X' at path: not found." / "Tool database 'X' at path: present but not readable by the running user." / "Input path 'X' at path: not on the compute-visible filesystem; restage to a shared mount (e.g. /project or /scratch).") with kind labels mapped to human-readable forms. Wired into `validate_run_recipe` in `server.py`: each staging-derived finding dict now carries a `message` key alongside the existing `kind`/`key`/`path`/`reason` fields. Three new unit tests in `tests/test_staging.py` cover all three reason values. 905 tests pass (was 902).
+
 ### Critique follow-up — first-run FASTQ walkthrough (2026-04-26)
 
 - [x] 2026-04-26 Step 05b: added a "First run, end-to-end" section to `SCIENTIST_GUIDE.md` between the experiment-loop overview and the prior-run reuse section. Walks the seven calls — `list_entries → list_bundles → load_bundle → run_workflow(dry_run=True) → validate_run_recipe → run_slurm_recipe → monitor_slurm_job` — using `variant_calling_germline_minimal` (NA12878 chr20) as the worked example. Each step has 2-3 lines on what the scientist sees and what could go wrong; preflight-failure step cites `staging.py:check_offline_staging` and the `StagingFinding` kinds.

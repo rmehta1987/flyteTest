@@ -23,6 +23,31 @@ class StagingFinding:
     reason: str  # "not_found" | "not_readable" | "not_on_shared_fs"
 
 
+_KIND_LABELS = {
+    "container": "Container",
+    "tool_database": "Tool database",
+    "input_path": "Input path",
+}
+
+
+def format_finding(finding: StagingFinding) -> str:
+    """Render a StagingFinding as one actionable line for a human reader."""
+    kind_label = _KIND_LABELS.get(
+        finding.kind, finding.kind.replace("_", " ").capitalize()
+    )
+    head = f"{kind_label} '{finding.key}' at {finding.path}"
+    if finding.reason == "not_found":
+        return f"{head}: not found."
+    if finding.reason == "not_readable":
+        return f"{head}: present but not readable by the running user."
+    if finding.reason == "not_on_shared_fs":
+        return (
+            f"{head}: not on the compute-visible filesystem; restage to a"
+            " shared mount (e.g. /project or /scratch)."
+        )
+    return f"{head}: {finding.reason}."
+
+
 def check_offline_staging(
     artifact,
     shared_fs_roots: tuple[Path, ...],

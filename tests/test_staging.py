@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import pytest
 
-from flytetest.staging import StagingFinding, _check_path, check_offline_staging
+from flytetest.staging import StagingFinding, _check_path, check_offline_staging, format_finding
 
 
 # ---------------------------------------------------------------------------
@@ -244,3 +244,44 @@ class TestCheckPath:
         f.write_text("X")
         result = _check_path("input_path", "key", str(f), (tmp_path,), "slurm")
         assert result == []
+
+
+class TestFormatFinding:
+    def test_not_found_message_includes_path_and_kind(self):
+        finding = StagingFinding(
+            kind="container",
+            key="braker_sif",
+            path="data/images/braker3.sif",
+            reason="not_found",
+        )
+        message = format_finding(finding)
+        assert message
+        assert "data/images/braker3.sif" in message
+        assert "Container" in message
+        assert "not found" in message
+
+    def test_not_readable_message_includes_path_and_kind(self):
+        finding = StagingFinding(
+            kind="tool_database",
+            key="busco_lineage_dir",
+            path="/scratch/busco/lineages",
+            reason="not_readable",
+        )
+        message = format_finding(finding)
+        assert message
+        assert "/scratch/busco/lineages" in message
+        assert "Tool database" in message
+        assert "not readable" in message
+
+    def test_not_on_shared_fs_message_includes_path_and_kind(self):
+        finding = StagingFinding(
+            kind="input_path",
+            key="ReferenceGenome.fasta_path",
+            path="/tmp/ref.fa",
+            reason="not_on_shared_fs",
+        )
+        message = format_finding(finding)
+        assert message
+        assert "/tmp/ref.fa" in message
+        assert "Input path" in message
+        assert "shared" in message
