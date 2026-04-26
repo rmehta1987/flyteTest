@@ -24,9 +24,12 @@ Source: `CRITIQUE_REPORT.md`, ranked synthesis.
   the documented behavior against regression." [ENG-05]
   (2026-04-26: 230 occurrences removed across 25 test files; class-level
   "This test class keeps..." variant out of scope.)
-- [ ] **Step 04b — retention-prune `docs/archive/`.** Add
+- [x] **Step 04b — retention-prune `docs/archive/`.** Add
   `docs/archive/README.md` retention paragraph; delete entries older than
   the cutoff (60 days suggested). [ENG-04]
+  (2026-04-26: README rewritten with 60-day policy + prune workflow; no
+  deletions — oldest entry is 20 days old; file count 50 already <80
+  target; first eligible pruning date is 2026-06-05.)
 - [ ] **Step 04c — split `CHANGELOG.md`.** Move entries older than the
   cutoff into `CHANGELOG.archive.md`; keep the current file under ~500
   lines. [ENG-09]

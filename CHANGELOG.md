@@ -32,6 +32,10 @@ Entry template:
 
 ## Unreleased
 
+### Critique follow-up — retention policy for docs/archive (2026-04-26)
+
+- [x] 2026-04-26 Step 04b: rewrote `docs/archive/README.md` to document a 60-day retention window (anything older recoverable from git tags / commit history). No deletions were made — the oldest archive entry is 2026-04-06 (20 days old), so nothing has crossed the cutoff yet. First eligible pruning date is 2026-06-05. Acceptance: file count is 50 (already under the <80 target); README documents the policy and the prune workflow.
+
 ### Critique follow-up — strip boilerplate test docstrings (2026-04-26)
 
 - [x] 2026-04-26 Step 04a: removed 230 occurrences of the boilerplate sentence "This test keeps the current contract explicit and guards the documented behavior against regression." across 25 test files. Each occurrence was the trailing line of a docstring; the test-specific summary line was preserved. Test counts unchanged (902 passed). The class-level variant ("This test class keeps...") is intentionally outside the acceptance criterion of step 04a and was not touched.
