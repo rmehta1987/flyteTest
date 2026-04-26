@@ -32,6 +32,10 @@ Entry template:
 
 ## Unreleased
 
+### Critique follow-up — first-run FASTQ walkthrough (2026-04-26)
+
+- [x] 2026-04-26 Step 05b: added a "First run, end-to-end" section to `SCIENTIST_GUIDE.md` between the experiment-loop overview and the prior-run reuse section. Walks the seven calls — `list_entries → list_bundles → load_bundle → run_workflow(dry_run=True) → validate_run_recipe → run_slurm_recipe → monitor_slurm_job` — using `variant_calling_germline_minimal` (NA12878 chr20) as the worked example. Each step has 2-3 lines on what the scientist sees and what could go wrong; preflight-failure step cites `staging.py:check_offline_staging` and the `StagingFinding` kinds.
+
 ### Critique follow-up — scientist glossary block (2026-04-26)
 
 - [x] 2026-04-26 Step 05a: added a five-term `## Glossary` block at the top of `SCIENTIST_GUIDE.md`, immediately after the title and before TL;DR. Definitions cover recipe, bundle, manifest, run record, and execution profile — the five terms that appear most often in tool descriptions and decline messages but were never defined in user-facing docs. One line per definition; no nesting; no emoji.

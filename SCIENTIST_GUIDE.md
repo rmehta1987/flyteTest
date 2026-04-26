@@ -112,6 +112,80 @@ validate_run_recipe(artifact_path=".runtime/specs/<recipe_id>.json",
                     shared_fs_roots=["/project/pi-account/", "/scratch/myuser/"])
 ```
 
+## First run, end-to-end
+
+Worked example: NA12878 chr20 germline variant calling using the
+`variant_calling_germline_minimal` bundle. This is the "I have just
+checked out the repo, now what?" path — seven calls, no prior context
+needed.
+
+Prerequisite: stage the chr20 fixtures and SIFs once with
+`bash scripts/rcc/stage_gatk_local.sh`,
+`bash scripts/rcc/pull_gatk_image.sh`, and
+`bash scripts/rcc/build_bwa_mem2_sif.sh`. The bundle's `fetch_hints`
+field will repeat these instructions if anything is missing.
+
+1. `list_entries(category="workflow", pipeline_family="variant_calling")`
+
+   Returns the 11 registered variant-calling workflows with their
+   accepted planner types and biological stage. Read the
+   `germline_short_variant_discovery` row — that's the entry the
+   bundle targets. If the list is empty the registry didn't import
+   cleanly; check `PYTHONPATH=src` and that `flytetest` is on the path.
+
+2. `list_bundles(applies_to="germline_short_variant_discovery")`
+
+   Returns the bundles that compose the inputs for that workflow.
+   Each row carries an `available` boolean and a `reasons` list, so
+   you can see which fixtures are present on this clone before you
+   commit to running anything. Unavailable bundles ship with
+   `fetch_hints` pointing at the staging scripts.
+
+3. `load_bundle("variant_calling_germline_minimal")`
+
+   Hands you the typed bindings, scalar inputs, runtime images, and
+   tool databases as one dict. Spread it directly into
+   `run_workflow(**bundle, ...)`. If the bundle is unavailable you
+   get a structured `LoadBundleDecline` instead of a KeyError —
+   inspect `next_steps` to see what fixture is missing.
+
+4. `run_workflow(**bundle, workflow_name="germline_short_variant_discovery", execution_profile="slurm", resource_request={"queue": "<your-queue>", "account": "<your-account>"}, dry_run=True)`
+
+   Freezes a `WorkflowSpec` recipe to disk and returns its `recipe_id`
+   without submitting. The reply also carries `staging_findings` from
+   the preflight check so you can fix unreachable images / DBs before
+   the queue ever sees the job. Save the `recipe_id` for the next two
+   calls.
+
+5. `validate_run_recipe(recipe_id=...)`
+
+   Re-runs the staging preflight against the frozen recipe (idempotent;
+   never submits). Findings come back keyed by kind: `binding`,
+   `container`, `tool_database`, `shared_fs`. Resolve each one before
+   moving on — they correspond directly to `StagingFinding` records
+   produced by `src/flytetest/staging.py:check_offline_staging`.
+
+6. `run_slurm_recipe(recipe_id=..., partition=..., account=...)`
+
+   Submits the frozen recipe via `sbatch`. Returns the run record path
+   and the assigned `job_id`. Note: `partition` and `account` must come
+   from you — the server will not invent them. If submission fails the
+   reply carries a `PlanDecline` rather than a Slurm error string.
+
+7. `monitor_slurm_job(job_id=...)`
+
+   Reconciles the durable run record against `sacct` / `scontrol` and
+   returns lifecycle state, exit code, and bounded stdout/stderr tails.
+   For long-running jobs you can also use `wait_for_slurm_job(job_id,
+   timeout_s=...)` to block until terminal state. On
+   `OUT_OF_MEMORY` / `TIMEOUT`, retry with
+   `retry_slurm_job(run_record_path=..., resource_overrides={...})`
+   without preparing a new recipe.
+
+After step 7 finishes successfully, inspect the result manifest with
+`inspect_run_result(run_record_path=...)` to see where the joint-called
+VCF and per-stage manifests landed.
+
 ## Reusing prior run outputs
 
 The single best ergonomic improvement for iterative analyses is the `$ref` binding form. Instead of copy-pasting the GFF path from your last BRAKER3 run into your next BUSCO run, you reference it by `recipe_id`:

@@ -39,9 +39,12 @@ Source: `CRITIQUE_REPORT.md`, ranked synthesis.
   one-line definitions: recipe, bundle, manifest, run record, execution
   profile. [SCI-01]
   (2026-04-26: glossary inserted between title and TL;DR.)
-- [ ] **Step 05b — numbered first-run FASTQ walkthrough in
+- [x] **Step 05b — numbered first-run FASTQ walkthrough in
   `SCIENTIST_GUIDE.md`.** Use `variant_calling_germline_minimal` as the
   example bundle. [SCI-05]
+  (2026-04-26: 7-call walkthrough inserted between experiment-loop
+  overview and prior-run reuse; each step cites failure modes;
+  preflight step cites staging.py:check_offline_staging.)
 - [ ] **Step 06 — `format_finding(...)` helper in
   `src/flytetest/staging.py`.** Additive; one caller updated. [SCI-04]
 
