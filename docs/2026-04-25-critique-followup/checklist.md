@@ -35,9 +35,10 @@ Source: `CRITIQUE_REPORT.md`, ranked synthesis.
   lines. [ENG-09]
   (2026-04-26: 1932 → ~530 lines; cut between GATK Milestone A and
   older Track A / MCP Reshape blocks; archive file 1409 lines.)
-- [ ] **Step 05a — glossary block at top of `SCIENTIST_GUIDE.md`.** Five
+- [x] **Step 05a — glossary block at top of `SCIENTIST_GUIDE.md`.** Five
   one-line definitions: recipe, bundle, manifest, run record, execution
   profile. [SCI-01]
+  (2026-04-26: glossary inserted between title and TL;DR.)
 - [ ] **Step 05b — numbered first-run FASTQ walkthrough in
   `SCIENTIST_GUIDE.md`.** Use `variant_calling_germline_minimal` as the
   example bundle. [SCI-05]

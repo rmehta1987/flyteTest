@@ -2,6 +2,14 @@
 
 A practical guide for biologists driving FlyteTest through an MCP-aware client (Claude Code, an IDE assistant, etc.). This document describes the scientist-facing experience after the MCP surface reshape. For the implementation-level plan, see `IMPLEMENTATION_PLAN.md`.
 
+## Glossary
+
+- **Recipe** — a frozen, JSON-serializable plan describing exactly what will run. Once a recipe exists, nothing about the run is invented at submit time.
+- **Bundle** — a curated set of inputs (reference, evidence, intervals, containers) that turns a registered task or workflow into a one-call starter kit. See `list_bundles`.
+- **Manifest** — the per-stage record of inputs, outputs, and tool versions written by every task. Provenance lives here.
+- **Run record** — the durable record of a Slurm submission: job ID, stdout / stderr paths, lifecycle state, exit code.
+- **Execution profile** — `local` or `slurm`. Picks the executor and governs whether `check_offline_staging` enforces shared-filesystem reachability.
+
 ## TL;DR
 
 - **Four-step experiment loop replaces the old "prepare → approve → run" dance.** You browse, pick a starter kit (or supply your own inputs), and run.

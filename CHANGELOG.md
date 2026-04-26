@@ -32,6 +32,10 @@ Entry template:
 
 ## Unreleased
 
+### Critique follow-up — scientist glossary block (2026-04-26)
+
+- [x] 2026-04-26 Step 05a: added a five-term `## Glossary` block at the top of `SCIENTIST_GUIDE.md`, immediately after the title and before TL;DR. Definitions cover recipe, bundle, manifest, run record, and execution profile — the five terms that appear most often in tool descriptions and decline messages but were never defined in user-facing docs. One line per definition; no nesting; no emoji.
+
 ### Critique follow-up — split CHANGELOG.md (2026-04-26)
 
 - [x] 2026-04-26 Step 04c: split `CHANGELOG.md` (was 1932 lines) into a live file (~530 lines) plus `CHANGELOG.archive.md` (1409 lines). The split point sits between the GATK Milestone A block (kept) and the older Track A / MCP Reshape work (moved). Strict 90-day cutoff didn't apply (project history is only ~20 days deep), so the cut was chosen by the natural milestone boundary that satisfies the <600-line acceptance target. Added a one-line pointer at the bottom of `CHANGELOG.md`.
