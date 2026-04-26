@@ -27,7 +27,7 @@ from flytetest.types.assets import (
     ProteinEvidenceResultBundle,
     ReadPair,
 )
-from flytetest.types.assets import ReferenceGenome as AssetReferenceGenome
+from flytetest.planner_types import ReferenceGenome as AssetReferenceGenome
 
 
 def _manifest_data(source: Path | Mapping[str, Any]) -> tuple[dict[str, Any], Path | None]:

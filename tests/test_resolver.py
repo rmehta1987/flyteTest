@@ -26,7 +26,7 @@ from flytetest.planner_types import ProteinEvidenceSet, QualityAssessmentTarget,
 from flytetest.resolver import LocalManifestAssetResolver, _materialize_bindings
 from flytetest.spec_artifacts import DURABLE_ASSET_INDEX_SCHEMA_VERSION, DurableAssetRef
 from flytetest.types.assets import AbInitioResultBundle, AssetToolProvenance, ProteinEvidenceResultBundle, ProteinReferenceDatasetAsset
-from flytetest.types.assets import ReferenceGenome as AssetReferenceGenome
+from flytetest.planner_types import ReferenceGenome as AssetReferenceGenome
 
 
 def _write_transcript_evidence_manifest(result_dir: Path) -> Path:

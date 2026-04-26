@@ -14,9 +14,11 @@ Source: `CRITIQUE_REPORT.md`, ranked synthesis.
   (2026-04-26: removed `plan_request` and `PRIMARY_TOOL_NAME` from
   `LIFECYCLE_TOOLS`; deleted both `mcp.tool` registrations in
   `server.py:create_mcp_server`; Python definitions retained.)
-- [ ] **Step 03 — collapse duplicate `ReferenceGenome`.** Delete one
+- [x] **Step 03 — collapse duplicate `ReferenceGenome`.** Delete one
   definition (`src/flytetest/planner_types.py:42` *or*
   `src/flytetest/types/assets.py:49`); update imports. [ENG-02]
+  (2026-04-26: kept `planner_types` version; assets version was a
+  strict subset; updated 5 import sites + 1 serialization snapshot.)
 - [ ] **Step 04a — strip boilerplate test docstrings.** Delete every
   occurrence of "This test keeps the current contract explicit and guards
   the documented behavior against regression." [ENG-05]

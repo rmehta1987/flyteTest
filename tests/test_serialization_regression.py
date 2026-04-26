@@ -26,13 +26,13 @@ from flytetest.specs import (
     TaskSpec,
     TypedFieldSpec,
 )
+from flytetest.planner_types import ReferenceGenome as AssetReferenceGenome
 from flytetest.types.assets import (
     AssetToolProvenance,
     Braker3InputBundleAsset,
     Braker3NormalizedGff3Asset,
     Braker3RawRunResultAsset,
     Braker3ResultBundle,
-    ReferenceGenome as AssetReferenceGenome,
 )
 
 
@@ -403,6 +403,9 @@ class TestAssetLayerRegression(unittest.TestCase):
                 "taxonomy_id": None,
                 "softmasked_fasta_path": None,
                 "annotation_gff3_path": None,
+                "source_result_dir": None,
+                "source_manifest_path": None,
+                "notes": [],
             },
             "input_bundle": {
                 "staged_dir": "/fixtures/braker3_results/staged_inputs",

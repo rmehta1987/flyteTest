@@ -23,6 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from flytetest.planner_types import ReferenceGenome
 from flytetest.serialization import SerializableMixin, deserialize_value_coercing, serialize_value_full
 
 
@@ -43,24 +44,6 @@ class AssetToolProvenance(ManifestSerializable):
     legacy_asset_name: str | None = None
     source_manifest_key: str | None = None
     notes: tuple[str, ...] = field(default_factory=tuple)
-
-
-@dataclass(frozen=True, slots=True)
-class ReferenceGenome:
-    """Local reference genome asset.
-
-    Future Flyte mapping:
-    - `fasta_path` -> `flyte.io.File`
-    - `softmasked_fasta_path` -> optional `flyte.io.File`
-    - `annotation_gff3_path` -> optional `flyte.io.File`
-"""
-
-    fasta_path: Path
-    organism_name: str | None = None
-    assembly_name: str | None = None
-    taxonomy_id: int | None = None
-    softmasked_fasta_path: Path | None = None
-    annotation_gff3_path: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)

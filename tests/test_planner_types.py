@@ -52,7 +52,7 @@ from flytetest.types.assets import (
     RnaSeqAlignmentResult,
     TrinityGenomeGuidedAssemblyResult,
 )
-from flytetest.types.assets import ReferenceGenome as AssetReferenceGenome
+from flytetest.planner_types import ReferenceGenome as AssetReferenceGenome
 
 
 class PlannerTypeTests(TestCase):

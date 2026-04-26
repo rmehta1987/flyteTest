@@ -32,6 +32,10 @@ Entry template:
 
 ## Unreleased
 
+### Critique follow-up — dedupe ReferenceGenome (2026-04-26)
+
+- [x] 2026-04-26 Step 03: collapsed two `ReferenceGenome` definitions into one. Kept the `planner_types.py` version (carries `PlannerSerializable` mixin); deleted the plain dataclass from `types/assets.py`. The asset version was a strict subset, so consolidation just adds 3 optional fields (`source_result_dir`, `source_manifest_path`, `notes`) to consumers. Updated 5 import sites: `tests/test_resolver.py`, `tests/test_planner_types.py`, `tests/test_serialization_regression.py`, `src/flytetest/planner_adapters.py`, `src/flytetest/types/__init__.py`. Added a `from flytetest.planner_types import ReferenceGenome` to `types/assets.py` for the 4 forward-reference annotations that still mention `ReferenceGenome` as a field type. Updated one snapshot in `test_braker3_bundle_serialize_exact_shape` to reflect the 3 new fields. 902 tests pass.
+
 ### Critique follow-up — collapse MCP entry points (2026-04-26)
 
 - [x] 2026-04-26 Step 01 decision: keep the experiment loop (`list_entries → list_bundles → load_bundle → run_task / run_workflow`) as the canonical scientist entry point; un-register `prompt_and_run` and `plan_request` from the MCP surface. Decision document in `docs/2026-04-25-critique-followup/critique-followup_plan.md`.
