@@ -70,8 +70,6 @@ class TranscriptContractTests(TestCase):
 
     def test_trinity_denovo_assemble_uses_single_sample_paired_end_shape(self) -> None:
         """Keep the de novo Trinity task explicit and deterministic.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -111,8 +109,6 @@ class TranscriptContractTests(TestCase):
 
     def test_stringtie_assemble_uses_note_backed_flags(self) -> None:
         """Keep the exposed StringTie command aligned with the StringTie task reference.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -150,8 +146,6 @@ class TranscriptContractTests(TestCase):
 
     def test_collect_transcript_evidence_results_marks_bundle_as_pasa_ready(self) -> None:
         """Mark the collected transcript bundle as upstream-complete for PASA.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -221,8 +215,6 @@ class TranscriptContractTests(TestCase):
 
     def test_pasa_transcript_alignment_uses_internal_denovo_trinity_from_bundle(self) -> None:
         """Resolve the de novo Trinity FASTA from the transcript bundle instead of an external path.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

@@ -32,8 +32,6 @@ class ManifestEnvelopeTests(TestCase):
 
     def test_build_manifest_envelope_keeps_common_fields_in_place(self) -> None:
         """Build the shared envelope without forcing task-specific schema changes.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         manifest = build_manifest_envelope(
             stage="example_stage",
@@ -51,8 +49,6 @@ class ManifestEnvelopeTests(TestCase):
 
     def test_build_manifest_envelope_can_include_optional_reference_fields(self) -> None:
         """Record optional code and tool references without making them mandatory.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         manifest = build_manifest_envelope(
             stage="example_stage",

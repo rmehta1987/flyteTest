@@ -187,8 +187,6 @@ class AgatTaskTests(TestCase):
 
     def test_agat_statistics_runs_the_statistics_command_with_optional_fasta(self) -> None:
         """Keep the AGAT command and output collection aligned with the AGAT task ref.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -252,8 +250,6 @@ class AgatTaskTests(TestCase):
 
     def test_agat_convert_sp_gxf2gxf_runs_the_conversion_command(self) -> None:
         """Keep the AGAT conversion command and output collection aligned with the AGAT task ref.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -312,8 +308,6 @@ class AgatTaskTests(TestCase):
 
     def test_agat_cleanup_gff3_applies_the_notes_backed_attribute_cleanup(self) -> None:
         """Apply the post-AGAT cleanup rules without running table2asn.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -353,8 +347,6 @@ class AgatWorkflowTests(TestCase):
 
     def test_annotation_postprocess_agat_collects_the_statistics_only_slice(self) -> None:
         """Run the workflow wrapper without an optional FASTA and keep the bundle stable.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -396,8 +388,6 @@ class AgatWorkflowTests(TestCase):
 
     def test_annotation_postprocess_agat_conversion_collects_the_normalized_gff3_slice(self) -> None:
         """Run the conversion workflow wrapper and keep the normalized bundle stable.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -440,8 +430,6 @@ class AgatWorkflowTests(TestCase):
 
     def test_annotation_postprocess_agat_cleanup_collects_the_cleaned_gff3_slice(self) -> None:
         """Run the cleanup workflow wrapper and keep table2asn out of scope.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

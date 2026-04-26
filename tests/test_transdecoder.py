@@ -110,8 +110,6 @@ class TransdecoderWorkflowDiscoveryTests(TestCase):
 
     def test_transdecoder_from_pasa_discovers_pasa_outputs_by_database_stem(self) -> None:
         """Resolve PASA assemblies even when the bundle relies on filename conventions.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -155,8 +153,6 @@ class TransdecoderCollectionTests(TestCase):
 
     def test_collect_transdecoder_results_discovers_standard_outputs(self) -> None:
         """Collect the standard TransDecoder files when they exist with canonical suffixes.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

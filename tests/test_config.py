@@ -33,8 +33,6 @@ class ConfigTests(TestCase):
 
     def test_task_environment_catalog_applies_shared_defaults(self) -> None:
         """Keep the shared env vars and resources applied to each task family.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         self.assertIn(config.TASK_ENV_NAME, config.TASK_ENVIRONMENT_NAMES)
         self.assertIn(config.TRANSCRIPT_EVIDENCE_WORKFLOW_NAME, config.TASK_ENVIRONMENT_NAMES)
@@ -57,8 +55,6 @@ class ConfigTests(TestCase):
 
     def test_environment_aliases_stay_stable(self) -> None:
         """Keep the exported environment names available for current imports.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         self.assertIs(
             config.rnaseq_qc_quant_env,
@@ -73,8 +69,6 @@ class ConfigTests(TestCase):
 
     def test_project_mkdtemp_defaults_under_results_tmp(self) -> None:
         """Keep local task scratch directories inside the project result tree.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         old_cwd = Path.cwd()
         old_tmpdir = os.environ.pop(config.PROJECT_TMP_ENV_VAR, None)
@@ -101,8 +95,6 @@ class ConfigTests(TestCase):
 
     def test_project_mkdtemp_honors_explicit_override(self) -> None:
         """Allow callers to redirect task scratch while keeping the default safe.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         old_tmpdir = os.environ.get(config.PROJECT_TMP_ENV_VAR)
         try:
@@ -123,8 +115,6 @@ class ConfigTests(TestCase):
 
     def test_configure_project_tmpdir_updates_python_tempdir(self) -> None:
         """Route generic local tempfile users through the project result tree.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         old_cwd = Path.cwd()
         old_tmpdir = os.environ.get(config.PROJECT_TMP_ENV_VAR)

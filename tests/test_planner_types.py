@@ -63,8 +63,6 @@ class PlannerTypeTests(TestCase):
 
     def test_nested_planner_types_round_trip_through_dicts(self) -> None:
         """Round-trip nested planner dataclasses through the planning-time serialization path.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         reference = ReferenceGenome(
             fasta_path=Path("data/braker3/reference/genome.fa"),
@@ -118,8 +116,6 @@ class PlannerTypeTests(TestCase):
 
     def test_addition_rules_match_design_constraints(self) -> None:
         """Keep the top-level planner type addition rules explicit and biology-first.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         self.assertEqual(len(TOP_LEVEL_PLANNER_TYPE_ADDITION_RULES), 3)
         self.assertIn("biological entity", TOP_LEVEL_PLANNER_TYPE_ADDITION_RULES[0])
@@ -128,8 +124,6 @@ class PlannerTypeTests(TestCase):
 
     def test_lower_level_asset_adapters_preserve_current_metadata(self) -> None:
         """Adapt the existing path-centric asset layer into planner-facing types without mutation.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         genome_asset = AssetReferenceGenome(
             fasta_path=Path("data/braker3/reference/genome.fa"),
@@ -165,8 +159,6 @@ class PlannerTypeTests(TestCase):
 
     def test_generic_asset_names_round_trip_with_typed_provenance(self) -> None:
         """Round-trip generic asset names while preserving legacy provenance.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         alignment = RnaSeqAlignmentResult(
             sample_id="sampleA",
@@ -220,8 +212,6 @@ class PlannerTypeTests(TestCase):
 
     def test_transcript_evidence_manifest_adapter_uses_current_bundle_shape(self) -> None:
         """Lift the transcript-evidence collector manifest into the new planner type.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         manifest = {
             "workflow": "transcript_evidence_generation",
@@ -267,8 +257,6 @@ class PlannerTypeTests(TestCase):
 
     def test_protein_evidence_adapters_cover_bundle_and_manifest_inputs(self) -> None:
         """Adapt both the current result bundle and the current manifest shape.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         genome_asset = AssetReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa"))
         staged_dataset = ProteinReferenceDatasetAsset(
@@ -334,8 +322,6 @@ class PlannerTypeTests(TestCase):
 
     def test_annotation_evidence_adapters_cover_braker_and_pre_evm_boundaries(self) -> None:
         """Adapt both the BRAKER-only and pre-EVM evidence boundaries into one planner type.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         braker_bundle = Braker3ResultBundle(
             result_dir=Path("results/braker3"),
@@ -399,8 +385,6 @@ class PlannerTypeTests(TestCase):
 
     def test_consensus_and_qc_adapters_cover_current_downstream_boundaries(self) -> None:
         """Adapt EVM and repeat-filter manifests into consensus and QC planner targets.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         evm_manifest = {
             "workflow": "consensus_annotation_evm",

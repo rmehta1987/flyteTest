@@ -364,8 +364,6 @@ class ServerTests(TestCase):
 
     def test_create_mcp_server_registers_only_the_required_tools(self) -> None:
         """Keep the MCP tool surface limited to list, plan, and prompt-and-run.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         server = create_mcp_server(fastmcp_cls=FakeFastMCP)
 
@@ -374,8 +372,6 @@ class ServerTests(TestCase):
 
     def test_create_mcp_server_registers_the_read_only_resources(self) -> None:
         """Expose only the small static resource layer for MCP client discovery.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         server = create_mcp_server(fastmcp_cls=FakeFastMCP)
 
@@ -384,8 +380,6 @@ class ServerTests(TestCase):
 
     def test_blank_stdio_lines_are_ignored_before_json_parsing(self) -> None:
         """Ignore whitespace-only stdio lines so tolerant clients do not break the server.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         self.assertTrue(_should_skip_stdio_line("\n"))
         self.assertTrue(_should_skip_stdio_line("   \t  \n"))
@@ -393,8 +387,6 @@ class ServerTests(TestCase):
 
     def test_list_entries_exposes_only_the_supported_targets(self) -> None:
         """List only the explicitly runnable MCP recipe targets.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         payload = list_entries()
         self.assertTrue(payload["supported"])
@@ -458,8 +450,6 @@ class ServerTests(TestCase):
 
     def test_scope_resource_describes_the_recipe_surface(self) -> None:
         """Describe the stdio recipe contract without implying broader support.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         payload = resource_scope()
 
@@ -474,8 +464,6 @@ class ServerTests(TestCase):
 
     def test_supported_targets_resource_matches_the_exact_showcase_entries(self) -> None:
         """Keep the resource target list aligned with the tool-facing entry list.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         payload = resource_supported_targets()
         entries_by_name = {entry["name"]: entry for entry in payload["entries"]}
@@ -486,8 +474,6 @@ class ServerTests(TestCase):
 
     def test_example_prompts_resource_requires_explicit_local_paths(self) -> None:
         """Expose only small example prompts that match the narrow planner contract.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         payload = resource_example_prompts()
 
@@ -499,8 +485,6 @@ class ServerTests(TestCase):
 
     def test_prompt_and_run_contract_resource_matches_enforced_summary_behavior(self) -> None:
         """Document the stable result-summary contract without widening showcase scope.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         payload = resource_prompt_and_run_contract()
 
@@ -524,8 +508,6 @@ class ServerTests(TestCase):
 
     def test_plan_request_matches_exact_registered_stage_name(self) -> None:
         """Free-text preview routes an exact biological stage to its registered target.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         payload = plan_request(BRAKER_GOAL_PROMPT)
 
@@ -540,8 +522,6 @@ class ServerTests(TestCase):
 
     def test_plan_request_still_reports_broader_typed_specs(self) -> None:
         """Composition-eligible prompts decline with §10 recovery channels when no bindings exist.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         payload = plan_request("Process annotation workflow data.")
 
@@ -552,8 +532,6 @@ class ServerTests(TestCase):
 
     def test_plan_request_matches_exact_entry_name_without_parsing_paths(self) -> None:
         """Free-text preview can still resolve an exact registered entry name.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         payload = plan_request("protein_evidence_alignment")
 
@@ -565,8 +543,6 @@ class ServerTests(TestCase):
 
     def test_prepare_and_run_local_recipe_round_trips_saved_artifact(self) -> None:
         """Prepare a frozen recipe and execute it through explicit local handlers.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         prompt = PROTEIN_GOAL_PROMPT
         calls: list[dict[str, object]] = []
@@ -668,8 +644,6 @@ class ServerTests(TestCase):
 
     def test_run_slurm_recipe_submits_saved_slurm_artifact(self) -> None:
         """Submit a frozen Slurm-profile recipe and persist a run record.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -756,8 +730,6 @@ class ServerTests(TestCase):
 
     def test_run_slurm_recipe_rejects_local_profile_artifact(self) -> None:
         """Require Slurm recipes to be explicitly frozen with the Slurm profile.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             prepared = _prepare_run_recipe_impl(
@@ -958,8 +930,6 @@ class ServerTests(TestCase):
 
     def test_monitor_slurm_job_reconciles_saved_record(self) -> None:
         """Expose Slurm status reconciliation through the server helper.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -1013,8 +983,6 @@ class ServerTests(TestCase):
 
     def test_cancel_slurm_job_records_cancellation_request(self) -> None:
         """Expose Slurm cancellation through the server helper.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -1057,8 +1025,6 @@ class ServerTests(TestCase):
 
     def test_retry_slurm_job_resubmits_retryable_failure(self) -> None:
         """Expose explicit Slurm retry through the server helper.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -1115,8 +1081,6 @@ class ServerTests(TestCase):
 
     def test_retry_slurm_job_declines_nonretryable_failure(self) -> None:
         """Report terminal resource failures without resubmitting them.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -1165,8 +1129,6 @@ class ServerTests(TestCase):
 
     def test_monitor_slurm_job_reports_missing_record(self) -> None:
         """Report missing run records instead of inventing state.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             status = _monitor_slurm_job_impl(Path(tmp) / "missing")
@@ -1176,8 +1138,6 @@ class ServerTests(TestCase):
 
     def test_run_slurm_recipe_reports_missing_sbatch_as_unsupported_environment(self) -> None:
         """Expose an authenticated-environment diagnostic when `sbatch` is unavailable.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -1238,8 +1198,6 @@ class ServerTests(TestCase):
 
     def test_monitor_slurm_job_reports_missing_scheduler_commands_as_unsupported_environment(self) -> None:
         """Expose an authenticated-environment diagnostic when monitoring commands are unavailable.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -1274,8 +1232,6 @@ class ServerTests(TestCase):
 
     def test_prepare_run_recipe_accepts_busco_manifest_sources_and_runtime_bindings(self) -> None:
         """Freeze BUSCO recipe bindings from an explicit repeat-filter manifest source.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -1322,8 +1278,6 @@ class ServerTests(TestCase):
 
     def test_prepare_run_recipe_preserves_explicit_slurm_profile(self) -> None:
         """Freeze an explicitly requested Slurm profile into the saved recipe artifact.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -1420,8 +1374,6 @@ class ServerTests(TestCase):
 
     def test_prepare_run_recipe_rejects_missing_manifest_sources(self) -> None:
         """Return a structured decline when a manifest source cannot be validated.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -1438,8 +1390,6 @@ class ServerTests(TestCase):
 
     def test_prompt_and_run_accepts_busco_recipe_context(self) -> None:
         """Allow the compatibility alias to execute BUSCO from explicit recipe inputs.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         prompt = BUSCO_GOAL_PROMPT
         captured: dict[str, object] = {}
@@ -1511,8 +1461,6 @@ class ServerTests(TestCase):
 
     def test_prepare_run_recipe_accepts_eggnog_manifest_sources_and_runtime_bindings(self) -> None:
         """Freeze EggNOG recipe bindings from a repeat-filter manifest source.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -1548,8 +1496,6 @@ class ServerTests(TestCase):
 
     def test_prepare_run_recipe_accepts_agat_manifest_sources(self) -> None:
         """Freeze AGAT recipes from explicit EggNOG and AGAT conversion manifests.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -1591,8 +1537,6 @@ class ServerTests(TestCase):
 
     def test_prepare_run_recipe_declines_ambiguous_eggnog_manifest_sources(self) -> None:
         """Refuse to choose among multiple compatible EggNOG input manifests.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -1611,8 +1555,6 @@ class ServerTests(TestCase):
 
     def test_prompt_and_run_accepts_eggnog_recipe_context(self) -> None:
         """Execute EggNOG through the recipe context and local workflow handler.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         captured: dict[str, object] = {}
 
@@ -1665,8 +1607,6 @@ class ServerTests(TestCase):
 
     def test_prompt_and_run_accepts_agat_cleanup_recipe_context(self) -> None:
         """Execute AGAT cleanup from an explicit AGAT conversion manifest source.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         captured: dict[str, object] = {}
 
@@ -1706,8 +1646,6 @@ class ServerTests(TestCase):
 
     def test_prompt_and_run_workflow_prompt_uses_extracted_inputs(self) -> None:
         """Plan and dispatch the BRAKER3 example prompt through the workflow runner.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         prompt = BRAKER_GOAL_PROMPT
         captured: dict[str, object] = {}
@@ -1771,8 +1709,6 @@ class ServerTests(TestCase):
 
     def test_prompt_and_run_reports_typed_preview_without_executing_broader_request(self) -> None:
         """Layer broader typed planning into prompt-and-run without changing runnable targets.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         payload = prompt_and_run("Process annotation workflow data.")
 
@@ -1785,8 +1721,6 @@ class ServerTests(TestCase):
 
     def test_prompt_and_run_protein_workflow_prompt_uses_extracted_inputs(self) -> None:
         """Plan and dispatch the protein-evidence example prompt through the workflow runner.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         prompt = PROTEIN_GOAL_PROMPT
         captured: dict[str, object] = {}
@@ -1843,8 +1777,6 @@ class ServerTests(TestCase):
 
     def test_prompt_and_run_task_prompt_uses_extracted_inputs(self) -> None:
         """Plan and dispatch the Exonerate example prompt through the task runner.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         prompt = SUPPORTED_TASK_NAME
         captured: dict[str, object] = {}
@@ -1946,8 +1878,6 @@ class ServerTests(TestCase):
 
     def test_prompt_and_run_no_longer_blocks_downstream_terms(self) -> None:
         """Execute the day-one target without the old downstream term blocklist.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         prompt = (
             "Run protein evidence alignment with genome data/braker3/reference/genome.fa and protein evidence data/braker3/protein_data/fastas/proteins.fa, "
@@ -1982,8 +1912,6 @@ class ServerTests(TestCase):
 
     def test_prompt_and_run_declines_missing_inputs(self) -> None:
         """Decline supported language when the prompt omits explicit runnable paths.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         prompt = PROTEIN_GOAL_PROMPT
 
@@ -2000,8 +1928,6 @@ class ServerTests(TestCase):
 
     def test_prompt_and_run_declines_unsupported_request_with_codes(self) -> None:
         """Return stable unsupported-request codes when the prompt does not map cleanly.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         payload = prompt_and_run("Summarize the repository status for me.")
 
@@ -2014,8 +1940,6 @@ class ServerTests(TestCase):
 
     def test_prompt_and_run_summarizes_execution_failure(self) -> None:
         """Report a compact failure summary when the matched execution returns non-zero.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         prompt = BRAKER_GOAL_PROMPT
 
@@ -2072,8 +1996,6 @@ class ServerTests(TestCase):
 
     def test_run_workflow_builds_expected_flyte_command(self) -> None:
         """Shell out through the compatibility entrypoint with explicit local inputs.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         captured: dict[str, object] = {}
 
@@ -2113,8 +2035,6 @@ class ServerTests(TestCase):
 
     def test_prepare_direct_workflow_inputs_wraps_collection_file_values(self) -> None:
         """Coerce collection-shaped workflow inputs into Flyte file artifacts for direct calls.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         from flyte.io import File
         from flytetest.workflows.protein_evidence import protein_evidence_alignment
@@ -2141,8 +2061,6 @@ class ServerTests(TestCase):
 
     def test_run_workflow_uses_direct_python_for_collection_inputs(self) -> None:
         """Bypass the Flyte CLI when a workflow input includes collection-shaped values.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         captured: dict[str, object] = {}
 
@@ -2196,8 +2114,6 @@ class ServerTests(TestCase):
 
     def test_resolve_flyte_cli_prefers_repo_local_virtualenv_binary(self) -> None:
         """Use the repo-local `.venv` Flyte CLI when this checkout provides one.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         self.assertEqual(
             _resolve_flyte_cli(),
@@ -4330,8 +4246,6 @@ class StagingPreflightServerTests(TestCase):
         """After a staging-failure rejection the frozen artifact must stay on
         disk so the scientist can fix the missing path and replay via
         run_slurm_recipe(artifact_path=...).
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         sbatch_calls: list[list[str]] = []
 
@@ -4537,8 +4451,6 @@ class ValidateRunRecipeTests(TestCase):
 
     def test_happy_path_returns_supported_true_with_empty_findings(self) -> None:
         """When all bindings resolve and staging is clean, validate returns supported=True.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -4565,8 +4477,6 @@ class ValidateRunRecipeTests(TestCase):
 
     def test_ref_to_unknown_run_id_returns_binding_finding(self) -> None:
         """A $ref binding pointing at a non-existent run_id produces a binding finding.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -4604,8 +4514,6 @@ class ValidateRunRecipeTests(TestCase):
 
     def test_unreachable_container_returns_container_finding(self) -> None:
         """An artifact with a non-existent container image path returns a container finding.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -4630,8 +4538,6 @@ class ValidateRunRecipeTests(TestCase):
 
     def test_missing_tool_database_returns_tool_database_finding(self) -> None:
         """An artifact with a non-existent tool_database path returns a tool_database finding.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -4655,8 +4561,6 @@ class ValidateRunRecipeTests(TestCase):
 
     def test_idempotent_two_calls_return_identical_findings(self) -> None:
         """Calling validate_run_recipe twice on the same artifact yields identical findings.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -4675,8 +4579,6 @@ class ValidateRunRecipeTests(TestCase):
 
     def test_local_profile_no_shared_fs_roots_flags_missing_but_not_shared_fs(self) -> None:
         """local profile without shared_fs_roots flags missing paths but not on-shared-fs issues.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -4701,8 +4603,6 @@ class ValidateRunRecipeTests(TestCase):
 
     def test_slurm_profile_empty_shared_fs_roots_flags_staged_paths(self) -> None:
         """slurm profile with empty shared_fs_roots flags every staged path (no false negatives).
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

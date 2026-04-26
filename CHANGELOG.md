@@ -32,6 +32,10 @@ Entry template:
 
 ## Unreleased
 
+### Critique follow-up — strip boilerplate test docstrings (2026-04-26)
+
+- [x] 2026-04-26 Step 04a: removed 230 occurrences of the boilerplate sentence "This test keeps the current contract explicit and guards the documented behavior against regression." across 25 test files. Each occurrence was the trailing line of a docstring; the test-specific summary line was preserved. Test counts unchanged (902 passed). The class-level variant ("This test class keeps...") is intentionally outside the acceptance criterion of step 04a and was not touched.
+
 ### Critique follow-up — dedupe ReferenceGenome (2026-04-26)
 
 - [x] 2026-04-26 Step 03: collapsed two `ReferenceGenome` definitions into one. Kept the `planner_types.py` version (carries `PlannerSerializable` mixin); deleted the plain dataclass from `types/assets.py`. The asset version was a strict subset, so consolidation just adds 3 optional fields (`source_result_dir`, `source_manifest_path`, `notes`) to consumers. Updated 5 import sites: `tests/test_resolver.py`, `tests/test_planner_types.py`, `tests/test_serialization_regression.py`, `src/flytetest/planner_adapters.py`, `src/flytetest/types/__init__.py`. Added a `from flytetest.planner_types import ReferenceGenome` to `types/assets.py` for the 4 forward-reference annotations that still mention `ReferenceGenome` as a field type. Updated one snapshot in `test_braker3_bundle_serialize_exact_shape` to reflect the 3 new fields. 902 tests pass.

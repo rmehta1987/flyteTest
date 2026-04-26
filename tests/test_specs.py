@@ -70,8 +70,6 @@ class SpecTests(TestCase):
 
     def test_task_spec_round_trips_with_runtime_metadata(self) -> None:
         """Round-trip a task spec that mirrors the current Exonerate task boundary.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         registry_entry = get_entry("exonerate_align_chunk")
         task_spec = TaskSpec(
@@ -103,8 +101,6 @@ class SpecTests(TestCase):
 
     def test_binding_plan_round_trips_with_manifest_and_runtime_bindings(self) -> None:
         """Round-trip a binding plan without implying resolver execution is implemented.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         binding_plan = BindingPlan(
             target_name="annotation_qc_busco",
@@ -127,8 +123,6 @@ class SpecTests(TestCase):
 
     def test_workflow_spec_can_represent_registered_workflow_selection(self) -> None:
         """Represent a direct registered-workflow choice without composition.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         registry_entry = get_entry("ab_initio_annotation_braker3")
         workflow_spec = WorkflowSpec(
@@ -168,8 +162,6 @@ class SpecTests(TestCase):
 
     def test_workflow_spec_can_represent_registered_stage_composition(self) -> None:
         """Represent a composition built from registered workflow and task stages.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         workflow_spec = WorkflowSpec(
             name="compose_consensus_annotation_from_registered_stages",
@@ -250,8 +242,6 @@ class SpecTests(TestCase):
 
     def test_workflow_spec_can_represent_saved_generated_artifact(self) -> None:
         """Represent a saved generated workflow artifact without implying generic synthesis exists.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         generated_record = GeneratedEntityRecord(
             generated_entity_id="generated::annotation_qc_bundle::2026-04-06T12:30:00Z",
@@ -314,8 +304,6 @@ class SpecTests(TestCase):
 
     def test_execution_profile_round_trips_with_resource_overrides(self) -> None:
         """Round-trip one named execution profile used by normalized specs.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         profile = ExecutionProfile(
             name="high-mem",

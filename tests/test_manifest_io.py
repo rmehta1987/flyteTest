@@ -37,8 +37,6 @@ class ManifestIoTests(TestCase):
 
     def test_write_json_round_trips_paths_and_nested_containers(self) -> None:
         """Verify JSON conversion preserves nested structure while stringifying paths.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -71,8 +69,6 @@ class ManifestIoTests(TestCase):
 
     def test_copy_helpers_stage_files_and_directories_deterministically(self) -> None:
         """Verify the copy helpers keep staged files and trees in predictable locations.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -103,8 +99,6 @@ class ManifestIoTests(TestCase):
 
     def test_migrated_task_modules_reexport_shared_helpers(self) -> None:
         """Confirm the migrated task modules still expose the shared helper functions.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         for module in (eggnog, functional, filtering, pasa):
             with self.subTest(module=module.__name__):

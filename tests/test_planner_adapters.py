@@ -24,8 +24,6 @@ class PlannerAdapterTests(TestCase):
 
     def test_annotation_evidence_adapter_accepts_legacy_braker_bundle_alias(self) -> None:
         """Load legacy-only BRAKER bundle manifests without requiring a rewrite.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         manifest = {
             "workflow": "ab_initio_annotation_braker3",

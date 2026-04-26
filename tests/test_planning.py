@@ -178,8 +178,6 @@ class PlanningTests(TestCase):
 
     def test_typed_plan_resolves_direct_registered_workflow(self) -> None:
         """Select a registered workflow through planner types and resolver bindings.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         reference_genome = ReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa"))
         protein_evidence = ProteinEvidenceSet(
@@ -206,8 +204,6 @@ class PlanningTests(TestCase):
 
     def test_typed_plan_builds_registered_stage_composition(self) -> None:
         """Represent an EVM consensus request as reviewed registered workflow stages.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         reference_genome = ReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa"))
         transcript_evidence = TranscriptEvidenceSet(
@@ -246,8 +242,6 @@ class PlanningTests(TestCase):
 
     def test_typed_plan_builds_generated_workflow_spec_preview(self) -> None:
         """Represent a not-yet-checked-in multi-stage request as a metadata-only spec preview.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         reference_genome = ReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa"))
         consensus_annotation = ConsensusAnnotation(
@@ -274,8 +268,6 @@ class PlanningTests(TestCase):
 
     def test_typed_plan_accepts_serialized_quality_assessment_target_binding(self) -> None:
         """Resolve BUSCO from an explicit serialized quality target plus runtime bindings.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         target = QualityAssessmentTarget(
             source_result_dir=Path("results/repeat_filter_20260407_120000"),
@@ -313,8 +305,6 @@ class PlanningTests(TestCase):
 
     def test_typed_plan_resolves_busco_from_manifest_sources(self) -> None:
         """Resolve BUSCO from a repeat-filter manifest source without guessing.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -349,8 +339,6 @@ class PlanningTests(TestCase):
 
     def test_typed_plan_freezes_resource_policy_from_prompt_and_caller_inputs(self) -> None:
         """Persist structured resource and runtime-image policy in the binding plan.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -378,8 +366,6 @@ class PlanningTests(TestCase):
 
     def test_typed_plan_accepts_slurm_execution_profile(self) -> None:
         """Freeze Slurm resource policy for later submission without running it.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -589,8 +575,6 @@ class PlanningTests(TestCase):
 
     def test_typed_plan_reports_ambiguous_busco_manifest_sources(self) -> None:
         """Decline BUSCO planning when multiple manifests could satisfy the QC target.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -611,8 +595,6 @@ class PlanningTests(TestCase):
 
     def test_typed_plan_resolves_eggnog_from_busco_manifest_source(self) -> None:
         """Use a BUSCO manifest to recover the repeat-filter boundary for EggNOG.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -652,8 +634,6 @@ class PlanningTests(TestCase):
 
     def test_typed_plan_resolves_agat_targets_from_manifest_sources(self) -> None:
         """Resolve AGAT statistics/conversion and cleanup from compatible manifests.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -685,8 +665,6 @@ class PlanningTests(TestCase):
 
     def test_typed_plan_selects_eggnog_functional_annotation(self) -> None:
         """Represent post-BUSCO functional annotation as a registered EggNOG workflow.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         target = QualityAssessmentTarget(
             annotation_gff3_path=Path("results/repeat_filter/all_repeats_removed.eggnog.gff3"),
@@ -708,8 +686,6 @@ class PlanningTests(TestCase):
 
     def test_typed_plan_selects_agat_post_processing(self) -> None:
         """Represent post-EggNOG AGAT statistics as a registered workflow.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         target = QualityAssessmentTarget(
             annotation_gff3_path=Path("results/eggnog/all_repeats_removed.eggnog.gff3"),
@@ -730,8 +706,6 @@ class PlanningTests(TestCase):
 
     def test_typed_plan_selects_agat_conversion(self) -> None:
         """Represent post-EggNOG AGAT conversion as a registered workflow.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         target = QualityAssessmentTarget(
             annotation_gff3_path=Path("results/eggnog/all_repeats_removed.eggnog.gff3"),
@@ -752,8 +726,6 @@ class PlanningTests(TestCase):
 
     def test_typed_plan_selects_agat_cleanup(self) -> None:
         """Represent post-conversion AGAT cleanup as a registered workflow.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         target = QualityAssessmentTarget(
             annotation_gff3_path=Path("results/agat/all_repeats_removed.agat.gff3"),
@@ -774,8 +746,6 @@ class PlanningTests(TestCase):
 
     def test_typed_plan_reports_missing_inputs_without_guessing(self) -> None:
         """Decline a recognized typed goal when resolver sources cannot satisfy it.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         payload = _typed_plan("annotation_qc_busco")
 
@@ -810,8 +780,6 @@ class PlanningTests(TestCase):
 
     def test_supported_entry_parameters_match_current_workflow_signature(self) -> None:
         """Treat the current BRAKER3 showcase workflow signature as compatibility-critical.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         parameters = supported_entry_parameters("ab_initio_annotation_braker3")
 
@@ -828,8 +796,6 @@ class PlanningTests(TestCase):
 
     def test_split_entry_inputs_preserves_required_and_optional_groups(self) -> None:
         """Expose the current protein-evidence planner grouping without changing task signatures.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         required_inputs, optional_inputs = split_entry_inputs("protein_evidence_alignment")
 

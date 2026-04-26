@@ -62,8 +62,6 @@ class SpecArtifactTests(TestCase):
 
     def test_generated_workflow_spec_artifact_round_trips_from_typed_plan(self) -> None:
         """Save and reload a generated spec preview with prompt provenance.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         reference_genome = ReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa"))
         consensus_annotation = ConsensusAnnotation(
@@ -98,8 +96,6 @@ class SpecArtifactTests(TestCase):
 
     def test_save_workflow_spec_artifact_creates_missing_parent_directories(self) -> None:
         """Write artifacts into a fresh nested directory without precreating it.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         reference_genome = ReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa"))
         consensus_annotation = ConsensusAnnotation(
@@ -124,8 +120,6 @@ class SpecArtifactTests(TestCase):
 
     def test_replayable_spec_pair_does_not_reparse_prompt(self) -> None:
         """Reload the saved spec and binding plan directly for future replay work.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         reference_genome = ReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa"))
         consensus_annotation = ConsensusAnnotation(
@@ -149,8 +143,6 @@ class SpecArtifactTests(TestCase):
 
     def test_declined_typed_plan_cannot_be_saved(self) -> None:
         """Reject transient decline payloads as non-replayable artifacts.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         typed_plan = plan_typed_request(
             biological_goal="variant calling",
@@ -171,8 +163,6 @@ class DurableAssetIndexTests(TestCase):
     def test_durable_asset_ref_round_trips_through_save_load(self) -> None:
         """A DurableAssetRef constructed with known fields must survive a full
         save/load cycle through durable_asset_index.json without losing any field.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "run_001"
@@ -214,8 +204,6 @@ class DurableAssetIndexTests(TestCase):
     def test_load_durable_asset_index_returns_empty_for_missing_file(self) -> None:
         """load_durable_asset_index must return [] without raising when there
         is no durable_asset_index.json in the directory.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "run_legacy"
@@ -228,8 +216,6 @@ class DurableAssetIndexTests(TestCase):
     def test_durable_asset_index_schema_version_is_validated(self) -> None:
         """load_durable_asset_index must raise ValueError when schema_version
         does not match the current DURABLE_ASSET_INDEX_SCHEMA_VERSION.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         import json
         with tempfile.TemporaryDirectory() as tmp:

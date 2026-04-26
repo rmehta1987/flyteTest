@@ -190,8 +190,6 @@ class SpecExecutorTests(TestCase):
 
     def test_executes_saved_busco_spec_with_synthetic_registered_handler(self) -> None:
         """Run a saved BUSCO recipe and derive the repeat-filter input from the target.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -242,8 +240,6 @@ class SpecExecutorTests(TestCase):
 
     def test_executes_saved_eggnog_spec_with_synthetic_registered_handler(self) -> None:
         """Run a saved EggNOG recipe and derive repeat-filter inputs from the target.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -292,8 +288,6 @@ class SpecExecutorTests(TestCase):
 
     def test_executes_saved_agat_specs_with_synthetic_registered_handlers(self) -> None:
         """Map EggNOG and AGAT conversion targets into the concrete AGAT inputs.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -369,8 +363,6 @@ class SpecExecutorTests(TestCase):
 
     def test_executes_saved_generated_spec_with_synthetic_registered_handlers(self) -> None:
         """Run one composed saved spec and preserve manifest-bearing result outputs.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -436,8 +428,6 @@ class SpecExecutorTests(TestCase):
 
     def test_executor_reports_missing_resolver_input_before_running_handlers(self) -> None:
         """Use the resolver path and stop cleanly when saved inputs cannot resolve.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             artifact, _ = _artifact_with_runtime_bindings(Path(tmp))
@@ -460,8 +450,6 @@ class SpecExecutorTests(TestCase):
 
     def test_executor_reports_missing_registered_handler(self) -> None:
         """Validate that saved specs only run through explicitly registered handlers.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             artifact, consensus_annotation = _artifact_with_runtime_bindings(Path(tmp))
@@ -478,15 +466,11 @@ class SpecExecutorTests(TestCase):
 
     def test_parse_sbatch_job_id_accepts_standard_output(self) -> None:
         """Recover the durable scheduler ID from sbatch output.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         self.assertEqual(parse_sbatch_job_id("Submitted batch job 12345\n"), "12345")
 
     def test_classify_slurm_failure_marks_node_fail_retryable(self) -> None:
         """Treat scheduler infrastructure failures as conservatively retryable.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         record = SlurmRunRecord(
             schema_version=SLURM_RUN_RECORD_SCHEMA_VERSION,
@@ -514,8 +498,6 @@ class SpecExecutorTests(TestCase):
 
     def test_slurm_script_rendering_is_deterministic(self) -> None:
         """Render the same frozen recipe into the same Slurm script text.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -557,8 +539,6 @@ class SpecExecutorTests(TestCase):
 
     def test_slurm_executor_persists_run_record_after_submission(self) -> None:
         """Submit through a fake sbatch runner and persist the accepted run record.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -601,8 +581,6 @@ class SpecExecutorTests(TestCase):
 
     def test_slurm_reconcile_updates_running_job_record(self) -> None:
         """Reconcile a submitted run record with live scheduler state.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -653,8 +631,6 @@ class SpecExecutorTests(TestCase):
 
     def test_slurm_reconcile_uses_sacct_for_terminal_state_when_live_queue_is_empty(self) -> None:
         """Recover terminal state from accounting when the live queue has no row.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -693,8 +669,6 @@ class SpecExecutorTests(TestCase):
 
     def test_slurm_cancel_records_requested_cancellation(self) -> None:
         """Request cancellation through scancel and persist the lifecycle marker.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -731,8 +705,6 @@ class SpecExecutorTests(TestCase):
 
     def test_slurm_retry_resubmits_retryable_failure_with_linked_child_record(self) -> None:
         """Retry a node-failure record by reusing the frozen saved recipe.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -785,8 +757,6 @@ class SpecExecutorTests(TestCase):
 
     def test_slurm_retry_enforces_attempt_limit(self) -> None:
         """Decline manual retries once the explicit attempt limit is reached.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -822,8 +792,6 @@ class SpecExecutorTests(TestCase):
 
     def test_slurm_retry_declines_stale_parent_record_after_child_exists(self) -> None:
         """Refuse to branch from the same failed parent record twice.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -865,8 +833,6 @@ class SpecExecutorTests(TestCase):
 
     def test_slurm_reconcile_reports_missing_record_without_guessing(self) -> None:
         """Decline status checks when the filesystem record is missing.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             result = SlurmWorkflowSpecExecutor(
@@ -879,8 +845,6 @@ class SpecExecutorTests(TestCase):
 
     def test_slurm_submit_reports_missing_sbatch_as_unsupported_environment(self) -> None:
         """Decline submission cleanly when `sbatch` is unavailable on PATH.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -899,8 +863,6 @@ class SpecExecutorTests(TestCase):
 
     def test_slurm_reconcile_reports_missing_scheduler_commands_as_unsupported_environment(self) -> None:
         """Decline monitoring cleanly when no scheduler query command is available.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -927,8 +889,6 @@ class SpecExecutorTests(TestCase):
 
     def test_slurm_cancel_reports_missing_scancel_as_unsupported_environment(self) -> None:
         """Decline cancellation cleanly when `scancel` is unavailable on PATH.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -2060,8 +2020,6 @@ class DurableAssetIndexIntegrationTests(TestCase):
         """After a successful local execution the run directory must contain
         durable_asset_index.json next to local_run_record.json.  At minimum the
         entry must have the correct run_id, workflow_name, output_name, and asset_path.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -2082,8 +2040,6 @@ class DurableAssetIndexIntegrationTests(TestCase):
     def test_durable_asset_index_fields_match_run_record(self) -> None:
         """The run_id, workflow_name, and created_at fields in the durable asset
         index must be identical to those in the companion local_run_record.json.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -2102,8 +2058,6 @@ class DurableAssetIndexIntegrationTests(TestCase):
         """A pre-M20b run directory with only local_run_record.json must load
         without error.  load_local_run_record must succeed and
         load_durable_asset_index must return [] for the same directory.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "run_legacy"
@@ -2186,8 +2140,6 @@ class StagingPreflightTests(TestCase):
 
     def test_unreachable_container_blocks_sbatch(self) -> None:
         """An artifact with a non-existent container image path must block sbatch.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         sbatch_calls: list[list[str]] = []
         with tempfile.TemporaryDirectory() as tmp:
@@ -2219,8 +2171,6 @@ class StagingPreflightTests(TestCase):
 
     def test_unreachable_tool_database_blocks_sbatch(self) -> None:
         """An artifact with a non-existent tool_database path must block sbatch.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         sbatch_calls: list[list[str]] = []
         with tempfile.TemporaryDirectory() as tmp:
@@ -2251,8 +2201,6 @@ class StagingPreflightTests(TestCase):
 
     def test_happy_path_on_shared_fs_root_calls_sbatch(self) -> None:
         """When all paths exist under the shared FS root, sbatch must be called.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         sbatch_calls: list[list[str]] = []
         with tempfile.TemporaryDirectory() as tmp:
@@ -2281,8 +2229,6 @@ class StagingPreflightTests(TestCase):
 
     def test_broken_symlink_surfaces_as_not_readable(self) -> None:
         """A symlink whose target is absent must yield reason='not_readable'.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         sbatch_calls: list[list[str]] = []
         with tempfile.TemporaryDirectory() as tmp:
@@ -2312,8 +2258,6 @@ class StagingPreflightTests(TestCase):
 
     def test_symlink_pointing_inside_root_passes(self) -> None:
         """A symlink that resolves inside the shared FS root must pass staging.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         sbatch_calls: list[list[str]] = []
         with tempfile.TemporaryDirectory() as tmp:
@@ -2343,8 +2287,6 @@ class StagingPreflightTests(TestCase):
 
     def test_symlink_pointing_outside_root_is_blocked(self) -> None:
         """A symlink that resolves outside every shared FS root must fail staging.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         sbatch_calls: list[list[str]] = []
         with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as outside_tmp:
@@ -2376,8 +2318,6 @@ class StagingPreflightTests(TestCase):
     def test_local_profile_skips_shared_fs_check(self) -> None:
         """check_offline_staging with execution_profile='local' must skip the
         shared-FS check even when a path does not lie under any shared root.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as other_tmp:
             tmp_path = Path(tmp)

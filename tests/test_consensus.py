@@ -314,8 +314,6 @@ class ConsensusPrepTaskTests(TestCase):
 
     def test_prepare_evm_transcript_inputs_copies_pasa_assemblies_to_transcripts_gff3(self) -> None:
         """Stage PASA assemblies GFF3 under the corrected pre-EVM transcript filename.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -333,8 +331,6 @@ class ConsensusPrepTaskTests(TestCase):
 
     def test_prepare_evm_prediction_inputs_concatenates_braker_and_transdecoder(self) -> None:
         """Assemble predictions.gff3 in the required BRAKER-first then TransDecoder order.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -365,8 +361,6 @@ class ConsensusPrepTaskTests(TestCase):
 
     def test_prepare_evm_protein_inputs_copies_exonerate_gff3_to_proteins_gff3(self) -> None:
         """Stage the downstream-ready protein evidence under the corrected filename.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -384,8 +378,6 @@ class ConsensusPrepTaskTests(TestCase):
 
     def test_consensus_annotation_evm_prep_materializes_root_level_contract_files(self) -> None:
         """Collect the corrected `transcripts.gff3`, `predictions.gff3`, and `proteins.gff3` files.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -447,8 +439,6 @@ class ConsensusPrepTaskTests(TestCase):
 
     def test_consensus_annotation_evm_prep_preserves_fixture_rooted_provenance(self) -> None:
         """Keep local tutorial fixture paths visible when the pre-EVM bundle is assembled.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -488,8 +478,6 @@ class ConsensusEvmTaskTests(TestCase):
 
     def test_prepare_evm_execution_inputs_infers_repo_local_weights_from_prep_bundle(self) -> None:
         """Infer a deterministic repo-local weights file from the staged source columns.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             prep_results = _create_pre_evm_results(Path(tmp))
@@ -516,8 +504,6 @@ class ConsensusEvmTaskTests(TestCase):
 
     def test_evm_partition_inputs_runs_note_faithful_partition_command_deterministically(self) -> None:
         """Use the documented EVM partition flags and preserve a stable partition listing.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -557,8 +543,6 @@ class ConsensusEvmTaskTests(TestCase):
 
     def test_evm_write_commands_normalizes_commands_and_tracks_count(self) -> None:
         """Keep one non-empty EVM command per line while preserving file order.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             partitioned_workspace = _create_partitioned_workspace(Path(tmp))
@@ -587,8 +571,6 @@ class ConsensusEvmTaskTests(TestCase):
 
     def test_evm_execute_commands_runs_in_file_order(self) -> None:
         """Execute generated EVM commands sequentially in the order listed on disk.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             commands_workspace = _create_commands_workspace(
@@ -623,8 +605,6 @@ class ConsensusEvmTaskTests(TestCase):
 
     def test_evm_recombine_outputs_emits_stable_final_gff3_files(self) -> None:
         """Materialize deterministic final GFF3 filenames from synthetic partition outputs.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             executed_workspace = _create_commands_workspace(Path(tmp), ["perl do_first"])
@@ -681,8 +661,6 @@ class ConsensusEvmTaskTests(TestCase):
 
     def test_collect_evm_results_copies_final_outputs_and_stage_manifests(self) -> None:
         """Collect the deterministic EVM boundary into one manifest-bearing results bundle.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -786,8 +764,6 @@ class ConsensusEvmWorkflowTests(TestCase):
 
     def test_consensus_annotation_evm_consumes_existing_prep_bundle_only(self) -> None:
         """Use the pre-EVM bundle as the sole upstream workflow input.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             prep_results = _create_pre_evm_results(Path(tmp))

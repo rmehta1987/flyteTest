@@ -139,8 +139,6 @@ class FunctionalTaskTests(TestCase):
 
     def test_lineages_from_text_strips_whitespace_and_empty_fields(self) -> None:
         """Normalize comma-separated lineages into the exact ordered BUSCO inputs.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         self.assertEqual(
             functional._lineages_from_text(" eukaryota_odb10 , , diptera_odb10 "),
@@ -149,8 +147,6 @@ class FunctionalTaskTests(TestCase):
 
     def test_busco_assess_proteins_uses_note_backed_protein_mode_flags(self) -> None:
         """Keep the BUSCO command aligned with the tool reference and protein-mode flags.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -203,8 +199,6 @@ class FunctionalTaskTests(TestCase):
 
     def test_busco_assess_proteins_can_omit_lineage_for_fixture_genome_mode(self) -> None:
         """Support the upstream BUSCO genome fixture command shape without a lineage flag.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -263,8 +257,6 @@ class FunctionalWorkflowTests(TestCase):
 
     def test_annotation_qc_busco_collects_lineage_runs_and_summary(self) -> None:
         """Run the synthetic BUSCO workflow and collect stable lineage outputs.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

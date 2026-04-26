@@ -168,8 +168,6 @@ class EggnogTaskTests(TestCase):
 
     def test_eggnog_map_writes_tx2gene_and_annotated_gff3(self) -> None:
         """Keep the EggNOG command and GFF3 decoration aligned with the tool reference.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -263,8 +261,6 @@ class EggnogWorkflowTests(TestCase):
 
     def test_annotation_functional_eggnog_collects_results_and_sources(self) -> None:
         """Run the synthetic workflow and collect the stable EggNOG result bundle.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
