@@ -45,37 +45,63 @@ SnpEff annotation — is registered and ready. Describe what you want:
 # In an MCP-connected Claude session:
 
 bundle = load_bundle("variant_calling_germline_minimal")
-# Returns: bindings, inputs, runtime_images, tool_databases, fetch_hints
-# All pre-filled for the chr20 NA12878 smoke test
+# Returns: supported, bindings, inputs, runtime_images, tool_databases,
+# description, pipeline_family. Pre-filled for the chr20 NA12878 smoke test.
+# When data isn't staged yet, supported=False and reasons[] tells you which
+# scripts to run.
 
+# The bundle's `inputs` dict is pipeline-shared (covers prepare_reference,
+# preprocess_sample, and germline_short_variant_discovery). Each workflow
+# accepts the subset that matches its own signature, so build the call
+# explicitly from the bundle:
 recipe = run_workflow(
     workflow_name="germline_short_variant_discovery",
     bindings=bundle["bindings"],
-    inputs=bundle["inputs"],
+    inputs={
+        "reference_fasta": bundle["inputs"]["ref_path"],
+        "sample_ids": ["NA12878_chr20"],
+        "r1_paths": [bundle["inputs"]["r1_path"]],
+        "r2_paths": [bundle["inputs"]["r2_path"]],
+        "known_sites": bundle["inputs"]["known_sites"],
+        "intervals": bundle["inputs"]["intervals"],
+        "cohort_id": bundle["inputs"]["cohort_id"],
+    },
     runtime_images=bundle["runtime_images"],
     tool_databases=bundle["tool_databases"],
     execution_profile="slurm",
     resource_request={
-        "queue": "caslake",
+        "partition": "caslake",
         "account": "rcc-staff",
         "memory": "32Gi",
         "walltime": "04:00:00",
+        "shared_fs_roots": ["/scratch/midway3", "/project/rcc"],
     },
     dry_run=True,
 )
 ```
 
-`dry_run=True` means nothing runs yet. You get back a frozen recipe with:
+`dry_run=True` means nothing runs yet. The reply is a `DryRunReply` with
+`recipe_id`, `artifact_path`, `execution_profile`, `resolved_bindings`,
+`resolved_environment`, `staging_findings`, `limitations`, and
+`workflow_name`. The frozen JSON artifact at `artifact_path` records:
 - the exact GATK commands that will execute
 - which containers will be used
 - which input paths are resolved
-- staging findings (is everything visible from compute nodes?)
+- the resource spec
+
+`staging_findings` answers "is everything visible from compute nodes?" —
+empty when every container, tool database, and resolved input path lives
+under the `shared_fs_roots` you declared.
 
 Review it. Then submit one line:
 
 ```python
-result = run_slurm_recipe(artifact_path=recipe["artifact_path"])
-# Returns: job_id, run_record_path, stdout/stderr log paths
+result = run_slurm_recipe(
+    artifact_path=recipe["artifact_path"],
+    shared_fs_roots=["/scratch/midway3", "/project/rcc"],
+)
+# Returns: job_id, run_record_path, artifact_path, execution_result, limitations
+# (stdout/stderr log paths live on the run record file and inside execution_result)
 ```
 
 That's the whole submit flow. No `.nf` file. No conda environment. No YAML
@@ -85,25 +111,30 @@ configuration tree. One conversation.
 
 ### 2. The job is inspectable before a single CPU-hour is spent
 
-Every `dry_run=True` call writes a frozen **run recipe** — a JSON artifact that
-records:
+Every `dry_run=True` call writes a frozen **run recipe** — a JSON artifact at
+`recipe["artifact_path"]` that records:
 - `workflow_name`: exactly which biological stage executes
-- `inputs`: resolved absolute paths (not relative symlinks that break later)
+- resolved input paths (absolute, not relative symlinks that break later)
 - `runtime_images`: which SIF or module is used for each tool
-- `resource_spec`: CPU, memory, walltime
-- `staging_findings`: anything unreachable from compute nodes, caught before submission
+- `resource_spec`: CPU, memory, walltime, queue, account
+- bound planner types (e.g. `ReferenceGenome`, `ReadPair`)
 
-You can open it, read it, email it to a collaborator, or pass it to `validate_run_recipe`
-for an explicit preflight:
+The dry-run reply also returns `staging_findings` directly — anything
+unreachable from compute nodes, caught before submission.
+
+You can open the artifact, read it, email it to a collaborator, or pass it to
+`validate_run_recipe` for an explicit preflight:
 
 ```python
 validation = validate_run_recipe(
     artifact_path=recipe["artifact_path"],
+    execution_profile="slurm",                              # required for shared-FS check
     shared_fs_roots=["/scratch/midway3", "/project/rcc"],
 )
-# Returns: supported=True/False, findings list
-# Any missing SIF, missing reference, or path not on shared FS appears here
-# before Slurm ever sees the job
+# Returns: supported, recipe_id, execution_profile, findings
+# Missing SIFs and missing references always surface here. With
+# execution_profile="slurm" + shared_fs_roots, any path not visible from
+# compute nodes is also flagged — before Slurm ever sees the job.
 ```
 
 **Why this matters:** on a cluster with a 2FA-gated login, a job that fails 4 hours
@@ -225,7 +256,8 @@ same retry path. You wrote Python, not Nextflow DSL.
 ```python
 # What analyses are registered?
 entries = list_entries()
-# → 45 registered tasks and workflows across annotation and variant calling families
+# → 45 registered showcase tasks and workflows across the variant_calling,
+#   annotation, postprocessing, protein_evidence, and rnaseq families
 
 # What starter kits exist?
 bundles = list_bundles(pipeline_family="variant_calling")
@@ -234,14 +266,17 @@ bundles = list_bundles(pipeline_family="variant_calling")
 
 # Load the germline kit
 bundle = load_bundle("variant_calling_germline_minimal")
-# → bindings: ReferenceGenome (chr20.fa), ReadPair (NA12878 reads)
-# → runtime_images: {gatk_sif: ..., bwa_sif: ...}
-# → fetch_hints if data not staged yet
+# When supported=True:
+#   → bindings: ReferenceGenome (chr20.fa), ReadPair (NA12878 reads)
+#   → runtime_images: {gatk_sif: ..., bwa_sif: ...}
+# When supported=False:
+#   → reasons: human-readable list including the staging scripts to run
 ```
 
 **What to say:** "This is the catalogue. Every entry is typed — not a string you hope
-is correct, but a validated biological contract. If the data isn't staged, the
-`fetch_hints` tell you exactly which script to run."
+is correct, but a validated biological contract. If the data isn't staged,
+`load_bundle` returns `supported=False` with `reasons` that name exactly
+which staging script to run."
 
 ---
 
@@ -251,20 +286,27 @@ is correct, but a validated biological contract. If the data isn't staged, the
 recipe = run_workflow(
     workflow_name="prepare_reference",
     bindings=bundle["bindings"],
-    inputs=bundle["inputs"],
+    inputs={
+        "reference_fasta": bundle["inputs"]["ref_path"],
+        "known_sites": bundle["inputs"]["known_sites"],
+    },
     runtime_images=bundle["runtime_images"],
     tool_databases=bundle["tool_databases"],
     execution_profile="slurm",
-    resource_request={"queue": "caslake", "account": "rcc-staff",
-                      "memory": "16Gi", "walltime": "01:00:00"},
+    resource_request={
+        "partition": "caslake", "account": "rcc-staff",
+        "memory": "16Gi", "walltime": "01:00:00",
+        "shared_fs_roots": ["/scratch/midway3", "/project/rcc"],
+    },
     dry_run=True,
 )
 
-print(recipe["artifact_path"])   # frozen JSON on disk — open it
+print(recipe["artifact_path"])     # frozen JSON on disk — open it
 print(recipe["staging_findings"])  # empty if everything is reachable
 
 validate = validate_run_recipe(
     artifact_path=recipe["artifact_path"],
+    execution_profile="slurm",
     shared_fs_roots=["/scratch/midway3", "/project/rcc"],
 )
 print(validate["supported"])    # True
@@ -289,9 +331,11 @@ print(result["run_record_path"])   # durable record path
 
 # Later:
 status = monitor_slurm_job(run_record_path=result["run_record_path"])
-print(status["scheduler_state"])   # RUNNING / COMPLETED / FAILED
+print(status["scheduler_state"])         # RUNNING / COMPLETED / FAILED
+print(status["final_scheduler_state"])   # populated for terminal jobs
+print(status["stdout_path"], status["stderr_path"])
 
-# If OOM:
+# If OOM (valid override keys: cpu, memory, walltime, partition, account, gpu):
 retry = retry_slurm_job(
     run_record_path=result["run_record_path"],
     resource_overrides={"memory": "48Gi"},
@@ -330,7 +374,7 @@ and single-sample work: FLyteTest.
 
 **"How do I know the GATK parameters are correct?"**
 Each task enforces the documented GATK4 Best Practices command shape. The test suite
-has 902 tests, including invocation tests that verify parameter passing for each task.
+has 885+ tests, including invocation tests that verify parameter passing for each task.
 The `variant_recalibrator` implementation enforces InbreedingCoeff for cohorts ≥10
 samples automatically. The biological choices are documented in code, not in someone's
 memory.
@@ -386,13 +430,28 @@ pip install -r requirements-cluster.txt
 
 # 2. Stage reference data (~400 MB: chr20 FASTA + known-sites VCF slices + synthetic reads)
 bash scripts/rcc/stage_gatk_local.sh
-# Pull container images (GATK SIF ~8 GB; bwa-mem2 SIF ~300 MB)
-bash scripts/rcc/pull_gatk_image.sh          # or: module load gatk/4.5.0
-bash scripts/rcc/build_bwa_mem2_sif.sh
+
+# Pull GATK + bwa-mem2 SIFs (required for prepare_reference, preprocess_sample,
+# germline_short_variant_discovery). The bundle's runtime_images point at SIF
+# files; if you prefer HPC modules, leave the SIF paths as-is — the staging
+# preflight will only fail if the SIFs are missing AND no module is loaded.
+bash scripts/rcc/pull_gatk_image.sh          # GATK SIF ~8 GB
+bash scripts/rcc/build_bwa_mem2_sif.sh       # bwa-mem2 SIF ~300 MB
 bash scripts/rcc/check_gatk_fixtures.sh      # all green?
 
+# (Optional) For the QC + annotation tail of the pipeline:
+#   bash scripts/rcc/pull_bcftools_sif.sh
+#   bash scripts/rcc/pull_multiqc_sif.sh
+#   bash scripts/rcc/pull_snpeff_sif.sh
+#   bash scripts/rcc/download_snpeff_db.sh
+# (Optional) For the variant_calling_vqsr_chr20 bundle:
+#   bash scripts/rcc/download_vqsr_training_vcfs.sh
+#   (and SCP-stage the NA12878 chr20 BAM/VCF — see the bundle's reasons[])
+
 # 3. Start the MCP server
-PYTHONPATH=src python3 -m flytetest.server
+# `pip install -r requirements-cluster.txt` already runs `pip install -e .`,
+# so PYTHONPATH=src is only needed for editable-skipped environments.
+python3 -m flytetest.server
 
 # 4. Connect Claude (or any MCP client) and run the three-scene demo above
 ```
