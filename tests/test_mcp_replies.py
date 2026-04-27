@@ -207,7 +207,7 @@ class McpRepliesTests(TestCase):
         """Round-trip one bundle-listing payload."""
 
         reply = BundleAvailabilityReply(
-            name="m18_busco_demo",
+            name="busco_protein_qc_minimal",
             description="BUSCO demo bundle.",
             pipeline_family="annotation_qc",
             applies_to=("annotation_qc_busco",),

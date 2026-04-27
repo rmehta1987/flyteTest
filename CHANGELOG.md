@@ -32,6 +32,11 @@ Entry template:
 
 ## Unreleased
 
+### Critique follow-up — secondary cleanup (2026-04-26)
+
+- [x] 2026-04-26 Renamed bundle `m18_busco_demo` → `busco_protein_qc_minimal` (matches the `_minimal` convention used by `variant_calling_germline_minimal`; the `m18` milestone-numbering prefix meant nothing to scientists). Updated all 12 references across `bundles.py`, `tests/test_bundles.py`, `tests/test_server.py`, `tests/test_mcp_replies.py`. [SCI-02]
+- [x] 2026-04-26 Added boundary-clarification paragraphs to the module docstrings of `planning.py` and `composition.py`: planning is the entrypoint that classifies and freezes; composition is a bounded graph search over registered stages that planning calls when no single entry matches. [ENG-08]
+
 ### Critique follow-up — format_finding helper for staging preflight (2026-04-26)
 
 - [x] 2026-04-26 Step 06: added `format_finding(finding: StagingFinding) -> str` to `src/flytetest/staging.py`. Renders one actionable line per finding ("Container 'X' at path: not found." / "Tool database 'X' at path: present but not readable by the running user." / "Input path 'X' at path: not on the compute-visible filesystem; restage to a shared mount (e.g. /project or /scratch).") with kind labels mapped to human-readable forms. Wired into `validate_run_recipe` in `server.py`: each staging-derived finding dict now carries a `message` key alongside the existing `kind`/`key`/`path`/`reason` fields. Three new unit tests in `tests/test_staging.py` cover all three reason values. 905 tests pass (was 902).

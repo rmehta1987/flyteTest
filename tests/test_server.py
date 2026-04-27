@@ -4670,7 +4670,7 @@ class ListBundlesTests(TestCase):
 class LoadBundleTests(TestCase):
     """Tests for the load_bundle MCP tool."""
 
-    def test_happy_path_m18_busco_demo(self) -> None:
+    def test_happy_path_busco_protein_qc_minimal(self) -> None:
         """load_bundle for a known bundle with all paths present returns expected keys."""
         import tempfile
         from unittest.mock import patch
@@ -4687,7 +4687,7 @@ class LoadBundleTests(TestCase):
             fasta.write_bytes(b"fake")
 
             fake = ResourceBundle(
-                name="m18_busco_demo",
+                name="busco_protein_qc_minimal",
                 description="BUSCO demo.",
                 pipeline_family="annotation",
                 bindings={"QualityAssessmentTarget": {"fasta_path": str(fasta)}},
@@ -4696,8 +4696,8 @@ class LoadBundleTests(TestCase):
                 tool_databases={"busco_lineage_dir": str(db)},
                 applies_to=("annotation_qc_busco",),
             )
-            with patch.object(bundles_mod, "BUNDLES", {"m18_busco_demo": fake}):
-                result = load_bundle("m18_busco_demo")
+            with patch.object(bundles_mod, "BUNDLES", {"busco_protein_qc_minimal": fake}):
+                result = load_bundle("busco_protein_qc_minimal")
 
         self.assertTrue(result.get("supported"), f"Expected supported=True, got: {result}")
         for key in ("bindings", "inputs", "runtime_images", "tool_databases",
@@ -4714,7 +4714,7 @@ class LoadBundleTests(TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             fake = ResourceBundle(
-                name="m18_busco_demo",
+                name="busco_protein_qc_minimal",
                 description="BUSCO demo.",
                 pipeline_family="annotation",
                 bindings={"QualityAssessmentTarget": {"fasta_path": str(tmp_path / "missing.fa")}},
@@ -4723,8 +4723,8 @@ class LoadBundleTests(TestCase):
                 tool_databases={},
                 applies_to=("annotation_qc_busco",),
             )
-            with patch.object(bundles_mod, "BUNDLES", {"m18_busco_demo": fake}):
-                result = load_bundle("m18_busco_demo")
+            with patch.object(bundles_mod, "BUNDLES", {"busco_protein_qc_minimal": fake}):
+                result = load_bundle("busco_protein_qc_minimal")
 
         self.assertFalse(result.get("supported"), f"Expected supported=False, got: {result}")
         self.assertIn("reasons", result)

@@ -56,11 +56,13 @@ Source: `CRITIQUE_REPORT.md`, ranked synthesis.
   [ENG-03]
 - [ ] Introduce `RecipeId = NewType("RecipeId", str)` and thread through
   public signatures. [ENG-07]
-- [ ] Rename or delete `m18_busco_demo` bundle. [SCI-02]
+- [x] Rename or delete `m18_busco_demo` bundle. [SCI-02]
+  (2026-04-26: renamed to `busco_protein_qc_minimal`; 12 refs updated.)
 - [ ] Move `.codex/tutorial_context.md` to `.codex/agent/` *or* split the
   agent-meta from biology content. [ENG-10]
-- [ ] Add 5-line module docstrings clarifying `planning.py` vs.
+- [x] Add 5-line module docstrings clarifying `planning.py` vs.
   `composition.py` boundary. [ENG-08]
+  (2026-04-26: boundary paragraph added to both module docstrings.)
 - [ ] Decide on `PlannerResolutionError` 5-classes-vs-4-handlers split.
   [ENG-06]
 

@@ -5,6 +5,13 @@ This module provides `compose_workflow_path()` and
 short, reviewable stage sequences from biological intent, keep the search
 bounded, avoid cycles, and turn a successful path into a frozen workflow spec
 that can be inspected before execution.
+
+Boundary with `planning.py`: `composition` is a *graph search* over
+registered stages. It does not parse free text, classify intent, or pick the
+final execution profile — those concerns live in `planning`. Composition is
+called only when a single registered entry cannot satisfy the request; the
+caller (planning) then decides whether the discovered path is good enough to
+freeze.
 """
 
 from __future__ import annotations
