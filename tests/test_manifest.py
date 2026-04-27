@@ -1,8 +1,10 @@
-"""Tests for the shared manifest IO helpers and migrated task-module aliases.
+"""Tests for the consolidated manifest module.
 
-    This module exercises the mechanical JSON and filesystem staging utilities
-    used by the first 18a slice. The tests keep manifest serialization, copy
-    behavior, and alias wiring honest without changing any biological logic.
+This module covers the shared envelope builder, the JSON serialization
+helpers, and the result-bundle copy helpers — all of which now live in
+``flytetest.manifest``.  Task-module aliases are exercised here too so
+the migrated tasks (eggnog, functional, filtering, pasa) keep their
+re-exported helper bindings honest after the consolidation.
 """
 
 from __future__ import annotations
@@ -22,11 +24,51 @@ from flyte_stub import install_flyte_stub
 
 install_flyte_stub()
 
-import flytetest.manifest_io as manifest_io
+import flytetest.manifest as manifest
 import flytetest.tasks.eggnog as eggnog
 import flytetest.tasks.filtering as filtering
 import flytetest.tasks.functional as functional
 import flytetest.tasks.pasa as pasa
+from flytetest.manifest import build_manifest_envelope
+
+
+class ManifestEnvelopeTests(TestCase):
+    """Coverage for the common manifest envelope builder.
+
+    This test class keeps the current contract explicit and documents the current boundary behavior.
+"""
+
+    def test_build_manifest_envelope_keeps_common_fields_in_place(self) -> None:
+        """Build the shared envelope without forcing task-specific schema changes.
+"""
+        manifest = build_manifest_envelope(
+            stage="example_stage",
+            assumptions=["first assumption", "second assumption"],
+            inputs={"input_path": "input.fa"},
+            outputs={"output_path": "output.fa"},
+        )
+
+        self.assertEqual(manifest["stage"], "example_stage")
+        self.assertEqual(manifest["assumptions"], ["first assumption", "second assumption"])
+        self.assertEqual(manifest["inputs"], {"input_path": "input.fa"})
+        self.assertEqual(manifest["outputs"], {"output_path": "output.fa"})
+        self.assertNotIn("code_reference", manifest)
+        self.assertNotIn("tool_ref", manifest)
+
+    def test_build_manifest_envelope_can_include_optional_reference_fields(self) -> None:
+        """Record optional code and tool references without making them mandatory.
+"""
+        manifest = build_manifest_envelope(
+            stage="example_stage",
+            assumptions=["only assumption"],
+            inputs={},
+            outputs={},
+            code_reference="src/flytetest/tasks/example.py",
+            tool_ref="docs/tool_refs/example.md",
+        )
+
+        self.assertEqual(manifest["code_reference"], "src/flytetest/tasks/example.py")
+        self.assertEqual(manifest["tool_ref"], "docs/tool_refs/example.md")
 
 
 class ManifestIoTests(TestCase):
@@ -56,10 +98,10 @@ class ManifestIoTests(TestCase):
                 },
             }
 
-            returned_path = manifest_io.write_json(payload_path, payload)
+            returned_path = manifest.write_json(payload_path, payload)
             self.assertEqual(returned_path, payload_path)
 
-            loaded = manifest_io.read_json(payload_path)
+            loaded = manifest.read_json(payload_path)
             self.assertEqual(loaded["inputs"]["source_path"], str(copied_source))
             self.assertEqual(loaded["inputs"]["nested"]["tuple_value"], ["alpha", "beta"])
             self.assertEqual(
@@ -76,7 +118,7 @@ class ManifestIoTests(TestCase):
             source_file.parent.mkdir(parents=True, exist_ok=True)
             source_file.write_text("payload\n")
 
-            copied_file = manifest_io.copy_file(source_file, tmp_path / "dest" / "artifact.txt")
+            copied_file = manifest.copy_file(source_file, tmp_path / "dest" / "artifact.txt")
             self.assertTrue(copied_file.exists())
             self.assertEqual(copied_file.read_text(), "payload\n")
 
@@ -88,7 +130,7 @@ class ManifestIoTests(TestCase):
             destination_tree.mkdir(parents=True, exist_ok=True)
             (destination_tree / "keep.txt").write_text("keep me\n")
 
-            copied_tree = manifest_io.copy_tree(
+            copied_tree = manifest.copy_tree(
                 source_tree,
                 destination_tree,
                 dirs_exist_ok=True,
@@ -102,8 +144,8 @@ class ManifestIoTests(TestCase):
 """
         for module in (eggnog, functional, filtering, pasa):
             with self.subTest(module=module.__name__):
-                self.assertIs(module._as_json_compatible, manifest_io.as_json_compatible)
-                self.assertIs(module._read_json, manifest_io.read_json)
-                self.assertIs(module._write_json, manifest_io.write_json)
-                self.assertIs(module._copy_file, manifest_io.copy_file)
-                self.assertIs(module._copy_tree, manifest_io.copy_tree)
+                self.assertIs(module._as_json_compatible, manifest.as_json_compatible)
+                self.assertIs(module._read_json, manifest.read_json)
+                self.assertIs(module._write_json, manifest.write_json)
+                self.assertIs(module._copy_file, manifest.copy_file)
+                self.assertIs(module._copy_tree, manifest.copy_tree)

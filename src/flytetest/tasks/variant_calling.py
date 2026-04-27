@@ -17,8 +17,7 @@ from flytetest.config import (
     run_tool,
 )
 from flytetest.tasks._filter_helpers import filter_vcf
-from flytetest.manifest_envelope import build_manifest_envelope
-from flytetest.manifest_io import write_json as _write_json
+from flytetest.manifest import build_manifest_envelope, write_json as _write_json
 
 
 # Source of truth for the registry-manifest contract: every key this module

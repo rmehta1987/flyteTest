@@ -28,8 +28,7 @@ from flytetest.config import (
     require_path,
     run_tool,
 )
-from flytetest.manifest_envelope import build_manifest_envelope
-from flytetest.manifest_io import write_json as _write_json
+from flytetest.manifest import build_manifest_envelope, write_json as _write_json
 from flytetest.types import (
     AbInitioResultBundle,
     AssetToolProvenance,

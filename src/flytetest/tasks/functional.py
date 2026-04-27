@@ -26,7 +26,7 @@ from flytetest.config import (
     require_path,
     run_tool,
 )
-from flytetest.manifest_io import (
+from flytetest.manifest import (
     as_json_compatible as _as_json_compatible,
     copy_file as _copy_file,
     copy_tree as _copy_tree,

@@ -27,8 +27,7 @@ from flytetest.config import (
     run_tool,
     transdecoder_env,
 )
-from flytetest.manifest_envelope import build_manifest_envelope
-from flytetest.manifest_io import write_json as _write_json
+from flytetest.manifest import build_manifest_envelope, write_json as _write_json
 from flytetest.tasks.pasa import _pasa_assemblies_fasta, _pasa_assemblies_gff3, _sqlite_db_path
 from flytetest.types import CodingPredictionResult, PasaAlignmentAssemblyResult, TransDecoderPredictionResult
 

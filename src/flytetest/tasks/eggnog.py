@@ -33,7 +33,7 @@ from flytetest.gff3 import (
     format_attributes as _format_gff3_attributes,
     parse_attributes as _parse_gff3_attributes,
 )
-from flytetest.manifest_io import (
+from flytetest.manifest import (
     as_json_compatible as _as_json_compatible,
     copy_file as _copy_file,
     copy_tree as _copy_tree,

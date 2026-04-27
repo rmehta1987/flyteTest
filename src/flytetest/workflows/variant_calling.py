@@ -7,8 +7,7 @@ from pathlib import Path
 from flyte.io import File
 
 from flytetest.config import variant_calling_env
-from flytetest.manifest_envelope import build_manifest_envelope
-from flytetest.manifest_io import write_json as _write_json
+from flytetest.manifest import build_manifest_envelope, write_json as _write_json
 from flytetest.tasks.variant_calling import (
     apply_bqsr,
     apply_vqsr,

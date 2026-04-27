@@ -1183,8 +1183,7 @@ src/flytetest/
   config.py            # shared Flyte TaskEnvironment defaults, per-family overrides
   composition.py       # registry-constrained graph traversal for multi-stage composition
   gff3.py              # GFF3 parsing helpers
-  manifest_envelope.py # shared run_manifest.json envelope helpers
-  manifest_io.py       # manifest read/write utilities
+  manifest.py          # run_manifest.json envelope + JSON / copy helpers
   mcp_contract.py      # SHOWCASE_TARGETS, tool descriptions, MCP surface contract
   planner_adapters.py  # adapt current assets/manifests into planner dataclasses
   planner_types.py     # stable biology-facing planner dataclasses
@@ -1238,8 +1237,8 @@ src/flytetest/
 ### Divergences from original target
 
 - `submission.py` (tasks) — not yet created; `table2asn` submission is deferred
-- `composition.py`, `gff3.py`, `manifest_envelope.py`, `manifest_io.py`,
-  `slurm_monitor.py` — added since the original target was written
+- `composition.py`, `gff3.py`, `manifest.py`, `slurm_monitor.py` — added since
+  the original target was written
 - `types/assets.py` — added as a subpackage for generic biology asset types
 
 ### Layout Principles

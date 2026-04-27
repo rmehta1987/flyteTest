@@ -29,7 +29,7 @@ from flytetest.config import (
     run_tool,
 )
 from flytetest.gff3 import attribute_values as _attribute_values, parse_attributes as _parse_attributes
-from flytetest.manifest_io import (
+from flytetest.manifest import (
     as_json_compatible as _as_json_compatible,
     copy_file as _copy_file,
     copy_tree as _copy_tree,

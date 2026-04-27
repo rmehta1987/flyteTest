@@ -32,6 +32,10 @@ Entry template:
 
 ## Unreleased
 
+### Critique follow-up — merge manifest modules into `manifest.py` (2026-04-27)
+
+- [x] 2026-04-27 Consolidated `src/flytetest/manifest_envelope.py` (envelope builder) and `src/flytetest/manifest_io.py` (JSON + copy helpers) into a single `src/flytetest/manifest.py`. The split was historical — readers chased one manifest read or write across two files. No public surface change: function names (`build_manifest_envelope`, `as_json_compatible`, `write_json`, `read_json`, `copy_file`, `copy_tree`) are preserved. Updated 8 importers (`tasks/{annotation,variant_calling,transdecoder,filtering,pasa,functional,eggnog}.py`, `workflows/variant_calling.py`); merged `tests/test_manifest_envelope.py` + `tests/test_manifest_io.py` into `tests/test_manifest.py` with the same five test methods; updated DESIGN.md project-structure block. Full suite: 905 passed, 1 skipped (unchanged from before the merge). [ENG-03]
+
 ### Critique follow-up — relocate `tutorial_context.md` to `.codex/agent/` (2026-04-27)
 
 - [x] 2026-04-27 Moved `.codex/tutorial_context.md` → `.codex/agent/tutorial_context.md` (Option A). Stage-1 evidence: ~89% of the file is agent-meta (typed binding templates, copy-paste prompt scaffolds, prompting/Apptainer/task-implementation guidance); the biology content is enumerative supporting context (fixture roots, stage→tutorial map, local file lists) that exists to be cited by the surrounding prompt templates and is not separable. No external caller cross-references the file by section heading, so the move is link-rewrite only. No duplication with `docs/gatk_pipeline_overview.md` (different pipeline family — annotation vs. GATK germline), so Option B's "fold biology into existing pipeline doc" lever did not apply. Updated 7 active call sites (`AGENTS.md`, `CLAUDE.md`, `DESIGN.md` ×2, `src/flytetest/workflows/rnaseq_qc_quant.py`, `docs/tool_refs/stage_index.md`, prior milestone checklist) and rewrote 17 internal self-references inside the moved file. Submission prompt: `docs/2026-04-26-tutorial-context-relocation/submission_prompt.md`. [ENG-10]

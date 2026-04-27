@@ -52,8 +52,12 @@ Source: `CRITIQUE_REPORT.md`, ranked synthesis.
 
 ## Secondary (track but not this milestone)
 
-- [ ] Merge `manifest_envelope.py` + `manifest_io.py` into `manifest.py`.
+- [x] Merge `manifest_envelope.py` + `manifest_io.py` into `manifest.py`.
   [ENG-03]
+  (2026-04-27: consolidated both modules into `src/flytetest/manifest.py`;
+  8 importers updated; 2 test files merged into `tests/test_manifest.py`;
+  test count unchanged at 905 passed; DESIGN.md project-structure block
+  updated.)
 - [ ] Introduce `RecipeId = NewType("RecipeId", str)` and thread through
   public signatures. [ENG-07]
 - [x] Rename or delete `m18_busco_demo` bundle. [SCI-02]
