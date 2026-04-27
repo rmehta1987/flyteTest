@@ -184,8 +184,6 @@ class RepeatFilteringTaskTests(TestCase):
 
     def test_repeatmasker_out_to_bed_converts_generated_gff3_to_downstream_bed(self) -> None:
         """Extract the deterministic three-column BED described in the tool reference.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -220,8 +218,6 @@ class RepeatFilteringTaskTests(TestCase):
 
     def test_funannotate_remove_bad_models_resolves_clean_gff3_and_removal_list(self) -> None:
         """Capture the clean GFF3 plus overlap-removal list emitted by the funannotate stage.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -260,8 +256,6 @@ class RepeatFilteringTaskTests(TestCase):
 
     def test_remove_repeat_blast_hits_filters_parent_and_translated_ids(self) -> None:
         """Remove blast hits using both direct IDs and the deterministic evm.model/evm.TU mapping.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -291,8 +285,6 @@ class RepeatFilteringWorkflowTests(TestCase):
 
     def test_annotation_repeat_filtering_collects_stable_final_outputs(self) -> None:
         """Run the synthetic repeat-filtering workflow and collect stable final filenames.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -392,8 +384,6 @@ class RepeatFilteringWorkflowTests(TestCase):
 
     def test_repeatmasker_fixture_inputs_exist_for_optional_smoke_runs(self) -> None:
         """Keep the local RepeatMasker fixture set visible for later binary-backed smoke tests.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         fixture_root = TESTS_DIR.parent / "data" / "repeatmasker"
         download_script = TESTS_DIR.parent / "scripts" / "rcc" / "download_minimal_repeatmasker_fixture.sh"

@@ -142,8 +142,6 @@ class PasaUpdateTaskTests(TestCase):
 
     def test_prepare_pasa_update_inputs_stages_existing_pasa_and_evm_bundles(self) -> None:
         """Stage the PASA database state and sorted EVM GFF3 without rebuilding upstream evidence.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -181,8 +179,6 @@ class PasaUpdateTaskTests(TestCase):
 
     def test_pasa_update_gene_models_promotes_new_round_output_to_current_annotations(self) -> None:
         """Promote the new PASA round output to the canonical current annotations path.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -234,8 +230,6 @@ class PasaUpdateTaskTests(TestCase):
 
     def test_annotation_refinement_pasa_collects_stable_final_outputs(self) -> None:
         """Run the synthetic workflow and collect stable post-PASA final filenames.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -315,8 +309,6 @@ class PasaUpdateWorkflowTests(TestCase):
 
     def test_annotation_refinement_pasa_requires_at_least_two_rounds(self) -> None:
         """Reject round counts below the current PASA refinement contract minimum of two.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -335,8 +327,6 @@ class PasaUpdateWorkflowTests(TestCase):
 
     def test_annotation_refinement_pasa_consumes_pasa_and_evm_bundles_only(self) -> None:
         """Use PASA and EVM bundles as the sole workflow-level biological inputs.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

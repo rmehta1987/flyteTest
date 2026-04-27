@@ -25,7 +25,7 @@ run recipes.
 | `AGENTS.md` | Repository rules and biological pipeline constraints |
 | `README.md` | Current user-facing scope and runnable entrypoints |
 | `docs/braker3_evm_notes.md` | Biological source notes and pipeline order |
-| `docs/mcp_showcase.md` | Current MCP surface and prompt behavior |
+| `SCIENTIST_GUIDE.md` | Current MCP surface and prompt behavior |
 | `docs/capability_maturity.md` | Capability snapshot by area |
 | `docs/realtime_refactor_checklist.md` | Architecture refactor status |
 | `docs/tutorial_context.md` | Prompting and fixture context |
@@ -1259,7 +1259,7 @@ files that explain the design and current scope:
 - `README.md`
 - `DESIGN.md`
 - `CHANGELOG.md`
-- `docs/mcp_showcase.md`
+- `SCIENTIST_GUIDE.md`
 - `docs/tutorial_context.md`
 - `docs/capability_maturity.md`
 - `docs/realtime_refactor_checklist.md`

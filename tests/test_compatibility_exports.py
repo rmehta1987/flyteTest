@@ -43,8 +43,6 @@ class CompatibilityExportTests(TestCase):
 
     def test_entrypoint_exports_current_runnable_workflow_names(self) -> None:
         """Keep the public workflow names importable from the compatibility shim.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         self.assertIn("ab_initio_annotation_braker3", compatibility_exports.__all__)
         self.assertIn("annotation_functional_eggnog", compatibility_exports.__all__)
@@ -57,8 +55,6 @@ class CompatibilityExportTests(TestCase):
 
     def test_entrypoint_reexports_current_workflow_callables(self) -> None:
         """Expose the package workflow callables unchanged through the shim module.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         self.assertIs(compatibility_exports.ab_initio_annotation_braker3, ab_initio_annotation_braker3)
         self.assertIs(compatibility_exports.annotation_functional_eggnog, annotation_functional_eggnog)
@@ -77,8 +73,6 @@ class CompatibilityExportTests(TestCase):
 
     def test_entrypoint_reexports_showcase_task_callable(self) -> None:
         """Keep the supported showcase task reachable from the compatibility entrypoint.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         self.assertIn("exonerate_align_chunk", compatibility_exports.__all__)
         self.assertIs(compatibility_exports.exonerate_align_chunk, exonerate_align_chunk)

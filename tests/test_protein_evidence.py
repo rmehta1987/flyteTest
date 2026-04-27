@@ -158,8 +158,6 @@ class ProteinEvidenceTaskTests(TestCase):
 
     def test_stage_and_chunk_protein_fastas_preserve_input_order(self) -> None:
         """Stage and chunk small subsets copied from the local tutorial protein fixture.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -204,8 +202,6 @@ class ProteinEvidenceTaskTests(TestCase):
 
     def test_exonerate_align_chunk_records_command_and_manifest(self) -> None:
         """Capture the Exonerate command contract while using local fixture-derived inputs.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -253,8 +249,6 @@ class ProteinEvidenceTaskTests(TestCase):
     @unittest.skipUnless(EXONERATE_AVAILABLE, "exonerate is required for the real-data smoke test")
     def test_exonerate_align_chunk_real_data_smoke(self) -> None:
         """Run Exonerate on a tiny tutorial-derived subset and confirm real GFF output.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -268,8 +262,6 @@ class ProteinEvidenceTaskTests(TestCase):
 
     def test_exonerate_to_evm_gff3_converts_only_gff_records(self) -> None:
         """Keep 9-column Exonerate target-GFF lines and normalize the source column.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -301,8 +293,6 @@ class ProteinEvidenceTaskTests(TestCase):
 
     def test_exonerate_to_evm_gff3_rejects_non_gff_output(self) -> None:
         """Fail fast when the raw Exonerate stdout contains no 9-column GFF records.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -317,8 +307,6 @@ class ProteinEvidenceTaskTests(TestCase):
 
     def test_exonerate_concat_results_builds_sorted_bundle(self) -> None:
         """Collect raw and converted chunk results into a stable, ordered bundle.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -394,8 +382,6 @@ class ProteinEvidenceWorkflowTests(TestCase):
 
     def test_protein_evidence_alignment_runs_expected_stage_order(self) -> None:
         """Confirm the workflow stages, fans out by chunk, and collects once at the end.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

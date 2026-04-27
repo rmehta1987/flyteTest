@@ -12,6 +12,12 @@ This module keeps two planning entrypoints:
 The planner does not invent new workflow behavior. It only freezes registered
 entries, reviewed stage compositions, or metadata-only generated specs built
 from registered stages.
+
+Boundary with `composition.py`: `planning` is the *entrypoint* layer that
+classifies an intent and chooses what to freeze. When no single registered
+entry matches, planning *delegates* to `composition.compose_workflow_path()`
+to discover a reviewable multi-stage path; composition itself never freezes,
+classifies, or accepts free text.
 """
 
 from __future__ import annotations

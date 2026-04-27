@@ -62,10 +62,10 @@ class TestListBundles:
 
 
 class TestLoadBundle:
-    def test_happy_path_m18_busco_demo(self, monkeypatch):
-        """m18_busco_demo returns full typed inputs when paths are present."""
+    def test_happy_path_busco_protein_qc_minimal(self, monkeypatch):
+        """busco_protein_qc_minimal returns full typed inputs when paths are present."""
         monkeypatch.setattr(Path, "exists", lambda self: True)
-        result = load_bundle("m18_busco_demo")
+        result = load_bundle("busco_protein_qc_minimal")
         assert result["supported"] is True
         assert "bindings" in result
         assert "inputs" in result
@@ -74,9 +74,9 @@ class TestLoadBundle:
         assert "description" in result
         assert "pipeline_family" in result
 
-    def test_happy_path_m18_busco_demo_binding_keys(self, monkeypatch):
+    def test_happy_path_busco_protein_qc_minimal_binding_keys(self, monkeypatch):
         monkeypatch.setattr(Path, "exists", lambda self: True)
-        result = load_bundle("m18_busco_demo")
+        result = load_bundle("busco_protein_qc_minimal")
         assert "QualityAssessmentTarget" in result["bindings"]
         assert result["inputs"]["lineage_dataset"] == "eukaryota_odb10"
         assert "busco_sif" in result["runtime_images"]
@@ -94,7 +94,7 @@ class TestLoadBundle:
             load_bundle("completely_unknown_bundle")
         msg = str(exc_info.value)
         assert "braker3_small_eukaryote" in msg
-        assert "m18_busco_demo" in msg
+        assert "busco_protein_qc_minimal" in msg
 
     def test_missing_container_returns_unsupported(self, monkeypatch):
         fake = ResourceBundle(

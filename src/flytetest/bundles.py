@@ -81,8 +81,8 @@ BUNDLES: dict[str, ResourceBundle] = {
             "Download the eukaryota test fixture: `scripts/rcc/download_minimal_busco_fixture.sh`",
         ),
     ),
-    "m18_busco_demo": ResourceBundle(
-        name="m18_busco_demo",
+    "busco_protein_qc_minimal": ResourceBundle(
+        name="busco_protein_qc_minimal",
         description=(
             "M18 BUSCO fixture: protein quality assessment against the "
             "eukaryota_odb10 lineage dataset."

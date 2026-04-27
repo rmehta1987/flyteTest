@@ -100,8 +100,6 @@ class AnnotationTaskTests(TestCase):
 
     def test_stage_braker3_inputs_requires_at_least_one_evidence_input(self) -> None:
         """Reject empty BRAKER3 staging requests so runtime boundaries stay explicit.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -115,8 +113,6 @@ class AnnotationTaskTests(TestCase):
 
     def test_braker3_predict_records_tutorial_backed_command_boundary(self) -> None:
         """Capture the BRAKER3 runtime command with explicit RNA-seq and protein inputs.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -173,8 +169,6 @@ class AnnotationTaskTests(TestCase):
 
     def test_normalize_braker3_for_evm_preserves_upstream_source_values(self) -> None:
         """Keep native BRAKER source labels instead of rewriting them to BRAKER3.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -217,8 +211,6 @@ class AnnotationTaskTests(TestCase):
 
     def test_collect_braker3_results_manifest_records_policy_sections(self) -> None:
         """Surface the tool-contract, tutorial-backed, and repo-policy language in the result bundle.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

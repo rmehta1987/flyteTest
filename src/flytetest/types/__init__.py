@@ -4,6 +4,7 @@
     pipeline stage boundaries without changing current Flyte task contracts.
 """
 
+from flytetest.planner_types import ReferenceGenome
 from flytetest.types.assets import (
     AbInitioResultBundle,
     AssetToolProvenance,
@@ -40,7 +41,6 @@ from flytetest.types.assets import (
     ProteinReferenceDatasetAsset,
     QcReport,
     ReadPair,
-    ReferenceGenome,
     SalmonIndexAsset,
     SalmonQuantResult,
     RnaSeqAlignmentResult,

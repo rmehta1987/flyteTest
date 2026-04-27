@@ -83,10 +83,8 @@ INSPECT_TOOLS: tuple[str, ...] = (
     VALIDATE_RUN_RECIPE_TOOL_NAME,
 )
 
-# Lifecycle tools: planning, observability, job management.
+# Lifecycle tools: observability, job management.
 LIFECYCLE_TOOLS: tuple[str, ...] = (
-    "plan_request",
-    PRIMARY_TOOL_NAME,
     LIST_AVAILABLE_BINDINGS_TOOL_NAME,
     MONITOR_SLURM_JOB_TOOL_NAME,
     CANCEL_SLURM_JOB_TOOL_NAME,
@@ -170,17 +168,6 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         " never submits, never writes, never mutates."
     ),
     # -- lifecycle -------------------------------------------------------------
-    "plan_request": (
-        "[lifecycle] Classify one biological request through the typed recipe planner"
-        " and return a structured PlanSuccess or PlanDecline; single-entry matches"
-        " echo a suggested_next_call for run_task / run_workflow; novel DAGs freeze"
-        " an artifact and point at approve_composed_recipe."
-    ),
-    PRIMARY_TOOL_NAME: (
-        "[lifecycle] Plan one natural-language prompt and run it through the"
-        " recipe-backed local execution flow (legacy convenience wrapper over"
-        " prepare_run_recipe + run_local_recipe)."
-    ),
     LIST_AVAILABLE_BINDINGS_TOOL_NAME: (
         "[lifecycle] Discover files in the workspace that could satisfy each"
         " parameter of a registered task, scanning up to depth 3 under search_root."

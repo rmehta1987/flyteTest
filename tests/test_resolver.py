@@ -26,7 +26,7 @@ from flytetest.planner_types import ProteinEvidenceSet, QualityAssessmentTarget,
 from flytetest.resolver import LocalManifestAssetResolver, _materialize_bindings
 from flytetest.spec_artifacts import DURABLE_ASSET_INDEX_SCHEMA_VERSION, DurableAssetRef
 from flytetest.types.assets import AbInitioResultBundle, AssetToolProvenance, ProteinEvidenceResultBundle, ProteinReferenceDatasetAsset
-from flytetest.types.assets import ReferenceGenome as AssetReferenceGenome
+from flytetest.planner_types import ReferenceGenome as AssetReferenceGenome
 
 
 def _write_transcript_evidence_manifest(result_dir: Path) -> Path:
@@ -79,8 +79,6 @@ class ResolverTests(TestCase):
 
     def test_explicit_binding_wins_over_discovered_sources(self) -> None:
         """Prefer an explicit local planner value over any discovered manifest candidate.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         resolver = LocalManifestAssetResolver()
         explicit_reference = ReferenceGenome(fasta_path=Path("data/braker3/reference/genome.fa"))
@@ -97,8 +95,6 @@ class ResolverTests(TestCase):
 
     def test_resolver_can_build_transcript_evidence_from_manifest_path(self) -> None:
         """Resolve transcript evidence from a current manifest-shaped local results directory.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         resolver = LocalManifestAssetResolver()
         with tempfile.TemporaryDirectory() as tmp:
@@ -151,8 +147,6 @@ class ResolverTests(TestCase):
 
     def test_resolver_reports_ambiguity_instead_of_guessing(self) -> None:
         """Return an unresolved ambiguity when more than one candidate is found.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         resolver = LocalManifestAssetResolver()
         with tempfile.TemporaryDirectory() as tmp:
@@ -203,8 +197,6 @@ class ResolverTests(TestCase):
 
     def test_resolver_reports_missing_when_nothing_matches(self) -> None:
         """Return a missing-input message when no source can satisfy the request.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         resolver = LocalManifestAssetResolver()
 
@@ -216,8 +208,6 @@ class ResolverTests(TestCase):
 
     def test_resolver_can_use_current_result_bundle_objects(self) -> None:
         """Resolve from current registered-workflow result bundle objects when provided directly.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         resolver = LocalManifestAssetResolver()
         bundle = ProteinEvidenceResultBundle(
@@ -245,8 +235,6 @@ class ResolverTests(TestCase):
 
     def test_resolver_accepts_generic_ab_initio_bundle_objects(self) -> None:
         """Resolve generic ab initio bundles without losing legacy compatibility.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         resolver = LocalManifestAssetResolver()
         bundle = AbInitioResultBundle(
@@ -273,8 +261,6 @@ class ResolverTests(TestCase):
 
     def test_resolver_can_satisfy_downstream_qc_target_from_prior_result_manifest(self) -> None:
         """Resolve a downstream QC target from a prior repeat-filter result bundle manifest.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         resolver = LocalManifestAssetResolver()
         with tempfile.TemporaryDirectory() as tmp:
@@ -608,8 +594,6 @@ class DurableIndexResolverTests(TestCase):
         """When a manifest source path is missing but a matching DurableAssetRef
         is in durable_index, resolve() must return an unresolved result whose
         unresolved_requirements mention the run_id and output_name from the ref.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         resolver = LocalManifestAssetResolver()
         with tempfile.TemporaryDirectory() as tmp:
@@ -644,8 +628,6 @@ class DurableIndexResolverTests(TestCase):
         """When a manifest source exists on disk, resolution must succeed
         normally even when a matching DurableAssetRef is also in durable_index.
         The durable ref must not interfere with the happy path.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         resolver = LocalManifestAssetResolver()
         with tempfile.TemporaryDirectory() as tmp:

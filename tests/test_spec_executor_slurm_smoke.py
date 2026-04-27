@@ -35,8 +35,6 @@ class SlurmSpecExecutorSmokeTests(unittest.TestCase):
     @unittest.skipUnless(SBATCH_AVAILABLE, "sbatch is required for the live Slurm smoke test")
     def test_sbatch_accepts_a_tiny_hello_script(self) -> None:
         """Submit one trivial Slurm script and confirm it writes the expected stdout.
-
-    This test keeps the current contract explicit and guards the documented behavior against regression.
 """
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
