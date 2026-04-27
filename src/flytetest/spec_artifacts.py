@@ -16,9 +16,19 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, NewType
 
 from flytetest.specs import BindingPlan, SpecSerializable, WorkflowSpec
+
+
+RecipeId = NewType("RecipeId", str)
+"""Frozen-recipe identifier of the form ``<YYYYMMDDThhmmss.mmm>Z-<target_name>``.
+
+Purely a static-typing alias over ``str`` — no runtime cost, no validation.
+Use on public signatures (MCP reply dataclasses, ``SlurmRunRecord``,
+``make_recipe_id`` return) so "this string is a frozen-recipe identifier" is
+a checked claim rather than a comment.
+"""
 
 
 SPEC_ARTIFACT_SCHEMA_VERSION = "workflow-spec-artifact-v1"
@@ -31,7 +41,7 @@ DEFAULT_DURABLE_ASSET_INDEX_FILENAME = "durable_asset_index.json"
 _TARGET_NAME_UNSAFE = re.compile(r"[^a-z0-9_-]")
 
 
-def make_recipe_id(target_name: str, *, now: datetime | None = None) -> str:
+def make_recipe_id(target_name: str, *, now: datetime | None = None) -> RecipeId:
     """Generate a stable recipe identifier: ``<YYYYMMDDThhmmss.mmm>Z-<target_name>``.
 
     Millisecond resolution makes collisions negligible for serialized calls.
@@ -44,7 +54,7 @@ def make_recipe_id(target_name: str, *, now: datetime | None = None) -> str:
     ts = now or datetime.now(UTC)
     millis = ts.microsecond // 1000
     slug = _TARGET_NAME_UNSAFE.sub("_", target_name.lower()).strip("_") or "unknown"
-    return f"{ts.strftime('%Y%m%dT%H%M%S')}.{millis:03d}Z-{slug}"
+    return RecipeId(f"{ts.strftime('%Y%m%dT%H%M%S')}.{millis:03d}Z-{slug}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -548,6 +558,7 @@ __all__ = [
     "SPEC_ARTIFACT_SCHEMA_VERSION",
     "DurableAssetRef",
     "RecipeApprovalRecord",
+    "RecipeId",
     "SavedWorkflowSpecArtifact",
     "artifact_from_typed_plan",
     "check_recipe_approval",

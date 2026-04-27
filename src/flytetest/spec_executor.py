@@ -26,7 +26,15 @@ from typing import Any
 from flytetest.registry import get_entry
 from flytetest.resolver import AssetResolver, LocalManifestAssetResolver, ResolutionResult
 from flytetest.planner_types import QualityAssessmentTarget
-from flytetest.spec_artifacts import SavedWorkflowSpecArtifact, load_workflow_spec_artifact, DurableAssetRef, DURABLE_ASSET_INDEX_SCHEMA_VERSION, save_durable_asset_index, _write_json_atomically
+from flytetest.spec_artifacts import (
+    DURABLE_ASSET_INDEX_SCHEMA_VERSION,
+    DurableAssetRef,
+    RecipeId,
+    SavedWorkflowSpecArtifact,
+    _write_json_atomically,
+    load_workflow_spec_artifact,
+    save_durable_asset_index,
+)
 from flytetest.specs import ResourceSpec, RuntimeImageSpec, SpecSerializable, WorkflowNodeSpec
 from flytetest.staging import StagingFinding, check_offline_staging
 
@@ -274,7 +282,7 @@ class SlurmRunRecord(SpecSerializable):
 
     schema_version: str
     run_id: str
-    recipe_id: str
+    recipe_id: RecipeId
     workflow_name: str
     artifact_path: Path
     script_path: Path

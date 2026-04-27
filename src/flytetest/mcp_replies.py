@@ -15,6 +15,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from flytetest.spec_artifacts import RecipeId
+
 
 @dataclass(frozen=True)
 class SuggestedBundle:
@@ -41,7 +43,7 @@ class RunReply:
     """Success reply from the reshaped ``run_task`` and ``run_workflow`` tools."""
 
     supported: Literal[True]
-    recipe_id: str
+    recipe_id: RecipeId
     run_record_path: str
     artifact_path: str
     execution_profile: Literal["local", "slurm"]
@@ -101,7 +103,7 @@ class ValidateRecipeReply:
     """Validation reply returned by ``validate_run_recipe``."""
 
     supported: bool
-    recipe_id: str
+    recipe_id: RecipeId
     execution_profile: Literal["local", "slurm"]
     findings: tuple[dict[str, str], ...]
 
@@ -111,7 +113,7 @@ class DryRunReply:
     """Preview reply returned when a reshaped run tool receives ``dry_run=True``."""
 
     supported: Literal[True]
-    recipe_id: str
+    recipe_id: RecipeId
     artifact_path: str
     execution_profile: Literal["local", "slurm"]
     resolved_bindings: dict[str, dict[str, str]]

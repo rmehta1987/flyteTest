@@ -58,8 +58,14 @@ Source: `CRITIQUE_REPORT.md`, ranked synthesis.
   8 importers updated; 2 test files merged into `tests/test_manifest.py`;
   test count unchanged at 905 passed; DESIGN.md project-structure block
   updated.)
-- [ ] Introduce `RecipeId = NewType("RecipeId", str)` and thread through
+- [x] Introduce `RecipeId = NewType("RecipeId", str)` and thread through
   public signatures. [ENG-07]
+  (2026-04-27: alias added in `spec_artifacts.py` next to `make_recipe_id`;
+  exported via `__all__`. Annotated 5 public surfaces: `make_recipe_id`
+  return, `RunReply.recipe_id`, `DryRunReply.recipe_id`,
+  `ValidateRecipeReply.recipe_id`, `SlurmRunRecord.recipe_id`. Private
+  sbatch render helpers kept on bare `str`. NewType is runtime-free; tests
+  unchanged at 903 passed.)
 - [x] Rename or delete `m18_busco_demo` bundle. [SCI-02]
   (2026-04-26: renamed to `busco_protein_qc_minimal`; 12 refs updated.)
 - [x] Move `.codex/tutorial_context.md` to `.codex/agent/` *or* split the
