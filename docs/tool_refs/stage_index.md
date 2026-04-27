@@ -13,7 +13,7 @@ Use this page when:
 - you want the right tool refs for that stage
 - you want a copy-paste prompt starter that names the real FLyteTest workflow or task boundary
 
-For tutorial-backed fixture context and stage-to-dataset mapping, see [tutorial_context.md](/home/rmeht/Projects/flyteTest/docs/tutorial_context.md). For current repo scope and milestone status, see [README.md](/home/rmeht/Projects/flyteTest/README.md).
+For tutorial-backed fixture context and stage-to-dataset mapping, see [tutorial_context.md](/home/rmeht/Projects/flyteTest/.codex/agent/tutorial_context.md). For current repo scope and milestone status, see [README.md](/home/rmeht/Projects/flyteTest/README.md).
 
 ## Transcript Evidence
 

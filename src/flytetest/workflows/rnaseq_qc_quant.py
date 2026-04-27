@@ -4,7 +4,7 @@ This module preserves the original FastQC plus Salmon stage while broader
 annotation workflows are added alongside it. Stage and tool expectations follow
 `docs/tool_refs/fastqc.md` and `docs/tool_refs/salmon.md`, and the supported
 `rnaseq_qc_quant` boundary is described in `README.md` and
-`docs/tutorial_context.md`.
+`.codex/agent/tutorial_context.md`.
 """
 
 from __future__ import annotations

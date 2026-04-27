@@ -39,7 +39,7 @@
 - Task modules: `.codex/tasks.md`.
 - Workflow modules: `.codex/workflows.md`.
 - Registry entries: `.codex/registry.md`.
-- Biology tasks, fixture selection, or smoke-test scope: `.codex/tutorial_context.md`.
+- Biology tasks, fixture selection, or smoke-test scope: `.codex/agent/tutorial_context.md`.
 - Reviews: `.codex/code-review.md`.
 
 ## Project Structure (orientation layer — depth in `.codex/`)

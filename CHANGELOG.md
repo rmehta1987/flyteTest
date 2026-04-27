@@ -32,6 +32,10 @@ Entry template:
 
 ## Unreleased
 
+### Critique follow-up — relocate `tutorial_context.md` to `.codex/agent/` (2026-04-27)
+
+- [x] 2026-04-27 Moved `.codex/tutorial_context.md` → `.codex/agent/tutorial_context.md` (Option A). Stage-1 evidence: ~89% of the file is agent-meta (typed binding templates, copy-paste prompt scaffolds, prompting/Apptainer/task-implementation guidance); the biology content is enumerative supporting context (fixture roots, stage→tutorial map, local file lists) that exists to be cited by the surrounding prompt templates and is not separable. No external caller cross-references the file by section heading, so the move is link-rewrite only. No duplication with `docs/gatk_pipeline_overview.md` (different pipeline family — annotation vs. GATK germline), so Option B's "fold biology into existing pipeline doc" lever did not apply. Updated 7 active call sites (`AGENTS.md`, `CLAUDE.md`, `DESIGN.md` ×2, `src/flytetest/workflows/rnaseq_qc_quant.py`, `docs/tool_refs/stage_index.md`, prior milestone checklist) and rewrote 17 internal self-references inside the moved file. Submission prompt: `docs/2026-04-26-tutorial-context-relocation/submission_prompt.md`. [ENG-10]
+
 ### Critique follow-up — secondary cleanup (2026-04-26)
 
 - [x] 2026-04-26 Renamed bundle `m18_busco_demo` → `busco_protein_qc_minimal` (matches the `_minimal` convention used by `variant_calling_germline_minimal`; the `m18` milestone-numbering prefix meant nothing to scientists). Updated all 12 references across `bundles.py`, `tests/test_bundles.py`, `tests/test_server.py`, `tests/test_mcp_replies.py`. [SCI-02]

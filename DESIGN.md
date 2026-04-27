@@ -28,7 +28,7 @@ run recipes.
 | `SCIENTIST_GUIDE.md` | Current MCP surface and prompt behavior |
 | `docs/capability_maturity.md` | Capability snapshot by area |
 | `docs/realtime_refactor_checklist.md` | Architecture refactor status |
-| `docs/tutorial_context.md` | Prompting and fixture context |
+| `.codex/agent/tutorial_context.md` | Prompting and fixture context |
 | `.codex/testing.md` | Validation and testing expectations |
 
 ## TL;DR — Core Decisions
@@ -1260,7 +1260,7 @@ files that explain the design and current scope:
 - `DESIGN.md`
 - `CHANGELOG.md`
 - `SCIENTIST_GUIDE.md`
-- `docs/tutorial_context.md`
+- `.codex/agent/tutorial_context.md`
 - `docs/capability_maturity.md`
 - `docs/realtime_refactor_checklist.md`
 

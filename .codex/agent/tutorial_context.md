@@ -479,7 +479,7 @@ Practical rule:
 ```text
 Use FLyteTest tutorial context from:
 
-- /home/rmeht/Projects/flyteTest/docs/tutorial_context.md
+- /home/rmeht/Projects/flyteTest/.codex/agent/tutorial_context.md
 - /home/rmeht/Projects/flyteTest/docs/tool_refs/fastqc.md
 - /home/rmeht/Projects/flyteTest/src/flytetest/registry.py
 
@@ -506,7 +506,7 @@ Validation:
 ```text
 Use FLyteTest tutorial context from:
 
-- /home/rmeht/Projects/flyteTest/docs/tutorial_context.md
+- /home/rmeht/Projects/flyteTest/.codex/agent/tutorial_context.md
 - /home/rmeht/Projects/flyteTest/docs/tool_refs/salmon.md
 - /home/rmeht/Projects/flyteTest/src/flytetest/registry.py
 
@@ -534,7 +534,7 @@ Validation:
 ```text
 Use FLyteTest tutorial context from:
 
-- /home/rmeht/Projects/flyteTest/docs/tutorial_context.md
+- /home/rmeht/Projects/flyteTest/.codex/agent/tutorial_context.md
 - /home/rmeht/Projects/flyteTest/docs/tool_refs/star.md
 - /home/rmeht/Projects/flyteTest/src/flytetest/registry.py
 
@@ -562,7 +562,7 @@ Validation:
 ```text
 Use FLyteTest tutorial context from:
 
-- /home/rmeht/Projects/flyteTest/docs/tutorial_context.md
+- /home/rmeht/Projects/flyteTest/.codex/agent/tutorial_context.md
 - /home/rmeht/Projects/flyteTest/docs/tool_refs/samtools.md
 - /home/rmeht/Projects/flyteTest/src/flytetest/registry.py
 
@@ -588,7 +588,7 @@ Validation:
 ```text
 Use FLyteTest tutorial context from:
 
-- /home/rmeht/Projects/flyteTest/docs/tutorial_context.md
+- /home/rmeht/Projects/flyteTest/.codex/agent/tutorial_context.md
 - /home/rmeht/Projects/flyteTest/docs/tool_refs/trinity.md
 - /home/rmeht/Projects/flyteTest/src/flytetest/registry.py
 
@@ -614,7 +614,7 @@ Validation:
 ```text
 Use FLyteTest tutorial context from:
 
-- /home/rmeht/Projects/flyteTest/docs/tutorial_context.md
+- /home/rmeht/Projects/flyteTest/.codex/agent/tutorial_context.md
 - /home/rmeht/Projects/flyteTest/docs/tool_refs/stringtie.md
 - /home/rmeht/Projects/flyteTest/src/flytetest/registry.py
 
@@ -640,7 +640,7 @@ Validation:
 ```text
 Use FLyteTest tutorial context from:
 
-- /home/rmeht/Projects/flyteTest/docs/tutorial_context.md
+- /home/rmeht/Projects/flyteTest/.codex/agent/tutorial_context.md
 - /home/rmeht/Projects/flyteTest/docs/tool_refs/exonerate.md
 - /home/rmeht/Projects/flyteTest/src/flytetest/registry.py
 - /home/rmeht/Projects/flyteTest/docs/braker3_evm_notes.md
@@ -668,7 +668,7 @@ Validation:
 ```text
 Use FLyteTest tutorial context from:
 
-- /home/rmeht/Projects/flyteTest/docs/tutorial_context.md
+- /home/rmeht/Projects/flyteTest/.codex/agent/tutorial_context.md
 - /home/rmeht/Projects/flyteTest/docs/tool_refs/braker3.md
 - /home/rmeht/Projects/flyteTest/src/flytetest/registry.py
 - /home/rmeht/Projects/flyteTest/docs/braker3_evm_notes.md
@@ -702,7 +702,7 @@ alone.
 ```text
 Use FLyteTest tutorial context from:
 
-- /home/rmeht/Projects/flyteTest/docs/tutorial_context.md
+- /home/rmeht/Projects/flyteTest/.codex/agent/tutorial_context.md
 - /home/rmeht/Projects/flyteTest/docs/tool_refs/pasa.md
 - /home/rmeht/Projects/flyteTest/src/flytetest/registry.py
 
@@ -728,7 +728,7 @@ Validation:
 ```text
 Use FLyteTest tutorial context from:
 
-- /home/rmeht/Projects/flyteTest/docs/tutorial_context.md
+- /home/rmeht/Projects/flyteTest/.codex/agent/tutorial_context.md
 - /home/rmeht/Projects/flyteTest/docs/tool_refs/transdecoder.md
 - /home/rmeht/Projects/flyteTest/src/flytetest/registry.py
 
@@ -754,7 +754,7 @@ Validation:
 ```text
 Use FLyteTest tutorial context from:
 
-- /home/rmeht/Projects/flyteTest/docs/tutorial_context.md
+- /home/rmeht/Projects/flyteTest/.codex/agent/tutorial_context.md
 - /home/rmeht/Projects/flyteTest/docs/tool_refs/evidencemodeler.md
 - /home/rmeht/Projects/flyteTest/src/flytetest/registry.py
 - /home/rmeht/Projects/flyteTest/docs/braker3_evm_notes.md
@@ -798,7 +798,7 @@ Copy and adapt the blocks below when you want a stage-specific starting prompt.
 ```text
 Use FLyteTest tutorial context from:
 
-- /home/rmeht/Projects/flyteTest/docs/tutorial_context.md
+- /home/rmeht/Projects/flyteTest/.codex/agent/tutorial_context.md
 - /home/rmeht/Projects/flyteTest/docs/tool_refs/exonerate.md
 - /home/rmeht/Projects/flyteTest/src/flytetest/registry.py
 - /home/rmeht/Projects/flyteTest/docs/braker3_evm_notes.md
@@ -828,7 +828,7 @@ Validation:
 ```text
 Use FLyteTest tutorial context from:
 
-- /home/rmeht/Projects/flyteTest/docs/tutorial_context.md
+- /home/rmeht/Projects/flyteTest/.codex/agent/tutorial_context.md
 - /home/rmeht/Projects/flyteTest/docs/tool_refs/braker3.md
 - /home/rmeht/Projects/flyteTest/src/flytetest/registry.py
 - /home/rmeht/Projects/flyteTest/docs/braker3_evm_notes.md
@@ -859,7 +859,7 @@ Validation:
 ```text
 Use FLyteTest tutorial context from:
 
-- /home/rmeht/Projects/flyteTest/docs/tutorial_context.md
+- /home/rmeht/Projects/flyteTest/.codex/agent/tutorial_context.md
 - /home/rmeht/Projects/flyteTest/docs/tool_refs/pasa.md
 - /home/rmeht/Projects/flyteTest/docs/tool_refs/transdecoder.md
 - /home/rmeht/Projects/flyteTest/src/flytetest/registry.py
@@ -890,7 +890,7 @@ Validation:
 ```text
 Use FLyteTest tutorial context from:
 
-- /home/rmeht/Projects/flyteTest/docs/tutorial_context.md
+- /home/rmeht/Projects/flyteTest/.codex/agent/tutorial_context.md
 - /home/rmeht/Projects/flyteTest/docs/tool_refs/evidencemodeler.md
 - /home/rmeht/Projects/flyteTest/src/flytetest/registry.py
 - /home/rmeht/Projects/flyteTest/docs/braker3_evm_notes.md
@@ -920,7 +920,7 @@ Validation:
 ```text
 Use FLyteTest tutorial context from:
 
-- /home/rmeht/Projects/flyteTest/docs/tutorial_context.md
+- /home/rmeht/Projects/flyteTest/.codex/agent/tutorial_context.md
 - /home/rmeht/Projects/flyteTest/docs/tool_refs/pasa.md
 - /home/rmeht/Projects/flyteTest/src/flytetest/registry.py
 - /home/rmeht/Projects/flyteTest/docs/braker3_evm_notes.md
@@ -972,7 +972,7 @@ Copy this block when you want a compact tutorial-aware prompt prefix:
 ```text
 Use FLyteTest tutorial context from:
 
-- /home/rmeht/Projects/flyteTest/docs/tutorial_context.md
+- /home/rmeht/Projects/flyteTest/.codex/agent/tutorial_context.md
 - /home/rmeht/Projects/flyteTest/README.md
 - /home/rmeht/Projects/flyteTest/src/flytetest/registry.py
 - /home/rmeht/Projects/flyteTest/docs/braker3_evm_notes.md

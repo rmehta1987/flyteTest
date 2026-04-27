@@ -58,8 +58,12 @@ Source: `CRITIQUE_REPORT.md`, ranked synthesis.
   public signatures. [ENG-07]
 - [x] Rename or delete `m18_busco_demo` bundle. [SCI-02]
   (2026-04-26: renamed to `busco_protein_qc_minimal`; 12 refs updated.)
-- [ ] Move `.codex/tutorial_context.md` to `.codex/agent/` *or* split the
+- [x] Move `.codex/tutorial_context.md` to `.codex/agent/` *or* split the
   agent-meta from biology content. [ENG-10]
+  (2026-04-27: Option A — moved to `.codex/agent/tutorial_context.md`; ~89%
+  agent-meta, biology content is enumerative supporting context for the
+  prompt templates and not separable. 7 active call sites updated; 17
+  internal self-references rewritten.)
 - [x] Add 5-line module docstrings clarifying `planning.py` vs.
   `composition.py` boundary. [ENG-08]
   (2026-04-26: boundary paragraph added to both module docstrings.)
