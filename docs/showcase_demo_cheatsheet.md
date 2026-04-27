@@ -4,14 +4,18 @@ One-page operator reference for the 20-minute talk in
 `docs/showcase_flyte_plain_language.md`. Keep this open in a second window.
 
 **Cluster assumptions:** UChicago RCC Midway3, `partition=caslake`,
-`account=rcc-staff`, shared-FS roots `/scratch/midway3` and `/project/rcc`,
-GATK + bwa-mem2 SIFs already staged via `bash scripts/rcc/stage_gatk_local.sh`,
-`bash scripts/rcc/pull_gatk_image.sh`, `bash scripts/rcc/build_bwa_mem2_sif.sh`.
-The MCP server must be running in an authenticated cluster session.
+`account=rcc-staff`, shared-FS roots `/scratch/midway3` and `/project/rcc`.
+GATK is loaded via `module load gatk/4.5.0` — already in
+`DEFAULT_SLURM_MODULE_LOADS`, so **no GATK SIF needed**. Pass `gatk_sif=""`
+in all `run_workflow` calls; `run_tool` then calls GATK natively from PATH.
+bwa-mem2 is **not** in the default module loads, so `data/images/bwa_mem2.sif`
+must be built first: `bash scripts/rcc/build_bwa_mem2_sif.sh`.
 
-Calls below assume an MCP-connected Claude session (or equivalent Python REPL
-that imports from `flytetest.server`). Bundle inputs are pipeline-shared, so
-each `run_workflow` call constructs its own scalars — see Part 1 audit.
+Because `data/images/gatk4.sif` won't exist, `load_bundle` returns
+`supported=False`. The calls below bypass the availability check by
+constructing inputs directly from the known bundle paths.
+
+The MCP server must be running in an authenticated cluster session.
 
 ---
 
@@ -21,23 +25,40 @@ Morning of the talk, ~2 hours before showtime. This produces the joint VCF
 you'll show in Scene 4 as "what a finished receipt looks like."
 
 ```python
-bundle = load_bundle("variant_calling_germline_minimal")
-assert bundle["supported"], bundle.get("reasons")
+# load_bundle returns supported=False when gatk4.sif is absent (we use the
+# module instead). Construct inputs directly from the known bundle paths.
+KNOWN_SITES = [
+    "data/references/hg38/dbsnp_138.hg38.vcf.gz",
+    "data/references/hg38/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz",
+]
 
 evidence = run_workflow(
     workflow_name="germline_short_variant_discovery",
-    bindings=bundle["bindings"],
-    inputs={
-        "reference_fasta": bundle["inputs"]["ref_path"],
-        "sample_ids": ["NA12878_chr20"],
-        "r1_paths": [bundle["inputs"]["r1_path"]],
-        "r2_paths": [bundle["inputs"]["r2_path"]],
-        "known_sites": bundle["inputs"]["known_sites"],
-        "intervals": bundle["inputs"]["intervals"],
-        "cohort_id": bundle["inputs"]["cohort_id"],
+    bindings={
+        "ReferenceGenome": {"fasta_path": "data/references/hg38/chr20.fa"},
+        "ReadPair": {
+            "sample_id": "NA12878_chr20",
+            "r1_path": "data/reads/NA12878_chr20_R1.fastq.gz",
+            "r2_path": "data/reads/NA12878_chr20_R2.fastq.gz",
+        },
     },
-    runtime_images=bundle["runtime_images"],
-    tool_databases=bundle["tool_databases"],
+    inputs={
+        "reference_fasta": "data/references/hg38/chr20.fa",
+        "sample_ids": ["NA12878_chr20"],
+        "r1_paths": ["data/reads/NA12878_chr20_R1.fastq.gz"],
+        "r2_paths": ["data/reads/NA12878_chr20_R2.fastq.gz"],
+        "known_sites": KNOWN_SITES,
+        "intervals": ["chr20"],
+        "cohort_id": "NA12878_chr20",
+    },
+    runtime_images={
+        "gatk_sif": "",                          # use module load gatk/4.5.0
+        "bwa_sif": "data/images/bwa_mem2.sif",  # still needs SIF
+    },
+    tool_databases={
+        "dbsnp": KNOWN_SITES[0],
+        "mills": KNOWN_SITES[1],
+    },
     execution_profile="slurm",
     resource_request={
         "partition": "caslake",
@@ -86,19 +107,30 @@ submit is the live job that will be done by Scene 4.
 ```python
 # On screen — the lab menu:
 list_entries()                                  # 45 showcase entries
-list_bundles(pipeline_family="variant_calling") # 2 bundles
-bundle = load_bundle("variant_calling_germline_minimal")
+list_bundles(pipeline_family="variant_calling") # 2 bundles (available=False
+                                                # because gatk4.sif absent —
+                                                # show the reasons[] on screen;
+                                                # that's the fetch_hints beat)
 
-# Off screen (or in a side terminal) — kick off the live job:
+# Off screen (or in a side terminal) — kick off the live job.
+# prepare_reference: CreateSequenceDictionary + IndexFeatureFile×2 + bwa_mem2_index
 live = run_workflow(
     workflow_name="prepare_reference",
-    bindings=bundle["bindings"],
-    inputs={
-        "reference_fasta": bundle["inputs"]["ref_path"],
-        "known_sites": bundle["inputs"]["known_sites"],
+    bindings={
+        "ReferenceGenome": {"fasta_path": "data/references/hg38/chr20.fa"},
     },
-    runtime_images=bundle["runtime_images"],
-    tool_databases=bundle["tool_databases"],
+    inputs={
+        "reference_fasta": "data/references/hg38/chr20.fa",
+        "known_sites": KNOWN_SITES,             # defined in T-Morning block
+    },
+    runtime_images={
+        "gatk_sif": "",                          # use module load gatk/4.5.0
+        "bwa_sif": "data/images/bwa_mem2.sif",
+    },
+    tool_databases={
+        "dbsnp": KNOWN_SITES[0],
+        "mills": KNOWN_SITES[1],
+    },
     execution_profile="slurm",
     resource_request={
         "partition": "caslake",
@@ -222,7 +254,7 @@ preserved. The biological plan does not change.
 | Situation | What to do |
 |---|---|
 | Live `prepare_reference` still QUEUED at Scene 4 | Show `scheduler_state=PENDING` + `job_id`; pivot to evidence record immediately. Frame as "real cluster, real queue, this is what scheduling looks like." |
-| Live job FAILED (e.g., container moved) | This is actually a good demo — show `final_scheduler_state=FAILED` + the stdout/stderr tail in `status`, then run a `retry_slurm_job` with corrected resources. Turns the gaffe into Scene 5. |
+| Live job FAILED (e.g., bwa_mem2.sif not on shared FS, or GATK module not loaded on compute node) | Good demo — show `final_scheduler_state=FAILED` + stderr tail, then `retry_slurm_job`. Turns the gaffe into Scene 5. |
 | Evidence run incomplete | Drop the "completed receipt" pivot. Stay on the live `prepare_reference` artifact + monitor; lengthen Scene 2 instead. |
 | Network or 2FA glitch on cluster session | Skip Slurm entirely. Run the same `run_workflow` call with `execution_profile="local"` against the local executor; show the run record on local disk. Soften "the cluster" → "the executor." |
 | Audience asks for BRAKER3 mid-talk | Pre-staged annotation record (if you ran one): show `monitor_slurm_job` against it. Otherwise: "same machinery, different family — the catalogue lists annotation workflows; happy to run one offline and send the record." Don't try live. |
@@ -232,13 +264,12 @@ preserved. The biological plan does not change.
 ## Pre-flight checklist (run T-1h)
 
 ```bash
-# 1. Bundle is available (no missing fixtures):
-python3 -c "from flytetest.bundles import load_bundle; \
-  b = load_bundle('variant_calling_germline_minimal'); \
-  print(b['supported'], b.get('reasons', []))"
+# 1. GATK module available on compute nodes:
+module load gatk/4.5.0 && gatk --version
 
-# 2. SIFs reachable from compute nodes (probe from a login session):
-ls -lh data/images/gatk4.sif data/images/bwa_mem2.sif
+# 2. bwa-mem2 SIF staged (only SIF still needed):
+ls -lh data/images/bwa_mem2.sif
+# If missing: bash scripts/rcc/build_bwa_mem2_sif.sh
 
 # 3. Slurm tooling available:
 which sbatch squeue sacct scancel
