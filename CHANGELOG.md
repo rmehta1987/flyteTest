@@ -32,6 +32,10 @@ Entry template:
 
 ## Unreleased
 
+### Critique follow-up — wrap-up (2026-04-27)
+
+- [x] 2026-04-27 Closed the three pre-flight "open questions" left over from the 2026-04-25 critique-followup primary milestone. (1) `prompt_and_run` deregistration is effective: `MCP_TOOL_NAMES` no longer contains it, no `@mcp.tool` decorator remains; Python definitions/tests retained only as regression coverage. (2) `composition.py` is reachable from the MCP surface transitively via `planning.py:39` (`from flytetest.composition import compose_workflow_path`) — matches the ENG-08 boundary. (3) `docs/archive/Prompts/` (38 files, 3–11 days old) is fully inside the 60-day retention window set by ENG-04; first eligible pruning date 2026-06-05; keep. With these closed, the entire critique-followup initiative wraps up — moved `docs/2026-04-25-critique-followup/` to `docs/archive/` per the milestone-done convention.
+
 ### Critique follow-up — `RecipeId` NewType for public signatures (2026-04-27)
 
 - [x] 2026-04-27 Introduced `RecipeId = NewType("RecipeId", str)` in `src/flytetest/spec_artifacts.py` next to `make_recipe_id` (the producer); exported via `__all__`. The alias makes "this string is a frozen-recipe identifier" a static-typing claim instead of a comment. NewType is runtime-free, so the wire format is unchanged. Annotated 5 public surfaces: `make_recipe_id` return, `RunReply.recipe_id`, `DryRunReply.recipe_id`, `ValidateRecipeReply.recipe_id`, `SlurmRunRecord.recipe_id`. Smaller surface than the prompt anticipated (~10–20) because most consumers accept `artifact_path: str` and derive the recipe_id internally via `Path(artifact_path).stem` — that's a private-helper boundary, kept on bare `str`. The two `_render_sbatch_*` helpers (`spec_executor.py:1396, 1463`) also stay on bare `str` per the prompt's "leave private helpers on bare str" guidance. No type-checker is configured in the repo; acceptance reduced to "imports cleanly and tests pass." Full suite: 903 passed, 1 skipped (unchanged). [ENG-07]

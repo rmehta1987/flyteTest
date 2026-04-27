@@ -90,7 +90,26 @@ Source: `CRITIQUE_REPORT.md`, ranked synthesis.
 
 ## Open questions to resolve before starting
 
-- [ ] Confirm `prompt_and_run` usage in real clients (telemetry or
+- [x] Confirm `prompt_and_run` usage in real clients (telemetry or
   maintainer recall).
-- [ ] Confirm `composition.py` reachability from the MCP surface (grep).
-- [ ] Inspect `docs/archive/Prompts/` — keep or delete?
+  (2026-04-27: ENG-01 step 02 deregistration is effective — no
+  `@mcp.tool` registration remains for `prompt_and_run`, and
+  `MCP_TOOL_NAMES = EXPERIMENT_LOOP_TOOLS + INSPECT_TOOLS +
+  LIFECYCLE_TOOLS` no longer contains it. Python definitions and tests
+  are retained as documentation/regression coverage; the contract
+  resource at `server.py:4445` still surfaces a docs-only description
+  but is not an executable surface. No active client path exists.)
+- [x] Confirm `composition.py` reachability from the MCP surface (grep).
+  (2026-04-27: reachable transitively. `src/flytetest/composition.py`
+  is imported only by `src/flytetest/planning.py:39`
+  (`from flytetest.composition import compose_workflow_path`), and
+  `planning.py` is on the MCP server import path. This matches the
+  ENG-08 boundary docstrings: planning is the entrypoint that
+  classifies and freezes; composition is the bounded graph search
+  planning calls when no single registered entry matches.)
+- [x] Inspect `docs/archive/Prompts/` — keep or delete?
+  (2026-04-27: KEEP. 38 historical submission prompts; oldest Apr 16,
+  youngest Apr 24 (3–11 days old). All within the 60-day retention
+  window set by ENG-04. First eligible pruning date: 2026-06-05.
+  `Prompts/` capitalization is unusual but a rename would be churn-
+  only. No action needed now.)
