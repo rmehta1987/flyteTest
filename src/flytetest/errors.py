@@ -14,6 +14,8 @@ structured decline with recovery hints is appropriate.
 
 from __future__ import annotations
 
+from typing import Literal
+
 
 class PlannerResolutionError(Exception):
     """Base class for all structured planner-resolution failures.
@@ -65,32 +67,28 @@ class UnknownOutputNameError(PlannerResolutionError):
         )
 
 
-class ManifestNotFoundError(PlannerResolutionError):
-    """Raised when a ``$manifest`` binding path does not exist on disk.
-
-    Attributes:
-        manifest_path: The filesystem path that was expected but not found.
-    """
-
-    def __init__(self, manifest_path: str) -> None:
-        self.manifest_path = manifest_path
-        super().__init__(
-            f"manifest path {manifest_path!r} does not exist on disk"
-        )
-
-
 class BindingPathMissingError(PlannerResolutionError):
-    """Raised when a raw-path binding points at a file that does not exist.
+    """Raised when a binding-resolved filesystem path does not exist on disk.
+
+    Covers both raw-path bindings (the scientist wrote the path directly) and
+    ``$manifest`` bindings (the scientist named a manifest sidecar that, in
+    turn, is missing).  The ``kind`` field records which binding form was
+    being resolved when the path came up missing — both produce identical
+    recovery advice in the translator, but the message wording preserves the
+    distinction so a scientist can see whether the missing file was the
+    manifest or the raw-path target.
 
     Attributes:
         path: The filesystem path that was expected but not found.
+        kind: ``"raw_path"`` for direct path bindings; ``"manifest"`` for
+            ``$manifest`` bindings whose sidecar file is absent.
     """
 
-    def __init__(self, path: str) -> None:
+    def __init__(self, path: str, *, kind: Literal["raw_path", "manifest"] = "raw_path") -> None:
         self.path = path
-        super().__init__(
-            f"binding path {path!r} does not exist on disk"
-        )
+        self.kind = kind
+        prefix = "manifest path" if kind == "manifest" else "binding path"
+        super().__init__(f"{prefix} {path!r} does not exist on disk")
 
 
 class BindingTypeMismatchError(PlannerResolutionError):

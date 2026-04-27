@@ -71,8 +71,16 @@ Source: `CRITIQUE_REPORT.md`, ranked synthesis.
 - [x] Add 5-line module docstrings clarifying `planning.py` vs.
   `composition.py` boundary. [ENG-08]
   (2026-04-26: boundary paragraph added to both module docstrings.)
-- [ ] Decide on `PlannerResolutionError` 5-classes-vs-4-handlers split.
+- [x] Decide on `PlannerResolutionError` 5-classes-vs-4-handlers split.
   [ENG-06]
+  (2026-04-27: Option A — collapsed to 4/4. `ManifestNotFoundError` merged
+  into `BindingPathMissingError` with a `kind: Literal["raw_path",
+  "manifest"]` field that picks the message prefix. Three raise sites in
+  `resolver.py` updated; translator at `server.py:1246` becomes single-class
+  `except`. No public-surface change — `PlanDecline` carries no category
+  field; SCIENTIST_GUIDE/DESIGN/README never named the dropped class. Tests:
+  903 passed, 1 skipped (was 905 — net −2 from removed standalone-identity
+  tests of the merged class; new `kind="manifest"` coverage added).)
 
 ## Open questions to resolve before starting
 

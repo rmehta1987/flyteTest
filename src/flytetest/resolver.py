@@ -22,7 +22,6 @@ from typing import Any, Literal, Mapping, Protocol, Sequence
 from flytetest.errors import (
     BindingTypeMismatchError,
     BindingPathMissingError,
-    ManifestNotFoundError,
     PlannerResolutionError,
     UnknownOutputNameError,
     UnknownRunIdError,
@@ -224,7 +223,10 @@ def _validate_materialized_paths(binding_key: str, value: Any) -> None:
     """Raise BindingPathMissingError when a materialized raw binding path is absent."""
     for path_value in _iter_path_values(value):
         if not path_value.exists():
-            raise _binding_context_error(BindingPathMissingError(str(path_value)), binding_key)
+            raise _binding_context_error(
+                BindingPathMissingError(str(path_value), kind="raw_path"),
+                binding_key,
+            )
 
 
 def _materialize_raw_binding(binding_key: str, binding_value: Mapping[str, Any]) -> Any:
@@ -334,7 +336,10 @@ def _materialize_manifest_binding(binding_key: str, binding_value: Mapping[str, 
     manifest_location = Path(str(binding_value["$manifest"]))
     manifest_path = manifest_location / "run_manifest.json" if manifest_location.is_dir() else manifest_location
     if not manifest_path.exists():
-        raise _binding_context_error(ManifestNotFoundError(str(manifest_path)), binding_key)
+        raise _binding_context_error(
+            BindingPathMissingError(str(manifest_path), kind="manifest"),
+            binding_key,
+        )
 
     manifest = json.loads(manifest_path.read_text())
     output_name = binding_value.get("output_name")
@@ -400,7 +405,10 @@ def _materialize_ref_binding(
     manifest_path = matching_ref.manifest_path
     if manifest_path is None or not manifest_path.exists():
         resolved_manifest_path = manifest_path or (matching_ref.asset_path / "run_manifest.json")
-        raise _binding_context_error(ManifestNotFoundError(str(resolved_manifest_path)), binding_key)
+        raise _binding_context_error(
+            BindingPathMissingError(str(resolved_manifest_path), kind="manifest"),
+            binding_key,
+        )
 
     manifest = json.loads(manifest_path.read_text())
     _validate_ref_binding_type(binding_key, matching_ref, manifest)

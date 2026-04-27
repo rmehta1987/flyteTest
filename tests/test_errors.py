@@ -10,7 +10,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from flytetest.errors import (
     BindingTypeMismatchError,
     BindingPathMissingError,
-    ManifestNotFoundError,
     PlannerResolutionError,
     UnknownOutputNameError,
     UnknownRunIdError,
@@ -79,28 +78,22 @@ class TestUnknownOutputNameError:
         assert isinstance(exc, PlannerResolutionError)
 
 
-class TestManifestNotFoundError:
-    def test_attributes(self):
-        exc = ManifestNotFoundError(manifest_path="/data/manifest.json")
-        assert exc.manifest_path == "/data/manifest.json"
-
-    def test_str_contains_manifest_path(self):
-        exc = ManifestNotFoundError(manifest_path="/data/manifest.json")
-        assert "/data/manifest.json" in str(exc)
-
-    def test_is_planner_resolution_error(self):
-        exc = ManifestNotFoundError(manifest_path="/data/manifest.json")
-        assert isinstance(exc, PlannerResolutionError)
-
-
 class TestBindingPathMissingError:
-    def test_attributes(self):
+    def test_attributes_default_kind_is_raw_path(self):
         exc = BindingPathMissingError(path="/scratch/genome.fa")
         assert exc.path == "/scratch/genome.fa"
+        assert exc.kind == "raw_path"
 
-    def test_str_contains_path(self):
+    def test_str_contains_path_and_binding_prefix_for_raw_path(self):
         exc = BindingPathMissingError(path="/scratch/genome.fa")
         assert "/scratch/genome.fa" in str(exc)
+        assert "binding path" in str(exc)
+
+    def test_manifest_kind_uses_manifest_message_prefix(self):
+        exc = BindingPathMissingError(path="/data/manifest.json", kind="manifest")
+        assert exc.kind == "manifest"
+        assert "manifest path" in str(exc)
+        assert "/data/manifest.json" in str(exc)
 
     def test_is_planner_resolution_error(self):
         exc = BindingPathMissingError(path="/scratch/genome.fa")
@@ -142,7 +135,6 @@ class TestPlannerResolutionErrorBase:
         for cls in (
             UnknownRunIdError,
             UnknownOutputNameError,
-            ManifestNotFoundError,
             BindingPathMissingError,
             BindingTypeMismatchError,
         ):

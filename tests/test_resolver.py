@@ -18,7 +18,6 @@ sys.path.insert(0, str(SRC_DIR))
 from flytetest.errors import (
     BindingTypeMismatchError,
     BindingPathMissingError,
-    ManifestNotFoundError,
     UnknownOutputNameError,
     UnknownRunIdError,
 )
@@ -291,13 +290,14 @@ class ResolverTests(TestCase):
         self.assertEqual(result.resolved_value.proteins_fasta_path, result_dir / "all_repeats_removed.proteins.fa")
 
     def test_materialize_bindings_raises_binding_path_missing_for_raw_path_form(self) -> None:
-        """Raw path bindings should fail with BindingPathMissingError when a path is absent."""
+        """Raw path bindings should fail with BindingPathMissingError(kind=raw_path) when a path is absent."""
         with self.assertRaises(BindingPathMissingError) as exc_info:
             _materialize_bindings(
                 {"ReferenceGenome": {"fasta_path": "/no/such/genome.fa"}},
             )
 
         self.assertEqual(exc_info.exception.path, "/no/such/genome.fa")
+        self.assertEqual(exc_info.exception.kind, "raw_path")
         self.assertIn("ReferenceGenome", str(exc_info.exception))
 
     def test_materialize_bindings_resolves_raw_path_form(self) -> None:
@@ -337,8 +337,8 @@ class ResolverTests(TestCase):
         self.assertEqual(materialized["TranscriptEvidenceSet"].read_sets[0].sample_id, "sampleA")
 
     def test_materialize_bindings_raises_manifest_not_found_for_manifest_form(self) -> None:
-        """Manifest-backed bindings should fail with ManifestNotFoundError when the sidecar is absent."""
-        with self.assertRaises(ManifestNotFoundError) as exc_info:
+        """Manifest-backed bindings should fail with BindingPathMissingError(kind=manifest) when the sidecar is absent."""
+        with self.assertRaises(BindingPathMissingError) as exc_info:
             _materialize_bindings(
                 {
                     "QualityAssessmentTarget": {
@@ -348,7 +348,8 @@ class ResolverTests(TestCase):
                 }
             )
 
-        self.assertEqual(exc_info.exception.manifest_path, "/no/such/run_manifest.json")
+        self.assertEqual(exc_info.exception.path, "/no/such/run_manifest.json")
+        self.assertEqual(exc_info.exception.kind, "manifest")
         self.assertIn("QualityAssessmentTarget", str(exc_info.exception))
 
     def test_materialize_bindings_raises_unknown_run_id_for_ref_form(self) -> None:

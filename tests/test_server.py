@@ -59,7 +59,6 @@ from flytetest.mcp_contract import (
 from flytetest.errors import (
     BindingPathMissingError,
     BindingTypeMismatchError,
-    ManifestNotFoundError,
     UnknownOutputNameError,
     UnknownRunIdError,
 )
@@ -3588,10 +3587,10 @@ class ServerTests(TestCase):
         self.assertIn("summary_json", next_steps_blob)
 
     def test_execute_run_tool_translates_manifest_not_found(self) -> None:
-        """ManifestNotFoundError → PlanDecline pointing at list_available_bindings."""
+        """BindingPathMissingError(kind=manifest) → PlanDecline pointing at list_available_bindings."""
 
         def body() -> dict[str, object]:
-            raise ManifestNotFoundError("/nope/run_manifest.json")
+            raise BindingPathMissingError("/nope/run_manifest.json", kind="manifest")
 
         with self.assertNoLogs("flytetest.server", level="ERROR"):
             reply = _execute_run_tool(
@@ -3611,10 +3610,10 @@ class ServerTests(TestCase):
         self.assertIn("readable", next_steps_blob)
 
     def test_execute_run_tool_translates_binding_path_missing(self) -> None:
-        """BindingPathMissingError → same decline shape as ManifestNotFoundError."""
+        """BindingPathMissingError(kind=raw_path) → same decline shape as the manifest variant."""
 
         def body() -> dict[str, object]:
-            raise BindingPathMissingError("/data/missing.fa")
+            raise BindingPathMissingError("/data/missing.fa", kind="raw_path")
 
         with self.assertNoLogs("flytetest.server", level="ERROR"):
             reply = _execute_run_tool(

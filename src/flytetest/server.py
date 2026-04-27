@@ -31,7 +31,6 @@ import flytetest.planner_types as planner_types_module
 from flytetest.errors import (
     BindingPathMissingError,
     BindingTypeMismatchError,
-    ManifestNotFoundError,
     UnknownOutputNameError,
     UnknownRunIdError,
 )
@@ -1243,7 +1242,7 @@ def _execute_run_tool(
                 ),
             )
         )
-    except (ManifestNotFoundError, BindingPathMissingError) as exc:
+    except BindingPathMissingError as exc:
         return asdict(
             PlanDecline(
                 supported=False,

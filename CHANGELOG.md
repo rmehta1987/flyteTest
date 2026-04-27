@@ -32,6 +32,10 @@ Entry template:
 
 ## Unreleased
 
+### Critique follow-up — align PlannerResolutionError classes with handlers (4/4) (2026-04-27)
+
+- [x] 2026-04-27 Collapsed the `PlannerResolutionError` hierarchy from 5 classes to 4 to match the translator's 4 handlers (Option A from the decision-first milestone). `ManifestNotFoundError` merged into `BindingPathMissingError` with a new `kind: Literal["raw_path", "manifest"]` field that picks the message prefix; the resolver's three raise sites now pass `kind="raw_path"` (one site) or `kind="manifest"` (two sites). Translator at `src/flytetest/server.py:1246` becomes single-class `except BindingPathMissingError as exc:` instead of a tuple. No public-surface change: `PlanDecline` has never carried a category/code field, the dropped class name was never in user-facing docs, and the message wording is preserved verbatim by keying off `kind`. Updated `errors.py`, `resolver.py`, `server.py`, `tests/test_errors.py`, `tests/test_resolver.py`, `tests/test_server.py`. Full suite: 903 passed, 1 skipped (was 905 — net −2 from removing two standalone-identity tests of the merged class; new `kind="manifest"` coverage added). [ENG-06]
+
 ### Critique follow-up — merge manifest modules into `manifest.py` (2026-04-27)
 
 - [x] 2026-04-27 Consolidated `src/flytetest/manifest_envelope.py` (envelope builder) and `src/flytetest/manifest_io.py` (JSON + copy helpers) into a single `src/flytetest/manifest.py`. The split was historical — readers chased one manifest read or write across two files. No public surface change: function names (`build_manifest_envelope`, `as_json_compatible`, `write_json`, `read_json`, `copy_file`, `copy_tree`) are preserved. Updated 8 importers (`tasks/{annotation,variant_calling,transdecoder,filtering,pasa,functional,eggnog}.py`, `workflows/variant_calling.py`); merged `tests/test_manifest_envelope.py` + `tests/test_manifest_io.py` into `tests/test_manifest.py` with the same five test methods; updated DESIGN.md project-structure block. Full suite: 905 passed, 1 skipped (unchanged from before the merge). [ENG-03]
