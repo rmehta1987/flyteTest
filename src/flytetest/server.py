@@ -1817,7 +1817,7 @@ def run_task(
     task_name: str,
     bindings: Mapping[str, Mapping[str, Any]] | None = None,
     inputs: Mapping[str, Any] | None = None,
-    resources: Mapping[str, Any] | None = None,
+    resource_request: Mapping[str, Any] | None = None,
     execution_profile: str = "local",
     runtime_images: Mapping[str, str] | None = None,
     tool_databases: Mapping[str, str] | None = None,
@@ -1902,7 +1902,7 @@ def run_task(
             source_prompt=source_prompt,
             explicit_bindings=explicit_bindings,
             scalar_inputs=inputs_in,
-            resource_request=resources,
+            resource_request=resource_request,
             execution_profile=execution_profile,
             runtime_images=dict(runtime_images or {}),
             tool_databases=dict(tool_databases or {}),
@@ -1925,7 +1925,7 @@ def run_task(
         if dry_run:
             _dry_findings = check_offline_staging(
                 artifact.workflow_spec,
-                tuple(Path(r) for r in ((resources or {}).get("shared_fs_roots") or [])),
+                tuple(Path(r) for r in ((resource_request or {}).get("shared_fs_roots") or [])),
                 execution_profile=execution_profile if execution_profile == "slurm" else "local",
             )
             return asdict(
@@ -1954,7 +1954,7 @@ def run_task(
         )
         if profile_value == "slurm":
             _shared_fs = tuple(
-                Path(r) for r in ((resources or {}).get("shared_fs_roots") or [])
+                Path(r) for r in ((resource_request or {}).get("shared_fs_roots") or [])
             )
             slurm_result = SlurmWorkflowSpecExecutor(
                 run_root=DEFAULT_RUN_DIR,
@@ -2089,7 +2089,7 @@ def run_workflow(
     workflow_name: str,
     bindings: Mapping[str, Mapping[str, Any]] | None = None,
     inputs: Mapping[str, Any] | None = None,
-    resources: Mapping[str, Any] | None = None,
+    resource_request: Mapping[str, Any] | None = None,
     execution_profile: str = "local",
     runtime_images: Mapping[str, str] | None = None,
     tool_databases: Mapping[str, str] | None = None,
@@ -2190,7 +2190,7 @@ def run_workflow(
             source_prompt=source_prompt,
             explicit_bindings=explicit_bindings,
             scalar_inputs=inputs_in,
-            resource_request=resources,
+            resource_request=resource_request,
             execution_profile=execution_profile,
             runtime_images=dict(runtime_images or {}),
             tool_databases=dict(tool_databases or {}),
@@ -2213,7 +2213,7 @@ def run_workflow(
         if dry_run:
             _dry_findings = check_offline_staging(
                 artifact.workflow_spec,
-                tuple(Path(r) for r in ((resources or {}).get("shared_fs_roots") or [])),
+                tuple(Path(r) for r in ((resource_request or {}).get("shared_fs_roots") or [])),
                 execution_profile=execution_profile if execution_profile == "slurm" else "local",
             )
             return asdict(
@@ -2242,7 +2242,7 @@ def run_workflow(
         )
         if profile_value == "slurm":
             _shared_fs = tuple(
-                Path(r) for r in ((resources or {}).get("shared_fs_roots") or [])
+                Path(r) for r in ((resource_request or {}).get("shared_fs_roots") or [])
             )
             slurm_result = SlurmWorkflowSpecExecutor(
                 run_root=DEFAULT_RUN_DIR,
