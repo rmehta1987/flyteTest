@@ -5,6 +5,7 @@ from __future__ import annotations
 import shlex
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -1285,25 +1286,38 @@ def my_custom_filter(
     out_dir = project_mkdtemp("my_custom_filter_")
     out_vcf = out_dir / "my_filtered.vcf"
 
+    stats: dict[str, int] = {}
     run_tool(
         python_callable=filter_vcf,
         callable_kwargs={
             "in_path": in_vcf,
             "out_path": out_vcf,
             "min_qual": min_qual,
+            "stats": stats,
         },
     )
 
     require_path(out_vcf, "Filtered VCF output")
+
+    # Surface malformed-line drops to stderr so HPC job logs reflect any
+    # input-VCF corruption that survived upstream stages.
+    malformed = stats.get("malformed_lines_dropped", 0)
+    if malformed:
+        sys.stderr.write(
+            f"my_custom_filter: dropped {malformed} malformed/blank line(s) "
+            f"from {in_vcf} (input VCF may be corrupt — verify upstream output)\n"
+        )
 
     manifest = build_manifest_envelope(
         stage="my_custom_filter",
         assumptions=[
             "Input VCF is uncompressed plain text.",
             "QUAL field is numeric or '.' (missing QUAL treated as below threshold).",
+            "Malformed lines (<6 tab fields, blank, or unparseable QUAL) are dropped.",
         ],
         inputs={"input_vcf": str(in_vcf), "min_qual": min_qual},
         outputs={"my_filtered_vcf": str(out_vcf)},
     )
+    manifest["filter_stats"] = stats
     _write_json(out_dir / "run_manifest_my_custom_filter.json", manifest)
     return File(path=str(out_vcf))

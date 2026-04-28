@@ -2813,6 +2813,17 @@ class MyCustomFilterInvocationTests(TestCase):
         manifest_path = Path(out_path).parent / "run_manifest_my_custom_filter.json"
         self.assertTrue(manifest_path.exists())
 
+    def test_manifest_records_filter_stats(self):
+        _, manifest, _ = self._run(min_qual=30.0)
+        self.assertIn("filter_stats", manifest)
+        stats = manifest["filter_stats"]
+        # The synthetic VCF has 3 data lines: QUAL=10 (drop), QUAL=50 (keep),
+        # QUAL=. (drop). No malformed lines.
+        self.assertEqual(stats["records_kept"], 1)
+        self.assertEqual(stats["low_qual_dropped"], 1)
+        self.assertEqual(stats["missing_qual_dropped"], 1)
+        self.assertEqual(stats["malformed_lines_dropped"], 0)
+
 
 class MyCustomFilterRegistryTests(TestCase):
     """Layer 3: assert RegistryEntry shape and manifest-output consistency."""
