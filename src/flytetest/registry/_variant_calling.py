@@ -847,6 +847,7 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             InterfaceField("reference_fasta", "File", "Reference genome FASTA."),
             InterfaceField("known_sites", "list[File]", "List of known-sites VCF Files."),
             InterfaceField("gatk_sif", "str", "SIF fallback for GATK4. Prefer HPC module: add 'gatk/<version>' to module_loads in your resource_request instead."),
+            InterfaceField("bwa_sif", "str", "Apptainer SIF for bwa-mem2+samtools. Leave empty to use cluster module. Build: bash scripts/rcc/build_bwa_mem2_sif.sh"),
             InterfaceField("force", "bool", "Rerun all steps even if outputs exist (default False)."),
         ),
         outputs=(
@@ -890,6 +891,7 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             InterfaceField("library_id", "str", "Optional library ID for read-group."),
             InterfaceField("platform", "str", "Sequencing platform for read-group (default: ILLUMINA)."),
             InterfaceField("gatk_sif", "str", "SIF fallback for GATK4. Prefer HPC module: add 'gatk/<version>' to module_loads in your resource_request instead."),
+            InterfaceField("bwa_sif", "str", "Apptainer SIF for bwa-mem2+samtools. Leave empty to use cluster module. Build: bash scripts/rcc/build_bwa_mem2_sif.sh"),
         ),
         outputs=(
             InterfaceField("preprocessed_bam", "File", "BQSR-recalibrated BAM."),
@@ -932,6 +934,7 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             InterfaceField("cohort_id", "str", "Cohort identifier."),
             InterfaceField("threads", "int", "BWA-MEM2 alignment threads."),
             InterfaceField("gatk_sif", "str", "SIF fallback for GATK4. Prefer HPC module: add 'gatk/<version>' to module_loads in your resource_request instead."),
+            InterfaceField("bwa_sif", "str", "Apptainer SIF for bwa-mem2+samtools. Leave empty to use cluster module. Build: bash scripts/rcc/build_bwa_mem2_sif.sh"),
         ),
         outputs=(
             InterfaceField("genotyped_vcf", "File", "Joint-genotyped VCF."),
@@ -1023,6 +1026,7 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             InterfaceField("library_id", "str", "Optional library ID for read-group."),
             InterfaceField("platform", "str", "Sequencing platform for read-group (default: ILLUMINA)."),
             InterfaceField("gatk_sif", "str", "SIF fallback for GATK4. Prefer HPC module: add 'gatk/<version>' to module_loads in your resource_request instead."),
+            InterfaceField("bwa_sif", "str", "Apptainer SIF for bwa-mem2+samtools. Leave empty to use cluster module. Build: bash scripts/rcc/build_bwa_mem2_sif.sh"),
         ),
         outputs=(
             InterfaceField("preprocessed_bam_from_ubam", "File", "BQSR-recalibrated BAM produced via the uBAM path."),
