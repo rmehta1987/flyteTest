@@ -59,17 +59,6 @@ class ReferenceGenome(PlannerSerializable):
 
 
 @dataclass(frozen=True, slots=True)
-class VariantCallSet(PlannerSerializable):
-    """Planner-facing variant call set identity for post-calling workflows."""
-
-    vcf_path: Path
-    variant_type: str = "vcf"
-    sample_id: str = ""
-    source_result_dir: Path | None = None
-    notes: tuple[str, ...] = field(default_factory=tuple)
-
-
-@dataclass(frozen=True, slots=True)
 class ReadPair(PlannerSerializable):
     """Planner-facing paired-end DNA read identity for germline variant calling.
 
@@ -255,8 +244,8 @@ class VariantCallSet(PlannerSerializable):
 """
 
     vcf_path: Path
-    variant_type: str
-    caller: str
+    variant_type: str = "vcf"
+    caller: str = ""
     sample_ids: tuple[str, ...] = field(default_factory=tuple)
     reference_fasta_path: Path | None = None
     vcf_index_path: Path | None = None

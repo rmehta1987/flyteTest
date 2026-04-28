@@ -48,9 +48,44 @@ The *binding contract* is set in two places that must stay consistent:
   dataclass field names to task parameter names.
 
 Example: a task that takes a joint-called VCF should accept the planner type
-`VariantCallSet` (defined at `src/flytetest/planner_types.py:221`). That
-dataclass's `vcf_path` field flows into a task parameter named `vcf` or
-`vcf_path`.
+`VariantCallSet` (defined at `src/flytetest/planner_types.py`). That
+dataclass's `vcf_path` field flows into a task parameter named `input_vcf`,
+`vcf`, or similar.
+
+### Naming-collision gotcha (must read)
+
+**Task / workflow parameter names must NOT collide with planner-type field
+names.** If your `accepted_planner_types` includes `VariantCallSet` (which
+has fields `vcf_path`, `variant_type`, `caller`, ...), do *not* name your
+task parameter `vcf_path`. The resolver classifies any parameter whose
+name matches a binding inner-key as "covered by the typed binding" and
+strips it from `TASK_PARAMETERS`-style scalar validation, but the local
+execution path still needs the parameter present in `inputs`. The two
+checks disagree, the dry-run plans, and the real run fails with confusing
+"Unknown scalar inputs" / "Missing required workflow inputs" errors.
+
+Use `input_vcf`, `joint_vcf`, `vcf_in`, etc. — *not* `vcf_path`. The
+existing convention across the codebase is `input_vcf` for the typed File
+parameter; the binding still uses the planner-field name internally:
+
+```python
+# task / workflow signature
+def apply_custom_filter(input_vcf: File, min_qual: float = 30.0) -> File:
+    ...
+
+# flat tool — the planner-type field name (vcf_path) appears in the binding;
+# the task/workflow parameter name (input_vcf) appears in `inputs`.
+return _run_workflow(
+    workflow_name="apply_custom_filter",
+    bindings={"VariantCallSet": {"vcf_path": vcf_path}},   # planner field
+    inputs={"input_vcf": vcf_path, "min_qual": min_qual},   # function param
+    ...
+)
+```
+
+The flat-tool *user-facing* parameter can still be `vcf_path` — that's
+intuitive for end users; only the workflow/task parameter name must
+diverge.
 
 ## Manifests and `MANIFEST_OUTPUT_KEYS`
 

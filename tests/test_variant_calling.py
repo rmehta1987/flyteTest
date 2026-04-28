@@ -2768,7 +2768,7 @@ class MyCustomFilterInvocationTests(TestCase):
             vcf_file.write_text(_MY_FILTER_SYNTHETIC_VCF)
 
             result = my_custom_filter(
-                vcf_path=File(path=str(vcf_file)),
+                input_vcf=File(path=str(vcf_file)),
                 min_qual=min_qual,
             )
             out_path = Path(result.path)
@@ -2850,7 +2850,7 @@ class MyCustomFilterRegistryTests(TestCase):
 
     def test_input_names_match_task_signature(self):
         input_names = {f.name for f in self.entry.inputs}
-        self.assertIn("vcf_path", input_names)
+        self.assertIn("input_vcf", input_names)
         self.assertIn("min_qual", input_names)
 
     def test_runtime_images_empty_for_pure_python(self):
@@ -2873,16 +2873,21 @@ class MyCustomFilterMCPExposureTests(TestCase):
         self.assertIn("my_custom_filter", TASK_PARAMETERS)
         self.assertEqual(
             TASK_PARAMETERS["my_custom_filter"],
-            (("min_qual", False),),
+            (("input_vcf", True), ("min_qual", False)),
         )
 
-    def test_scalar_params_excludes_file_binding(self):
-        """vcf_path is a File binding — it must not appear in scalar params."""
+    def test_scalar_params_subtract_typed_bindings(self):
+        """When VariantCallSet binding is supplied, vcf_path is subtracted from scalar params."""
         from flytetest.server import _scalar_params_for_task
-        params = _scalar_params_for_task("my_custom_filter", bindings={})
-        param_names = [name for name, _ in params]
-        self.assertIn("min_qual", param_names)
-        self.assertNotIn("vcf_path", param_names)
+        # Without bindings, all TASK_PARAMETERS entries are scalar — including
+        # input_vcf, since the planner needs to validate it as a known input.
+        params_unbound = _scalar_params_for_task("my_custom_filter", bindings={})
+        unbound_names = [name for name, _ in params_unbound]
+        self.assertIn("input_vcf", unbound_names)
+        self.assertIn("min_qual", unbound_names)
+        # vcf_path is the planner-type field name and must not collide with
+        # any TASK_PARAMETERS entry (that was the bug fixed in this milestone).
+        self.assertNotIn("vcf_path", unbound_names)
 
     def test_min_qual_is_not_required(self):
         from flytetest.server import TASK_PARAMETERS
@@ -2936,7 +2941,7 @@ class ApplyCustomFilterWorkflowRegistryTests(TestCase):
 
     def test_input_names(self):
         input_names = {f.name for f in self.entry.inputs}
-        self.assertEqual(input_names, {"vcf_path", "min_qual"})
+        self.assertEqual(input_names, {"input_vcf", "min_qual"})
 
     def test_appears_in_supported_workflow_names(self):
         from flytetest.mcp_contract import SUPPORTED_WORKFLOW_NAMES

@@ -50,6 +50,46 @@ When real binaries are present, add:
 - local workflow smoke runs
 - container-image command checks through `scripts/test_singularity_images.sh`
 
+## Test ladder for new tasks and workflows
+
+Six layers — each guards a different failure mode. Most user-defined tasks
+need 1–4; layers 5–6 catch the integration bugs that mock-based unit tests
+silently miss. Run cheapest first; stop when you have enough confidence.
+
+| # | Layer | Catches | What to read |
+|---|-------|---------|--------------|
+| 1 | Unit-test the pure-Python module against a tiny fixture | logic bugs in the pure function | `tests/test_my_filter.py` |
+| 2 | Direct task / workflow invocation with a `flyte_stub.File` | manifest shape, output staging, file pathing | `MyCustomFilterInvocationTests` |
+| 3 | Registry shape (`get_entry`, manifest-key alignment) | declared outputs not in `MANIFEST_OUTPUT_KEYS`, missing planner types | `MyCustomFilterRegistryTests`, `ApplyCustomFilterWorkflowRegistryTests` |
+| 4 | MCP exposure (`TASK_PARAMETERS`, `SUPPORTED_TASK_NAMES`, `FLAT_TOOLS`) | task registered but unreachable from MCP clients | `MyCustomFilterMCPExposureTests`, `VcCustomFilterMCPContractTests` |
+| 5 | **Flat-tool integration via `dry_run`, NO mocking** | binding ↔ planner-type ↔ function-signature collisions | `FlatToolDryRunResolverIntegrationTests` |
+| 6 | Real local execution against a tiny fixture | end-to-end correctness of the task body | `_run_workflow_direct(...)` smoke (see "Local execution paths" below) |
+
+Layer 5 is load-bearing. The unit tests at layer 4 mock `run_task` /
+`run_workflow`, so they never reach the planner-type resolver. A binding
+that omits a required planner-type field, or a parameter name that
+collides with a planner-field name, will pass layers 1–4 silently and
+explode at layer 5. **Every flat tool should have at least one entry in
+`FlatToolDryRunResolverIntegrationTests`** with a real on-disk fixture file.
+
+### Local execution paths
+
+The `flyte run --local` CLI path used by `_execute_workflow_direct`
+requires the workflow to be registered with the installed Flyte CLI; in a
+fresh dev environment that registration step is typically deferred to
+deployment. For pure-Python workflows (no SIF, no subprocess), the
+in-process direct call is the canonical layer-6 path:
+
+```python
+from flytetest.server import _run_workflow_direct
+result = _run_workflow_direct("apply_custom_filter", {"input_vcf": "/abs/path.vcf", "min_qual": 30.0})
+# result["exit_status"] == 0 and result["output_paths"] == ["..."]
+```
+
+Slurm-backed workflows are exercised through `run_slurm_recipe` from an
+authenticated login-node session — see `DESIGN.md §7.4` and the
+`HPC 2FA Constraint` memory.
+
 When writing or updating tests, keep them readable:
 
 - add a short module docstring when the test file is not obvious from its path

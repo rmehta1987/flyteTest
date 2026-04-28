@@ -253,7 +253,7 @@ class VcCustomFilterTests(TestCase):
         _, kwargs = mock_rt.call_args
         self.assertEqual(kwargs["task_name"], "my_custom_filter")
         self.assertEqual(kwargs["bindings"], {"VariantCallSet": {"vcf_path": "/vcf/joint_called.vcf"}})
-        self.assertEqual(kwargs["inputs"], {"min_qual": 50.0})
+        self.assertEqual(kwargs["inputs"], {"input_vcf": "/vcf/joint_called.vcf", "min_qual": 50.0})
         self.assertFalse(kwargs.get("dry_run"))
         self.assertEqual(result, _FAKE_RESULT)
 
@@ -307,7 +307,7 @@ class VcApplyCustomFilterTests(TestCase):
         _, kwargs = mock_rw.call_args
         self.assertEqual(kwargs["workflow_name"], "apply_custom_filter")
         self.assertEqual(kwargs["bindings"], {"VariantCallSet": {"vcf_path": "/vcf/joint_called.vcf"}})
-        self.assertEqual(kwargs["inputs"], {"min_qual": 50.0})
+        self.assertEqual(kwargs["inputs"], {"input_vcf": "/vcf/joint_called.vcf", "min_qual": 50.0})
         self.assertEqual(result, _FAKE_RESULT)
 
     def test_default_min_qual(self) -> None:
@@ -563,3 +563,76 @@ class AllToolsInModuleTests(TestCase):
         for name in mcp_tools.__all__:
             obj = getattr(mcp_tools, name)
             self.assertTrue(callable(obj), msg=f"{name} is not callable")
+
+
+class FlatToolDryRunResolverIntegrationTests(TestCase):
+    """Exercise binding materialization end-to-end on dry_run.
+
+    The other classes mock run_task / run_workflow, so they never reach the
+    planner-type resolver. This class deliberately does not mock them — a
+    binding that omits a required planner-type field will raise during
+    materialization, which is what we want to catch in CI. A regression here
+    means a flat tool's bindings dict is incompatible with its accepted
+    planner type's required fields.
+    """
+
+    def setUp(self) -> None:
+        import tempfile
+        self._tmpdir = tempfile.TemporaryDirectory()
+        self.vcf_path = str(Path(self._tmpdir.name) / "in.vcf")
+        Path(self.vcf_path).write_text(
+            "##fileformat=VCFv4.2\n"
+            "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+            "chr1\t100\t.\tA\tT\t50.0\tPASS\t.\n"
+        )
+        self.snpeff_dir = str(Path(self._tmpdir.name) / "snpeff")
+        Path(self.snpeff_dir).mkdir()
+
+    def tearDown(self) -> None:
+        self._tmpdir.cleanup()
+
+    def _assert_planned(self, result: dict) -> None:
+        self.assertIsInstance(result, dict)
+        self.assertTrue(
+            "recipe_id" in result or result.get("supported") is True,
+            msg=f"Expected planning success; got: {result}",
+        )
+
+    def test_vc_custom_filter_dry_run_resolves(self) -> None:
+        self._assert_planned(
+            mcp_tools.vc_custom_filter(vcf_path=self.vcf_path, dry_run=True)
+        )
+
+    def test_vc_apply_custom_filter_dry_run_resolves(self) -> None:
+        self._assert_planned(
+            mcp_tools.vc_apply_custom_filter(vcf_path=self.vcf_path, dry_run=True)
+        )
+
+    def test_vc_annotate_variants_snpeff_dry_run_resolves(self) -> None:
+        self._assert_planned(
+            mcp_tools.vc_annotate_variants_snpeff(
+                input_vcf=self.vcf_path,
+                cohort_id="cohort1",
+                snpeff_database="GRCh38.105",
+                snpeff_data_dir=self.snpeff_dir,
+                dry_run=True,
+            )
+        )
+
+    def test_vc_post_call_qc_summary_dry_run_resolves(self) -> None:
+        self._assert_planned(
+            mcp_tools.vc_post_call_qc_summary(
+                input_vcf=self.vcf_path,
+                cohort_id="cohort1",
+                dry_run=True,
+            )
+        )
+
+    def test_vc_post_genotyping_refinement_dry_run_resolves(self) -> None:
+        self._assert_planned(
+            mcp_tools.vc_post_genotyping_refinement(
+                input_vcf=self.vcf_path,
+                cohort_id="cohort1",
+                dry_run=True,
+            )
+        )

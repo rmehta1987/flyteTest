@@ -1318,7 +1318,7 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             "no external binary, invoked via run_tool Python-callable mode."
         ),
         inputs=(
-            InterfaceField("vcf_path", "File", "Input VCF (uncompressed plain text)."),
+            InterfaceField("input_vcf", "File", "Input VCF (uncompressed plain text)."),
             InterfaceField("min_qual", "float", "Minimum QUAL to retain a record (inclusive). Default 30.0."),
         ),
         outputs=(
@@ -1358,7 +1358,7 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
             "pipeline."
         ),
         inputs=(
-            InterfaceField("vcf_path", "File", "Input VCF (joint-called or VQSR-filtered, plain text)."),
+            InterfaceField("input_vcf", "File", "Input VCF (joint-called or VQSR-filtered, plain text)."),
             InterfaceField("min_qual", "float", "Minimum QUAL to retain a record (inclusive). Default 30.0."),
         ),
         outputs=(

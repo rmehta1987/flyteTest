@@ -998,7 +998,7 @@ def vc_custom_filter(
     return _run_task(
         task_name="my_custom_filter",
         bindings={"VariantCallSet": {"vcf_path": vcf_path}},
-        inputs={"min_qual": min_qual},
+        inputs={"input_vcf": vcf_path, "min_qual": min_qual},
         resource_request=_resource_request(
             partition, account, cpu, memory, walltime, shared_fs_roots, module_loads
         ),
@@ -1060,7 +1060,7 @@ def vc_apply_custom_filter(
     return _run_workflow(
         workflow_name="apply_custom_filter",
         bindings={"VariantCallSet": {"vcf_path": vcf_path}},
-        inputs={"min_qual": min_qual},
+        inputs={"input_vcf": vcf_path, "min_qual": min_qual},
         resource_request=_resource_request(
             partition, account, cpu, memory, walltime, shared_fs_roots, module_loads
         ),

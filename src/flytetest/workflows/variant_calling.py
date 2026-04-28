@@ -644,7 +644,7 @@ def annotate_variants_snpeff(
 
 @variant_calling_env.task
 def apply_custom_filter(
-    vcf_path: File,
+    input_vcf: File,
     min_qual: float = 30.0,
 ) -> File:
     """Apply a user-authored QUAL filter to an existing variant call set.
@@ -655,10 +655,14 @@ def apply_custom_filter(
     threshold applied before downstream analysis. The minimal copyable template
     for adding a user-authored Python-callable task to the end of an existing
     pipeline.
+
+    The parameter is named ``input_vcf`` (not ``vcf_path``) so it does not
+    collide with the ``VariantCallSet.vcf_path`` planner-type field — see
+    ``.codex/user_tasks.md`` for the naming convention.
     """
     from flytetest.config import project_mkdtemp
 
-    filtered_vcf = my_custom_filter(vcf_path=vcf_path, min_qual=min_qual)
+    filtered_vcf = my_custom_filter(input_vcf=input_vcf, min_qual=min_qual)
     out_dir = project_mkdtemp("apply_custom_filter_")
     manifest = build_manifest_envelope(
         stage="apply_custom_filter",
@@ -667,7 +671,7 @@ def apply_custom_filter(
             "Filtering is QUAL-threshold only; no model-based filtering applied.",
         ],
         inputs={
-            "vcf_path": vcf_path.download_sync(),
+            "input_vcf": input_vcf.download_sync(),
             "min_qual": min_qual,
         },
         outputs={"my_filtered_vcf": filtered_vcf.path},

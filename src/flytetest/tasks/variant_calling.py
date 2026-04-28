@@ -1270,7 +1270,7 @@ def snpeff_annotate(
 
 @variant_calling_env.task
 def my_custom_filter(
-    vcf_path: File,
+    input_vcf: File,
     min_qual: float = 30.0,
 ) -> File:
     """Apply a pure-Python QUAL threshold filter to a plain-text VCF.
@@ -1280,8 +1280,12 @@ def my_custom_filter(
     reference example for user-authored pure-Python logic; it goes through
     ``run_tool`` in Python-callable mode so the execution pattern is uniform
     across all task families.
+
+    The parameter is named ``input_vcf`` (not ``vcf_path``) so it does not
+    collide with the ``VariantCallSet.vcf_path`` planner-type field — see
+    ``.codex/user_tasks.md`` for the naming convention.
     """
-    in_vcf = require_path(Path(vcf_path.download_sync()), "Input VCF")
+    in_vcf = require_path(Path(input_vcf.download_sync()), "Input VCF")
     out_dir = project_mkdtemp("my_custom_filter_")
     out_vcf = out_dir / "my_filtered.vcf"
 
@@ -1302,7 +1306,7 @@ def my_custom_filter(
             "Input VCF is uncompressed plain text.",
             "QUAL field is numeric or '.' (missing QUAL treated as below threshold).",
         ],
-        inputs={"vcf_path": str(in_vcf), "min_qual": min_qual},
+        inputs={"input_vcf": str(in_vcf), "min_qual": min_qual},
         outputs={"my_filtered_vcf": str(out_vcf)},
     )
     _write_json(out_dir / "run_manifest_my_custom_filter.json", manifest)

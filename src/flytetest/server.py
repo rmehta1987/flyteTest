@@ -308,6 +308,7 @@ TASK_PARAMETERS: dict[str, tuple[tuple[str, bool], ...]] = {
         ("snpeff_sif", False),
     ),
     "my_custom_filter": (
+        ("input_vcf", True),
         ("min_qual", False),
     ),
 }
