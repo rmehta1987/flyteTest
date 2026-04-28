@@ -2785,15 +2785,30 @@ def prepare_run_recipe(
     execution_profile: str | None = None,
     runtime_image: Mapping[str, Any] | RuntimeImageSpec | str | None = None,
 ) -> dict[str, object]:
-    """Plan one prompt and save a frozen workflow-spec recipe artifact.
+    """Plan one natural-language prompt and save a frozen workflow-spec recipe.
+
+    This is a secondary power tool for when you want to plan from a prompt
+    before submitting. For most cases prefer run_workflow directly — it accepts
+    the same inputs and handles planning internally.
+
+    When this tool declines with "use run_workflow directly", call run_workflow
+    with workflow_name, bindings, inputs, runtime_images, tool_databases,
+    resource_request, execution_profile, and dry_run=True. Pass File-typed
+    workflow parameters as absolute string paths in inputs — they are coerced
+    automatically. Do not pass Flyte File objects or dicts with a "path" key.
 
     Args:
-        prompt: Natural-language prompt being planned or frozen into a recipe.
-        manifest_sources: Prior manifests or run records used to seed typed planning.
-        explicit_bindings: User-supplied planner inputs that override discovered values.
-        runtime_bindings: Frozen runtime bindings captured in the saved recipe.
-        resource_request: Explicit CPU, memory, and scheduler choices from the request.
-        execution_profile: Named execution target requested for the recipe.
+        prompt: Natural-language description of the analysis to run.
+        explicit_bindings: Typed planner bindings (e.g. ReferenceGenome,
+            ReadPair) that override auto-discovered values. Same shape as the
+            bindings parameter in run_workflow.
+        runtime_bindings: Flat dict of workflow scalar parameter names to
+            values. File-typed parameters accepted as absolute string paths.
+            Same shape as the inputs parameter in run_workflow.
+        resource_request: Slurm scheduler parameters. Valid keys: partition,
+            account, cpu, memory, walltime, module_loads, shared_fs_roots.
+        execution_profile: "local" or "slurm".
+        manifest_sources: Prior manifests or run records to seed planning.
         runtime_image: Runtime image selection for the frozen recipe.
 """
     return _prepare_run_recipe_impl(
