@@ -119,7 +119,7 @@ inputs:
   genome:                    /scratch/midway3/mehta5/flyteTest/data/braker3/reference/genome.fa
   transcript_evidence_results: <results_dir from Stage 1 output>
   univec_fasta:              /scratch/midway3/mehta5/flyteTest/data/braker3/reference/UniVec_Core.fa
-  pasa_config_template:      /scratch/midway3/mehta5/flyteTest/data/braker3/reference/pasa.alignAssembly.Template.txt
+  pasa_config_template:      /scratch/midway3/mehta5/flyteTest/data/pasa/pasa.alignAssembly.Template.txt
   pasa_db_name:              demo_pasa
   pasa_aligners:             gmap
   seqclean_threads:          4
@@ -203,7 +203,7 @@ inputs:
   genome:            /scratch/midway3/mehta5/flyteTest/data/braker3/reference/genome.fa
   evm_results:       <results_dir from Stage 6 output>
   pasa_results:      <results_dir from Stage 4 output>
-  pasa_config_template: /scratch/midway3/mehta5/flyteTest/data/braker3/reference/pasa.alignAssembly.Template.txt
+  pasa_annot_compare_template: /scratch/midway3/mehta5/flyteTest/data/pasa/pasa.annotationCompare.Template.txt
   pasa_db_name:      demo_pasa_refinement
   num_update_rounds: 2
 
