@@ -1347,4 +1347,47 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
         ),
         showcase_module="flytetest.tasks.variant_calling",
     ),
+    RegistryEntry(
+        name="apply_custom_filter",
+        category="workflow",
+        description=(
+            "Apply a user-authored QUAL filter to an existing variant call set. "
+            "On-ramp reference composition: wires my_custom_filter into the variant "
+            "calling pipeline without re-running upstream GATK steps. Minimal "
+            "copyable template for tacking a Python-callable task onto an existing "
+            "pipeline."
+        ),
+        inputs=(
+            InterfaceField("vcf_path", "File", "Input VCF (joint-called or VQSR-filtered, plain text)."),
+            InterfaceField("min_qual", "float", "Minimum QUAL to retain a record (inclusive). Default 30.0."),
+        ),
+        outputs=(
+            InterfaceField("my_filtered_vcf", "File", "QUAL-filtered output VCF."),
+        ),
+        tags=("variant_calling", "filter", "pure-python", "on-ramp", "composition"),
+        compatibility=RegistryCompatibilityMetadata(
+            biological_stage="custom QUAL filter (composed)",
+            accepted_planner_types=("VariantCallSet",),
+            produced_planner_types=("VariantCallSet",),
+            reusable_as_reference=True,
+            execution_defaults={
+                "profile": "local",
+                "result_manifest": "run_manifest.json",
+                "resources": {"cpu": "1", "memory": "4Gi", "execution_class": "local"},
+                "slurm_resource_hints": {"cpu": "1", "memory": "4Gi", "walltime": "00:30:00"},
+                "runtime_images": {},
+                "tool_databases": {},
+                "module_loads": ("python/3.11.9",),
+            },
+            supported_execution_profiles=("local", "slurm"),
+            synthesis_eligible=True,
+            composition_constraints=(
+                "Input VCF must be uncompressed plain text (no companion index needed).",
+                "Filter is QUAL-threshold only — does not apply model-based or annotation-based filtering.",
+            ),
+            pipeline_family="variant_calling",
+            pipeline_stage_order=23,
+        ),
+        showcase_module="flytetest.workflows.variant_calling",
+    ),
 )

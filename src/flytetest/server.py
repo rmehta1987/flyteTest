@@ -109,6 +109,8 @@ from flytetest.mcp_contract import (
     TOOL_DESCRIPTIONS,
     VALIDATE_RUN_RECIPE_TOOL_NAME,
     VC_ANNOTATE_SNPEFF_TOOL_NAME,
+    VC_CUSTOM_FILTER_TOOL_NAME,
+    VC_APPLY_CUSTOM_FILTER_TOOL_NAME,
     VC_GERMLINE_DISCOVERY_TOOL_NAME,
     VC_GENOTYPE_REFINEMENT_TOOL_NAME,
     VC_POST_CALL_QC_SUMMARY_TOOL_NAME,
@@ -4565,6 +4567,8 @@ def create_mcp_server(fastmcp_cls: Any | None = None) -> Any:
     mcp.tool(description=TOOL_DESCRIPTIONS[VC_PRE_CALL_COVERAGE_QC_TOOL_NAME])(_mcp_tools.vc_pre_call_coverage_qc)
     mcp.tool(description=TOOL_DESCRIPTIONS[VC_POST_CALL_QC_SUMMARY_TOOL_NAME])(_mcp_tools.vc_post_call_qc_summary)
     mcp.tool(description=TOOL_DESCRIPTIONS[VC_ANNOTATE_SNPEFF_TOOL_NAME])(_mcp_tools.vc_annotate_variants_snpeff)
+    mcp.tool(description=TOOL_DESCRIPTIONS[VC_CUSTOM_FILTER_TOOL_NAME])(_mcp_tools.vc_custom_filter)
+    mcp.tool(description=TOOL_DESCRIPTIONS[VC_APPLY_CUSTOM_FILTER_TOOL_NAME])(_mcp_tools.vc_apply_custom_filter)
     mcp.tool(description=TOOL_DESCRIPTIONS[ANNOTATION_BRAKER3_TOOL_NAME])(_mcp_tools.annotation_braker3)
     mcp.tool(description=TOOL_DESCRIPTIONS[ANNOTATION_PROTEIN_EVIDENCE_TOOL_NAME])(_mcp_tools.annotation_protein_evidence)
     mcp.tool(description=TOOL_DESCRIPTIONS[ANNOTATION_BUSCO_QC_TOOL_NAME])(_mcp_tools.annotation_busco_qc)

@@ -26,6 +26,7 @@ from flytetest.tasks.variant_calling import (
     mark_duplicates,
     merge_bam_alignment,
     multiqc_summarize,
+    my_custom_filter,
     snpeff_annotate,
     sort_sam,
     variant_filtration,
@@ -635,3 +636,41 @@ def annotate_variants_snpeff(
     )
     _write_json(out_dir / "run_manifest.json", manifest)
     return annotated_vcf
+
+
+# ---------------------------------------------------------------------------
+# Step 07 — On-ramp reference composition: user-authored filter on existing VCF
+# ---------------------------------------------------------------------------
+
+@variant_calling_env.task
+def apply_custom_filter(
+    vcf_path: File,
+    min_qual: float = 30.0,
+) -> File:
+    """Apply a user-authored QUAL filter to an existing variant call set.
+
+    On-ramp reference composition: wires ``my_custom_filter`` into the variant
+    calling pipeline without re-running upstream GATK steps. Use when you
+    already have a joint-called or VQSR-filtered VCF and want a custom quality
+    threshold applied before downstream analysis. The minimal copyable template
+    for adding a user-authored Python-callable task to the end of an existing
+    pipeline.
+    """
+    from flytetest.config import project_mkdtemp
+
+    filtered_vcf = my_custom_filter(vcf_path=vcf_path, min_qual=min_qual)
+    out_dir = project_mkdtemp("apply_custom_filter_")
+    manifest = build_manifest_envelope(
+        stage="apply_custom_filter",
+        assumptions=[
+            "Input VCF is uncompressed plain text (no companion index needed).",
+            "Filtering is QUAL-threshold only; no model-based filtering applied.",
+        ],
+        inputs={
+            "vcf_path": vcf_path.download_sync(),
+            "min_qual": min_qual,
+        },
+        outputs={"my_filtered_vcf": filtered_vcf.path},
+    )
+    _write_json(out_dir / "run_manifest.json", manifest)
+    return filtered_vcf

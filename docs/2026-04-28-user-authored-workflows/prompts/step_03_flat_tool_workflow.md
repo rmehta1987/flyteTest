@@ -7,8 +7,8 @@ Read `src/flytetest/mcp_tools.py` — specifically `vc_annotate_variants_snpeff`
 
 ## Context
 
-`germline_short_variant_discovery_filtered` is now registered as a workflow but
-has no flat tool. This step adds `vc_germline_filtered` following the established
+`apply_custom_filter` is now registered as a workflow but
+has no flat tool. This step adds `vc_apply_custom_filter` following the established
 `vc_*` naming convention for workflow flat tools.
 
 ---
@@ -18,7 +18,7 @@ has no flat tool. This step adds `vc_germline_filtered` following the establishe
 Append after `vc_custom_filter` (from Step 01):
 
 ```python
-def vc_germline_filtered(
+def vc_apply_custom_filter(
     vcf_path: str,
     min_qual: float = 30.0,
     dry_run: bool = False,
@@ -47,7 +47,7 @@ def vc_germline_filtered(
       shared_fs_roots (list of absolute path prefixes), module_loads.
 
     Example:
-      vc_germline_filtered(
+      vc_apply_custom_filter(
           vcf_path="/data/results/joint_called.vcf",
           min_qual=50.0,
       )
@@ -70,7 +70,7 @@ def vc_germline_filtered(
         module_loads=module_loads,
     )
     return _run_workflow(
-        workflow_name="germline_short_variant_discovery_filtered",
+        workflow_name="apply_custom_filter",
         bindings=bindings,
         inputs=inputs,
         resource_request=resource_request,
@@ -86,8 +86,8 @@ def vc_germline_filtered(
 python3 -m compileall src/flytetest/mcp_tools.py
 
 PYTHONPATH=src python3 -c "
-from flytetest.mcp_tools import vc_germline_filtered
-result = vc_germline_filtered(vcf_path='/data/test.vcf', dry_run=True)
+from flytetest.mcp_tools import vc_apply_custom_filter
+result = vc_apply_custom_filter(vcf_path='/data/test.vcf', dry_run=True)
 print('dry_run result:', result)
 "
 ```

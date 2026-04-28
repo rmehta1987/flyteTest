@@ -2889,3 +2889,77 @@ class MyCustomFilterMCPExposureTests(TestCase):
         for name, required in TASK_PARAMETERS["my_custom_filter"]:
             if name == "min_qual":
                 self.assertFalse(required, "min_qual has a default and must not be required")
+
+
+class ApplyCustomFilterWorkflowRegistryTests(TestCase):
+    """Registry shape and MCP exposure for the on-ramp composed workflow."""
+
+    def setUp(self) -> None:
+        from flytetest.registry import get_entry
+        self.entry = get_entry("apply_custom_filter")
+
+    def test_entry_exists(self):
+        self.assertIsNotNone(self.entry)
+
+    def test_category_is_workflow(self):
+        self.assertEqual(self.entry.category, "workflow")
+
+    def test_pipeline_family(self):
+        self.assertEqual(self.entry.compatibility.pipeline_family, "variant_calling")
+
+    def test_accepted_planner_types(self):
+        self.assertEqual(
+            self.entry.compatibility.accepted_planner_types, ("VariantCallSet",)
+        )
+
+    def test_produced_planner_types(self):
+        self.assertEqual(
+            self.entry.compatibility.produced_planner_types, ("VariantCallSet",)
+        )
+
+    def test_showcase_module(self):
+        self.assertEqual(
+            self.entry.showcase_module, "flytetest.workflows.variant_calling"
+        )
+
+    def test_runtime_images_empty_for_pure_python(self):
+        images = self.entry.compatibility.execution_defaults.get("runtime_images", {})
+        self.assertEqual(images, {})
+
+    def test_pipeline_stage_order(self):
+        self.assertEqual(self.entry.compatibility.pipeline_stage_order, 23)
+
+    def test_output_key_in_manifest_output_keys(self):
+        output_names = {f.name for f in self.entry.outputs}
+        self.assertIn("my_filtered_vcf", output_names)
+        self.assertIn("my_filtered_vcf", MANIFEST_OUTPUT_KEYS)
+
+    def test_input_names(self):
+        input_names = {f.name for f in self.entry.inputs}
+        self.assertEqual(input_names, {"vcf_path", "min_qual"})
+
+    def test_appears_in_supported_workflow_names(self):
+        from flytetest.mcp_contract import SUPPORTED_WORKFLOW_NAMES
+        self.assertIn("apply_custom_filter", SUPPORTED_WORKFLOW_NAMES)
+
+    def test_flat_tool_registered(self):
+        from flytetest.mcp_contract import FLAT_TOOLS, TOOL_DESCRIPTIONS
+        self.assertIn("vc_apply_custom_filter", FLAT_TOOLS)
+        self.assertIn("vc_apply_custom_filter", TOOL_DESCRIPTIONS)
+
+
+class VcCustomFilterMCPContractTests(TestCase):
+    """Contract registration for the task-level flat tool vc_custom_filter."""
+
+    def test_in_flat_tools(self):
+        from flytetest.mcp_contract import FLAT_TOOLS
+        self.assertIn("vc_custom_filter", FLAT_TOOLS)
+
+    def test_has_tool_description(self):
+        from flytetest.mcp_contract import TOOL_DESCRIPTIONS
+        self.assertIn("vc_custom_filter", TOOL_DESCRIPTIONS)
+        self.assertIn("QUAL", TOOL_DESCRIPTIONS["vc_custom_filter"])
+
+    def test_in_mcp_tool_names(self):
+        from flytetest.mcp_contract import MCP_TOOL_NAMES
+        self.assertIn("vc_custom_filter", MCP_TOOL_NAMES)

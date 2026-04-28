@@ -74,6 +74,8 @@ VC_SEQUENTIAL_INTERVAL_HC_TOOL_NAME = "vc_sequential_interval_haplotype_caller"
 VC_PRE_CALL_COVERAGE_QC_TOOL_NAME = "vc_pre_call_coverage_qc"
 VC_POST_CALL_QC_SUMMARY_TOOL_NAME = "vc_post_call_qc_summary"
 VC_ANNOTATE_SNPEFF_TOOL_NAME = "vc_annotate_variants_snpeff"
+VC_CUSTOM_FILTER_TOOL_NAME = "vc_custom_filter"
+VC_APPLY_CUSTOM_FILTER_TOOL_NAME = "vc_apply_custom_filter"
 ANNOTATION_BRAKER3_TOOL_NAME = "annotation_braker3"
 ANNOTATION_PROTEIN_EVIDENCE_TOOL_NAME = "annotation_protein_evidence"
 ANNOTATION_BUSCO_QC_TOOL_NAME = "annotation_busco_qc"
@@ -111,6 +113,8 @@ FLAT_TOOLS: tuple[str, ...] = (
     VC_PRE_CALL_COVERAGE_QC_TOOL_NAME,
     VC_POST_CALL_QC_SUMMARY_TOOL_NAME,
     VC_ANNOTATE_SNPEFF_TOOL_NAME,
+    VC_CUSTOM_FILTER_TOOL_NAME,
+    VC_APPLY_CUSTOM_FILTER_TOOL_NAME,
     ANNOTATION_BRAKER3_TOOL_NAME,
     ANNOTATION_PROTEIN_EVIDENCE_TOOL_NAME,
     ANNOTATION_BUSCO_QC_TOOL_NAME,
@@ -339,6 +343,22 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "[flat] Annotate a filtered VCF with SnpEff functional variant annotation."
         " Accepts input_vcf (str), cohort_id (str), snpeff_database (str),"
         " snpeff_data_dir (str), and optional snpeff_sif, partition, account, cpu,"
+        " memory, walltime, shared_fs_roots, module_loads, dry_run. All paths must"
+        " be absolute. " + QUEUE_ACCOUNT_HANDOFF
+    ),
+    VC_CUSTOM_FILTER_TOOL_NAME: (
+        "[flat] Apply a pure-Python QUAL threshold filter to a plain-text VCF."
+        " On-ramp reference task — drops records with QUAL below min_qual or with"
+        " missing QUAL ('.'); header lines are always preserved; no container"
+        " required. Accepts vcf_path (str) and optional min_qual (default 30.0),"
+        " partition, account, cpu, memory, walltime, shared_fs_roots, module_loads,"
+        " dry_run. All paths must be absolute. " + QUEUE_ACCOUNT_HANDOFF
+    ),
+    VC_APPLY_CUSTOM_FILTER_TOOL_NAME: (
+        "[flat] Apply a user-authored QUAL filter to an existing variant call set."
+        " On-ramp reference composition — wires my_custom_filter into the variant"
+        " calling pipeline without re-running upstream GATK steps. Accepts vcf_path"
+        " (str) and optional min_qual (default 30.0), partition, account, cpu,"
         " memory, walltime, shared_fs_roots, module_loads, dry_run. All paths must"
         " be absolute. " + QUEUE_ACCOUNT_HANDOFF
     ),

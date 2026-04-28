@@ -180,18 +180,25 @@ variant calling, `prepare_reference` at
 Workflows are also decorated with `@<family>_env.task` (Flyte v2 composes
 tasks by calling them from other tasks — there is no separate `@workflow`
 decorator here). Bind a downstream task by passing the upstream task's
-returned `File`/`Dir` or a field of its manifest dict directly:
+returned `File`/`Dir` directly. The minimal copyable template — applying a
+user-authored task to an existing VCF — is `apply_custom_filter` in
+`src/flytetest/workflows/variant_calling.py`:
 
 ```python
 @variant_calling_env.task
-def germline_with_custom_filter(
-    reference_fasta: File,
-    ...,
+def apply_custom_filter(
+    vcf_path: File,
     min_qual: float = 30.0,
 ) -> File:
-    joint_vcf = germline_short_variant_discovery(...)
-    return my_custom_filter_task(vcf=joint_vcf, min_qual=min_qual)
+    filtered_vcf = my_custom_filter(vcf_path=vcf_path, min_qual=min_qual)
+    # ... write workflow-level run_manifest.json ...
+    return filtered_vcf
 ```
+
+Read it before writing your own composed workflow. To re-run upstream
+discovery and then filter, take a FASTQ-shaped input surface and call
+`germline_short_variant_discovery(...)` first, then your custom task — the
+same composition pattern, just with more inputs.
 
 ## Worked example — custom Python variant filter
 
@@ -296,6 +303,21 @@ without running the real filter.
 ### 4. CHANGELOG entry
 
 Add one dated `[x]` line under `## Unreleased` in `CHANGELOG.md`.
+
+## Real on-ramp artifacts (callable today)
+
+After the user-authored-workflows milestone the following are all real,
+registered entries callable via MCP. Use them as copy-paste templates:
+
+| Name | Type | Flat tool | Description |
+|---|---|---|---|
+| `my_custom_filter` | task | `vc_custom_filter` | QUAL filter via Python-callable mode (no SIF, no subprocess) |
+| `apply_custom_filter` | workflow | `vc_apply_custom_filter` | Composed: existing VCF → `my_custom_filter` → filtered VCF |
+
+The task shows Python-callable mode end-to-end. The workflow shows how to
+wire a custom task into a new end-to-end entry without touching upstream
+GATK steps — apply this pattern when you already have a joint-called VCF
+and want to tack a user-authored step onto the end.
 
 ## Hand-off to the scaffolding agent
 

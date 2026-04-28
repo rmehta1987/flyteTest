@@ -21,7 +21,7 @@ entries callable via MCP:
 | Name | Type | Flat tool | Description |
 |---|---|---|---|
 | `my_custom_filter` | task | `vc_custom_filter` | QUAL filter via Python callable mode |
-| `germline_short_variant_discovery_filtered` | workflow | `vc_germline_filtered` | Composed: existing VCF → `my_custom_filter` |
+| `apply_custom_filter` | workflow | `vc_apply_custom_filter` | Composed: existing VCF → `my_custom_filter` |
 
 Use these as copy-paste templates. The task shows Python-callable mode; the workflow
 shows how to wire a custom task into a new end-to-end entry without touching
@@ -33,7 +33,7 @@ upstream GATK steps.
 After the prose description, add a pointer to the real implementation:
 
 ```markdown
-The reference composition is `germline_short_variant_discovery_filtered` in
+The reference composition is `apply_custom_filter` in
 `src/flytetest/workflows/variant_calling.py`. Read it before writing your own
 composed workflow — it is the minimal, copyable template.
 ```
@@ -43,6 +43,6 @@ composed workflow — it is the minimal, copyable template.
 ## Verification
 
 ```bash
-grep -n "germline_short_variant_discovery_filtered\|vc_custom_filter\|vc_germline_filtered" \
+grep -n "apply_custom_filter\|vc_custom_filter\|vc_apply_custom_filter" \
     .codex/user_tasks.md
 ```

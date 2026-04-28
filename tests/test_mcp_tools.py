@@ -240,6 +240,89 @@ class VcAnnotateVariantsSnpeffTests(TestCase):
         self.assertEqual(kwargs["bindings"], {"VariantCallSet": {"vcf_path": kwargs["inputs"]["input_vcf"]}})
 
 
+class VcCustomFilterTests(TestCase):
+    """Flat tool vc_custom_filter delegates to run_task with VariantCallSet binding."""
+
+    def test_happy_path(self) -> None:
+        with patch("flytetest.server.run_task", return_value=_FAKE_RESULT) as mock_rt:
+            result = mcp_tools.vc_custom_filter(
+                vcf_path="/vcf/joint_called.vcf",
+                min_qual=50.0,
+            )
+        mock_rt.assert_called_once()
+        _, kwargs = mock_rt.call_args
+        self.assertEqual(kwargs["task_name"], "my_custom_filter")
+        self.assertEqual(kwargs["bindings"], {"VariantCallSet": {"vcf_path": "/vcf/joint_called.vcf"}})
+        self.assertEqual(kwargs["inputs"], {"min_qual": 50.0})
+        self.assertFalse(kwargs.get("dry_run"))
+        self.assertEqual(result, _FAKE_RESULT)
+
+    def test_default_min_qual(self) -> None:
+        with patch("flytetest.server.run_task", return_value=_FAKE_RESULT) as mock_rt:
+            mcp_tools.vc_custom_filter(vcf_path="/vcf/x.vcf")
+        _, kwargs = mock_rt.call_args
+        self.assertEqual(kwargs["inputs"]["min_qual"], 30.0)
+
+    def test_dry_run_propagates(self) -> None:
+        with patch("flytetest.server.run_task", return_value=_FAKE_RESULT) as mock_rt:
+            mcp_tools.vc_custom_filter(vcf_path="/vcf/x.vcf", dry_run=True)
+        _, kwargs = mock_rt.call_args
+        self.assertTrue(kwargs["dry_run"])
+
+    def test_resource_request_assembled(self) -> None:
+        with patch("flytetest.server.run_task", return_value=_FAKE_RESULT) as mock_rt:
+            mcp_tools.vc_custom_filter(
+                vcf_path="/vcf/x.vcf",
+                partition="caslake",
+                account="mylab",
+                cpu=2,
+                memory="8Gi",
+                walltime="01:00:00",
+            )
+        _, kwargs = mock_rt.call_args
+        rr = kwargs["resource_request"]
+        self.assertEqual(rr["partition"], "caslake")
+        self.assertEqual(rr["account"], "mylab")
+        self.assertEqual(rr["cpu"], 2)
+        self.assertEqual(rr["memory"], "8Gi")
+        self.assertEqual(rr["walltime"], "01:00:00")
+
+    def test_default_resource_request_is_none(self) -> None:
+        with patch("flytetest.server.run_task", return_value=_FAKE_RESULT) as mock_rt:
+            mcp_tools.vc_custom_filter(vcf_path="/vcf/x.vcf")
+        _, kwargs = mock_rt.call_args
+        self.assertIsNone(kwargs["resource_request"])
+
+
+class VcApplyCustomFilterTests(TestCase):
+    """Flat tool vc_apply_custom_filter delegates to run_workflow with VariantCallSet binding."""
+
+    def test_happy_path(self) -> None:
+        with patch("flytetest.server.run_workflow", return_value=_FAKE_RESULT) as mock_rw:
+            result = mcp_tools.vc_apply_custom_filter(
+                vcf_path="/vcf/joint_called.vcf",
+                min_qual=50.0,
+            )
+        mock_rw.assert_called_once()
+        _, kwargs = mock_rw.call_args
+        self.assertEqual(kwargs["workflow_name"], "apply_custom_filter")
+        self.assertEqual(kwargs["bindings"], {"VariantCallSet": {"vcf_path": "/vcf/joint_called.vcf"}})
+        self.assertEqual(kwargs["inputs"], {"min_qual": 50.0})
+        self.assertEqual(result, _FAKE_RESULT)
+
+    def test_default_min_qual(self) -> None:
+        with patch("flytetest.server.run_workflow", return_value=_FAKE_RESULT) as mock_rw:
+            mcp_tools.vc_apply_custom_filter(vcf_path="/vcf/x.vcf")
+        _, kwargs = mock_rw.call_args
+        self.assertEqual(kwargs["inputs"]["min_qual"], 30.0)
+
+    def test_dry_run_propagates(self) -> None:
+        with patch("flytetest.server.run_workflow", return_value=_FAKE_RESULT) as mock_rw:
+            mcp_tools.vc_apply_custom_filter(vcf_path="/vcf/x.vcf", dry_run=True)
+        _, kwargs = mock_rw.call_args
+        self.assertTrue(kwargs["dry_run"])
+
+
 class AnnotationBraker3Tests(TestCase):
     def test_happy_path(self) -> None:
         with patch("flytetest.server.run_workflow", return_value=_FAKE_RESULT) as mock_rw:

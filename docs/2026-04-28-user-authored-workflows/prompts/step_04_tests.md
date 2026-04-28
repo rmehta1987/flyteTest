@@ -13,7 +13,7 @@ Read before starting:
 Mirror the nearest task flat-tool test class. At minimum:
 
 ```python
-class VcCustomFilterFlatToolTests(TestCase):
+class VcCustomFilterTests(TestCase):
     """Flat tool vc_custom_filter: dry-run planning and decline guard."""
 
     def _call(self, **kwargs):
@@ -37,15 +37,15 @@ class VcCustomFilterFlatToolTests(TestCase):
 
 ---
 
-## Class 2 — Flat tool: `vc_germline_filtered` (add to `tests/test_mcp_tools.py`)
+## Class 2 — Flat tool: `vc_apply_custom_filter` (add to `tests/test_mcp_tools.py`)
 
 ```python
-class VcGermlineFilteredFlatToolTests(TestCase):
-    """Flat tool vc_germline_filtered: dry-run planning."""
+class VcApplyCustomFilterTests(TestCase):
+    """Flat tool vc_apply_custom_filter: dry-run planning."""
 
     def _call(self, **kwargs):
-        from flytetest.mcp_tools import vc_germline_filtered
-        return vc_germline_filtered(**kwargs)
+        from flytetest.mcp_tools import vc_apply_custom_filter
+        return vc_apply_custom_filter(**kwargs)
 
     def test_dry_run_returns_dict(self):
         result = self._call(vcf_path="/data/test.vcf", dry_run=True)
@@ -58,16 +58,16 @@ class VcGermlineFilteredFlatToolTests(TestCase):
 
 ---
 
-## Class 3 — Registry: `germline_short_variant_discovery_filtered`
+## Class 3 — Registry: `apply_custom_filter`
 (add to `tests/test_variant_calling.py`)
 
 ```python
-class GermlineFilteredWorkflowRegistryTests(TestCase):
+class ApplyCustomFilterWorkflowRegistryTests(TestCase):
     """Registry shape for the on-ramp composed workflow."""
 
     def setUp(self):
         from flytetest.registry import get_entry
-        self.entry = get_entry("germline_short_variant_discovery_filtered")
+        self.entry = get_entry("apply_custom_filter")
 
     def test_entry_exists(self):
         self.assertIsNotNone(self.entry)
@@ -107,9 +107,9 @@ class GermlineFilteredWorkflowRegistryTests(TestCase):
 
 ```bash
 PYTHONPATH=src python3 -m pytest \
-    tests/test_mcp_tools.py::VcCustomFilterFlatToolTests \
-    tests/test_mcp_tools.py::VcGermlineFilteredFlatToolTests \
-    tests/test_variant_calling.py::GermlineFilteredWorkflowRegistryTests \
+    tests/test_mcp_tools.py::VcCustomFilterTests \
+    tests/test_mcp_tools.py::VcApplyCustomFilterTests \
+    tests/test_variant_calling.py::ApplyCustomFilterWorkflowRegistryTests \
     -v
 
 PYTHONPATH=src python3 -m pytest tests/test_registry.py -x -q

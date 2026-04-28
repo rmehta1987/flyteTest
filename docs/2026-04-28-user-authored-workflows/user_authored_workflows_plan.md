@@ -30,7 +30,7 @@ The `onramp-impl` milestone (archived 2026-04-24) delivered:
    with `category="workflow"` and appropriate `accepted_planner_types`.
 
 4. **Flat MCP tool for the composed workflow** — following the `vc_*` naming
-   convention, a `vc_germline_with_custom_filter` (or similar name) flat tool
+   convention, a `vc_apply_custom_filter` (or similar name) flat tool
    in `mcp_tools.py`.
 
 5. **End-to-end test** — a dry-run test asserting the composed workflow plans
@@ -38,7 +38,7 @@ The `onramp-impl` milestone (archived 2026-04-24) delivered:
 
 ## Proposed scope
 
-### New workflow — `germline_short_variant_discovery_filtered`
+### New workflow — `apply_custom_filter`
 
 Compose: `germline_short_variant_discovery` → `my_custom_filter`
 
@@ -69,7 +69,7 @@ they can adapt by swapping in their own task at the last stage.
 ## Settled design decisions
 
 - The composed workflow name should be short and descriptive. Candidate:
-  `germline_short_variant_discovery_filtered`. (**To confirm with user.**)
+  `apply_custom_filter`. (**To confirm with user.**)
 - The flat tool for the task follows the established pattern in `mcp_tools.py`
   (see `vc_annotate_variants_snpeff` as the closest parallel — task-level flat tool).
 - `download_sync()` on the VCF input is acceptable for `my_custom_filter` because
@@ -81,10 +81,10 @@ they can adapt by swapping in their own task at the last stage.
 
 ## Open questions (resolve before starting)
 
-1. **Workflow name** — `germline_short_variant_discovery_filtered` or shorter?
+1. **Workflow name** — `apply_custom_filter` or shorter?
 2. **Input surface** — does the composed workflow accept a BAM (re-run discovery)
    or only a VCF (start from an existing call set)?
-3. **Flat tool naming** — `vc_custom_filter` for the task, `vc_germline_filtered`
+3. **Flat tool naming** — `vc_custom_filter` for the task, `vc_apply_custom_filter`
    for the composed workflow?
 4. **Scope boundary** — should this milestone also add a second reference task
    in a different family (e.g. annotation), or stay narrowly in variant_calling?

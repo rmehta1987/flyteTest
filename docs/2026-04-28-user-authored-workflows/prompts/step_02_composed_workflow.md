@@ -21,7 +21,7 @@ Append after `annotate_variants_snpeff`. The workflow takes an existing VCF
 
 ```python
 @variant_calling_env.task
-def germline_short_variant_discovery_filtered(
+def apply_custom_filter(
     vcf_path: File,
     min_qual: float = 30.0,
 ) -> File:
@@ -48,7 +48,7 @@ Append after the `my_custom_filter` entry:
 
 ```python
     RegistryEntry(
-        name="germline_short_variant_discovery_filtered",
+        name="apply_custom_filter",
         category="workflow",
         description=(
             "Apply QUAL threshold filtering to an existing variant call set. "
@@ -98,7 +98,7 @@ python3 -m compileall \
 
 PYTHONPATH=src python3 -c "
 from flytetest.registry import get_entry
-e = get_entry('germline_short_variant_discovery_filtered')
+e = get_entry('apply_custom_filter')
 print('OK:', e.name, e.category)
 print('  accepted:', e.compatibility.accepted_planner_types)
 print('  stage_order:', e.compatibility.pipeline_stage_order)

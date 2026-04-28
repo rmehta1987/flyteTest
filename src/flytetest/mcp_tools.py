@@ -945,6 +945,129 @@ def vc_annotate_variants_snpeff(
     )
 
 
+def vc_custom_filter(
+    vcf_path: str,
+    min_qual: float = 30.0,
+    partition: str = "",
+    account: str = "",
+    cpu: int = 0,
+    memory: str = "",
+    walltime: str = "",
+    shared_fs_roots: list[str] | None = None,
+    module_loads: list[str] | None = None,
+    dry_run: bool = False,
+) -> dict:
+    """Apply a pure-Python QUAL threshold filter to a plain-text VCF.
+
+    On-ramp reference task: drops records with QUAL below ``min_qual`` or with
+    missing QUAL (``.``); header lines are always preserved. No container
+    required — runs through ``run_tool`` Python-callable mode.
+
+    Parameters
+    ----------
+    vcf_path : str
+        Absolute path to an uncompressed plain-text input VCF.
+    min_qual : float
+        Minimum QUAL threshold (inclusive). Default 30.0.
+    partition : str
+        Slurm partition. Required for Slurm execution; must come from the user.
+    account : str
+        Slurm account. Required for Slurm execution; must come from the user.
+    cpu : int
+        CPU cores to request (0 = use server default).
+    memory : str
+        Memory string, e.g. ``"4Gi"``. Empty = use server default.
+    walltime : str
+        Wall time, e.g. ``"00:30:00"``. Empty = use server default.
+    shared_fs_roots : list[str] | None
+        Filesystem prefixes visible from compute nodes.
+    module_loads : list[str] | None
+        Full replacement of DEFAULT_SLURM_MODULE_LOADS.
+    dry_run : bool
+        If True, freeze the recipe without executing it.
+
+    Example
+    -------
+    >>> vc_custom_filter(
+    ...     vcf_path="/data/results/joint_called.vcf",
+    ...     min_qual=50.0,
+    ... )
+
+    All paths must be absolute.
+    """
+    return _run_task(
+        task_name="my_custom_filter",
+        bindings={"VariantCallSet": {"vcf_path": vcf_path}},
+        inputs={"min_qual": min_qual},
+        resource_request=_resource_request(
+            partition, account, cpu, memory, walltime, shared_fs_roots, module_loads
+        ),
+        dry_run=dry_run,
+    )
+
+
+def vc_apply_custom_filter(
+    vcf_path: str,
+    min_qual: float = 30.0,
+    partition: str = "",
+    account: str = "",
+    cpu: int = 0,
+    memory: str = "",
+    walltime: str = "",
+    shared_fs_roots: list[str] | None = None,
+    module_loads: list[str] | None = None,
+    dry_run: bool = False,
+) -> dict:
+    """Apply a user-authored QUAL filter to an existing variant call set.
+
+    On-ramp reference composition: wires ``my_custom_filter`` into the variant
+    calling pipeline without re-running upstream GATK steps. Use when you
+    already have a joint-called or VQSR-filtered VCF and want a custom quality
+    threshold applied before downstream analysis.
+
+    Parameters
+    ----------
+    vcf_path : str
+        Absolute path to a joint-called or VQSR-filtered plain-text VCF.
+    min_qual : float
+        Minimum QUAL threshold (inclusive). Default 30.0.
+    partition : str
+        Slurm partition. Required for Slurm execution; must come from the user.
+    account : str
+        Slurm account. Required for Slurm execution; must come from the user.
+    cpu : int
+        CPU cores to request (0 = use server default).
+    memory : str
+        Memory string, e.g. ``"4Gi"``. Empty = use server default.
+    walltime : str
+        Wall time, e.g. ``"00:30:00"``. Empty = use server default.
+    shared_fs_roots : list[str] | None
+        Filesystem prefixes visible from compute nodes.
+    module_loads : list[str] | None
+        Full replacement of DEFAULT_SLURM_MODULE_LOADS.
+    dry_run : bool
+        If True, freeze the recipe without executing it.
+
+    Example
+    -------
+    >>> vc_apply_custom_filter(
+    ...     vcf_path="/data/results/joint_called.vcf",
+    ...     min_qual=50.0,
+    ... )
+
+    All paths must be absolute.
+    """
+    return _run_workflow(
+        workflow_name="apply_custom_filter",
+        bindings={"VariantCallSet": {"vcf_path": vcf_path}},
+        inputs={"min_qual": min_qual},
+        resource_request=_resource_request(
+            partition, account, cpu, memory, walltime, shared_fs_roots, module_loads
+        ),
+        dry_run=dry_run,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Step 2 — annotation flat tools
 # ---------------------------------------------------------------------------
@@ -2001,6 +2124,8 @@ __all__ = [
     "vc_pre_call_coverage_qc",
     "vc_post_call_qc_summary",
     "vc_annotate_variants_snpeff",
+    "vc_custom_filter",
+    "vc_apply_custom_filter",
     # annotation
     "annotation_braker3",
     "annotation_protein_evidence",
