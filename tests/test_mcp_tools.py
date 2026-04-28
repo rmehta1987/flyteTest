@@ -182,7 +182,7 @@ class VcPostGenotypingRefinementTests(TestCase):
             )
         _, kwargs = mock_rw.call_args
         self.assertEqual(kwargs["workflow_name"], "post_genotyping_refinement")
-        self.assertIsNone(kwargs["bindings"])
+        self.assertEqual(kwargs["bindings"], {"VariantCallSet": {"vcf_path": kwargs["inputs"]["input_vcf"]}})
 
 
 class VcSequentialIntervalHaplotypeCallerTests(TestCase):
@@ -222,7 +222,7 @@ class VcPostCallQcSummaryTests(TestCase):
             )
         _, kwargs = mock_rw.call_args
         self.assertEqual(kwargs["workflow_name"], "post_call_qc_summary")
-        self.assertIsNone(kwargs["bindings"])
+        self.assertEqual(kwargs["bindings"], {"VariantCallSet": {"vcf_path": kwargs["inputs"]["input_vcf"]}})
 
 
 class VcAnnotateVariantsSnpeffTests(TestCase):
@@ -237,7 +237,7 @@ class VcAnnotateVariantsSnpeffTests(TestCase):
         _, kwargs = mock_rw.call_args
         self.assertEqual(kwargs["workflow_name"], "annotate_variants_snpeff")
         self.assertEqual(kwargs["inputs"]["snpeff_database"], "GRCh38.105")
-        self.assertIsNone(kwargs["bindings"])
+        self.assertEqual(kwargs["bindings"], {"VariantCallSet": {"vcf_path": kwargs["inputs"]["input_vcf"]}})
 
 
 class AnnotationBraker3Tests(TestCase):

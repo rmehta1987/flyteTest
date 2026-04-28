@@ -608,7 +608,7 @@ def vc_post_genotyping_refinement(
         runtime_images["gatk_sif"] = gatk_sif
     return _run_workflow(
         workflow_name="post_genotyping_refinement",
-        bindings=None,
+        bindings={"VariantCallSet": {"vcf_path": input_vcf}},
         inputs=inputs,
         runtime_images=runtime_images or None,
         resource_request=_resource_request(
@@ -854,7 +854,7 @@ def vc_post_call_qc_summary(
         runtime_images["multiqc_sif"] = multiqc_sif
     return _run_workflow(
         workflow_name="post_call_qc_summary",
-        bindings=None,
+        bindings={"VariantCallSet": {"vcf_path": input_vcf}},
         inputs=inputs,
         runtime_images=runtime_images or None,
         resource_request=_resource_request(
@@ -935,7 +935,7 @@ def vc_annotate_variants_snpeff(
         runtime_images["snpeff_sif"] = snpeff_sif
     return _run_workflow(
         workflow_name="annotate_variants_snpeff",
-        bindings=None,
+        bindings={"VariantCallSet": {"vcf_path": input_vcf}},
         inputs=inputs,
         runtime_images=runtime_images or None,
         resource_request=_resource_request(
@@ -1014,12 +1014,16 @@ def annotation_braker3(
     """
     bindings: dict[str, dict[str, object]] = {
         "ReferenceGenome": {"fasta_path": genome},
+        "TranscriptEvidenceSet": {"reference_genome": {"fasta_path": genome}},
     }
+    if protein_fasta_path:
+        bindings["ProteinEvidenceSet"] = {
+            "reference_genome": {"fasta_path": genome},
+            "protein_fasta_path": protein_fasta_path,
+        }
     inputs: dict[str, object] = {"genome": genome}
     if rnaseq_bam_path:
         inputs["rnaseq_bam_path"] = rnaseq_bam_path
-    if protein_fasta_path:
-        inputs["protein_fasta_path"] = protein_fasta_path
     if braker_species:
         inputs["braker_species"] = braker_species
     runtime_images: dict[str, str] = {}
@@ -1097,6 +1101,10 @@ def annotation_protein_evidence(
     """
     bindings: dict[str, dict[str, object]] = {
         "ReferenceGenome": {"fasta_path": genome},
+        "ProteinEvidenceSet": {
+            "reference_genome": {"fasta_path": genome},
+            "protein_fasta_path": protein_fastas[0] if protein_fastas else "",
+        },
     }
     inputs: dict[str, object] = {
         "genome": genome,

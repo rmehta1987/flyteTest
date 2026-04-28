@@ -49,6 +49,7 @@ from flytetest.planner_types import (
     ReadSet,
     ReferenceGenome,
     TranscriptEvidenceSet,
+    VariantCallSet,
 )
 from flytetest.spec_artifacts import DurableAssetRef
 from flytetest.types.assets import (
@@ -158,6 +159,7 @@ _PLANNER_TYPES_BY_NAME = {
     "ReferenceGenome": ReferenceGenome,
     "ReadPair": ReadPair,
     "ReadSet": ReadSet,
+    "VariantCallSet": VariantCallSet,
     "TranscriptEvidenceSet": TranscriptEvidenceSet,
     "ProteinEvidenceSet": ProteinEvidenceSet,
     "AnnotationEvidenceSet": AnnotationEvidenceSet,
