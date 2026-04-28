@@ -1,19 +1,34 @@
 {
     "$schema": "https://opencode.ai/config.json",
     "mcp": {
-	"flytetest": {
-	    "type": "local",
-	    "enabled": true,
-	    "command": [
-		"bash",
-		"-lc",
-		"cd /scratch/midway3/mehta5/flyteTest && module load python/3.11.9 && source .venv/bin/activate && python -m flytetest.server"
-	    ],
-	    "environment": {
-		"FLYTETEST_REPO_ROOT": "/scratch/midway3/mehta5/flyteTest",
-		"PYTHONPATH": "/scratch/midway3/mehta5/flyteTest/src"
-	    }
-	}
-    }
+        "flytetest": {
+            "type": "local",
+            "enabled": true,
+            "command": [
+                "bash",
+                "-lc",
+                "cd /scratch/midway3/mehta5/flyteTest && module load python/3.11.9 && source .venv/bin/activate && python -m flytetest.server"
+            ],
+            "environment": {
+                "FLYTETEST_REPO_ROOT": "/scratch/midway3/mehta5/flyteTest",
+                "PYTHONPATH": "/scratch/midway3/mehta5/flyteTest/src"
+            }
+        }
+    },
+    "watcher": {
+        "ignore": [
+            "docs/**",
+            "results/**",
+            ".runtime/**",
+            "data/**",
+            "__pycache__/**",
+            "*.pyc",
+            ".venv/**"
+        ]
+    },
+    "rules": [
+        "When working with the flytetest MCP server, do not read showcase docs, plan docs, or any file under docs/. The authoritative references are: AGENTS.md (agent behavior), src/flytetest/server.py (MCP tool signatures and docstrings), and DESIGN.md (architecture). Read the tool's own docstring before attempting any call — it contains the exact parameter shapes and a concrete example.",
+        "For run_workflow and run_task: bindings keys are planner type names (ReferenceGenome, ReadPair); inputs keys are exact workflow parameter names from the function signature. File-typed parameters go in inputs as absolute string paths — never as dicts or Flyte File objects. All paths must be absolute on the shared filesystem.",
+        "Do not read src/flytetest/workflows/ or src/flytetest/tasks/ to understand MCP tool call shapes. The tool docstrings in server.py are the source of truth. Reading workflow source will confuse you with Flyte File types that the MCP layer handles internally."
+    ]
 }
- 
