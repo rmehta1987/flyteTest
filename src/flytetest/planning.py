@@ -548,6 +548,12 @@ def _select_execution_policy(
         **_coerce_string_mapping(bundle_overrides.get("runtime_images")),
         **_coerce_string_mapping(runtime_images),
     }
+    # Allow callers to explicitly clear a registry default by passing "" as the
+    # value. _coerce_string_mapping drops empty strings, so we apply the
+    # clearing pass separately after the merge.
+    for _key, _val in (runtime_images or {}).items():
+        if _key and _val in (None, "") and str(_key) in selected_runtime_images:
+            del selected_runtime_images[str(_key)]
     selected_tool_databases = {
         **_coerce_string_mapping(entry_execution_defaults.get("tool_databases")),
         **_coerce_string_mapping(bundle_overrides.get("tool_databases")),
