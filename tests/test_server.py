@@ -358,6 +358,8 @@ class ServerTests(TestCase):
             "annotate_variants_snpeff",
             # On-ramp reference task
             "my_custom_filter",
+            # RNA-seq QC + quantification workflow
+            "rnaseq_qc_quant",
         )
         self.assertEqual(set(SUPPORTED_TARGET_NAMES), set(expected))
 

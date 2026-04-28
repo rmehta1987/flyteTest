@@ -15,6 +15,8 @@ from flytetest.config import rnaseq_qc_quant_env
 from flytetest.tasks.qc import fastqc
 from flytetest.tasks.quant import collect_results, salmon_index, salmon_quant
 
+MANIFEST_OUTPUT_KEYS: tuple[str, ...] = ("results_dir",)
+
 
 # Flyte 2.0.10 in this repo exposes env.task but not env.workflow, so this
 # workflow entrypoint remains a composed task to preserve current behavior.

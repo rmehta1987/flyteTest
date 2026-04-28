@@ -25,6 +25,7 @@ RNASEQ_ENTRIES: tuple[RegistryEntry, ...] = (
             InterfaceField('results_dir', 'Dir', 'Timestamped results directory containing qc/, quant/, and run_manifest.json.'),
         ),
         tags=('workflow', 'rnaseq', 'qc', 'quant'),
+        showcase_module='flytetest.workflows.rnaseq_qc_quant',
         compatibility=RegistryCompatibilityMetadata(
             biological_stage='RNA-seq QC and transcript quantification',
             accepted_planner_types=('ReadSet',),

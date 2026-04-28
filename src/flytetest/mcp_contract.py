@@ -63,6 +63,30 @@ INSPECT_RUN_RESULT_TOOL_NAME = "inspect_run_result"
 FETCH_JOB_LOG_TOOL_NAME = "fetch_job_log"
 WAIT_FOR_SLURM_JOB_TOOL_NAME = "wait_for_slurm_job"
 GET_PIPELINE_STATUS_TOOL_NAME = "get_pipeline_status"
+# Flat-parameter convenience tools (one per showcase target).
+VC_GERMLINE_DISCOVERY_TOOL_NAME = "vc_germline_discovery"
+VC_PREPARE_REFERENCE_TOOL_NAME = "vc_prepare_reference"
+VC_PREPROCESS_SAMPLE_TOOL_NAME = "vc_preprocess_sample"
+VC_GENOTYPE_REFINEMENT_TOOL_NAME = "vc_genotype_refinement"
+VC_SMALL_COHORT_FILTER_TOOL_NAME = "vc_small_cohort_filter"
+VC_POST_GENOTYPING_REFINEMENT_TOOL_NAME = "vc_post_genotyping_refinement"
+VC_SEQUENTIAL_INTERVAL_HC_TOOL_NAME = "vc_sequential_interval_haplotype_caller"
+VC_PRE_CALL_COVERAGE_QC_TOOL_NAME = "vc_pre_call_coverage_qc"
+VC_POST_CALL_QC_SUMMARY_TOOL_NAME = "vc_post_call_qc_summary"
+VC_ANNOTATE_SNPEFF_TOOL_NAME = "vc_annotate_variants_snpeff"
+ANNOTATION_BRAKER3_TOOL_NAME = "annotation_braker3"
+ANNOTATION_PROTEIN_EVIDENCE_TOOL_NAME = "annotation_protein_evidence"
+ANNOTATION_BUSCO_QC_TOOL_NAME = "annotation_busco_qc"
+ANNOTATION_EGGNOG_TOOL_NAME = "annotation_eggnog"
+ANNOTATION_AGAT_STATS_TOOL_NAME = "annotation_agat_stats"
+ANNOTATION_AGAT_CONVERT_TOOL_NAME = "annotation_agat_convert"
+ANNOTATION_AGAT_CLEANUP_TOOL_NAME = "annotation_agat_cleanup"
+ANNOTATION_TABLE2ASN_TOOL_NAME = "annotation_table2asn"
+ANNOTATION_GFFREAD_PROTEINS_TOOL_NAME = "annotation_gffread_proteins"
+ANNOTATION_BUSCO_ASSESS_TOOL_NAME = "annotation_busco_assess"
+ANNOTATION_EXONERATE_CHUNK_TOOL_NAME = "annotation_exonerate_chunk"
+RNASEQ_QC_TOOL_NAME = "rnaseq_qc"
+RNASEQ_FASTQC_TOOL_NAME = "rnaseq_fastqc"
 RUN_RECIPE_RESOURCE_URI_PREFIX = "flytetest://run-recipes/"
 RESULT_MANIFEST_RESOURCE_URI_PREFIX = "flytetest://result-manifests/"
 # Experiment-loop tools: the scientist picks a target, loads a bundle, runs it.
@@ -72,6 +96,34 @@ EXPERIMENT_LOOP_TOOLS: tuple[str, ...] = (
     LOAD_BUNDLE_TOOL_NAME,
     RUN_TASK_TOOL_NAME,
     RUN_WORKFLOW_TOOL_NAME,
+)
+
+# Flat-parameter tools: one tool per showcase target for clients that cannot
+# navigate the two-layer bindings/inputs surface.
+FLAT_TOOLS: tuple[str, ...] = (
+    VC_GERMLINE_DISCOVERY_TOOL_NAME,
+    VC_PREPARE_REFERENCE_TOOL_NAME,
+    VC_PREPROCESS_SAMPLE_TOOL_NAME,
+    VC_GENOTYPE_REFINEMENT_TOOL_NAME,
+    VC_SMALL_COHORT_FILTER_TOOL_NAME,
+    VC_POST_GENOTYPING_REFINEMENT_TOOL_NAME,
+    VC_SEQUENTIAL_INTERVAL_HC_TOOL_NAME,
+    VC_PRE_CALL_COVERAGE_QC_TOOL_NAME,
+    VC_POST_CALL_QC_SUMMARY_TOOL_NAME,
+    VC_ANNOTATE_SNPEFF_TOOL_NAME,
+    ANNOTATION_BRAKER3_TOOL_NAME,
+    ANNOTATION_PROTEIN_EVIDENCE_TOOL_NAME,
+    ANNOTATION_BUSCO_QC_TOOL_NAME,
+    ANNOTATION_EGGNOG_TOOL_NAME,
+    ANNOTATION_AGAT_STATS_TOOL_NAME,
+    ANNOTATION_AGAT_CONVERT_TOOL_NAME,
+    ANNOTATION_AGAT_CLEANUP_TOOL_NAME,
+    ANNOTATION_TABLE2ASN_TOOL_NAME,
+    ANNOTATION_GFFREAD_PROTEINS_TOOL_NAME,
+    ANNOTATION_BUSCO_ASSESS_TOOL_NAME,
+    ANNOTATION_EXONERATE_CHUNK_TOOL_NAME,
+    RNASEQ_QC_TOOL_NAME,
+    RNASEQ_FASTQC_TOOL_NAME,
 )
 
 # Inspect-before-execute tools: power-user surface between plan and execute.
@@ -97,7 +149,7 @@ LIFECYCLE_TOOLS: tuple[str, ...] = (
     GET_PIPELINE_STATUS_TOOL_NAME,
 )
 
-MCP_TOOL_NAMES: tuple[str, ...] = EXPERIMENT_LOOP_TOOLS + INSPECT_TOOLS + LIFECYCLE_TOOLS
+MCP_TOOL_NAMES: tuple[str, ...] = EXPERIMENT_LOOP_TOOLS + FLAT_TOOLS + INSPECT_TOOLS + LIFECYCLE_TOOLS
 
 # ---------------------------------------------------------------------------
 # Canonical tool descriptions
@@ -211,6 +263,177 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
     GET_PIPELINE_STATUS_TOOL_NAME: (
         "[lifecycle] Return a per-stage status checklist for the 15-stage annotation"
         " pipeline based on durable Slurm run records."
+    ),
+    # -- flat-parameter tools (one per showcase target) -------------------------
+    VC_GERMLINE_DISCOVERY_TOOL_NAME: (
+        "[flat] Run end-to-end germline short variant discovery from raw paired-end"
+        " FASTQs to a joint-genotyped VCF. Accepts reference_fasta (str),"
+        " sample_ids (list[str]), r1_paths (list[str]), known_sites (list[str]),"
+        " intervals (list[str]), cohort_id (str), and optional r2_paths, threads,"
+        " gatk_sif, bwa_sif, partition, account, cpu, memory, walltime,"
+        " shared_fs_roots, module_loads, dry_run. All paths must be absolute. "
+        + QUEUE_ACCOUNT_HANDOFF
+    ),
+    VC_PREPARE_REFERENCE_TOOL_NAME: (
+        "[flat] Prepare a reference genome for GATK4 germline variant calling"
+        " (CreateSequenceDictionary, samtools faidx, BWA-MEM2 index, IndexFeatureFile"
+        " for each known-sites VCF). Accepts reference_fasta (str), known_sites"
+        " (list[str]), and optional gatk_sif, bwa_sif, force, partition, account,"
+        " cpu, memory, walltime, shared_fs_roots, module_loads, dry_run. All paths"
+        " must be absolute. " + QUEUE_ACCOUNT_HANDOFF
+    ),
+    VC_PREPROCESS_SAMPLE_TOOL_NAME: (
+        "[flat] Preprocess one sample from paired-end FASTQs to a BQSR-recalibrated"
+        " BAM (BWA-MEM2 align → sort → MarkDuplicates → BaseRecalibrator →"
+        " ApplyBQSR). Accepts reference_fasta (str), r1 (str), sample_id (str),"
+        " known_sites (list[str]), and optional r2, threads, gatk_sif, bwa_sif,"
+        " partition, account, cpu, memory, walltime, shared_fs_roots, module_loads,"
+        " dry_run. All paths must be absolute. " + QUEUE_ACCOUNT_HANDOFF
+    ),
+    VC_GENOTYPE_REFINEMENT_TOOL_NAME: (
+        "[flat] Refine a joint-called VCF with two-pass VQSR (SNP then INDEL)"
+        " followed by CalculateGenotypePosteriors. Accepts reference_fasta (str),"
+        " joint_vcf (str), snp_resources (list[str]), snp_resource_flags"
+        " (list[dict]), indel_resources (list[str]), indel_resource_flags"
+        " (list[dict]), cohort_id (str), sample_count (int), and optional gatk_sif,"
+        " partition, account, cpu, memory, walltime, shared_fs_roots, module_loads,"
+        " dry_run. All paths must be absolute. " + QUEUE_ACCOUNT_HANDOFF
+    ),
+    VC_SMALL_COHORT_FILTER_TOOL_NAME: (
+        "[flat] Hard-filter a joint-called VCF for cohorts too small for VQSR"
+        " (< 30 samples). Accepts reference_fasta (str), joint_vcf (str),"
+        " cohort_id (str), and optional gatk_sif, partition, account, cpu, memory,"
+        " walltime, shared_fs_roots, module_loads, dry_run. All paths must be"
+        " absolute. " + QUEUE_ACCOUNT_HANDOFF
+    ),
+    VC_POST_GENOTYPING_REFINEMENT_TOOL_NAME: (
+        "[flat] Apply CalculateGenotypePosteriors to a joint-called or"
+        " VQSR-filtered VCF. Accepts input_vcf (str), cohort_id (str), and optional"
+        " gatk_sif, partition, account, cpu, memory, walltime, shared_fs_roots,"
+        " module_loads, dry_run. All paths must be absolute. "
+        + QUEUE_ACCOUNT_HANDOFF
+    ),
+    VC_SEQUENTIAL_INTERVAL_HC_TOOL_NAME: (
+        "[flat] Call per-sample GVCFs serially across intervals, then gather into"
+        " one GVCF (HaplotypeCaller → GatherVCFs). Accepts reference_fasta (str),"
+        " aligned_bam (str), sample_id (str), intervals (list[str]), and optional"
+        " gatk_sif, partition, account, cpu, memory, walltime, shared_fs_roots,"
+        " module_loads, dry_run. All paths must be absolute. "
+        + QUEUE_ACCOUNT_HANDOFF
+    ),
+    VC_PRE_CALL_COVERAGE_QC_TOOL_NAME: (
+        "[flat] Aggregate per-sample WGS and insert-size metrics into a MultiQC"
+        " report (CollectWgsMetrics → multiqc_summarize). Accepts reference_fasta"
+        " (str), aligned_bams (list[str]), sample_ids (list[str]), cohort_id (str),"
+        " and optional gatk_sif, multiqc_sif, partition, account, cpu, memory,"
+        " walltime, shared_fs_roots, module_loads, dry_run. All paths must be"
+        " absolute. " + QUEUE_ACCOUNT_HANDOFF
+    ),
+    VC_POST_CALL_QC_SUMMARY_TOOL_NAME: (
+        "[flat] Run bcftools stats and MultiQC for post-call VCF QC. Accepts"
+        " input_vcf (str), cohort_id (str), and optional bcftools_sif, multiqc_sif,"
+        " partition, account, cpu, memory, walltime, shared_fs_roots, module_loads,"
+        " dry_run. All paths must be absolute. " + QUEUE_ACCOUNT_HANDOFF
+    ),
+    VC_ANNOTATE_SNPEFF_TOOL_NAME: (
+        "[flat] Annotate a filtered VCF with SnpEff functional variant annotation."
+        " Accepts input_vcf (str), cohort_id (str), snpeff_database (str),"
+        " snpeff_data_dir (str), and optional snpeff_sif, partition, account, cpu,"
+        " memory, walltime, shared_fs_roots, module_loads, dry_run. All paths must"
+        " be absolute. " + QUEUE_ACCOUNT_HANDOFF
+    ),
+    ANNOTATION_BRAKER3_TOOL_NAME: (
+        "[flat] Run the BRAKER3 ab initio gene prediction workflow. Accepts genome"
+        " (str) and optional rnaseq_bam_path, protein_fasta_path, braker_species,"
+        " braker3_sif, partition, account, cpu, memory, walltime, shared_fs_roots,"
+        " module_loads, dry_run. All paths must be absolute. "
+        + QUEUE_ACCOUNT_HANDOFF
+    ),
+    ANNOTATION_PROTEIN_EVIDENCE_TOOL_NAME: (
+        "[flat] Align protein evidence to a genome with Exonerate"
+        " (protein_evidence_alignment workflow). Accepts genome (str),"
+        " protein_fastas (list[str]), and optional proteins_per_chunk,"
+        " exonerate_model, exonerate_sif, partition, account, cpu, memory, walltime,"
+        " shared_fs_roots, module_loads, dry_run. All paths must be absolute. "
+        + QUEUE_ACCOUNT_HANDOFF
+    ),
+    ANNOTATION_BUSCO_QC_TOOL_NAME: (
+        "[flat] Run multi-lineage BUSCO quality assessment on repeat-filtered"
+        " proteins (annotation_qc_busco workflow). Accepts repeat_filter_results"
+        " (str) and optional busco_lineages_text, busco_sif, busco_cpu, partition,"
+        " account, cpu, memory, walltime, shared_fs_roots, module_loads, dry_run."
+        " All paths must be absolute. " + QUEUE_ACCOUNT_HANDOFF
+    ),
+    ANNOTATION_EGGNOG_TOOL_NAME: (
+        "[flat] Run EggNOG functional annotation on repeat-filtered proteins"
+        " (annotation_functional_eggnog workflow). Accepts repeat_filter_results"
+        " (str), eggnog_data_dir (str), and optional eggnog_sif, eggnog_cpu,"
+        " eggnog_database, partition, account, cpu, memory, walltime,"
+        " shared_fs_roots, module_loads, dry_run. All paths must be absolute. "
+        + QUEUE_ACCOUNT_HANDOFF
+    ),
+    ANNOTATION_AGAT_STATS_TOOL_NAME: (
+        "[flat] Collect AGAT statistics for the EggNOG-annotated GFF3 boundary"
+        " (annotation_postprocess_agat workflow). Accepts eggnog_results (str) and"
+        " optional annotation_fasta_path, agat_sif, partition, account, cpu, memory,"
+        " walltime, shared_fs_roots, module_loads, dry_run. All paths must be"
+        " absolute. " + QUEUE_ACCOUNT_HANDOFF
+    ),
+    ANNOTATION_AGAT_CONVERT_TOOL_NAME: (
+        "[flat] Convert the EggNOG-annotated GFF3 with AGAT"
+        " (annotation_postprocess_agat_conversion workflow). Accepts eggnog_results"
+        " (str) and optional agat_sif, partition, account, cpu, memory, walltime,"
+        " shared_fs_roots, module_loads, dry_run. All paths must be absolute. "
+        + QUEUE_ACCOUNT_HANDOFF
+    ),
+    ANNOTATION_AGAT_CLEANUP_TOOL_NAME: (
+        "[flat] Apply deterministic attribute cleanup to AGAT conversion output"
+        " (annotation_postprocess_agat_cleanup workflow). Accepts"
+        " agat_conversion_results (str) and optional partition, account, cpu, memory,"
+        " walltime, shared_fs_roots, module_loads, dry_run. All paths must be"
+        " absolute. " + QUEUE_ACCOUNT_HANDOFF
+    ),
+    ANNOTATION_TABLE2ASN_TOOL_NAME: (
+        "[flat] Run table2asn to produce an NCBI .sqn submission file"
+        " (annotation_postprocess_table2asn workflow). Accepts agat_cleanup_results"
+        " (str), genome_fasta (str), submission_template (str), and optional"
+        " locus_tag_prefix, organism_annotation, table2asn_binary, table2asn_sif,"
+        " partition, account, cpu, memory, walltime, shared_fs_roots, module_loads,"
+        " dry_run. All paths must be absolute. " + QUEUE_ACCOUNT_HANDOFF
+    ),
+    ANNOTATION_GFFREAD_PROTEINS_TOOL_NAME: (
+        "[flat] Extract protein sequences from an annotation GFF3 with gffread"
+        " (gffread_proteins task). Accepts annotation_gff3 (str), genome_fasta (str),"
+        " and optional protein_output_stem, gffread_binary, repeat_filter_sif,"
+        " partition, account, cpu, memory, walltime, shared_fs_roots, module_loads,"
+        " dry_run. All paths must be absolute. " + QUEUE_ACCOUNT_HANDOFF
+    ),
+    ANNOTATION_BUSCO_ASSESS_TOOL_NAME: (
+        "[flat] Run one BUSCO lineage assessment on a repeat-filtered protein FASTA"
+        " (busco_assess_proteins task). Accepts proteins_fasta (str),"
+        " lineage_dataset (str), and optional busco_sif, busco_cpu, busco_mode,"
+        " partition, account, cpu, memory, walltime, shared_fs_roots, module_loads,"
+        " dry_run. All paths must be absolute. " + QUEUE_ACCOUNT_HANDOFF
+    ),
+    ANNOTATION_EXONERATE_CHUNK_TOOL_NAME: (
+        "[flat] Run Exonerate alignment for one protein FASTA chunk against the"
+        " genome (exonerate_align_chunk task). Accepts genome (str),"
+        " protein_chunk (str), and optional exonerate_sif, exonerate_model,"
+        " partition, account, cpu, memory, walltime, shared_fs_roots, module_loads,"
+        " dry_run. All paths must be absolute. " + QUEUE_ACCOUNT_HANDOFF
+    ),
+    RNASEQ_QC_TOOL_NAME: (
+        "[flat] Run RNA-seq QC and Salmon transcript quantification"
+        " (rnaseq_qc_quant workflow). Accepts ref (str), left (str), right (str),"
+        " and optional sample_id, salmon_sif, fastqc_sif, partition, account, cpu,"
+        " memory, walltime, shared_fs_roots, module_loads, dry_run. All paths must"
+        " be absolute. " + QUEUE_ACCOUNT_HANDOFF
+    ),
+    RNASEQ_FASTQC_TOOL_NAME: (
+        "[flat] Run FastQC quality control on paired-end RNA-seq reads (fastqc"
+        " task). Accepts left (str), right (str), and optional fastqc_sif, partition,"
+        " account, cpu, memory, walltime, shared_fs_roots, module_loads, dry_run."
+        " All paths must be absolute. " + QUEUE_ACCOUNT_HANDOFF
     ),
 }
 
