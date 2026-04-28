@@ -7,7 +7,7 @@
             "command": [
                 "bash",
                 "-lc",
-                "cd /scratch/midway3/mehta5/flyteTest && module load python/3.11.9 && source .venv/bin/activate && python -m flytetest.server"
+                "cd /scratch/midway3/mehta5/flyteTest && module load python/3.11.9 >/dev/null 2>&1 && source .venv/bin/activate 2>/dev/null && exec python -m flytetest.server"
             ],
             "environment": {
                 "FLYTETEST_REPO_ROOT": "/scratch/midway3/mehta5/flyteTest",
