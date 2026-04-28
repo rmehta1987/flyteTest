@@ -1826,14 +1826,41 @@ def run_task(
 ) -> dict[str, object]:
     """Run one registered task against typed biological bindings.
 
-    Use this for stage-scoped experimentation (e.g. tuning Exonerate on one
-    chunk). The run is frozen into a :class:`WorkflowSpec` artifact before
-    execution, so the experiment is reproducible later from the returned
-    ``recipe_id``. When *dry_run* is ``True`` the artifact is still written
-    to disk but executor dispatch is skipped so the caller can inspect the
-    fully-resolved state and later chain
-    :func:`run_local_recipe` / :func:`run_slurm_recipe` against
-    ``artifact_path`` without re-resolution.
+    Use this for stage-scoped experimentation (e.g. running a single
+    haplotype_caller on a pre-aligned BAM).  The run is frozen into an
+    auditable WorkflowSpec artifact before execution.  When dry_run=True
+    the artifact is written but dispatch is skipped; chain
+    run_slurm_recipe(artifact_path=...) to submit.
+
+    HOW TO CALL THIS TOOL
+    ----------------------
+    bindings  -- typed planner objects identifying biological roles.
+                 Each key is a planner type name; each value is a dict of
+                 field names and string paths.  Only pass types the task
+                 accepts (check list_entries output).
+                 Example for haplotype_caller:
+                   bindings={
+                     "ReferenceGenome": {"fasta_path": "/abs/path/chr20.fa"}
+                   }
+
+    inputs    -- flat dict using EXACT task parameter names from the function
+                 signature.  Pass all required parameters here including
+                 File-typed ones — string paths are coerced automatically.
+                 Example for haplotype_caller:
+                   inputs={
+                     "reference_fasta": "/abs/path/chr20.fa",
+                     "aligned_bam": "/abs/path/sample.bam",
+                     "sample_id": "NA12878_chr20"
+                   }
+
+    runtime_images -- {"tool_sif": "/abs/path/tool.sif"} or {"tool_sif": ""}
+                 to use a cluster module instead of a container.
+
+    resource_request -- {"partition": "caslake", "account": "rcc-staff",
+                          "cpu": "8", "memory": "32Gi", "walltime": "02:00:00",
+                          "shared_fs_roots": ["/scratch/midway3"]}
+
+    All paths must be absolute on the shared filesystem.
     """
     if task_name not in set(SUPPORTED_TASK_NAMES):
         return asdict(
@@ -2098,13 +2125,62 @@ def run_workflow(
 ) -> dict[str, object]:
     """Run one registered workflow against typed biological bindings.
 
-    Symmetric with :func:`run_task`: a bundle dict spreads identically into
-    either tool. The run is frozen into a :class:`WorkflowSpec` artifact before
-    execution so the experiment is reproducible from the returned
-    ``recipe_id``. When *dry_run* is ``True`` the artifact is written to disk
-    but executor dispatch is skipped so the caller can inspect the fully
-    resolved state and chain :func:`run_local_recipe` / :func:`run_slurm_recipe`
-    against ``artifact_path`` later without re-resolution.
+    The run is frozen into an auditable WorkflowSpec artifact before execution.
+    When dry_run=True the artifact is written but Slurm submission is skipped,
+    letting you inspect staging_findings and artifact_path before committing
+    cluster time.  Chain run_slurm_recipe(artifact_path=...) to submit.
+
+    HOW TO CALL THIS TOOL
+    ----------------------
+    Two separate parameters carry the workflow's inputs:
+
+    bindings  -- typed planner objects that identify biological roles.
+                 Each key is a planner type name; each value is a dict of
+                 field names and string paths.  Pass only the types the
+                 workflow accepts (check list_entries output).
+                 Example for germline_short_variant_discovery:
+                   bindings={
+                     "ReferenceGenome": {
+                       "fasta_path": "/abs/path/to/chr20.fa"
+                     },
+                     "ReadPair": {
+                       "sample_id": "NA12878_chr20",
+                       "r1_path": "/abs/path/to/R1.fastq.gz",
+                       "r2_path": "/abs/path/to/R2.fastq.gz"
+                     }
+                   }
+
+    inputs    -- flat dict of workflow scalar parameters, using the EXACT
+                 parameter names from the workflow function signature.
+                 Pass ALL required scalar parameters here including File-typed
+                 ones — string paths are accepted for File parameters and are
+                 coerced automatically.
+                 Example for germline_short_variant_discovery:
+                   inputs={
+                     "reference_fasta": "/abs/path/to/chr20.fa",
+                     "sample_ids": ["NA12878_chr20"],
+                     "r1_paths": ["/abs/path/to/R1.fastq.gz"],
+                     "r2_paths": ["/abs/path/to/R2.fastq.gz"],
+                     "known_sites": ["/abs/path/to/dbsnp.vcf.gz",
+                                     "/abs/path/to/mills.vcf.gz"],
+                     "intervals": ["chr20"],
+                     "cohort_id": "NA12878_chr20"
+                   }
+
+    runtime_images -- dict of tool-key to absolute SIF path.
+                 Set a key to "" (empty string) to use the cluster module
+                 instead of a container.
+                 Example: {"gatk_sif": "", "bwa_sif": "/abs/path/bwa_mem2.sif"}
+
+    resource_request -- Slurm scheduler parameters.  Valid keys: partition,
+                 account, cpu, memory, walltime, module_loads, shared_fs_roots.
+                 shared_fs_roots is a list of filesystem prefixes visible to
+                 compute nodes; used by the dry-run staging check.
+                 Example: {"partition": "caslake", "account": "rcc-staff",
+                            "cpu": "16", "memory": "64Gi", "walltime": "04:00:00",
+                            "shared_fs_roots": ["/scratch/midway3", "/project/rcc"]}
+
+    All paths must be absolute on the shared filesystem.
     """
     if workflow_name not in set(SUPPORTED_WORKFLOW_NAMES):
         return asdict(
