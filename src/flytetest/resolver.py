@@ -45,6 +45,7 @@ from flytetest.planner_types import (
     ConsensusAnnotation,
     ProteinEvidenceSet,
     QualityAssessmentTarget,
+    ReadPair,
     ReadSet,
     ReferenceGenome,
     TranscriptEvidenceSet,
@@ -155,6 +156,7 @@ class AssetResolver(Protocol):
 
 _PLANNER_TYPES_BY_NAME = {
     "ReferenceGenome": ReferenceGenome,
+    "ReadPair": ReadPair,
     "ReadSet": ReadSet,
     "TranscriptEvidenceSet": TranscriptEvidenceSet,
     "ProteinEvidenceSet": ProteinEvidenceSet,

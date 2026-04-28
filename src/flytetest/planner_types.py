@@ -59,6 +59,23 @@ class ReferenceGenome(PlannerSerializable):
 
 
 @dataclass(frozen=True, slots=True)
+class ReadPair(PlannerSerializable):
+    """Planner-facing paired-end DNA read identity for germline variant calling.
+
+    Mirrors the ReadPair binding shape used by variant-calling bundles:
+    {sample_id, r1_path, r2_path}.  Keeps read identity separate from the
+    list-of-paths form consumed by individual workflow scalar inputs.
+"""
+
+    sample_id: str
+    r1_path: Path
+    r2_path: Path
+    platform: str = "ILLUMINA"
+    source_result_dir: Path | None = None
+    notes: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True, slots=True)
 class ReadSet(PlannerSerializable):
     """Planner-facing paired-read identity for RNA-seq-backed workflows.
 
