@@ -946,7 +946,7 @@ def vc_annotate_variants_snpeff(
 
 
 def vc_custom_filter(
-    vcf_path: str,
+    input_vcf: str,
     min_qual: float = 30.0,
     partition: str = "",
     account: str = "",
@@ -965,7 +965,7 @@ def vc_custom_filter(
 
     Parameters
     ----------
-    vcf_path : str
+    input_vcf : str
         Absolute path to an uncompressed plain-text input VCF.
     min_qual : float
         Minimum QUAL threshold (inclusive). Default 30.0.
@@ -989,7 +989,7 @@ def vc_custom_filter(
     Example
     -------
     >>> vc_custom_filter(
-    ...     vcf_path="/data/results/joint_called.vcf",
+    ...     input_vcf="/data/results/joint_called.vcf",
     ...     min_qual=50.0,
     ... )
 
@@ -997,8 +997,8 @@ def vc_custom_filter(
     """
     return _run_task(
         task_name="my_custom_filter",
-        bindings={"VariantCallSet": {"vcf_path": vcf_path}},
-        inputs={"input_vcf": vcf_path, "min_qual": min_qual},
+        bindings={"VariantCallSet": {"vcf_path": input_vcf}},
+        inputs={"input_vcf": input_vcf, "min_qual": min_qual},
         resource_request=_resource_request(
             partition, account, cpu, memory, walltime, shared_fs_roots, module_loads
         ),
@@ -1007,7 +1007,7 @@ def vc_custom_filter(
 
 
 def vc_apply_custom_filter(
-    vcf_path: str,
+    input_vcf: str,
     min_qual: float = 30.0,
     partition: str = "",
     account: str = "",
@@ -1027,7 +1027,7 @@ def vc_apply_custom_filter(
 
     Parameters
     ----------
-    vcf_path : str
+    input_vcf : str
         Absolute path to a joint-called or VQSR-filtered plain-text VCF.
     min_qual : float
         Minimum QUAL threshold (inclusive). Default 30.0.
@@ -1051,7 +1051,7 @@ def vc_apply_custom_filter(
     Example
     -------
     >>> vc_apply_custom_filter(
-    ...     vcf_path="/data/results/joint_called.vcf",
+    ...     input_vcf="/data/results/joint_called.vcf",
     ...     min_qual=50.0,
     ... )
 
@@ -1059,8 +1059,8 @@ def vc_apply_custom_filter(
     """
     return _run_workflow(
         workflow_name="apply_custom_filter",
-        bindings={"VariantCallSet": {"vcf_path": vcf_path}},
-        inputs={"input_vcf": vcf_path, "min_qual": min_qual},
+        bindings={"VariantCallSet": {"vcf_path": input_vcf}},
+        inputs={"input_vcf": input_vcf, "min_qual": min_qual},
         resource_request=_resource_request(
             partition, account, cpu, memory, walltime, shared_fs_roots, module_loads
         ),

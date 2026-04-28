@@ -350,7 +350,7 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         "[flat] Apply a pure-Python QUAL threshold filter to a plain-text VCF."
         " On-ramp reference task — drops records with QUAL below min_qual or with"
         " missing QUAL ('.'); header lines are always preserved; no container"
-        " required. Accepts vcf_path (str) and optional min_qual (default 30.0),"
+        " required. Accepts input_vcf (str) and optional min_qual (default 30.0),"
         " partition, account, cpu, memory, walltime, shared_fs_roots, module_loads,"
         " dry_run. All paths must be absolute. " + QUEUE_ACCOUNT_HANDOFF
     ),

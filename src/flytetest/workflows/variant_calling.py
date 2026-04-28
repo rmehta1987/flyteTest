@@ -655,10 +655,6 @@ def apply_custom_filter(
     threshold applied before downstream analysis. The minimal copyable template
     for adding a user-authored Python-callable task to the end of an existing
     pipeline.
-
-    The parameter is named ``input_vcf`` (not ``vcf_path``) so it does not
-    collide with the ``VariantCallSet.vcf_path`` planner-type field — see
-    ``.codex/user_tasks.md`` for the naming convention.
     """
     from flytetest.config import project_mkdtemp
 

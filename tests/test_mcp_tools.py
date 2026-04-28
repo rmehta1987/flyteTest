@@ -246,7 +246,7 @@ class VcCustomFilterTests(TestCase):
     def test_happy_path(self) -> None:
         with patch("flytetest.server.run_task", return_value=_FAKE_RESULT) as mock_rt:
             result = mcp_tools.vc_custom_filter(
-                vcf_path="/vcf/joint_called.vcf",
+                input_vcf="/vcf/joint_called.vcf",
                 min_qual=50.0,
             )
         mock_rt.assert_called_once()
@@ -259,20 +259,20 @@ class VcCustomFilterTests(TestCase):
 
     def test_default_min_qual(self) -> None:
         with patch("flytetest.server.run_task", return_value=_FAKE_RESULT) as mock_rt:
-            mcp_tools.vc_custom_filter(vcf_path="/vcf/x.vcf")
+            mcp_tools.vc_custom_filter(input_vcf="/vcf/x.vcf")
         _, kwargs = mock_rt.call_args
         self.assertEqual(kwargs["inputs"]["min_qual"], 30.0)
 
     def test_dry_run_propagates(self) -> None:
         with patch("flytetest.server.run_task", return_value=_FAKE_RESULT) as mock_rt:
-            mcp_tools.vc_custom_filter(vcf_path="/vcf/x.vcf", dry_run=True)
+            mcp_tools.vc_custom_filter(input_vcf="/vcf/x.vcf", dry_run=True)
         _, kwargs = mock_rt.call_args
         self.assertTrue(kwargs["dry_run"])
 
     def test_resource_request_assembled(self) -> None:
         with patch("flytetest.server.run_task", return_value=_FAKE_RESULT) as mock_rt:
             mcp_tools.vc_custom_filter(
-                vcf_path="/vcf/x.vcf",
+                input_vcf="/vcf/x.vcf",
                 partition="caslake",
                 account="mylab",
                 cpu=2,
@@ -289,7 +289,7 @@ class VcCustomFilterTests(TestCase):
 
     def test_default_resource_request_is_none(self) -> None:
         with patch("flytetest.server.run_task", return_value=_FAKE_RESULT) as mock_rt:
-            mcp_tools.vc_custom_filter(vcf_path="/vcf/x.vcf")
+            mcp_tools.vc_custom_filter(input_vcf="/vcf/x.vcf")
         _, kwargs = mock_rt.call_args
         self.assertIsNone(kwargs["resource_request"])
 
@@ -300,7 +300,7 @@ class VcApplyCustomFilterTests(TestCase):
     def test_happy_path(self) -> None:
         with patch("flytetest.server.run_workflow", return_value=_FAKE_RESULT) as mock_rw:
             result = mcp_tools.vc_apply_custom_filter(
-                vcf_path="/vcf/joint_called.vcf",
+                input_vcf="/vcf/joint_called.vcf",
                 min_qual=50.0,
             )
         mock_rw.assert_called_once()
@@ -312,13 +312,13 @@ class VcApplyCustomFilterTests(TestCase):
 
     def test_default_min_qual(self) -> None:
         with patch("flytetest.server.run_workflow", return_value=_FAKE_RESULT) as mock_rw:
-            mcp_tools.vc_apply_custom_filter(vcf_path="/vcf/x.vcf")
+            mcp_tools.vc_apply_custom_filter(input_vcf="/vcf/x.vcf")
         _, kwargs = mock_rw.call_args
         self.assertEqual(kwargs["inputs"]["min_qual"], 30.0)
 
     def test_dry_run_propagates(self) -> None:
         with patch("flytetest.server.run_workflow", return_value=_FAKE_RESULT) as mock_rw:
-            mcp_tools.vc_apply_custom_filter(vcf_path="/vcf/x.vcf", dry_run=True)
+            mcp_tools.vc_apply_custom_filter(input_vcf="/vcf/x.vcf", dry_run=True)
         _, kwargs = mock_rw.call_args
         self.assertTrue(kwargs["dry_run"])
 
@@ -576,20 +576,23 @@ class FlatToolDryRunResolverIntegrationTests(TestCase):
     planner type's required fields.
     """
 
-    def setUp(self) -> None:
+    @classmethod
+    def setUpClass(cls) -> None:
+        # All tests dry-run only; the fixture is read-only across the class.
         import tempfile
-        self._tmpdir = tempfile.TemporaryDirectory()
-        self.vcf_path = str(Path(self._tmpdir.name) / "in.vcf")
-        Path(self.vcf_path).write_text(
+        cls._tmpdir = tempfile.TemporaryDirectory()
+        cls.input_vcf = str(Path(cls._tmpdir.name) / "in.vcf")
+        Path(cls.input_vcf).write_text(
             "##fileformat=VCFv4.2\n"
             "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
             "chr1\t100\t.\tA\tT\t50.0\tPASS\t.\n"
         )
-        self.snpeff_dir = str(Path(self._tmpdir.name) / "snpeff")
-        Path(self.snpeff_dir).mkdir()
+        cls.snpeff_dir = str(Path(cls._tmpdir.name) / "snpeff")
+        Path(cls.snpeff_dir).mkdir()
 
-    def tearDown(self) -> None:
-        self._tmpdir.cleanup()
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls._tmpdir.cleanup()
 
     def _assert_planned(self, result: dict) -> None:
         self.assertIsInstance(result, dict)
@@ -600,18 +603,18 @@ class FlatToolDryRunResolverIntegrationTests(TestCase):
 
     def test_vc_custom_filter_dry_run_resolves(self) -> None:
         self._assert_planned(
-            mcp_tools.vc_custom_filter(vcf_path=self.vcf_path, dry_run=True)
+            mcp_tools.vc_custom_filter(input_vcf=self.input_vcf, dry_run=True)
         )
 
     def test_vc_apply_custom_filter_dry_run_resolves(self) -> None:
         self._assert_planned(
-            mcp_tools.vc_apply_custom_filter(vcf_path=self.vcf_path, dry_run=True)
+            mcp_tools.vc_apply_custom_filter(input_vcf=self.input_vcf, dry_run=True)
         )
 
     def test_vc_annotate_variants_snpeff_dry_run_resolves(self) -> None:
         self._assert_planned(
             mcp_tools.vc_annotate_variants_snpeff(
-                input_vcf=self.vcf_path,
+                input_vcf=self.input_vcf,
                 cohort_id="cohort1",
                 snpeff_database="GRCh38.105",
                 snpeff_data_dir=self.snpeff_dir,
@@ -622,7 +625,7 @@ class FlatToolDryRunResolverIntegrationTests(TestCase):
     def test_vc_post_call_qc_summary_dry_run_resolves(self) -> None:
         self._assert_planned(
             mcp_tools.vc_post_call_qc_summary(
-                input_vcf=self.vcf_path,
+                input_vcf=self.input_vcf,
                 cohort_id="cohort1",
                 dry_run=True,
             )
@@ -631,7 +634,7 @@ class FlatToolDryRunResolverIntegrationTests(TestCase):
     def test_vc_post_genotyping_refinement_dry_run_resolves(self) -> None:
         self._assert_planned(
             mcp_tools.vc_post_genotyping_refinement(
-                input_vcf=self.vcf_path,
+                input_vcf=self.input_vcf,
                 cohort_id="cohort1",
                 dry_run=True,
             )

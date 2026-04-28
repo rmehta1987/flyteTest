@@ -65,27 +65,27 @@ checks disagree, the dry-run plans, and the real run fails with confusing
 "Unknown scalar inputs" / "Missing required workflow inputs" errors.
 
 Use `input_vcf`, `joint_vcf`, `vcf_in`, etc. — *not* `vcf_path`. The
-existing convention across the codebase is `input_vcf` for the typed File
-parameter; the binding still uses the planner-field name internally:
+established convention across the codebase is `input_vcf` for typed File
+parameters at every layer (task signature, workflow signature, flat-tool
+user-facing parameter). The binding inner key still carries the
+planner-field name (`vcf_path`), since that is what the planner type
+itself defines:
 
 ```python
 # task / workflow signature
 def apply_custom_filter(input_vcf: File, min_qual: float = 30.0) -> File:
     ...
 
-# flat tool — the planner-type field name (vcf_path) appears in the binding;
-# the task/workflow parameter name (input_vcf) appears in `inputs`.
-return _run_workflow(
-    workflow_name="apply_custom_filter",
-    bindings={"VariantCallSet": {"vcf_path": vcf_path}},   # planner field
-    inputs={"input_vcf": vcf_path, "min_qual": min_qual},   # function param
-    ...
-)
+# flat tool — user-facing param matches the function signature; the
+# planner-type field name (vcf_path) appears only inside the binding dict.
+def vc_apply_custom_filter(input_vcf: str, min_qual: float = 30.0, ...):
+    return _run_workflow(
+        workflow_name="apply_custom_filter",
+        bindings={"VariantCallSet": {"vcf_path": input_vcf}},  # planner field
+        inputs={"input_vcf": input_vcf, "min_qual": min_qual}, # function param
+        ...
+    )
 ```
-
-The flat-tool *user-facing* parameter can still be `vcf_path` — that's
-intuitive for end users; only the workflow/task parameter name must
-diverge.
 
 ## Manifests and `MANIFEST_OUTPUT_KEYS`
 
@@ -222,10 +222,10 @@ user-authored task to an existing VCF — is `apply_custom_filter` in
 ```python
 @variant_calling_env.task
 def apply_custom_filter(
-    vcf_path: File,
+    input_vcf: File,
     min_qual: float = 30.0,
 ) -> File:
-    filtered_vcf = my_custom_filter(vcf_path=vcf_path, min_qual=min_qual)
+    filtered_vcf = my_custom_filter(input_vcf=input_vcf, min_qual=min_qual)
     # ... write workflow-level run_manifest.json ...
     return filtered_vcf
 ```

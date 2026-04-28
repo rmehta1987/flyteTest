@@ -2876,18 +2876,45 @@ class MyCustomFilterMCPExposureTests(TestCase):
             (("input_vcf", True), ("min_qual", False)),
         )
 
-    def test_scalar_params_subtract_typed_bindings(self):
-        """When VariantCallSet binding is supplied, vcf_path is subtracted from scalar params."""
+    def test_scalar_params_with_and_without_typed_bindings(self):
+        """Document the binding-key vs parameter-name relationship for my_custom_filter.
+
+        The binding inner key is ``vcf_path`` (the VariantCallSet planner-type
+        field name). The task parameter / scalar-input key is ``input_vcf``.
+        These two keys are intentionally distinct — that distinction is what
+        prevents the resolver classification collision fixed in this milestone.
+        """
         from flytetest.server import _scalar_params_for_task
-        # Without bindings, all TASK_PARAMETERS entries are scalar — including
-        # input_vcf, since the planner needs to validate it as a known input.
-        params_unbound = _scalar_params_for_task("my_custom_filter", bindings={})
-        unbound_names = [name for name, _ in params_unbound]
-        self.assertIn("input_vcf", unbound_names)
-        self.assertIn("min_qual", unbound_names)
-        # vcf_path is the planner-type field name and must not collide with
-        # any TASK_PARAMETERS entry (that was the bug fixed in this milestone).
-        self.assertNotIn("vcf_path", unbound_names)
+
+        # Without any binding: every TASK_PARAMETERS entry remains scalar.
+        unbound = [name for name, _ in _scalar_params_for_task("my_custom_filter", bindings={})]
+        self.assertEqual(set(unbound), {"input_vcf", "min_qual"})
+
+        # With the canonical VariantCallSet binding the resolver subtracts
+        # the planner-type field name (``vcf_path``) from candidate scalar
+        # params. Because that name does NOT match any TASK_PARAMETERS entry
+        # (we deliberately use ``input_vcf``), nothing is removed — and the
+        # function signature still gets ``input_vcf`` from the inputs dict.
+        bound = [
+            name
+            for name, _ in _scalar_params_for_task(
+                "my_custom_filter",
+                bindings={"VariantCallSet": {"vcf_path": "/tmp/x.vcf"}},
+            )
+        ]
+        self.assertEqual(set(bound), {"input_vcf", "min_qual"})
+
+        # Regression guard: if a future refactor renames the task parameter
+        # back to ``vcf_path``, the binding inner key WILL match and silently
+        # strip the parameter from validation — recreating the bug fixed here.
+        collision_bound = [
+            name
+            for name, _ in _scalar_params_for_task(
+                "my_custom_filter",
+                bindings={"VariantCallSet": {"input_vcf": "/tmp/x.vcf"}},
+            )
+        ]
+        self.assertNotIn("input_vcf", collision_bound)
 
     def test_min_qual_is_not_required(self):
         from flytetest.server import TASK_PARAMETERS

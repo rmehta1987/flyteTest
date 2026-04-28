@@ -1280,10 +1280,6 @@ def my_custom_filter(
     reference example for user-authored pure-Python logic; it goes through
     ``run_tool`` in Python-callable mode so the execution pattern is uniform
     across all task families.
-
-    The parameter is named ``input_vcf`` (not ``vcf_path``) so it does not
-    collide with the ``VariantCallSet.vcf_path`` planner-type field — see
-    ``.codex/user_tasks.md`` for the naming convention.
     """
     in_vcf = require_path(Path(input_vcf.download_sync()), "Input VCF")
     out_dir = project_mkdtemp("my_custom_filter_")
