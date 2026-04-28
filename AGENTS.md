@@ -163,46 +163,6 @@ Types — `src/flytetest/planner_types.py`, `src/flytetest/types/`
   bounded stdout/stderr tails for terminal jobs; set to 0 to disable.
 - `retry_slurm_job` accepts `resource_overrides` to escalate resources for
   OOM/TIMEOUT failures without modifying the frozen recipe.
-
-## MCP Tool Docstring Standard [never skip]
-
-FastMCP exposes each function's Python docstring verbatim as the MCP tool
-description — it is the only prose guidance an AI client receives. The JSON
-schema adds parameter types but not semantic meaning: `Mapping[str, Any]`
-tells an agent nothing about which keys to use or how to structure nested
-values.
-
-Any function registered with `@mcp.tool(...)` **must** have a docstring that
-covers all of the following or the client will guess wrong:
-
-1. **What each parameter means and which keys are valid.**
-   For `bindings`: state that outer keys are planner type names (e.g.
-   `ReferenceGenome`, `ReadPair`) and inner keys are field names (e.g.
-   `fasta_path`, `r1_path`). For `inputs`: state that keys are the exact
-   workflow/task parameter names from the function signature.
-
-2. **How File-typed parameters are passed.**
-   Explicitly say: "File-typed parameters are passed as absolute string paths
-   in `inputs` and are coerced automatically — do not wrap them in dicts."
-
-3. **Which parameters accept empty string vs. a path.**
-   E.g. `gatk_sif: ""` means use the cluster module; a non-empty value means
-   use that SIF path.
-
-4. **Valid keys for `resource_request`.**
-   Always list: `partition`, `account`, `cpu`, `memory`, `walltime`,
-   `module_loads`, `shared_fs_roots`. An agent that doesn't see these will
-   invent key names that are silently dropped.
-
-5. **A concrete call example** with real key names and representative values.
-   One example is worth ten paragraphs of prose.
-
-6. **The absolute-paths requirement.**
-   State explicitly that all paths must be absolute on the shared filesystem.
-   Relative paths silently resolve against the server's working directory and
-   produce staging failures on compute nodes.
-
-**How to check:** after adding or modifying a `@mcp.tool` function, read its
-docstring as if you were an AI client seeing it for the first time with no
-other context. If you cannot construct a correct call from the docstring alone,
-the docstring is insufficient. Fix it before committing.
+- `@mcp.tool` docstrings are the only prose an MCP client sees; each must
+  name valid parameter keys, show a concrete example, and state that all
+  paths must be absolute. See `.codex/documentation.md` for the standard.
