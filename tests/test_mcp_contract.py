@@ -101,7 +101,8 @@ class ToolGroupOrderTests(TestCase):
     """MCP_TOOL_NAMES order must reflect experiment-loop → inspect → lifecycle."""
 
     def test_group_constants_cover_all_mcp_tool_names(self) -> None:
-        all_grouped = set(EXPERIMENT_LOOP_TOOLS) | set(INSPECT_TOOLS) | set(LIFECYCLE_TOOLS)
+        from flytetest.mcp_contract import FLAT_TOOLS
+        all_grouped = set(EXPERIMENT_LOOP_TOOLS) | set(FLAT_TOOLS) | set(INSPECT_TOOLS) | set(LIFECYCLE_TOOLS)
         extra_in_names = set(MCP_TOOL_NAMES) - all_grouped
         extra_in_groups = all_grouped - set(MCP_TOOL_NAMES)
         self.assertEqual(extra_in_names, set(), msg=f"MCP_TOOL_NAMES has tools not in any group: {extra_in_names}")

@@ -43,6 +43,17 @@ from flytetest.mcp_replies import (
     ValidateRecipeReply,
 )
 from flytetest.mcp_contract import (
+    ANNOTATION_AGAT_CLEANUP_TOOL_NAME,
+    ANNOTATION_AGAT_CONVERT_TOOL_NAME,
+    ANNOTATION_AGAT_STATS_TOOL_NAME,
+    ANNOTATION_BRAKER3_TOOL_NAME,
+    ANNOTATION_BUSCO_ASSESS_TOOL_NAME,
+    ANNOTATION_BUSCO_QC_TOOL_NAME,
+    ANNOTATION_EGGNOG_TOOL_NAME,
+    ANNOTATION_EXONERATE_CHUNK_TOOL_NAME,
+    ANNOTATION_GFFREAD_PROTEINS_TOOL_NAME,
+    ANNOTATION_PROTEIN_EVIDENCE_TOOL_NAME,
+    ANNOTATION_TABLE2ASN_TOOL_NAME,
     APPROVE_COMPOSED_RECIPE_TOOL_NAME,
     CANCEL_SLURM_JOB_TOOL_NAME,
     DECLINE_CATEGORY_CODES,
@@ -80,6 +91,8 @@ from flytetest.mcp_contract import (
     RESULT_MANIFEST_RESOURCE_URI_PREFIX,
     RESULT_SUMMARY_FIELDS,
     RETRY_SLURM_JOB_TOOL_NAME,
+    RNASEQ_FASTQC_TOOL_NAME,
+    RNASEQ_QC_TOOL_NAME,
     RUN_RECIPE_RESOURCE_URI_PREFIX,
     RUN_RECIPE_TOOL_NAME,
     RUN_SLURM_RECIPE_TOOL_NAME,
@@ -95,6 +108,16 @@ from flytetest.mcp_contract import (
     TASK_EXAMPLE_PROMPT,
     TOOL_DESCRIPTIONS,
     VALIDATE_RUN_RECIPE_TOOL_NAME,
+    VC_ANNOTATE_SNPEFF_TOOL_NAME,
+    VC_GERMLINE_DISCOVERY_TOOL_NAME,
+    VC_GENOTYPE_REFINEMENT_TOOL_NAME,
+    VC_POST_CALL_QC_SUMMARY_TOOL_NAME,
+    VC_POST_GENOTYPING_REFINEMENT_TOOL_NAME,
+    VC_PRE_CALL_COVERAGE_QC_TOOL_NAME,
+    VC_PREPARE_REFERENCE_TOOL_NAME,
+    VC_PREPROCESS_SAMPLE_TOOL_NAME,
+    VC_SEQUENTIAL_INTERVAL_HC_TOOL_NAME,
+    VC_SMALL_COHORT_FILTER_TOOL_NAME,
     WAIT_FOR_SLURM_JOB_TOOL_NAME,
     WORKFLOW_EXAMPLE_PROMPT,
     supported_runnable_targets_payload,
@@ -4530,6 +4553,31 @@ def create_mcp_server(fastmcp_cls: Any | None = None) -> Any:
     mcp.tool(description=TOOL_DESCRIPTIONS[FETCH_JOB_LOG_TOOL_NAME])(fetch_job_log)
     mcp.tool(description=TOOL_DESCRIPTIONS[WAIT_FOR_SLURM_JOB_TOOL_NAME])(wait_for_slurm_job)
     mcp.tool(description=TOOL_DESCRIPTIONS[GET_PIPELINE_STATUS_TOOL_NAME])(get_pipeline_status)
+    # Flat-parameter tools: one per showcase target (lazy import to avoid circular dep).
+    import flytetest.mcp_tools as _mcp_tools  # noqa: PLC0415
+    mcp.tool(description=TOOL_DESCRIPTIONS[VC_GERMLINE_DISCOVERY_TOOL_NAME])(_mcp_tools.vc_germline_discovery)
+    mcp.tool(description=TOOL_DESCRIPTIONS[VC_PREPARE_REFERENCE_TOOL_NAME])(_mcp_tools.vc_prepare_reference)
+    mcp.tool(description=TOOL_DESCRIPTIONS[VC_PREPROCESS_SAMPLE_TOOL_NAME])(_mcp_tools.vc_preprocess_sample)
+    mcp.tool(description=TOOL_DESCRIPTIONS[VC_GENOTYPE_REFINEMENT_TOOL_NAME])(_mcp_tools.vc_genotype_refinement)
+    mcp.tool(description=TOOL_DESCRIPTIONS[VC_SMALL_COHORT_FILTER_TOOL_NAME])(_mcp_tools.vc_small_cohort_filter)
+    mcp.tool(description=TOOL_DESCRIPTIONS[VC_POST_GENOTYPING_REFINEMENT_TOOL_NAME])(_mcp_tools.vc_post_genotyping_refinement)
+    mcp.tool(description=TOOL_DESCRIPTIONS[VC_SEQUENTIAL_INTERVAL_HC_TOOL_NAME])(_mcp_tools.vc_sequential_interval_haplotype_caller)
+    mcp.tool(description=TOOL_DESCRIPTIONS[VC_PRE_CALL_COVERAGE_QC_TOOL_NAME])(_mcp_tools.vc_pre_call_coverage_qc)
+    mcp.tool(description=TOOL_DESCRIPTIONS[VC_POST_CALL_QC_SUMMARY_TOOL_NAME])(_mcp_tools.vc_post_call_qc_summary)
+    mcp.tool(description=TOOL_DESCRIPTIONS[VC_ANNOTATE_SNPEFF_TOOL_NAME])(_mcp_tools.vc_annotate_variants_snpeff)
+    mcp.tool(description=TOOL_DESCRIPTIONS[ANNOTATION_BRAKER3_TOOL_NAME])(_mcp_tools.annotation_braker3)
+    mcp.tool(description=TOOL_DESCRIPTIONS[ANNOTATION_PROTEIN_EVIDENCE_TOOL_NAME])(_mcp_tools.annotation_protein_evidence)
+    mcp.tool(description=TOOL_DESCRIPTIONS[ANNOTATION_BUSCO_QC_TOOL_NAME])(_mcp_tools.annotation_busco_qc)
+    mcp.tool(description=TOOL_DESCRIPTIONS[ANNOTATION_EGGNOG_TOOL_NAME])(_mcp_tools.annotation_eggnog)
+    mcp.tool(description=TOOL_DESCRIPTIONS[ANNOTATION_AGAT_STATS_TOOL_NAME])(_mcp_tools.annotation_agat_stats)
+    mcp.tool(description=TOOL_DESCRIPTIONS[ANNOTATION_AGAT_CONVERT_TOOL_NAME])(_mcp_tools.annotation_agat_convert)
+    mcp.tool(description=TOOL_DESCRIPTIONS[ANNOTATION_AGAT_CLEANUP_TOOL_NAME])(_mcp_tools.annotation_agat_cleanup)
+    mcp.tool(description=TOOL_DESCRIPTIONS[ANNOTATION_TABLE2ASN_TOOL_NAME])(_mcp_tools.annotation_table2asn)
+    mcp.tool(description=TOOL_DESCRIPTIONS[ANNOTATION_GFFREAD_PROTEINS_TOOL_NAME])(_mcp_tools.annotation_gffread_proteins)
+    mcp.tool(description=TOOL_DESCRIPTIONS[ANNOTATION_BUSCO_ASSESS_TOOL_NAME])(_mcp_tools.annotation_busco_assess)
+    mcp.tool(description=TOOL_DESCRIPTIONS[ANNOTATION_EXONERATE_CHUNK_TOOL_NAME])(_mcp_tools.annotation_exonerate_chunk)
+    mcp.tool(description=TOOL_DESCRIPTIONS[RNASEQ_QC_TOOL_NAME])(_mcp_tools.rnaseq_qc)
+    mcp.tool(description=TOOL_DESCRIPTIONS[RNASEQ_FASTQC_TOOL_NAME])(_mcp_tools.rnaseq_fastqc)
     mcp.resource(SERVER_RESOURCE_URIS[0])(resource_scope)
     mcp.resource(SERVER_RESOURCE_URIS[1])(resource_supported_targets)
     mcp.resource(SERVER_RESOURCE_URIS[2])(resource_example_prompts)

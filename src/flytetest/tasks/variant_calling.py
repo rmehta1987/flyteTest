@@ -77,7 +77,7 @@ def create_sequence_dictionary(
     gatk_sif: str = "",
 ) -> File:
     """Emit a GATK sequence dictionary (.dict) next to the reference FASTA."""
-    ref_path = require_path(Path(reference_fasta.download_sync()),
+    ref_path = require_path(Path(reference_fasta.path),
                             "Reference genome FASTA")
     out_dir = project_mkdtemp("gatk_seqdict_")
     dict_path = out_dir / f"{ref_path.stem}.dict"
@@ -147,7 +147,7 @@ def base_recalibrator(
     if not known_sites:
         raise ValueError("known_sites list cannot be empty for BQSR")
 
-    ref_path = require_path(Path(reference_fasta.download_sync()),
+    ref_path = require_path(Path(reference_fasta.path),
                             "Reference genome FASTA")
     bam_path = require_path(Path(aligned_bam.download_sync()),
                             "Aligned BAM")
@@ -200,7 +200,7 @@ def apply_bqsr(
     gatk_sif: str = "",
 ) -> File:
     """Apply a BQSR recalibration table to an aligned BAM via GATK4 ApplyBQSR."""
-    ref_path = require_path(Path(reference_fasta.download_sync()),
+    ref_path = require_path(Path(reference_fasta.path),
                             "Reference genome FASTA")
     bam_path = require_path(Path(aligned_bam.download_sync()),
                             "Aligned BAM for ApplyBQSR")
@@ -255,7 +255,7 @@ def haplotype_caller(
     gatk_sif: str = "",
 ) -> File:
     """Call per-sample germline GVCF via GATK4 HaplotypeCaller in GVCF mode."""
-    ref_path = require_path(Path(reference_fasta.download_sync()),
+    ref_path = require_path(Path(reference_fasta.path),
                             "Reference genome FASTA")
     bam_path = require_path(Path(aligned_bam.download_sync()),
                             "Aligned BAM for HaplotypeCaller")
@@ -317,7 +317,7 @@ def joint_call_gvcfs(
             f"length ({len(gvcfs)}); sample_name_map requires a 1:1 mapping."
         )
 
-    ref_path = require_path(Path(reference_fasta.download_sync()),
+    ref_path = require_path(Path(reference_fasta.path),
                             "Reference genome FASTA")
     gvcf_paths = [
         require_path(Path(g.download_sync()), f"Input GVCF #{i}")
@@ -393,7 +393,7 @@ def combine_gvcfs(
     if not gvcfs:
         raise ValueError("gvcfs list cannot be empty")
 
-    ref_path = require_path(Path(reference_fasta.download_sync()),
+    ref_path = require_path(Path(reference_fasta.path),
                             "Reference genome FASTA")
     gvcf_paths = [
         require_path(Path(g.download_sync()), f"Input GVCF #{i}")
@@ -441,7 +441,7 @@ def bwa_mem2_index(
     bwa_sif: str = "",
 ) -> Dir:
     """Index a reference FASTA for BWA-MEM2 alignment."""
-    ref = require_path(Path(reference_fasta.download_sync()), "Reference FASTA")
+    ref = require_path(Path(reference_fasta.path), "Reference FASTA")
     out_dir = project_mkdtemp("bwa_mem2_index_")
     index_prefix = out_dir / ref.stem
 
@@ -474,7 +474,7 @@ def bwa_mem2_mem(
     bwa_sif: str = "",
 ) -> File:
     """Align paired-end FASTQ reads to a reference using BWA-MEM2."""
-    ref = require_path(Path(reference_fasta.download_sync()), "Reference FASTA")
+    ref = require_path(Path(reference_fasta.path), "Reference FASTA")
     r1_path = require_path(Path(r1.download_sync()), "R1 FASTQ")
     r2_path = require_path(Path(r2.download_sync()), "R2 FASTQ") if r2 is not None else None
     lib = library_id or f"{sample_id}_lib"
@@ -666,7 +666,7 @@ def variant_recalibrator(
             f"({len(known_sites_flags)}) must have the same length"
         )
 
-    ref = require_path(Path(reference_fasta.download_sync()), "Reference genome FASTA")
+    ref = require_path(Path(reference_fasta.path), "Reference genome FASTA")
     vcf = require_path(Path(cohort_vcf.download_sync()), "Input VCF for VariantRecalibrator")
     site_paths = [
         require_path(Path(s.download_sync()), f"KnownSites VCF #{i}")
@@ -755,7 +755,7 @@ def apply_vqsr(
     if mode not in ("SNP", "INDEL"):
         raise ValueError(f"mode must be 'SNP' or 'INDEL', got {mode!r}")
 
-    ref = require_path(Path(reference_fasta.download_sync()), "Reference genome FASTA")
+    ref = require_path(Path(reference_fasta.path), "Reference genome FASTA")
     vcf = require_path(Path(input_vcf.download_sync()), "Input VCF for ApplyVQSR")
     recal = require_path(Path(recal_file.download_sync()), "VQSR recalibration file")
     tranches = require_path(Path(tranches_file.download_sync()), "VQSR tranches file")
@@ -827,7 +827,7 @@ def merge_bam_alignment(
     produces a coordinate-sorted merged BAM so no separate sort_sam step
     is needed.
     """
-    ref = require_path(Path(reference_fasta.download_sync()), "Reference genome FASTA")
+    ref = require_path(Path(reference_fasta.path), "Reference genome FASTA")
     aln = require_path(Path(aligned_bam.download_sync()), "Aligned BAM for MergeBamAlignment")
     ubam_path = require_path(Path(ubam.download_sync()), "Unmapped BAM for MergeBamAlignment")
 
@@ -1032,7 +1032,7 @@ def variant_filtration(
         else list(_DEFAULT_INDEL_FILTER_EXPRESSIONS)
     )
 
-    ref = require_path(Path(reference_fasta.download_sync()), "Reference FASTA")
+    ref = require_path(Path(reference_fasta.path), "Reference FASTA")
     vcf = require_path(Path(input_vcf.download_sync()), f"VCF for {mode} filtration")
 
     out_dir = project_mkdtemp(f"gatk_filt_{mode.lower()}_")
@@ -1089,7 +1089,7 @@ def collect_wgs_metrics(
 
     Returns (wgs_metrics_txt, insert_size_metrics_txt).
     """
-    ref = require_path(Path(reference_fasta.download_sync()), "Reference FASTA")
+    ref = require_path(Path(reference_fasta.path), "Reference FASTA")
     bam = require_path(Path(aligned_bam.download_sync()), "Aligned BAM")
 
     out_dir = project_mkdtemp("picard_wgs_")
