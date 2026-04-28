@@ -51,7 +51,8 @@ Registry package — `src/flytetest/registry/`
 - `__init__.py` — `REGISTRY_ENTRIES`, query functions, public re-exports
 
 Core concepts
-- `mcp_contract.py` — `SHOWCASE_TARGETS` (derived from `showcase_module`), `TOOL_DESCRIPTIONS`, grouped `MCP_TOOL_NAMES`, policy constants, MCP surface contract
+- `mcp_contract.py` — `SHOWCASE_TARGETS` (derived from `showcase_module`), `TOOL_DESCRIPTIONS`, grouped `MCP_TOOL_NAMES`, `FLAT_TOOLS` tuple (one name per flat tool), policy constants, MCP surface contract
+- `mcp_tools.py` — flat-parameter MCP tool functions, one per showcase target (`vc_*`, `annotation_*`, `rnaseq_*`). Each function assembles `bindings` / `inputs` / `resource_request` internally and delegates to `run_workflow` / `run_task` via deferred import (avoids circular import). Registered in `create_mcp_server()` alongside the power tools.
 - `mcp_replies.py` — typed reply dataclasses (`RunReply`, `DryRunReply`, `PlanDecline`, `ValidateRecipeReply`) — single source of truth for the reshaped MCP wire format
 - `errors.py` — typed `PlannerResolutionError` hierarchy (`UnknownRunIdError`, `UnknownOutputNameError`, `ManifestNotFoundError`, `BindingPathMissingError`, `BindingTypeMismatchError`) that drives the exception-to-decline translator
 - `bundles.py` — curated `ResourceBundle` catalog + `list_bundles` / `load_bundle`; availability is checked at call time so new family bundles are a one-line append

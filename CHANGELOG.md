@@ -32,6 +32,14 @@ Entry template:
 
 ## Unreleased
 
+### Simplified MCP tools — flat-parameter wrappers (2026-04-28)
+
+- [x] 2026-04-28 Created `src/flytetest/mcp_tools.py` with 23 flat-parameter MCP tool functions (10 `vc_*`, 11 `annotation_*`, 2 `rnaseq_*`). Each function has explicit named parameters (no two-layer `bindings`/`inputs` dict), assembles the binding/inputs/resource_request internally, and delegates to `run_workflow` / `run_task` via deferred imports to avoid circular-import issues.
+- [x] 2026-04-28 Added 24 tool-name constants (`VC_*_TOOL_NAME`, `ANNOTATION_*_TOOL_NAME`, `RNASEQ_*_TOOL_NAME`), a new `FLAT_TOOLS` tuple, and 23 entries to `TOOL_DESCRIPTIONS` in `src/flytetest/mcp_contract.py`. Updated `MCP_TOOL_NAMES = EXPERIMENT_LOOP_TOOLS + FLAT_TOOLS + INSPECT_TOOLS + LIFECYCLE_TOOLS`.
+- [x] 2026-04-28 Registered all 23 flat tools in `create_mcp_server()` (`src/flytetest/server.py`) via `mcp.tool(description=TOOL_DESCRIPTIONS[NAME])(fn)` pattern.
+- [x] 2026-04-28 Added `showcase_module='flytetest.workflows.rnaseq_qc_quant'` to the `rnaseq_qc_quant` registry entry (`src/flytetest/registry/_rnaseq.py`) and added `MANIFEST_OUTPUT_KEYS = ("results_dir",)` to `src/flytetest/workflows/rnaseq_qc_quant.py`. Without these two additions the `rnaseq_qc` flat tool would have been rejected by `run_workflow`'s supported-targets guard; the manifest contract test also requires the key. Updated `test_supported_target_names_match_expected_set` in `tests/test_server.py` to include `rnaseq_qc_quant`.
+- [x] 2026-04-28 Created `tests/test_mcp_tools.py` with 38 tests covering happy-path delegation, optional-field exclusion, `runtime_images` assembly, `resource_request` assembly, `dry_run` forwarding, and the `_resource_request` helper. Full suite: 941 passed, 1 skipped (was 903).
+
 ### Showcase prep — demo audit and script (2026-04-27)
 
 - [x] 2026-04-27 Renamed parameter `resources` → `resource_request` in `run_task` and `run_workflow` (`src/flytetest/server.py`). The old name was silently inconsistent with `prepare_run_recipe`, `prompt_and_run`, `AGENTS.md`, and `SCIENTIST_GUIDE.md`, which all used `resource_request`. Internal uses of the local variable (`resource_request=resources` pass-through, `(resources or {}).get("shared_fs_roots")`) updated to match. Full suite: 903 passed, 1 skipped (unchanged).

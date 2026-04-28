@@ -1,3 +1,4 @@
+marp: true
 # FLyteTest Showcase — Slide Deck
 <!-- 20-minute talk. Slides 1–5 are presented. Slide 6 onward is live terminal. -->
 
@@ -323,8 +324,3 @@ _If that is useful, we can talk about what analyses you actually need to run._
 > Each task enforces the documented GATK4 Best Practices command shape.
 > The test suite (885+ tests) verifies parameter passing for every task.
 > The biological choices are in code and in the registry — not in someone's memory.
-
-**"What's next?"**
-> Job-array scatter for 100-sample fan-out (Milestone K), VEP annotation,
-> and additional biology families. The scaffold agent makes adding new
-> registered analyses a one-session task.
