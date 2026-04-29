@@ -1,5 +1,7 @@
 # User-Authored Tasks and Workflows
 
+For a hands-on walkthrough see `docs/tutorials/user_authored_tasks/`.
+
 This guide is for users who want to add their own first-class task or workflow
 to FLyteTest — for example, plugging a custom Python variant-filter module into
 the existing `variant_calling` pipeline.

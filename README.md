@@ -79,6 +79,7 @@ module configuration, data staging, and Slurm job lifecycle commands.
 | Developers | `DESIGN.md`, `AGENTS.md` |
 | HPC / cluster operators | `scripts/rcc/README.md` |
 | Architecture / contributors | `DESIGN.md` |
+| New contributors (hands-on tutorial) | `docs/tutorials/user_authored_tasks/README.md` |
 
 ---
 
