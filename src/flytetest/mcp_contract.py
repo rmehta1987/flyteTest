@@ -76,6 +76,7 @@ VC_POST_CALL_QC_SUMMARY_TOOL_NAME = "vc_post_call_qc_summary"
 VC_ANNOTATE_SNPEFF_TOOL_NAME = "vc_annotate_variants_snpeff"
 VC_CUSTOM_FILTER_TOOL_NAME = "vc_custom_filter"
 VC_APPLY_CUSTOM_FILTER_TOOL_NAME = "vc_apply_custom_filter"
+VC_COUNT_RECORDS_TOOL_NAME = "vc_count_records"
 ANNOTATION_BRAKER3_TOOL_NAME = "annotation_braker3"
 ANNOTATION_PROTEIN_EVIDENCE_TOOL_NAME = "annotation_protein_evidence"
 ANNOTATION_BUSCO_QC_TOOL_NAME = "annotation_busco_qc"
@@ -115,6 +116,7 @@ FLAT_TOOLS: tuple[str, ...] = (
     VC_ANNOTATE_SNPEFF_TOOL_NAME,
     VC_CUSTOM_FILTER_TOOL_NAME,
     VC_APPLY_CUSTOM_FILTER_TOOL_NAME,
+    VC_COUNT_RECORDS_TOOL_NAME,
     ANNOTATION_BRAKER3_TOOL_NAME,
     ANNOTATION_PROTEIN_EVIDENCE_TOOL_NAME,
     ANNOTATION_BUSCO_QC_TOOL_NAME,
@@ -361,6 +363,14 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         " (str) and optional min_qual (default 30.0), partition, account, cpu,"
         " memory, walltime, shared_fs_roots, module_loads, dry_run. All paths must"
         " be absolute. " + QUEUE_ACCOUNT_HANDOFF
+    ),
+    VC_COUNT_RECORDS_TOOL_NAME: (
+        "[flat] Count header and data lines in a plain-text VCF and emit a small"
+        " JSON report. Tutorial-chapter toy task (chapter 07): the smallest"
+        " end-to-end pure-Python example a reader can copy. Accepts vcf (str) and"
+        " optional partition, account, cpu, memory, walltime, shared_fs_roots,"
+        " module_loads, dry_run. All paths must be absolute. "
+        + QUEUE_ACCOUNT_HANDOFF
     ),
     ANNOTATION_BRAKER3_TOOL_NAME: (
         "[flat] Run the BRAKER3 ab initio gene prediction workflow. Accepts genome"

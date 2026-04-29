@@ -17,7 +17,10 @@ from flytetest.config import (
     require_path,
     run_tool,
 )
-from flytetest.tasks._filter_helpers import filter_vcf
+from flytetest.tasks._filter_helpers import (
+    count_vcf_records as count_vcf_records_pure,
+    filter_vcf,
+)
 from flytetest.manifest import build_manifest_envelope, write_json as _write_json
 
 
@@ -69,6 +72,8 @@ MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
     "annotated_vcf",
     # On-ramp reference task
     "my_filtered_vcf",
+    # Tutorial chapter 07 toy task
+    "vcf_record_counts",
 )
 
 
@@ -1321,3 +1326,48 @@ def my_custom_filter(
     manifest["filter_stats"] = stats
     _write_json(out_dir / "run_manifest_my_custom_filter.json", manifest)
     return File(path=str(out_vcf))
+
+
+@variant_calling_env.task
+def count_vcf_records(vcf: File) -> File:
+    """Count header and data lines in a plain-text VCF; emit a small JSON report.
+
+    Toy task used by the tutorial testing chapter
+    (``docs/tutorials/user_authored_tasks/07_testing.md``) as the smallest
+    possible end-to-end example a reader can copy: a single ``File`` input,
+    a single JSON ``File`` output, no scalars, no SIF, no subprocess. Goes
+    through ``run_tool`` in Python-callable mode so the execution pattern
+    matches every other registered task.
+    """
+    in_vcf = require_path(Path(vcf.download_sync()), "Input VCF")
+    out_dir = project_mkdtemp("count_vcf_records_")
+    out_json = out_dir / "vcf_record_counts.json"
+
+    # ``run_tool`` discards the Python callable's return value (it is shaped
+    # for subprocess-style tools).  Capture the counts via a tiny closure so
+    # the task still goes through ``run_tool`` for execution-pattern uniformity.
+    captured: dict[str, int] = {}
+
+    def _capture(vcf_path: Path) -> None:
+        captured.update(count_vcf_records_pure(vcf_path=vcf_path))
+
+    run_tool(
+        python_callable=_capture,
+        callable_kwargs={"vcf_path": in_vcf},
+    )
+
+    _write_json(out_json, captured)
+    require_path(out_json, "VCF record-count JSON output")
+
+    manifest = build_manifest_envelope(
+        stage="count_vcf_records",
+        assumptions=[
+            "Input VCF is uncompressed plain text.",
+            "Lines starting with '#' are headers; non-blank remaining lines are data.",
+        ],
+        inputs={"vcf": str(in_vcf)},
+        outputs={"vcf_record_counts": str(out_json)},
+    )
+    manifest["record_counts"] = captured
+    _write_json(out_dir / "run_manifest_count_vcf_records.json", manifest)
+    return File(path=str(out_json))

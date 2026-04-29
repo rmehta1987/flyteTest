@@ -85,3 +85,40 @@ def filter_vcf(
 
     if stats is not None:
         stats.update(counts)
+
+
+def count_vcf_records(vcf_path: Path) -> dict:
+    """Count header and data lines in a plain-text VCF.
+
+    Walks the file once and returns a small dict with two keys:
+
+    - ``header_lines`` — number of lines starting with ``#``.
+    - ``data_lines``   — number of non-blank, non-header lines.
+
+    Blank lines are ignored entirely (counted as neither header nor data).
+    The function does not validate VCF spec compliance — every non-blank,
+    non-``#`` line counts toward ``data_lines`` regardless of column count.
+    This makes it safe to use as a sanity-check counter even on partially
+    malformed inputs.
+
+    The toy task that wraps this helper exists for the testing-chapter
+    walkthrough (`docs/tutorials/user_authored_tasks/07_testing.md`); it is
+    a deliberately minimal, dependency-free function so each layer of the
+    test ladder has an obvious failure mode to demonstrate.
+
+    Args:
+        vcf_path: Readable plain-text VCF (uncompressed).
+
+    Returns:
+        A dict with integer ``header_lines`` and ``data_lines`` counts.
+    """
+    counts = {"header_lines": 0, "data_lines": 0}
+    with vcf_path.open() as fh:
+        for line in fh:
+            if line.startswith("#"):
+                counts["header_lines"] += 1
+                continue
+            if not line.strip():
+                continue
+            counts["data_lines"] += 1
+    return counts

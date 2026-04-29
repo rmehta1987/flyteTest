@@ -33,6 +33,7 @@ from flytetest.tasks.variant_calling import (
     calculate_genotype_posteriors,
     collect_wgs_metrics,
     combine_gvcfs,
+    count_vcf_records,
     create_sequence_dictionary,
     gather_vcfs,
     haplotype_caller,
@@ -2932,6 +2933,175 @@ class MyCustomFilterMCPExposureTests(TestCase):
         for name, required in TASK_PARAMETERS["my_custom_filter"]:
             if name == "min_qual":
                 self.assertFalse(required, "min_qual has a default and must not be required")
+
+
+# ---------------------------------------------------------------------------
+# Tutorial chapter 07 toy task: count_vcf_records
+# ---------------------------------------------------------------------------
+
+_COUNT_RECORDS_SYNTHETIC_VCF = (
+    "##fileformat=VCFv4.2\n"
+    "##contig=<ID=chr20>\n"
+    "#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\n"
+    "chr20\t100\t.\tA\tT\t10.0\tPASS\t.\n"
+    "chr20\t200\t.\tC\tG\t50.0\tPASS\t.\n"
+    "\n"
+    "chr20\t300\t.\tT\tA\t.\tPASS\t.\n"
+)
+
+
+class CountVcfRecordsUnitTests(TestCase):
+    """Layer 1: pure-Python tests for the helper.
+
+    These tests do not involve Flyte at all — the helper takes a Path and
+    returns a dict. The tutorial uses this layer to demonstrate that logic
+    bugs are best caught at the unit level, not at integration time.
+    """
+
+    def _write(self, body: str) -> Path:
+        tmp = Path(tempfile.mkdtemp(prefix="count_vcf_records_unit_"))
+        path = tmp / "input.vcf"
+        path.write_text(body)
+        return path
+
+    def test_counts_header_and_data_lines(self):
+        from flytetest.tasks._filter_helpers import count_vcf_records as count_pure
+        counts = count_pure(self._write(_COUNT_RECORDS_SYNTHETIC_VCF))
+        self.assertEqual(counts["header_lines"], 3)
+        self.assertEqual(counts["data_lines"], 3)
+
+    def test_blank_lines_are_ignored(self):
+        from flytetest.tasks._filter_helpers import count_vcf_records as count_pure
+        body = "##fileformat=VCFv4.2\n\n\n#CHROM\tPOS\n"
+        counts = count_pure(self._write(body))
+        self.assertEqual(counts["header_lines"], 2)
+        self.assertEqual(counts["data_lines"], 0)
+
+    def test_data_only_file(self):
+        from flytetest.tasks._filter_helpers import count_vcf_records as count_pure
+        body = "chr1\t1\t.\tA\tT\t.\t.\t.\nchr1\t2\t.\tA\tT\t.\t.\t.\n"
+        counts = count_pure(self._write(body))
+        self.assertEqual(counts["header_lines"], 0)
+        self.assertEqual(counts["data_lines"], 2)
+
+    def test_empty_file(self):
+        from flytetest.tasks._filter_helpers import count_vcf_records as count_pure
+        counts = count_pure(self._write(""))
+        self.assertEqual(counts, {"header_lines": 0, "data_lines": 0})
+
+
+class CountVcfRecordsInvocationTests(TestCase):
+    """Layer 2: invoke count_vcf_records directly via flyte_stub File.
+
+    Asserts the manifest envelope is well-formed and the JSON output exists
+    next to the manifest. Mirrors the MyCustomFilterInvocationTests shape so
+    readers can compare the two side by side.
+    """
+
+    def _run(self) -> tuple[dict, dict, str]:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            vcf_file = tmp_path / "input.vcf"
+            vcf_file.write_text(_COUNT_RECORDS_SYNTHETIC_VCF)
+
+            result = count_vcf_records(vcf=File(path=str(vcf_file)))
+            out_path = Path(result.path)
+            counts = json.loads(out_path.read_text())
+            manifest_path = out_path.parent / "run_manifest_count_vcf_records.json"
+            manifest = json.loads(manifest_path.read_text())
+        return counts, manifest, str(out_path)
+
+    def test_returns_json_file(self):
+        _, _, out_path = self._run()
+        self.assertTrue(out_path.endswith(".json"))
+
+    def test_counts_match_synthetic_input(self):
+        counts, _, _ = self._run()
+        self.assertEqual(counts["header_lines"], 3)
+        self.assertEqual(counts["data_lines"], 3)
+
+    def test_manifest_stage_name(self):
+        _, manifest, _ = self._run()
+        self.assertEqual(manifest["stage"], "count_vcf_records")
+
+    def test_manifest_contains_output_key(self):
+        _, manifest, out_path = self._run()
+        self.assertIn("vcf_record_counts", manifest["outputs"])
+        self.assertEqual(manifest["outputs"]["vcf_record_counts"], out_path)
+
+    def test_manifest_file_written_alongside_output(self):
+        _, _, out_path = self._run()
+        manifest_path = Path(out_path).parent / "run_manifest_count_vcf_records.json"
+        self.assertTrue(manifest_path.exists())
+
+    def test_manifest_records_counts(self):
+        _, manifest, _ = self._run()
+        self.assertIn("record_counts", manifest)
+        self.assertEqual(manifest["record_counts"]["data_lines"], 3)
+
+
+class CountVcfRecordsRegistryTests(TestCase):
+    """Layer 3: assert RegistryEntry shape and manifest-output consistency."""
+
+    def setUp(self) -> None:
+        from flytetest.registry import get_entry
+        self.entry = get_entry("count_vcf_records")
+
+    def test_entry_exists(self):
+        self.assertIsNotNone(self.entry)
+
+    def test_category_is_task(self):
+        self.assertEqual(self.entry.category, "task")
+
+    def test_pipeline_family(self):
+        self.assertEqual(self.entry.compatibility.pipeline_family, "variant_calling")
+
+    def test_accepted_planner_types(self):
+        self.assertEqual(
+            self.entry.compatibility.accepted_planner_types, ("VariantCallSet",)
+        )
+
+    def test_showcase_module(self):
+        self.assertEqual(self.entry.showcase_module, "flytetest.tasks.variant_calling")
+
+    def test_output_key_in_manifest_output_keys(self):
+        output_names = {f.name for f in self.entry.outputs}
+        self.assertIn("vcf_record_counts", output_names)
+        self.assertIn("vcf_record_counts", MANIFEST_OUTPUT_KEYS)
+
+    def test_input_names_match_task_signature(self):
+        input_names = {f.name for f in self.entry.inputs}
+        self.assertEqual(input_names, {"vcf"})
+
+    def test_runtime_images_empty_for_pure_python(self):
+        images = self.entry.compatibility.execution_defaults.get("runtime_images", {})
+        self.assertEqual(images, {})
+
+
+class CountVcfRecordsMCPExposureTests(TestCase):
+    """Layer 4: MCP discovery and flat-tool importability."""
+
+    def test_appears_in_supported_task_names(self):
+        from flytetest.mcp_contract import SUPPORTED_TASK_NAMES
+        self.assertIn("count_vcf_records", SUPPORTED_TASK_NAMES)
+
+    def test_flat_tool_importable_with_docstring(self):
+        from flytetest.mcp_tools import vc_count_records
+        self.assertTrue(callable(vc_count_records))
+        self.assertTrue(vc_count_records.__doc__)
+
+    def test_task_parameters_entry_exact(self):
+        from flytetest.server import TASK_PARAMETERS
+        self.assertIn("count_vcf_records", TASK_PARAMETERS)
+        self.assertEqual(
+            TASK_PARAMETERS["count_vcf_records"],
+            (("vcf", True),),
+        )
+
+    def test_listed_in_flat_tools(self):
+        from flytetest.mcp_contract import FLAT_TOOLS, VC_COUNT_RECORDS_TOOL_NAME
+        self.assertEqual(VC_COUNT_RECORDS_TOOL_NAME, "vc_count_records")
+        self.assertIn(VC_COUNT_RECORDS_TOOL_NAME, FLAT_TOOLS)
 
 
 class ApplyCustomFilterWorkflowRegistryTests(TestCase):
