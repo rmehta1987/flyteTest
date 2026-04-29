@@ -1068,6 +1068,63 @@ def vc_apply_custom_filter(
     )
 
 
+def vc_count_records(
+    vcf: str,
+    partition: str = "",
+    account: str = "",
+    cpu: int = 0,
+    memory: str = "",
+    walltime: str = "",
+    shared_fs_roots: list[str] | None = None,
+    module_loads: list[str] | None = None,
+    dry_run: bool = False,
+) -> dict:
+    """Count header and data lines in a plain-text VCF; emit a small JSON report.
+
+    Tutorial-chapter toy task (chapter 07 of the user-authored-tasks tutorial).
+    The smallest possible end-to-end pure-Python example a reader can copy:
+    one File input, one JSON File output, no scalars, no SIF, no subprocess.
+
+    Parameters
+    ----------
+    vcf : str
+        Absolute path to an uncompressed plain-text input VCF.
+    partition : str
+        Slurm partition. Required for Slurm execution; must come from the user.
+    account : str
+        Slurm account. Required for Slurm execution; must come from the user.
+    cpu : int
+        CPU cores to request (0 = use server default).
+    memory : str
+        Memory string, e.g. ``"2Gi"``. Empty = use server default.
+    walltime : str
+        Wall time, e.g. ``"00:15:00"``. Empty = use server default.
+    shared_fs_roots : list[str] | None
+        Filesystem prefixes visible from compute nodes.
+    module_loads : list[str] | None
+        Full replacement of DEFAULT_SLURM_MODULE_LOADS.
+    dry_run : bool
+        If True, freeze the recipe without executing it.
+
+    Example
+    -------
+    >>> vc_count_records(
+    ...     vcf="/data/results/joint_called.vcf",
+    ... )
+
+    All paths must be absolute.
+    """
+    return _run_task(
+        task_name="count_vcf_records",
+        bindings={"VariantCallSet": {"vcf_path": vcf}},
+        inputs={"vcf": vcf},
+        resource_request=_resource_request(
+            partition, account, cpu, memory, walltime, shared_fs_roots, module_loads
+        ),
+        dry_run=dry_run,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Step 2 — annotation flat tools
 # ---------------------------------------------------------------------------
@@ -2126,6 +2183,7 @@ __all__ = [
     "vc_annotate_variants_snpeff",
     "vc_custom_filter",
     "vc_apply_custom_filter",
+    "vc_count_records",
     # annotation
     "annotation_braker3",
     "annotation_protein_evidence",

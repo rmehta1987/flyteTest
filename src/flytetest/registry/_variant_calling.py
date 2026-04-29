@@ -1390,4 +1390,46 @@ VARIANT_CALLING_ENTRIES: tuple[RegistryEntry, ...] = (
         ),
         showcase_module="flytetest.workflows.variant_calling",
     ),
+    RegistryEntry(
+        name="count_vcf_records",
+        category="task",
+        description=(
+            "Count header and data lines in a plain-text VCF and write a "
+            "small JSON report. Toy task used by tutorial chapter 07 as the "
+            "smallest end-to-end example a reader can copy: a single File "
+            "input, a single JSON File output, no scalars, pure Python."
+        ),
+        inputs=(
+            InterfaceField("vcf", "File", "Input VCF (uncompressed plain text)."),
+        ),
+        outputs=(
+            InterfaceField(
+                "vcf_record_counts",
+                "File",
+                "JSON file with integer header_lines and data_lines counts.",
+            ),
+        ),
+        tags=("variant_calling", "qc", "pure-python", "tutorial"),
+        compatibility=RegistryCompatibilityMetadata(
+            biological_stage="VCF record-count QC",
+            accepted_planner_types=("VariantCallSet",),
+            produced_planner_types=("VariantCallSet",),
+            reusable_as_reference=False,
+            execution_defaults={
+                "profile": "local",
+                "result_manifest": "run_manifest.json",
+                "resources": {"cpu": "1", "memory": "2Gi", "execution_class": "local"},
+                "slurm_resource_hints": {"cpu": "1", "memory": "2Gi", "walltime": "00:15:00"},
+                "runtime_images": {},
+                "tool_databases": {},
+                "module_loads": ("python/3.11.9",),
+            },
+            supported_execution_profiles=("local", "slurm"),
+            synthesis_eligible=True,
+            composition_constraints=(),
+            pipeline_family="variant_calling",
+            pipeline_stage_order=24,
+        ),
+        showcase_module="flytetest.tasks.variant_calling",
+    ),
 )

@@ -32,6 +32,17 @@ Entry template:
 
 ## Unreleased
 
+### Tutorial chapter 07 + count_vcf_records toy task (2026-04-28)
+
+- [x] 2026-04-28 `tasks/_filter_helpers.py`: added `count_vcf_records(vcf_path: Path) -> dict` pure helper. Counts header (`#`-prefixed) and non-blank data lines in a plain-text VCF. Standard library only; no Flyte imports. Toy example used by tutorial chapter 07 to demonstrate the 3-layer test ladder.
+- [x] 2026-04-28 `tasks/variant_calling.py`: added `count_vcf_records(vcf: File) -> File` task wrapper. Single-`File` input, JSON `File` output, no scalars, Python-callable execution mode. Mirrors `my_custom_filter`'s shape so the tutorial can compare them side-by-side. Added `vcf_record_counts` to module-level `MANIFEST_OUTPUT_KEYS`.
+- [x] 2026-04-28 `registry/_variant_calling.py`: added `RegistryEntry` for `count_vcf_records` (`category="task"`, `pipeline_stage_order=24`, `accepted/produced=("VariantCallSet",)`, `runtime_images={}`, `module_loads=("python/3.11.9",)`, `showcase_module="flytetest.tasks.variant_calling"`, `tags=(...,"tutorial")`).
+- [x] 2026-04-28 `mcp_contract.py`: added `VC_COUNT_RECORDS_TOOL_NAME` constant, entry in `FLAT_TOOLS`, and entry in `TOOL_DESCRIPTIONS`.
+- [x] 2026-04-28 `mcp_tools.py`: added `vc_count_records` flat tool. Single `vcf` parameter plus the standard Slurm resource scalars; delegates to `_run_task` with `VariantCallSet` binding.
+- [x] 2026-04-28 `server.py`: imported `VC_COUNT_RECORDS_TOOL_NAME`, added `count_vcf_records` to `TASK_PARAMETERS` (`(("vcf", True),)`), registered the flat tool in `create_mcp_server()`.
+- [x] 2026-04-28 Tests: 4 new classes in `test_variant_calling.py` — `CountVcfRecordsUnitTests` (4), `CountVcfRecordsInvocationTests` (6), `CountVcfRecordsRegistryTests` (8), `CountVcfRecordsMCPExposureTests` (4). All 22 pass (`pytest -k CountVcfRecords -q`).
+- [x] 2026-04-28 `docs/tutorials/user_authored_tasks/07_testing.md`: new chapter walks the test ladder using the four new `CountVcfRecords*` classes as the worked example.
+
 ### User-authored workflow composition — on-ramp completion (2026-04-28)
 
 - [x] 2026-04-28 `mcp_tools.py`: added `vc_custom_filter` (task-level flat tool delegating to `run_task` with `VariantCallSet` binding and `min_qual` scalar) and `vc_apply_custom_filter` (workflow-level flat tool delegating to `run_workflow`). Same parameter shape: `vcf_path` + `min_qual` + standard Slurm resource params + `dry_run`. Both export through `__all__`.
