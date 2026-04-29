@@ -111,6 +111,7 @@ from flytetest.mcp_contract import (
     VC_ANNOTATE_SNPEFF_TOOL_NAME,
     VC_CUSTOM_FILTER_TOOL_NAME,
     VC_APPLY_CUSTOM_FILTER_TOOL_NAME,
+    VC_COUNT_RECORDS_TOOL_NAME,
     VC_GERMLINE_DISCOVERY_TOOL_NAME,
     VC_GENOTYPE_REFINEMENT_TOOL_NAME,
     VC_POST_CALL_QC_SUMMARY_TOOL_NAME,
@@ -310,6 +311,9 @@ TASK_PARAMETERS: dict[str, tuple[tuple[str, bool], ...]] = {
     "my_custom_filter": (
         ("input_vcf", True),
         ("min_qual", False),
+    ),
+    "count_vcf_records": (
+        ("vcf", True),
     ),
 }
 
@@ -4570,6 +4574,7 @@ def create_mcp_server(fastmcp_cls: Any | None = None) -> Any:
     mcp.tool(description=TOOL_DESCRIPTIONS[VC_ANNOTATE_SNPEFF_TOOL_NAME])(_mcp_tools.vc_annotate_variants_snpeff)
     mcp.tool(description=TOOL_DESCRIPTIONS[VC_CUSTOM_FILTER_TOOL_NAME])(_mcp_tools.vc_custom_filter)
     mcp.tool(description=TOOL_DESCRIPTIONS[VC_APPLY_CUSTOM_FILTER_TOOL_NAME])(_mcp_tools.vc_apply_custom_filter)
+    mcp.tool(description=TOOL_DESCRIPTIONS[VC_COUNT_RECORDS_TOOL_NAME])(_mcp_tools.vc_count_records)
     mcp.tool(description=TOOL_DESCRIPTIONS[ANNOTATION_BRAKER3_TOOL_NAME])(_mcp_tools.annotation_braker3)
     mcp.tool(description=TOOL_DESCRIPTIONS[ANNOTATION_PROTEIN_EVIDENCE_TOOL_NAME])(_mcp_tools.annotation_protein_evidence)
     mcp.tool(description=TOOL_DESCRIPTIONS[ANNOTATION_BUSCO_QC_TOOL_NAME])(_mcp_tools.annotation_busco_qc)
