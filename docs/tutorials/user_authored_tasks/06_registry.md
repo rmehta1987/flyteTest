@@ -22,7 +22,7 @@ name="my_custom_filter",
 
 Unique key used by `get_entry(...)` and visible to MCP clients in
 `list_entries`. Convention: snake_case, matching the task function name at
-`src/flytetest/tasks/variant_calling.py:1273`. Drift breaks `run_task`
+`src/flytetest/tasks/variant_calling.py:1278`. Drift breaks `run_task`
 target resolution.
 
 ## `category` — task or workflow
@@ -35,7 +35,7 @@ category="task",
 
 Type-narrowed `"task" | "workflow"`. Drives whether the entry shows up
 under `SUPPORTED_TASK_NAMES` or `SUPPORTED_WORKFLOW_NAMES`
-(`src/flytetest/mcp_contract.py:495`). Tasks also need a `TASK_PARAMETERS`
+(`src/flytetest/mcp_contract.py:506`). Tasks also need a `TASK_PARAMETERS`
 entry; workflows do not.
 
 ## `description`
@@ -81,8 +81,8 @@ outputs=(
 ```
 
 Every name listed here MUST appear in the module-level
-`MANIFEST_OUTPUT_KEYS` tuple at `src/flytetest/tasks/variant_calling.py:26`
-(`"my_filtered_vcf"` is at line 71). The registry-manifest contract test
+`MANIFEST_OUTPUT_KEYS` tuple at `src/flytetest/tasks/variant_calling.py:29`
+(`"my_filtered_vcf"` is at line 74). The registry-manifest contract test
 asserts the subset relation; forgetting to append fails before any task runs.
 
 ## `tags`
@@ -180,7 +180,7 @@ showcase_module="flytetest.tasks.variant_calling",
 ```
 
 The single field that controls MCP exposure. `SHOWCASE_TARGETS` at
-`src/flytetest/mcp_contract.py:483` iterates `REGISTRY_ENTRIES` and yields
+`src/flytetest/mcp_contract.py:493` iterates `REGISTRY_ENTRIES` and yields
 one target per entry with a non-empty `showcase_module`. Empty string =
 catalog-only (visible in `list_entries`, not callable through `run_task`).
 For tasks you ALSO need a `TASK_PARAMETERS` entry at
@@ -228,3 +228,7 @@ Other `RegistryCompatibilityMetadata` defaults (`reusable_as_reference=False`,
   enforces the shape rules above with one targeted test class.
 - [Chapter 9: MCP exposure](09_mcp_exposure.md) — what `showcase_module`
   unlocks, plus the `TASK_PARAMETERS` companion entry tasks need.
+
+---
+
+[← Prev: The binding contract](05_bindings.md) · [Next: Testing your task →](07_testing.md)

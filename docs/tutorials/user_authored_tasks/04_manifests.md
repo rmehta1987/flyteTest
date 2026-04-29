@@ -15,7 +15,7 @@ module-level `MANIFEST_OUTPUT_KEYS` tuple at the top of the tasks file. A
 registry-manifest contract test asserts that every output name declared in a
 `RegistryEntry` is also present in this tuple.
 
-`src/flytetest/tasks/variant_calling.py:26`
+`src/flytetest/tasks/variant_calling.py:29`
 
 ```python
 MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
@@ -169,3 +169,7 @@ here) is task-specific provenance attached after the envelope is built.
   validates declared outputs against `MANIFEST_OUTPUT_KEYS`.
 - [Chapter 7: Testing your task](07_testing.md) — asserting manifest shape and
   `outputs` keys in unit tests.
+
+---
+
+[← Prev: Execution modes](03_execution_modes.md) · [Next: The binding contract →](05_bindings.md)

@@ -89,3 +89,7 @@ came from one.
 When all six pre-flight steps pass and the diff is clean, your task is ready
 for review. The reviewer's job is to confirm the contracts you already
 checked above; they should not be the first run of `pytest -q`.
+
+---
+
+[← Prev: MCP exposure](09_mcp_exposure.md) · [Next: Tutorial index →](README.md)

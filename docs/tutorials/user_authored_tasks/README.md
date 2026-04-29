@@ -59,7 +59,7 @@ alongside the chapters:
 | Concept | File | Anchor |
 |---|---|---|
 | Pure-logic example | `src/flytetest/tasks/_filter_helpers.py` | `filter_vcf` (top of file) |
-| Task wrapper example | `src/flytetest/tasks/variant_calling.py` | `my_custom_filter` at line 1273 |
+| Task wrapper example | `src/flytetest/tasks/variant_calling.py` | `my_custom_filter` at line 1278 |
 | Workflow composition example | `src/flytetest/workflows/variant_calling.py` | `apply_custom_filter` at line 646 |
 | Registry entries | `src/flytetest/registry/_variant_calling.py` | `my_custom_filter` at line 1313, `apply_custom_filter` at line 1351 |
 | MCP flat tools | `src/flytetest/mcp_tools.py` | `vc_custom_filter` at line 948, `vc_apply_custom_filter` at line 1009 |

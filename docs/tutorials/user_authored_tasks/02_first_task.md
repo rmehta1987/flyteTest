@@ -101,7 +101,7 @@ in `MANIFEST_OUTPUT_KEYS`. If you forget to append, the test fails loudly.
 
 Now the task itself. Read the whole thing once:
 
-`src/flytetest/tasks/variant_calling.py:1272`
+`src/flytetest/tasks/variant_calling.py:1278`
 
 ```python
 @variant_calling_env.task
@@ -283,8 +283,8 @@ Three things to notice:
   file.
 
 `vc_custom_filter` is also registered in the `FLAT_TOOLS` tuple at
-`src/flytetest/mcp_tools.py:2127` — that is what surfaces the function to
-MCP clients. Chapter 08 covers flat tools end-to-end, including the
+`src/flytetest/mcp_contract.py:106` — that is what surfaces the function to
+MCP clients. Chapter 09 covers flat tools end-to-end, including the
 docstring style requirements.
 
 ## Step 5 — Run the tests
@@ -346,5 +346,9 @@ Chapters 03 through 10 each zoom into one of those pieces:
 - Chapter 09 — workflows that compose user-authored tasks
   (the `apply_custom_filter` reference)
 - Chapter 10 — testing patterns for each of the above
+
+---
+
+[← Prev: Anatomy of a task](01_anatomy.md) · [Next: Execution modes →](03_execution_modes.md)
 
 Move on to Chapter 03 when you are ready.

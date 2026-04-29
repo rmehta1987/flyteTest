@@ -66,7 +66,7 @@ When you write your own task, start here. Get the function right and tested,
 
 ## Layer 2 — Thin task wrapper
 
-`src/flytetest/tasks/variant_calling.py:1272`
+`src/flytetest/tasks/variant_calling.py:1278`
 
 ```python
 @variant_calling_env.task
@@ -110,7 +110,7 @@ The wrapper does five things, in order:
 4. **Write a manifest** with `build_manifest_envelope`. Every key under
    `manifest["outputs"]` (here, `"my_filtered_vcf"`) must already appear in the
    module's `MANIFEST_OUTPUT_KEYS` tuple at
-   `src/flytetest/tasks/variant_calling.py:26`, or a registry-manifest contract
+   `src/flytetest/tasks/variant_calling.py:29`, or a registry-manifest contract
    test fails.
 5. **Return `flyte.io.File`** wrapping the local output path.
 
@@ -187,10 +187,14 @@ know which layer to open.
 
 ## Forward pointers
 
-- [Chapter 02 — End-to-end walkthrough](./02_walkthrough.md) opens these three
+- [Chapter 02 — End-to-end walkthrough](./02_first_task.md) opens these three
   files in sequence and changes a real value, end to end.
 - [Chapter 06 — Registry entry deep-dive](./06_registry.md) covers every
   `RegistryEntry` field, including the planner-type fields and execution
   defaults skipped here.
 - For the authoritative reference on layer boundaries, naming, and gotchas, see
   `.codex/user_tasks.md`.
+
+---
+
+[← Prev: Tutorial index](README.md) · [Next: Your first task →](02_first_task.md)

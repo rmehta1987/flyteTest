@@ -13,7 +13,7 @@ no SIF, no subprocess. Open the four `CountVcfRecords*` test classes in
 
 ## The task you are testing
 
-`src/flytetest/tasks/_filter_helpers.py:89`
+`src/flytetest/tasks/_filter_helpers.py:90`
 ```python
 def count_vcf_records(vcf_path: Path) -> dict:
     counts = {"header_lines": 0, "data_lines": 0}
@@ -182,3 +182,7 @@ entry, flat tool, `TASK_PARAMETERS` — is out of sync.
 [Chapter 08](08_workflow_composition.md) shows how to compose a task into a
 workflow. [Chapter 10](10_verification.md) is the pre-PR checklist that
 runs all four layers plus a `compileall` and a registry-presence smoke test.
+
+---
+
+[← Prev: Registry entry deep-dive](06_registry.md) · [Next: Composing a workflow →](08_workflow_composition.md)

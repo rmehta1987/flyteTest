@@ -156,3 +156,7 @@ Regardless of mode, every task wrapper still produces output files, calls
   and `MANIFEST_OUTPUT_KEYS` enforcement.
 - [Chapter 6: Registry entry deep-dive](06_registry.md) — declaring
   `runtime_images` (SIF mode) and `module_loads` (native and Python-callable).
+
+---
+
+[← Prev: Your first task](02_first_task.md) · [Next: Manifests and outputs →](04_manifests.md)

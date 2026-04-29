@@ -186,3 +186,7 @@ expose a workflow through the MCP surface.
   becomes a flat tool a client can call.
 - Chapter 10 is the verification recipe — compileall, pytest, and the PR
   checklist that catches the pitfalls above before review.
+
+---
+
+[← Prev: Testing your task](07_testing.md) · [Next: MCP exposure →](09_mcp_exposure.md)

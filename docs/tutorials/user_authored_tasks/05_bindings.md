@@ -51,7 +51,7 @@ parameter name when you accept that type.
 ## Concrete example — fixed
 
 The shipped task uses `input_vcf` instead. From
-`src/flytetest/tasks/variant_calling.py:1272-1276`:
+`src/flytetest/tasks/variant_calling.py:1278-1282`:
 
 ```python
 @variant_calling_env.task
@@ -124,3 +124,7 @@ Chapter 6 ([06_registry.md](06_registry.md)) walks through every
 load-bearing field on `RegistryEntry` and `RegistryCompatibilityMetadata`,
 including where `accepted_planner_types` is declared and how it drives the
 binding resolution covered above.
+
+---
+
+[← Prev: Manifests and outputs](04_manifests.md) · [Next: Registry entry deep-dive →](06_registry.md)

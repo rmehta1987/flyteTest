@@ -16,7 +16,7 @@ Workflows skip the third piece. This chapter walks through both, using
 from any `RegistryEntry` whose `showcase_module` is set. Set the field, your
 entry shows up; leave it `None`, it stays internal.
 
-`src/flytetest/mcp_contract.py:483`
+`src/flytetest/mcp_contract.py:493`
 
 ```python
 SHOWCASE_TARGETS = tuple(
@@ -206,3 +206,7 @@ Keep this template when you add your own.
 tool: `python -m compileall`, the importable-flat-tool smoke check
 (`from flytetest.mcp_tools import <your_tool>`), and the registry
 contract tests reviewers will look for.
+
+---
+
+[← Prev: Composing a workflow](08_workflow_composition.md) · [Next: Verification and PR checklist →](10_verification.md)
