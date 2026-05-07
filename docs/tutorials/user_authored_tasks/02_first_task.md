@@ -86,7 +86,7 @@ Note `_filter_helpers.filter_vcf` is imported here — the wrapper passes it
 into `run_tool` as `python_callable`. Also note the `MANIFEST_OUTPUT_KEYS`
 contract:
 
-`src/flytetest/tasks/variant_calling.py:26`
+`src/flytetest/tasks/variant_calling.py:29`
 
 ```python
 MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
@@ -95,7 +95,7 @@ MANIFEST_OUTPUT_KEYS: tuple[str, ...] = (
 )
 ```
 
-`my_filtered_vcf` lives inside that tuple at line 71. A registry-manifest
+`my_filtered_vcf` lives inside that tuple at line 74. A registry-manifest
 contract test asserts that every output your registry entry declares appears
 in `MANIFEST_OUTPUT_KEYS`. If you forget to append, the test fails loudly.
 
@@ -283,9 +283,9 @@ Three things to notice:
   file.
 
 `vc_custom_filter` is also registered in the `FLAT_TOOLS` tuple at
-`src/flytetest/mcp_contract.py:106` — that is what surfaces the function to
-MCP clients. Chapter 09 covers flat tools end-to-end, including the
-docstring style requirements.
+`src/flytetest/mcp_contract.py:106` — the contract list `server.py` consults
+when registering the flat tool with MCP clients. Chapter 09 covers flat
+tools end-to-end, including the docstring style requirements.
 
 ## Step 5 — Run the tests
 
@@ -306,11 +306,11 @@ Expected output (final line):
 The 23 tests are spread across three classes in
 `tests/test_variant_calling.py`:
 
-- `MyCustomFilterInvocationTests` (line 2757) — call the task directly with
+- `MyCustomFilterInvocationTests` (line 2758) — call the task directly with
   a fixture VCF and assert outputs and manifest contents
-- `MyCustomFilterRegistryTests` (line 2828) — assert the `RegistryEntry`
+- `MyCustomFilterRegistryTests` (line 2829) — assert the `RegistryEntry`
   shape from Step 3
-- `MyCustomFilterMCPExposureTests` (line 2875) — assert MCP discovery and
+- `MyCustomFilterMCPExposureTests` (line 2876) — assert MCP discovery and
   `TASK_PARAMETERS` wiring
 
 Then confirm registry discovery directly:

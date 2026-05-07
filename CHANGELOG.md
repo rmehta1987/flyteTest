@@ -32,6 +32,11 @@ Entry template:
 
 ## Unreleased
 
+### Tutorials user_authored — polish pass (2026-05-06)
+
+- [x] 2026-05-06 PR #12 (`cb0927f`, merged as `119b9c0`): fixed cross-links and source-citation line refs across all 10 chapters + README; added prev/next footers to every chapter.
+- [x] 2026-05-07 follow-up via first `drift-auditor` invocation on `improve_agents`: corrected residual line-ref drift in `02_first_task.md` — `variant_calling.py` citations off by +3 at lines 89 (`MANIFEST_OUTPUT_KEYS`) and 98 (`my_filtered_vcf` position); `tests/test_variant_calling.py` test-class line refs off by +1 at lines 309/311/313; clarified the `FLAT_TOOLS` description on line 286 (now identifies it as the contract list `server.py` consults rather than the surfacing mechanism itself).
+
 ### Tutorial chapter 07 + count_vcf_records toy task (2026-04-28)
 
 - [x] 2026-04-28 `tasks/_filter_helpers.py`: added `count_vcf_records(vcf_path: Path) -> dict` pure helper. Counts header (`#`-prefixed) and non-blank data lines in a plain-text VCF. Standard library only; no Flyte imports. Toy example used by tutorial chapter 07 to demonstrate the 3-layer test ladder.
