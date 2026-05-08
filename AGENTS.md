@@ -167,6 +167,12 @@ Types — `src/flytetest/planner_types.py`, `src/flytetest/types/`
   bounded stdout/stderr tails for terminal jobs; set to 0 to disable.
 - `retry_slurm_job` accepts `resource_overrides` to escalate resources for
   OOM/TIMEOUT failures without modifying the frozen recipe.
+- `list_slurm_partitions()` wraps `sinfo` to surface partition names, state,
+  walltime limit, and node availability. Read-only / no auth — useful before
+  freezing a recipe so the user can pick a valid partition string instead of
+  finding out at sbatch time. Returns `{supported: bool, partitions: [...]}`
+  on success or a structured `{supported: False, reason, message}` reply when
+  `sinfo` is unavailable.
 - `@mcp.tool` docstrings are the only prose an MCP client sees; each must
   name valid parameter keys, show a concrete example, and state that all
   paths must be absolute. See `.codex/documentation.md` for the standard.

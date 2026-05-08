@@ -2233,11 +2233,16 @@ def run_workflow(
                  Example: {"gatk_sif": "", "bwa_sif": "/abs/path/bwa_mem2.sif"}
 
     resource_request -- Slurm scheduler parameters.  Valid keys: partition,
-                 account, cpu, memory, walltime, module_loads, shared_fs_roots.
+                 account, cpu, memory, walltime, module_loads,
+                 extend_module_loads, shared_fs_roots.
+                 module_loads fully replaces DEFAULT_SLURM_MODULE_LOADS;
+                 extend_module_loads appends to it (recommended for the
+                 common case of adding one module to the defaults).
                  shared_fs_roots is a list of filesystem prefixes visible to
                  compute nodes; used by the dry-run staging check.
                  Example: {"partition": "caslake", "account": "rcc-staff",
                             "cpu": "16", "memory": "64Gi", "walltime": "04:00:00",
+                            "extend_module_loads": ["bcftools/1.20"],
                             "shared_fs_roots": ["/scratch/midway3", "/project/rcc"]}
 
     All paths must be absolute on the shared filesystem.
@@ -2873,7 +2878,10 @@ def prepare_run_recipe(
             values. File-typed parameters accepted as absolute string paths.
             Same shape as the inputs parameter in run_workflow.
         resource_request: Slurm scheduler parameters. Valid keys: partition,
-            account, cpu, memory, walltime, module_loads, shared_fs_roots.
+            account, cpu, memory, walltime, module_loads,
+            extend_module_loads, shared_fs_roots. Use ``extend_module_loads``
+            to append to ``DEFAULT_SLURM_MODULE_LOADS``; ``module_loads``
+            fully replaces them.
         execution_profile: "local" or "slurm".
         manifest_sources: Prior manifests or run records to seed planning.
         runtime_image: Runtime image selection for the frozen recipe.

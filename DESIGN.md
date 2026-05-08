@@ -709,6 +709,9 @@ Target tools:
 - `submit_slurm_recipe`: submit a Slurm-backed recipe through the supported
   authenticated-session `sbatch` path after validation.
 - `monitor_slurm_job`: inspect scheduler state, logs, and job IDs.
+- `list_slurm_partitions`: introspect the cluster's partitions (name, state,
+  walltime limit, node availability) via read-only `sinfo`; useful before
+  freezing a recipe so unknown partitions are caught earlier than sbatch.
 - `inspect_result`: read result manifests and summarize produced outputs.
 
 Frozen run recipes use `recipe_id` format `<YYYYMMDDThhmmss.mmm>Z-<target_name>`

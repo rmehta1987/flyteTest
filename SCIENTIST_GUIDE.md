@@ -347,11 +347,18 @@ is pre-staged: `bash scripts/rcc/download_snpeff_db.sh GRCh38.105`.
 - `workflow_name` — the registered workflow name (not `target`)
 - `execution_profile` — `"local"` for testing, `"slurm"` for cluster submission
 - `resource_request.queue` and `resource_request.account` — must come from the user; never inferred
-- `module_loads` — full replacement of defaults; use the escape hatch to extend:
+- `module_loads` — full replacement of defaults. Use only when you need to drop a default module (rare).
+- `extend_module_loads` — modules appended to `DEFAULT_SLURM_MODULE_LOADS`. Recommended for the common case of adding one module:
+  ```python
+  resource_request = {"extend_module_loads": ["bcftools/1.20"], ...}
+  # → loads python/3.11.9, apptainer/1.4.1, gatk/4.5.0, samtools/1.22.1, bcftools/1.20
+  ```
+  If both `module_loads` and `extend_module_loads` are set, `module_loads` wins and a warning is logged. The legacy splat pattern still works for back-compat:
   ```python
   from flytetest.spec_executor import DEFAULT_SLURM_MODULE_LOADS
   resource_request = {"module_loads": [*DEFAULT_SLURM_MODULE_LOADS, "bcftools/1.20"], ...}
   ```
+- `list_slurm_partitions()` — call before freezing a recipe to discover valid partition names; wraps `sinfo` and is read-only / no auth.
 - `run_record_path` — durable path returned by `run_slurm_recipe`; required for `monitor_slurm_job` and `retry_slurm_job`
 
 ### Further reading

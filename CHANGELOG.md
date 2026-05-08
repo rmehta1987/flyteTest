@@ -32,6 +32,15 @@ Entry template:
 
 ## Unreleased
 
+### Slurm UX rollout — Phase 0 wrap-up (2026-05-08)
+
+- [x] 2026-05-08 Drift-auditor pass on the Phase 0 work: confirmed no stale `.runtime/specs/` references in source / tests / current docs (only intentional mentions remain in the migration script, the legacy-compat `RecipeIdFromArtifactPathTests`, this `CHANGELOG.md`, and `docs/2026-05-07-slurm-ux-rollout/**`).
+- [x] 2026-05-08 `SCIENTIST_GUIDE.md` §Key parameter notes: documents `extend_module_loads` (recommended path) and `list_slurm_partitions()`; legacy `module_loads` splat pattern noted as the back-compat escape hatch.
+- [x] 2026-05-08 `AGENTS.md` §Prompt/MCP/Slurm: added `list_slurm_partitions()` bullet listing the read-only sinfo-introspection contract.
+- [x] 2026-05-08 `DESIGN.md`: added `list_slurm_partitions` to the documented MCP slurm tool list.
+- [x] 2026-05-08 `server.py`: `prepare_run_recipe` and `run_workflow` `resource_request` docstring key lists now include `extend_module_loads` and call out the precedence relative to `module_loads`.
+- [ ] 2026-05-08 **Phase 1 follow-up flagged:** the 26 flat tools in `mcp_tools.py` (and their `TOOL_DESCRIPTIONS` strings in `mcp_contract.py`) accept `module_loads` but not yet `extend_module_loads`. Propagation requires touching `_resource_request` plus every `vc_*` / `annotation_*` / `rnaseq_*` signature and docstring; not Phase 0 scope. Power-tool surfaces (`prepare_run_recipe`, `run_workflow`, `run_task`) accept the new field today via the typed `ResourceSpec`.
+
 ### Slurm UX rollout — Phase 0 step 06 (2026-05-08)
 
 - [x] 2026-05-08 `staging.py`: new `check_sbatch_test_only(script_path, runner=...)` runs `sbatch --test-only` against a generated submission script and returns `list[StagingFinding]`. Slurm controller rejections are bucketed into structured `reason` codes (`partition_invalid`, `account_unknown`, `resources_exceed_limits`, `qos_invalid`, or `test_only_failed`) so callers handle them consistently with the rest of the staging surface. Skips silently when `sbatch` is missing on PATH so local-only environments are not blocked.
