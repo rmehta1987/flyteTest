@@ -26,9 +26,7 @@ from flytetest.specs import ResourceSpec
 from flytetest.spec_artifacts import (
     artifact_from_typed_plan,
     save_workflow_spec_artifact,
-    DURABLE_ASSET_INDEX_SCHEMA_VERSION,
     DEFAULT_DURABLE_ASSET_INDEX_FILENAME,
-    DurableAssetRef,
     load_durable_asset_index,
 )
 from flytetest.spec_executor import (
@@ -52,7 +50,7 @@ from flytetest.spec_executor import (
     save_slurm_run_record,
     SlurmRunRecord,
 )
-from flytetest.staging import StagingFinding, check_offline_staging
+from flytetest.staging import check_offline_staging
 
 
 def _typed_plan(
@@ -2340,3 +2338,136 @@ class StagingPreflightTests(TestCase):
 
         self.assertEqual(findings, [], "local profile must not flag paths off the shared root")
 
+
+class RunDirSymlinksTests(TestCase):
+    """Phase 0 step 02: runs/latest, inputs/, outputs/ symlinks created on submission."""
+
+    def _fake_sbatch(self, job_id: str = "12345"):
+        def runner(args, **kwargs):
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout=f"Submitted batch job {job_id}\n", stderr="")
+        return runner
+
+    def test_runs_latest_symlink_points_at_recipe_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            artifact = _slurm_busco_artifact_with_runtime_bindings(tmp_path)
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+            run_root = tmp_path / "runs"
+
+            result = SlurmWorkflowSpecExecutor(
+                run_root=run_root,
+                repo_root=tmp_path,
+                python_executable="/usr/bin/python3",
+                sbatch_runner=self._fake_sbatch("11111"),
+                command_available=lambda command: True,
+            ).submit(artifact_path)
+
+            self.assertTrue(result.supported)
+            latest = run_root / "latest"
+            self.assertTrue(latest.is_symlink(), "runs/latest must exist as a symlink after submission")
+            # Relative target — just the run dir name within run_root.
+            self.assertEqual(Path(latest.readlink()), Path(result.run_record.run_id))
+
+    def test_runs_latest_repoints_after_second_submission(self) -> None:
+        # Two separate submissions of the same recipe land in different run dirs
+        # (the second uses the -retry<N> suffix because the first wrote a
+        # slurm_run_record.json into the recipe_id dir).  runs/latest should
+        # always reflect the most recent.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            artifact = _slurm_busco_artifact_with_runtime_bindings(tmp_path)
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+            run_root = tmp_path / "runs"
+
+            result_a = SlurmWorkflowSpecExecutor(
+                run_root=run_root,
+                repo_root=tmp_path,
+                python_executable="/usr/bin/python3",
+                sbatch_runner=self._fake_sbatch("11111"),
+                command_available=lambda command: True,
+            ).submit(artifact_path)
+            result_b = SlurmWorkflowSpecExecutor(
+                run_root=run_root,
+                repo_root=tmp_path,
+                python_executable="/usr/bin/python3",
+                sbatch_runner=self._fake_sbatch("22222"),
+                command_available=lambda command: True,
+            ).submit(artifact_path)
+
+            latest = run_root / "latest"
+            self.assertTrue(latest.is_symlink())
+            self.assertEqual(Path(latest.readlink()), Path(result_b.run_record.run_id))
+            self.assertNotEqual(result_a.run_record.run_id, result_b.run_record.run_id)
+
+    def test_inputs_symlink_created_for_single_shared_root(self) -> None:
+        # Direct unit test of the helper rather than driving it through submit(),
+        # which would require a fully-staged shared FS root for the preflight check.
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            run_dir = tmp_path / "runs" / "fake_recipe"
+            run_dir.mkdir(parents=True)
+            shared_root = tmp_path / "scratch"
+            shared_root.mkdir()
+
+            from flytetest.spec_executor import _create_run_dir_links  # noqa: PLC0415
+            _create_run_dir_links(run_dir, shared_fs_roots=(shared_root,))
+
+            inputs_link = run_dir / "inputs"
+            self.assertTrue(inputs_link.is_symlink())
+            self.assertEqual(inputs_link.readlink(), shared_root)
+            self.assertTrue((run_dir / "outputs").is_dir())
+
+    def test_inputs_named_symlinks_for_multi_root(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            run_dir = tmp_path / "runs" / "fake_recipe"
+            run_dir.mkdir(parents=True)
+            scratch = tmp_path / "scratch"
+            project = tmp_path / "project"
+            scratch.mkdir()
+            project.mkdir()
+
+            from flytetest.spec_executor import _create_run_dir_links  # noqa: PLC0415
+            _create_run_dir_links(run_dir, shared_fs_roots=(scratch, project))
+
+            inputs_dir = run_dir / "inputs"
+            self.assertTrue(inputs_dir.is_dir() and not inputs_dir.is_symlink())
+            self.assertTrue((inputs_dir / "scratch").is_symlink())
+            self.assertTrue((inputs_dir / "project").is_symlink())
+
+    def test_outputs_dir_created_inside_run_dir(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            artifact = _slurm_busco_artifact_with_runtime_bindings(tmp_path)
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+            run_root = tmp_path / "runs"
+
+            result = SlurmWorkflowSpecExecutor(
+                run_root=run_root,
+                repo_root=tmp_path,
+                python_executable="/usr/bin/python3",
+                sbatch_runner=self._fake_sbatch(),
+                command_available=lambda command: True,
+            ).submit(artifact_path)
+
+            run_dir = result.run_record.run_record_path.parent
+            outputs_dir = run_dir / "outputs"
+            self.assertTrue(outputs_dir.is_dir())
+
+    def test_inputs_skipped_when_no_shared_roots_declared(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            artifact = _slurm_busco_artifact_with_runtime_bindings(tmp_path)
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+            run_root = tmp_path / "runs"
+
+            result = SlurmWorkflowSpecExecutor(
+                run_root=run_root,
+                repo_root=tmp_path,
+                python_executable="/usr/bin/python3",
+                sbatch_runner=self._fake_sbatch(),
+                command_available=lambda command: True,
+            ).submit(artifact_path)
+
+            run_dir = result.run_record.run_record_path.parent
+            self.assertFalse((run_dir / "inputs").exists())

@@ -1606,6 +1606,89 @@ def _allocate_run_dir(run_root: Path, requested_run_id: str) -> tuple[str, Path]
     return run_id, run_dir
 
 
+_RUNS_LATEST_SYMLINK_NAME = "latest"
+_RUN_DIR_INPUTS_LINK_NAME = "inputs"
+_RUN_DIR_OUTPUTS_LINK_NAME = "outputs"
+
+
+def _replace_symlink(link: Path, target: Path | str) -> None:
+    """Remove *link* if it exists and replace it with a symlink to *target*.
+
+    Idempotent — running submit twice for the same recipe (or the retry path)
+    repoints the link instead of failing.  Does not raise when the link
+    cannot be created on a filesystem that lacks symlink support; in that
+    case the link is silently skipped.
+    """
+    try:
+        if link.is_symlink() or link.exists():
+            link.unlink()
+        link.symlink_to(target)
+    except OSError as exc:
+        _LOG.debug("Failed to create convenience symlink %s -> %s: %s", link, target, exc)
+
+
+def _create_run_dir_links(run_dir: Path, *, shared_fs_roots: tuple[Path, ...]) -> None:
+    """Create user-facing convenience links inside the run dir.
+
+    - ``inputs/``: single shared FS root → flat symlink; multi-root →
+      directory of named symlinks (one per root, named after the root's
+      basename).  Skipped when no shared FS roots are declared.
+    - ``outputs/``: pre-created as a real directory inside the run dir so
+      handlers that write into it have a stable location.
+
+    Slurm controls ``slurm-<jobid>.{out,err}`` directly and they already
+    live in the run dir, so they are not relinked here.
+
+    Idempotent — existing links are removed and recreated to point at the
+    most recent attempt.
+    """
+    outputs_dir = run_dir / _RUN_DIR_OUTPUTS_LINK_NAME
+    if not outputs_dir.exists():
+        try:
+            outputs_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
+
+    inputs_link = run_dir / _RUN_DIR_INPUTS_LINK_NAME
+    if not shared_fs_roots:
+        return
+    if len(shared_fs_roots) == 1:
+        _replace_symlink(inputs_link, shared_fs_roots[0])
+        return
+    if inputs_link.is_symlink() or inputs_link.exists():
+        try:
+            if inputs_link.is_dir() and not inputs_link.is_symlink():
+                # Multi-root state already in place from a prior submission;
+                # remove and recreate so retries always reflect the latest
+                # shared_fs_roots set.
+                for child in inputs_link.iterdir():
+                    if child.is_symlink():
+                        child.unlink()
+                inputs_link.rmdir()
+            else:
+                inputs_link.unlink()
+        except OSError:
+            return
+    try:
+        inputs_link.mkdir(parents=True, exist_ok=False)
+    except OSError:
+        return
+    for root in shared_fs_roots:
+        _replace_symlink(inputs_link / root.name, root)
+
+
+def _update_latest_symlink(runs_root: Path, run_dir_name: str) -> None:
+    """Point ``<runs_root>/latest`` at *run_dir_name*.
+
+    Uses a relative symlink target (just the directory name) so the link
+    keeps resolving when the runs root is moved or mounted at a different
+    absolute path on a compute node.  Idempotent on retry — the previous
+    target is unlinked before the new one is written.
+    """
+    latest = runs_root / _RUNS_LATEST_SYMLINK_NAME
+    _replace_symlink(latest, run_dir_name)
+
+
 class LocalWorkflowSpecExecutor:
     """Execute saved workflow specs locally through registered stage handlers."""
 
@@ -2303,6 +2386,11 @@ class SlurmWorkflowSpecExecutor:
         )
         record = replace(record, failure_classification=classify_slurm_failure(record))
         save_slurm_run_record(record)
+        # Phase 0 step 02 user-facing convenience links: inputs/ and outputs/
+        # in the run dir, plus runs/latest pointing at the most recent
+        # successful submission.  Failures here never block a successful sbatch.
+        _create_run_dir_links(run_dir, shared_fs_roots=shared_fs_roots)
+        _update_latest_symlink(self._run_root, run_id)
         return SlurmSpecExecutionResult(
             supported=True,
             workflow_name=workflow_spec.name,

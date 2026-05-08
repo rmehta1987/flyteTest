@@ -969,6 +969,68 @@ class ServerTests(TestCase):
         self.assertEqual(status["lifecycle_result"]["job_id"], "44444")
         self.assertEqual(status["lifecycle_result"]["scheduler_snapshot"]["source"], "squeue")
 
+    def test_monitor_slurm_job_response_includes_path_fields(self) -> None:
+        """Phase 0 step 02: monitor_slurm_job carries every relevant absolute path."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            result_dir = _repeat_filter_manifest_dir(tmp_path)
+            prepared = _prepare_run_recipe_impl(
+                BUSCO_GOAL_PROMPT,
+                manifest_sources=(result_dir,),
+                runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                resource_request={"cpu": 12, "memory": "48Gi", "partition": "batch"},
+                execution_profile="slurm",
+                recipe_dir=tmp_path,
+            )
+
+            def fake_sbatch(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                return subprocess.CompletedProcess(args=args, returncode=0, stdout="Submitted batch job 44445\n", stderr="")
+
+            submitted = _run_slurm_recipe_impl(
+                str(prepared["artifact_path"]),
+                run_dir=tmp_path / "runs",
+                sbatch_runner=fake_sbatch,
+                command_available=lambda command: True,
+            )
+
+            def fake_scheduler(args: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+                if args[0] == "squeue":
+                    return subprocess.CompletedProcess(args=args, returncode=0, stdout="PENDING\n", stderr="")
+                if args[0] == "scontrol":
+                    return subprocess.CompletedProcess(
+                        args=args,
+                        returncode=0,
+                        stdout=f"JobId=44445 JobState=PENDING ExitCode=0:0 StdOut={tmp_path / 'job.out'} StdErr={tmp_path / 'job.err'} Reason=Resources\n",
+                        stderr="",
+                    )
+                if args[0] == "sacct":
+                    return subprocess.CompletedProcess(args=args, returncode=0, stdout="", stderr="")
+                raise AssertionError(args)
+
+            status = _monitor_slurm_job_impl(
+                str(submitted["run_record_path"]),
+                run_dir=tmp_path / "runs",
+                scheduler_runner=fake_scheduler,
+                command_available=lambda command: True,
+            )
+
+        # Phase 0 step 02: every path the user might want to cd into is in
+        # the response as an absolute string.
+        self.assertIn("spec_path", status)
+        self.assertIn("run_record_path", status)
+        self.assertIn("stdout_path", status)
+        self.assertIn("stderr_path", status)
+        self.assertIn("outputs_dir", status)
+        self.assertIn("inputs_dir", status)
+        self.assertIsNotNone(status["spec_path"])
+        self.assertTrue(Path(status["spec_path"]).is_absolute())
+        self.assertEqual(Path(status["spec_path"]).name, "spec.json")
+        # outputs/ is created during submit.
+        self.assertIsNotNone(status["outputs_dir"])
+        self.assertTrue(Path(status["outputs_dir"]).is_absolute())
+        # No shared_fs_roots declared in this submission, so inputs/ is None.
+        self.assertIsNone(status["inputs_dir"])
+
     def test_cancel_slurm_job_records_cancellation_request(self) -> None:
         """Expose Slurm cancellation through the server helper.
 """

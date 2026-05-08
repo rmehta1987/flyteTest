@@ -470,6 +470,10 @@ def _list_slurm_run_history_impl(
     limitations: list[str] = []
     if history_root.is_dir():
         for entry in sorted(history_root.iterdir()):
+            # Skip the runs/latest convenience symlink (Phase 0 step 02) so
+            # the underlying record is not counted twice.
+            if entry.is_symlink():
+                continue
             if not entry.is_dir():
                 continue
             record_path = entry / DEFAULT_SLURM_RUN_RECORD_FILENAME
@@ -3200,6 +3204,22 @@ def _monitor_slurm_job_impl(
     else:
         lifecycle["stdout_tail"] = None
         lifecycle["stderr_tail"] = None
+    # Phase 0 step 02 paths-in-response: every path the user might want to
+    # `cd` into is returned as an absolute string so it can be copied
+    # directly without reconstruction from run_record_path or recipe_id.
+    run_dir_for_paths: Path | None = None
+    spec_path: str | None = None
+    outputs_dir: str | None = None
+    inputs_dir: str | None = None
+    if record is not None:
+        run_dir_for_paths = record.run_record_path.parent.resolve()
+        spec_path = str(Path(record.artifact_path).resolve())
+        outputs_candidate = run_dir_for_paths / "outputs"
+        if outputs_candidate.exists():
+            outputs_dir = str(outputs_candidate)
+        inputs_candidate = run_dir_for_paths / "inputs"
+        if inputs_candidate.exists() or inputs_candidate.is_symlink():
+            inputs_dir = str(inputs_candidate)
     return {
         "supported": bool(result.supported),
         "run_record_path": str(run_record_path),
@@ -3207,6 +3227,9 @@ def _monitor_slurm_job_impl(
         "final_scheduler_state": lifecycle.get("final_scheduler_state"),
         "stdout_path": lifecycle.get("stdout_path"),
         "stderr_path": lifecycle.get("stderr_path"),
+        "spec_path": spec_path,
+        "outputs_dir": outputs_dir,
+        "inputs_dir": inputs_dir,
         "lifecycle_result": lifecycle,
         "limitations": list(result.limitations),
     }

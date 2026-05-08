@@ -32,6 +32,13 @@ Entry template:
 
 ## Unreleased
 
+### Slurm UX rollout — Phase 0 step 02 (2026-05-08)
+
+- [x] 2026-05-08 `spec_executor.py` `_submit_saved_artifact`: after `save_slurm_run_record(record)` succeeds, creates user-facing convenience links inside the run dir (`inputs/` symlink for single shared root, named subdir of symlinks for multi-root, plus a real `outputs/` directory) and points `<run_root>/latest` at the most recent successful submission. Idempotent on retry — links are removed and recreated. Failures here never block sbatch.
+- [x] 2026-05-08 `server.py` `monitor_slurm_job` (and `_monitor_slurm_job_impl`): response now carries `spec_path`, `outputs_dir`, `inputs_dir` as absolute path strings alongside the existing `run_record_path`, `stdout_path`, `stderr_path`. `outputs_dir` and `inputs_dir` are `None` when the corresponding link/directory does not exist. The user can copy any path directly from the response without reconstructing it from the recipe_id.
+- [x] 2026-05-08 `server.py` `_list_slurm_run_history_impl`: skips the new `runs/latest` symlink when iterating run dirs so the underlying record is not double-counted.
+- [x] 2026-05-08 Tests: `RunDirSymlinksTests` (6 cases) in `test_spec_executor.py` covers the helpers (single-root, multi-root, no-roots, outputs/, runs/latest, retry repointing) and `test_monitor_slurm_job_response_includes_path_fields` in `test_server.py` asserts the new path fields.
+
 ### Slurm UX rollout — Phase 0 step 01 (2026-05-07)
 
 - [x] 2026-05-07 `spec_artifacts.py`: spec write/read paths moved from `.runtime/specs/<recipe_id>.json` to `.runtime/runs/<recipe_id>/spec.json`. The per-recipe directory is created at freeze time so `prepare_run_recipe` and `run_workflow(dry_run=True)` populate the canonical location. Eliminates the spec/run directory split — every artifact for one submission now lives under a single `<recipe_id>` directory. Added `DEFAULT_RECIPE_SPEC_FILENAME = "spec.json"` plus `recipe_id_from_artifact_path()` helper that supports both canonical and legacy layouts.
