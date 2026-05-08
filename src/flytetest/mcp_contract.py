@@ -50,6 +50,7 @@ RUN_SLURM_RECIPE_TOOL_NAME = "run_slurm_recipe"
 RUN_TASK_TOOL_NAME = "run_task"
 RUN_WORKFLOW_TOOL_NAME = "run_workflow"
 VALIDATE_RUN_RECIPE_TOOL_NAME = "validate_run_recipe"
+LIST_SLURM_PARTITIONS_TOOL_NAME = "list_slurm_partitions"
 LIST_SLURM_RUN_HISTORY_TOOL_NAME = "list_slurm_run_history"
 MONITOR_SLURM_JOB_TOOL_NAME = "monitor_slurm_job"
 RETRY_SLURM_JOB_TOOL_NAME = "retry_slurm_job"
@@ -149,6 +150,7 @@ LIFECYCLE_TOOLS: tuple[str, ...] = (
     RETRY_SLURM_JOB_TOOL_NAME,
     WAIT_FOR_SLURM_JOB_TOOL_NAME,
     FETCH_JOB_LOG_TOOL_NAME,
+    LIST_SLURM_PARTITIONS_TOOL_NAME,
     LIST_SLURM_RUN_HISTORY_TOOL_NAME,
     GET_RUN_SUMMARY_TOOL_NAME,
     INSPECT_RUN_RESULT_TOOL_NAME,
@@ -464,6 +466,15 @@ TOOL_DESCRIPTIONS: dict[str, str] = {
         " task). Accepts left (str), right (str), and optional fastqc_sif, partition,"
         " account, cpu, memory, walltime, shared_fs_roots, module_loads, dry_run."
         " All paths must be absolute. " + QUEUE_ACCOUNT_HANDOFF
+    ),
+    LIST_SLURM_PARTITIONS_TOOL_NAME: (
+        "[lifecycle] Return the cluster's Slurm partitions with their state,"
+        " walltime limit, and current node availability. Read-only; uses sinfo."
+        " Useful before freezing a recipe so the user can pick a valid"
+        " partition string instead of finding out at sbatch time. No arguments."
+        " Returns {supported: bool, partitions: list[{name, state,"
+        " max_walltime, total_nodes, available_nodes}]} on success or"
+        " {supported: False, reason, message} when sinfo is unavailable."
     ),
 }
 

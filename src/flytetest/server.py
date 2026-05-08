@@ -64,6 +64,7 @@ from flytetest.mcp_contract import (
     LIST_AVAILABLE_BINDINGS_TOOL_NAME,
     LIST_BUNDLES_TOOL_NAME,
     LIST_ENTRIES_LIMITATIONS,
+    LIST_SLURM_PARTITIONS_TOOL_NAME,
     LIST_SLURM_RUN_HISTORY_TOOL_NAME,
     LOAD_BUNDLE_TOOL_NAME,
     MCP_RESOURCE_URIS,
@@ -536,6 +537,23 @@ def list_slurm_run_history(
         active_only=active_only,
         terminal_only=terminal_only,
     )
+
+
+def list_slurm_partitions() -> dict[str, object]:
+    """Return cluster partitions and their limits via `sinfo`.
+
+    Read-only introspection (no auth).  Useful before freezing a recipe
+    so the user can pick a valid partition string instead of finding out
+    at sbatch time.
+
+    Returns ``{supported: True, partitions: list[{name, state,
+    max_walltime, total_nodes, available_nodes}]}`` on success or
+    ``{supported: False, reason, message, partitions: []}`` when
+    ``sinfo`` is unavailable or returns non-zero.
+    """
+    from flytetest.slurm_introspection import list_slurm_partitions_reply  # noqa: PLC0415
+
+    return list_slurm_partitions_reply()
 
 
 def _get_pipeline_status_impl(
@@ -4578,6 +4596,7 @@ def create_mcp_server(fastmcp_cls: Any | None = None) -> Any:
     mcp.tool(description=TOOL_DESCRIPTIONS[RUN_RECIPE_TOOL_NAME])(run_local_recipe)
     mcp.tool(description=TOOL_DESCRIPTIONS[RUN_SLURM_RECIPE_TOOL_NAME])(run_slurm_recipe)
     mcp.tool(description=TOOL_DESCRIPTIONS[VALIDATE_RUN_RECIPE_TOOL_NAME])(validate_run_recipe)
+    mcp.tool(description=TOOL_DESCRIPTIONS[LIST_SLURM_PARTITIONS_TOOL_NAME])(list_slurm_partitions)
     mcp.tool(description=TOOL_DESCRIPTIONS[LIST_SLURM_RUN_HISTORY_TOOL_NAME])(list_slurm_run_history)
     mcp.tool(description=TOOL_DESCRIPTIONS[MONITOR_SLURM_JOB_TOOL_NAME])(monitor_slurm_job)
     mcp.tool(description=TOOL_DESCRIPTIONS[RETRY_SLURM_JOB_TOOL_NAME])(retry_slurm_job)

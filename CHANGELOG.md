@@ -32,6 +32,13 @@ Entry template:
 
 ## Unreleased
 
+### Slurm UX rollout — Phase 0 step 05 (2026-05-08)
+
+- [x] 2026-05-08 `slurm_introspection.py` (new): `list_slurm_partitions()` wraps `sinfo --noheader --format='%P %a %l %D %A'` and returns a `list[SlurmPartitionInfo]` with `name`, `state`, `max_walltime`, `available_nodes`, `total_nodes`. The default-partition `*` suffix is stripped from names; unparseable rows are skipped rather than raising; `sinfo` missing on PATH raises `FileNotFoundError`. Sibling `list_slurm_partitions_reply()` wraps the call in a structured `{supported: bool, ...}` reply for the MCP layer.
+- [x] 2026-05-08 `mcp_contract.py`: `LIST_SLURM_PARTITIONS_TOOL_NAME` constant added; tool listed under `LIFECYCLE_TOOLS`; `TOOL_DESCRIPTIONS` entry documents the tool surface (no arguments; structured reply on missing/failed `sinfo`).
+- [x] 2026-05-08 `server.py`: `list_slurm_partitions()` MCP tool registered in `create_mcp_server()` (deferred import so the introspection module is not pulled in until needed). Read-only / no auth — useful before freezing a recipe so the user can pick a valid partition string instead of finding out at sbatch time.
+- [x] 2026-05-08 Tests: new `test_slurm_introspection.py` (7 cases) mocks `subprocess.run` to cover typical/blank/short/unparseable rows, the missing-`sinfo` path, and all three reply branches.
+
 ### Slurm UX rollout — Phase 0 step 04 (2026-05-08)
 
 - [x] 2026-05-08 `specs.py`: `ResourceSpec.__post_init__` validates format-sensitive fields at freeze time. `memory` must match `^\d+(\.\d+)?(K|M|G|T)i?$` (rejects `"32 GB"`, `"32GB"`, `"32 G"`); `walltime` must match Slurm's `[D-]HH:MM[:SS]` (rejects `"48h"`, `"4 hours"`); `cpu` must parse as a positive integer string. `partition` and `account` are required (non-empty after strip) when `execution_class != "local"`. Catches typos at recipe freeze instead of 30 seconds into the sbatch attempt.
