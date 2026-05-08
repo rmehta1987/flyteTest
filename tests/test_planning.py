@@ -900,7 +900,9 @@ class PlanningTests(TestCase):
             self.assertNotEqual(artifact_path, "")
             frozen = Path(artifact_path)
             self.assertTrue(frozen.exists())
-            self.assertEqual(frozen.parent, recipe_dir)
+            # Phase 0 step 01 canonical layout: <recipe_dir>/<recipe_id>/spec.json
+            self.assertEqual(frozen.name, "spec.json")
+            self.assertEqual(frozen.parent.parent, recipe_dir)
 
             suggested = reply.suggested_next_call
             self.assertEqual(suggested["tool"], "approve_composed_recipe")

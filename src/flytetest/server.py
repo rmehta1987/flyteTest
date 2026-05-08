@@ -7,7 +7,6 @@ through explicit node handlers.
 
 from __future__ import annotations
 
-import difflib
 import inspect
 from importlib import import_module
 import json
@@ -88,20 +87,16 @@ from flytetest.mcp_contract import (
     RESULT_CODE_DEFINITIONS,
     RESULT_CODE_FAILED_EXECUTION,
     RESULT_CODE_SUCCEEDED,
-    RESULT_MANIFEST_RESOURCE_URI_PREFIX,
     RESULT_SUMMARY_FIELDS,
     RETRY_SLURM_JOB_TOOL_NAME,
     RNASEQ_FASTQC_TOOL_NAME,
     RNASEQ_QC_TOOL_NAME,
-    RUN_RECIPE_RESOURCE_URI_PREFIX,
     RUN_RECIPE_TOOL_NAME,
     RUN_SLURM_RECIPE_TOOL_NAME,
     RUN_TASK_TOOL_NAME,
     RUN_WORKFLOW_TOOL_NAME,
     SHOWCASE_SERVER_NAME,
-    SUPPORTED_PROTEIN_WORKFLOW_NAME,
     SUPPORTED_TARGET_NAMES,
-    SUPPORTED_TASK_NAME,
     SUPPORTED_TASK_NAMES,
     SUPPORTED_WORKFLOW_NAME,
     SUPPORTED_WORKFLOW_NAMES,
@@ -141,11 +136,13 @@ from flytetest.registry import list_entries as registry_list_entries
 from flytetest.resolver import _materialize_bindings
 from flytetest.spec_artifacts import (
     DEFAULT_DURABLE_ASSET_INDEX_FILENAME,
+    DEFAULT_RECIPE_SPEC_FILENAME,
     artifact_from_typed_plan,
     check_recipe_approval,
     load_durable_asset_index,
     load_workflow_spec_artifact,
     make_recipe_id,
+    recipe_id_from_artifact_path,
     RecipeApprovalRecord,
     RECIPE_APPROVAL_SCHEMA_VERSION,
     save_recipe_approval,
@@ -168,7 +165,7 @@ from flytetest.spec_executor import (
     load_local_run_record,
     load_slurm_run_record,
 )
-from flytetest.staging import StagingFinding, check_offline_staging, format_finding
+from flytetest.staging import check_offline_staging, format_finding
 from flytetest.specs import ResourceSpec, RuntimeImageSpec
 
 
@@ -177,8 +174,15 @@ _LOG = logging.getLogger(__name__)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 ENTRYPOINT = REPO_ROOT / "flyte_rnaseq_workflow.py"
-DEFAULT_RECIPE_DIR = REPO_ROOT / ".runtime" / "specs"
 DEFAULT_RUN_DIR = REPO_ROOT / ".runtime" / "runs"
+DEFAULT_RECIPE_DIR = DEFAULT_RUN_DIR
+"""Backward-compat alias for the canonical run dir.
+
+Slurm UX rollout Phase 0 step 01 collapses ``.runtime/specs/`` into
+``.runtime/runs/<recipe_id>/spec.json`` so each frozen recipe lives next to
+its run record and Slurm logs.  Existing callers that pass ``DEFAULT_RECIPE_DIR``
+continue to work; the value just resolves to the unified run root.
+"""
 DEFAULT_LATEST_SLURM_RUN_RECORD_POINTER = "latest_slurm_run_record.txt"
 DEFAULT_LATEST_SLURM_ARTIFACT_POINTER = "latest_slurm_artifact.txt"
 SERVER_TOOL_NAMES = MCP_TOOL_NAMES
@@ -1988,7 +1992,7 @@ def run_task(
             return asdict(
                 DryRunReply(
                     supported=True,
-                    recipe_id=Path(artifact_path).stem,
+                    recipe_id=recipe_id_from_artifact_path(Path(artifact_path)),
                     artifact_path=str(artifact_path),
                     execution_profile=(
                         "slurm" if execution_profile == "slurm" else "local"
@@ -2035,7 +2039,7 @@ def run_task(
             return asdict(
                 RunReply(
                     supported=True,
-                    recipe_id=Path(artifact_path).stem,
+                    recipe_id=recipe_id_from_artifact_path(Path(artifact_path)),
                     run_record_path=run_record_path_str,
                     artifact_path=str(artifact_path),
                     execution_profile="slurm",
@@ -2088,7 +2092,7 @@ def run_task(
         return asdict(
             RunReply(
                 supported=True,
-                recipe_id=Path(artifact_path).stem,
+                recipe_id=recipe_id_from_artifact_path(Path(artifact_path)),
                 run_record_path=str(run_record_path) if run_record_path else "",
                 artifact_path=str(artifact_path),
                 execution_profile="local",
@@ -2325,7 +2329,7 @@ def run_workflow(
             return asdict(
                 DryRunReply(
                     supported=True,
-                    recipe_id=Path(artifact_path).stem,
+                    recipe_id=recipe_id_from_artifact_path(Path(artifact_path)),
                     artifact_path=str(artifact_path),
                     execution_profile=(
                         "slurm" if execution_profile == "slurm" else "local"
@@ -2372,7 +2376,7 @@ def run_workflow(
             return asdict(
                 RunReply(
                     supported=True,
-                    recipe_id=Path(artifact_path).stem,
+                    recipe_id=recipe_id_from_artifact_path(Path(artifact_path)),
                     run_record_path=run_record_path_str,
                     artifact_path=str(artifact_path),
                     execution_profile="slurm",
@@ -2423,7 +2427,7 @@ def run_workflow(
         return asdict(
             RunReply(
                 supported=True,
-                recipe_id=Path(artifact_path).stem,
+                recipe_id=recipe_id_from_artifact_path(Path(artifact_path)),
                 run_record_path=str(run_record_path) if run_record_path else "",
                 artifact_path=str(artifact_path),
                 execution_profile="local",
@@ -2546,12 +2550,19 @@ def _recipe_target_name(typed_plan: dict) -> str:
 def _recipe_artifact_destination(target_name: str, *, recipe_dir: Path | None = None) -> Path:
     """Build a unique path for one frozen recipe artifact.
 
+    Returns the canonical path ``<recipe_dir>/<recipe_id>/spec.json``.  The
+    per-recipe directory is created at freeze time (by ``save_workflow_spec_artifact``)
+    so every artifact for a run lives under one ``<recipe_id>`` directory —
+    spec, run record, Slurm logs, and the symlinks added by Phase 0 step 02.
+
     Args:
         target_name: Registry entry name or ``composed-*`` sentinel used in the
             recipe_id; see :func:`_recipe_target_name`.
-        recipe_dir: Directory that will hold the frozen recipe artifact.
+        recipe_dir: Parent directory that will hold the per-recipe directory.
+            Defaults to :data:`DEFAULT_RUN_DIR`.
     """
-    return (recipe_dir or DEFAULT_RECIPE_DIR) / f"{make_recipe_id(target_name)}.json"
+    recipe_id = make_recipe_id(target_name)
+    return (recipe_dir or DEFAULT_RUN_DIR) / recipe_id / DEFAULT_RECIPE_SPEC_FILENAME
 
 
 def _limitations_from_typed_plan(plan: dict[str, object]) -> list[str]:
@@ -3088,7 +3099,7 @@ def validate_run_recipe(
                 "message": format_finding(sf),
             })
 
-    recipe_id = Path(artifact_path).stem
+    recipe_id = recipe_id_from_artifact_path(Path(artifact_path))
     return asdict(ValidateRecipeReply(
         supported=not findings,
         recipe_id=recipe_id,
@@ -4059,7 +4070,6 @@ def load_bundle(name: str) -> dict:
         name: Bundle name as returned by ``list_bundles()``.
 """
     from flytetest.bundles import load_bundle as _load_bundle
-    from flytetest.bundles import BUNDLES
     try:
         return _load_bundle(name)
     except KeyError:

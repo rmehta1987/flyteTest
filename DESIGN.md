@@ -475,14 +475,15 @@ recipe = prepare_run_recipe(
     },
     runtime_bindings={"exonerate_sif": "data/images/exonerate_2.2.0--1.sif"},
 )
-# artifact_path → .runtime/specs/<recipe_id>.json
+# artifact_path → .runtime/runs/<recipe_id>/spec.json
 # verify: recipe.typed_plan.execution_profile == "slurm" before submitting
 
 # Phase 2: Submit — renders the sbatch script, calls sbatch, writes a durable
-# run record. The generated script is saved under .runtime/runs/<run_id>/ and
-# can be inspected to verify directives before or after submission.
+# run record. The generated script and run record are saved alongside the
+# spec under .runtime/runs/<recipe_id>/ so the whole submission lives in one
+# directory; retries get a -retry<N> suffix on the recipe_id.
 result = run_slurm_recipe(artifact_path=recipe.artifact_path)
-# run_record_path → .runtime/runs/<run_id>/slurm_run_record.json
+# run_record_path → .runtime/runs/<recipe_id>/slurm_run_record.json
 
 # Phase 3: Monitor — poll monitor_slurm_job until final_scheduler_state is
 # non-null. A non-null value means the job has reached a terminal state.

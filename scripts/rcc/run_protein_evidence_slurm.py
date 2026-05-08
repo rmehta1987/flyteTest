@@ -45,7 +45,7 @@ def main() -> int:
         execution_profile="slurm",
         runtime_bindings={"exonerate_sif": exonerate_sif} if exonerate_sif else None,
         resource_request=resource_request,
-        recipe_dir=repo_root / ".runtime/specs",
+        recipe_dir=repo_root / ".runtime/runs",
     )
     if not prepared["supported"]:
         print(json.dumps(prepared, indent=2, sort_keys=True))

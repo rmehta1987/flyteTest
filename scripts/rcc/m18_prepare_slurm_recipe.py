@@ -64,7 +64,8 @@ def _artifact_destination(repo_root: Path, created_at: str) -> Path:
 """
     digest = hashlib.sha256(f"m18-busco-fixture|{created_at}".encode("utf-8")).hexdigest()[:12]
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    return repo_root / ".runtime/specs" / f"{timestamp}-m18-busco-fixture-{digest}.json"
+    recipe_id = f"{timestamp}-m18-busco-fixture-{digest}"
+    return repo_root / ".runtime/runs" / recipe_id / "spec.json"
 
 
 def main() -> int:

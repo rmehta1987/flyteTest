@@ -36,14 +36,11 @@ from flytetest.config import (
 )
 from flytetest.mcp_contract import (
     DECLINE_CATEGORY_CODES,
-    FETCH_JOB_LOG_TOOL_NAME,
     MCP_RESOURCE_URIS,
     MCP_TOOL_NAMES,
     PRIMARY_TOOL_NAME,
     PROTEIN_WORKFLOW_EXAMPLE_PROMPT,
     RESULT_CODE_DEFINITIONS,
-    RESULT_MANIFEST_RESOURCE_URI_PREFIX,
-    RUN_RECIPE_RESOURCE_URI_PREFIX,
     SHOWCASE_SERVER_NAME,
     SUPPORTED_BUSCO_FIXTURE_TASK_NAME,
     SUPPORTED_PROTEIN_WORKFLOW_NAME,
@@ -52,7 +49,6 @@ from flytetest.mcp_contract import (
     SUPPORTED_TASK_NAMES,
     SUPPORTED_WORKFLOW_NAME,
     TASK_EXAMPLE_PROMPT,
-    WAIT_FOR_SLURM_JOB_TOOL_NAME,
     WORKFLOW_EXAMPLE_PROMPT,
     supported_runnable_targets_payload,
 )
@@ -86,32 +82,22 @@ from flytetest.server import (
     _run_slurm_recipe_impl,
     _wait_for_slurm_job_impl,
     create_mcp_server,
-    fetch_job_log,
-    get_run_summary,
-    inspect_run_result,
     list_available_bindings,
     list_bundles,
     load_bundle,
     list_entries,
     plan_request,
     prompt_and_run,
-    prepare_run_recipe,
-    monitor_slurm_job,
     resource_example_prompts,
     resource_prompt_and_run_contract,
     resource_result_manifest,
     resource_run_recipe,
     resource_scope,
     resource_supported_targets,
-    retry_slurm_job,
-    cancel_slurm_job,
-    run_local_recipe,
-    run_slurm_recipe,
     run_task,
     run_workflow,
     validate_run_recipe,
     _execute_workflow_direct,
-    wait_for_slurm_job,
 )
 from flytetest.planning import plan_typed_request
 from flytetest.registry import InterfaceField, RegistryCompatibilityMetadata, RegistryEntry, get_entry
@@ -123,7 +109,6 @@ from flytetest.spec_executor import (
     SLURM_RUN_RECORD_SCHEMA_VERSION,
     LocalNodeExecutionResult,
     LocalRunRecord,
-    SlurmRunRecord,
     load_slurm_run_record,
     save_local_run_record,
     save_slurm_run_record,
@@ -459,7 +444,7 @@ class ServerTests(TestCase):
         self.assertEqual(payload["transport"], "stdio")
         self.assertEqual(payload["primary_tool"], PRIMARY_TOOL_NAME)
         self.assertEqual(payload["supported_runnable_targets"], EXPECTED_RUNNABLE_TARGETS)
-        self.assertIn(".runtime/specs", payload["recipe_artifact_directory"])
+        self.assertIn(".runtime/runs", payload["recipe_artifact_directory"])
         self.assertIn("manifest_sources", payload["recipe_input_context_fields"])
         self.assertTrue(any("busco_lineages_text" in rule for rule in payload["recipe_input_runtime_rules"]))
         self.assertTrue(any("eggnog_data_dir" in rule for rule in payload["recipe_input_runtime_rules"]))
@@ -503,7 +488,7 @@ class ServerTests(TestCase):
             RESULT_CODE_DEFINITIONS["failed_execution"]["reason_codes"],
         )
         self.assertEqual(payload["decline_categories"], DECLINE_CATEGORY_CODES)
-        self.assertIn(".runtime/specs", payload["recipe_artifact_directory"])
+        self.assertIn(".runtime/runs", payload["recipe_artifact_directory"])
         self.assertIn("explicit local file paths", payload["prompt_requirements"][0])
         self.assertIn("typed_planning_available", payload["result_summary_fields"])
         self.assertIn("artifact_path", payload["result_summary_fields"])
@@ -3742,7 +3727,7 @@ class ServerTests(TestCase):
     def test_limitation_reply_populates_all_three_channels(self) -> None:
         """Decline for BRAKER3 with no inputs returns bundles, prior runs, and next_steps."""
         from flytetest import bundles as bundles_mod
-        from flytetest.bundles import BUNDLES, ResourceBundle
+        from flytetest.bundles import ResourceBundle
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -3807,7 +3792,7 @@ class ServerTests(TestCase):
     ) -> None:
         """When no bundle is available, suggested_bundles stays empty but next_steps is not."""
         from flytetest import bundles as bundles_mod
-        from flytetest.bundles import BUNDLES, ResourceBundle
+        from flytetest.bundles import ResourceBundle
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

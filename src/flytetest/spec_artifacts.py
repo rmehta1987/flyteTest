@@ -8,6 +8,7 @@ composed-recipe execution.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -33,6 +34,15 @@ a checked claim rather than a comment.
 
 SPEC_ARTIFACT_SCHEMA_VERSION = "workflow-spec-artifact-v1"
 DEFAULT_SPEC_ARTIFACT_FILENAME = "workflow_spec_artifact.json"
+DEFAULT_RECIPE_SPEC_FILENAME = "spec.json"
+"""Canonical filename for a frozen recipe written into ``.runtime/runs/<recipe_id>/``.
+
+Specs in the canonical layout (see Slurm UX rollout Phase 0 step 01) use
+this filename so the run dir is self-describing — ``spec.json`` lives next
+to ``slurm_run_record.json`` and the Slurm logs.  The legacy
+:data:`DEFAULT_SPEC_ARTIFACT_FILENAME` is preserved for in-tree fixtures
+that still use the directory-default form.
+"""
 RECIPE_APPROVAL_SCHEMA_VERSION = "recipe-approval-v1"
 DEFAULT_RECIPE_APPROVAL_FILENAME = "recipe_approval.json"
 DURABLE_ASSET_INDEX_SCHEMA_VERSION = "durable-asset-index-v1"
@@ -40,13 +50,44 @@ DEFAULT_DURABLE_ASSET_INDEX_FILENAME = "durable_asset_index.json"
 
 _TARGET_NAME_UNSAFE = re.compile(r"[^a-z0-9_-]")
 
+_TARGET_NAME_BUDGET = 25
+"""Maximum characters of ``target_name`` kept verbatim in a recipe_id slug."""
+
+_TARGET_NAME_HASH_DIGEST_BYTES = 2
+"""``blake2b`` digest size used for the disambiguating suffix on long names."""
+
+
+def _truncate_target_name(target_name: str) -> str:
+    """Return a directory-safe form of *target_name* with a hash suffix when needed.
+
+    Short names that fit under :data:`_TARGET_NAME_BUDGET` (plus the four-hex
+    suffix budget) are returned unchanged.  Longer names are truncated to
+    :data:`_TARGET_NAME_BUDGET` characters and a four-hex ``blake2b`` digest
+    is appended so two workflows that share a long prefix do not collide on
+    disk (e.g. ``select_germline_short_variant_discovery`` vs.
+    ``select_germline_short_variant_recalibration``).
+
+    The hash is computed against the original ``target_name`` (case sensitive)
+    so the suffix is stable across calls and reproducible from the workflow
+    name alone — the truncation behavior is a pure function of its input.
+    """
+    if len(target_name) <= _TARGET_NAME_BUDGET + 5:
+        return target_name
+    digest = hashlib.blake2b(
+        target_name.encode("utf-8"),
+        digest_size=_TARGET_NAME_HASH_DIGEST_BYTES,
+    ).hexdigest()
+    return f"{target_name[:_TARGET_NAME_BUDGET]}-{digest}"
+
 
 def make_recipe_id(target_name: str, *, now: datetime | None = None) -> RecipeId:
     """Generate a stable recipe identifier: ``<YYYYMMDDThhmmss.mmm>Z-<target_name>``.
 
     Millisecond resolution makes collisions negligible for serialized calls.
-    ``target_name`` is lower-cased and stripped of filesystem-unsafe characters
-    so the id is valid as a filename stem and a Slurm job name.
+    ``target_name`` is lower-cased, stripped of filesystem-unsafe characters,
+    and (when long) truncated to :data:`_TARGET_NAME_BUDGET` chars with a
+    four-hex ``blake2b`` suffix so similarly-prefixed long workflow names do
+    not visually collide on disk.
 
     Composition-fallback plans should pass ``"composed-<first>_to_<last>"`` as
     *target_name* so the id self-describes the DAG boundaries.
@@ -54,7 +95,25 @@ def make_recipe_id(target_name: str, *, now: datetime | None = None) -> RecipeId
     ts = now or datetime.now(UTC)
     millis = ts.microsecond // 1000
     slug = _TARGET_NAME_UNSAFE.sub("_", target_name.lower()).strip("_") or "unknown"
+    slug = _truncate_target_name(slug)
     return RecipeId(f"{ts.strftime('%Y%m%dT%H%M%S')}.{millis:03d}Z-{slug}")
+
+
+def recipe_id_from_artifact_path(artifact_path: Path) -> str:
+    """Return the recipe_id for a frozen artifact path, supporting both layouts.
+
+    - Canonical (Slurm UX rollout Phase 0): ``.../<recipe_id>/spec.json`` →
+      returns the parent directory name.
+    - Legacy: ``.../<recipe_id>.json`` → returns the file stem.
+
+    Tests and fixtures that use the directory-default
+    :data:`DEFAULT_SPEC_ARTIFACT_FILENAME` (``workflow_spec_artifact.json``)
+    fall back to the parent directory name as well, since the filename itself
+    carries no identifying information in that form.
+    """
+    if artifact_path.name in (DEFAULT_RECIPE_SPEC_FILENAME, DEFAULT_SPEC_ARTIFACT_FILENAME):
+        return artifact_path.parent.name
+    return artifact_path.stem
 
 
 @dataclass(frozen=True, slots=True)
@@ -229,13 +288,25 @@ def load_durable_asset_index(run_dir: Path) -> list[DurableAssetRef]:
 def _artifact_path(path: Path) -> Path:
     """Resolve a directory or JSON path to the saved artifact file path.
 
+    Supports both the canonical Phase 0 layout (``<dir>/spec.json``) and the
+    legacy layout (``<dir>/workflow_spec_artifact.json``) when *path* is a
+    directory; the canonical filename wins when both are present.
+
     Args:
         path: Artifact directory or artifact JSON file path.
 
     Returns:
         The artifact JSON file path.
     """
-    return path / DEFAULT_SPEC_ARTIFACT_FILENAME if path.is_dir() else path
+    if not path.is_dir():
+        return path
+    canonical = path / DEFAULT_RECIPE_SPEC_FILENAME
+    if canonical.exists():
+        return canonical
+    legacy = path / DEFAULT_SPEC_ARTIFACT_FILENAME
+    if legacy.exists():
+        return legacy
+    return canonical
 
 
 def artifact_from_typed_plan(
@@ -551,7 +622,9 @@ def check_recipe_approval(artifact_path: Path, now: str | None = None) -> tuple[
 __all__ = [
     "DEFAULT_DURABLE_ASSET_INDEX_FILENAME",
     "make_recipe_id",
+    "recipe_id_from_artifact_path",
     "DEFAULT_RECIPE_APPROVAL_FILENAME",
+    "DEFAULT_RECIPE_SPEC_FILENAME",
     "DEFAULT_SPEC_ARTIFACT_FILENAME",
     "DURABLE_ASSET_INDEX_SCHEMA_VERSION",
     "RECIPE_APPROVAL_SCHEMA_VERSION",

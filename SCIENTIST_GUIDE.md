@@ -88,7 +88,7 @@ Both return:
     "supported": True,
     "recipe_id": "2026-04-17T14-22-05Z-abc123",   # save this; it reproduces the run later
     "run_record_path": "results/.../run_record.json",
-    "artifact_path": ".runtime/specs/<recipe_id>.json",
+    "artifact_path": ".runtime/runs/<recipe_id>/spec.json",
     "execution_profile": "local",
     "outputs": {
         "annotation_gff": "/abs/path/to/annotation.gff3",
@@ -107,7 +107,7 @@ Before `sbatch` is called on an HPC cluster, the server now checks that every co
 You can also run this check explicitly on any frozen recipe:
 
 ```
-validate_run_recipe(artifact_path=".runtime/specs/<recipe_id>.json",
+validate_run_recipe(artifact_path=".runtime/runs/<recipe_id>/spec.json",
                     execution_profile="slurm",
                     shared_fs_roots=["/project/pi-account/", "/scratch/myuser/"])
 ```
@@ -165,12 +165,14 @@ field will repeat these instructions if anything is missing.
    moving on — they correspond directly to `StagingFinding` records
    produced by `src/flytetest/staging.py:check_offline_staging`.
 
-6. `run_slurm_recipe(recipe_id=..., partition=..., account=...)`
+6. `run_slurm_recipe(artifact_path=...)`
 
    Submits the frozen recipe via `sbatch`. Returns the run record path
-   and the assigned `job_id`. Note: `partition` and `account` must come
-   from you — the server will not invent them. If submission fails the
-   reply carries a `PlanDecline` rather than a Slurm error string.
+   and the assigned `job_id`. The `partition` and `account` you provided
+   in `resource_request` at Step 4 (recipe freeze) are baked into the
+   recipe and used here automatically — no need to pass them again at
+   submission time. If submission fails the reply carries a `PlanDecline`
+   rather than a Slurm error string.
 
 7. `monitor_slurm_job(job_id=...)`
 

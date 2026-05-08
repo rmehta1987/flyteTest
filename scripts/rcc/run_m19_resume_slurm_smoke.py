@@ -38,7 +38,8 @@ def _artifact_destination(repo_root: Path, created_at: str) -> Path:
     """Build a stable, inspectable artifact path for the resume smoke."""
     digest = hashlib.sha256(f"m19-resume-smoke|{created_at}".encode("utf-8")).hexdigest()[:12]
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    return repo_root / ".runtime/specs" / f"{timestamp}-m19-resume-smoke-{digest}.json"
+    recipe_id = f"{timestamp}-m19-resume-smoke-{digest}"
+    return repo_root / ".runtime/runs" / recipe_id / "spec.json"
 
 
 def _local_run_dir(repo_root: Path, created_at: str) -> Path:

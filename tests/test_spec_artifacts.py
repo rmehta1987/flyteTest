@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 import sys
 import tempfile
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest import TestCase
 
@@ -21,6 +21,7 @@ import json
 from flytetest.planner_types import ConsensusAnnotation, ReferenceGenome
 from flytetest.planning import plan_typed_request
 from flytetest.spec_artifacts import (
+    DEFAULT_RECIPE_SPEC_FILENAME,
     DEFAULT_SPEC_ARTIFACT_FILENAME,
     DURABLE_ASSET_INDEX_SCHEMA_VERSION,
     DEFAULT_DURABLE_ASSET_INDEX_FILENAME,
@@ -30,6 +31,7 @@ from flytetest.spec_artifacts import (
     load_durable_asset_index,
     load_workflow_spec_artifact,
     make_recipe_id,
+    recipe_id_from_artifact_path,
     replayable_spec_pair,
     save_durable_asset_index,
     save_workflow_spec_artifact,
@@ -430,3 +432,71 @@ class RecipeIdTests(TestCase):
             loaded = load_workflow_spec_artifact(artifact_path)
             self.assertEqual(artifact_path.stem, rid)
             self.assertEqual(loaded.workflow_spec.name, "protein_evidence_alignment")
+
+
+class RecipeIdHashSuffixTests(TestCase):
+    """Phase 0 step 01: long target names get a stable hash suffix."""
+
+    def _fixed_now(self) -> datetime:
+        return datetime(2026, 5, 7, 12, 0, 0, 123_000, tzinfo=UTC)
+
+    def test_short_name_passes_through_unchanged(self) -> None:
+        rid = make_recipe_id("prepare_reference", now=self._fixed_now())
+        self.assertEqual(rid, "20260507T120000.123Z-prepare_reference")
+
+    def test_boundary_name_at_thirty_chars_unchanged(self) -> None:
+        # Names up to budget (25) + suffix room (5) = 30 chars stay verbatim.
+        thirty_chars = "a" * 30
+        rid = make_recipe_id(thirty_chars, now=self._fixed_now())
+        self.assertTrue(rid.endswith(thirty_chars))
+
+    def test_long_name_gets_hash_suffix(self) -> None:
+        rid = make_recipe_id(
+            "select_germline_short_variant_discovery", now=self._fixed_now()
+        )
+        # 25-char prefix then "-" then 4 hex chars.
+        self.assertRegex(rid, r"-select_germline_short_var-[0-9a-f]{4}$")
+
+    def test_similar_long_names_get_distinct_hashes(self) -> None:
+        rid_a = make_recipe_id(
+            "select_germline_short_variant_discovery", now=self._fixed_now()
+        )
+        rid_b = make_recipe_id(
+            "select_germline_short_variant_recalibration", now=self._fixed_now()
+        )
+        self.assertNotEqual(rid_a, rid_b)
+        # Both have the truncated common prefix; only the hash differs.
+        self.assertIn("select_germline_short_var-", rid_a)
+        self.assertIn("select_germline_short_var-", rid_b)
+
+    def test_hash_is_stable_across_calls(self) -> None:
+        rid_a = make_recipe_id(
+            "select_germline_short_variant_discovery", now=self._fixed_now()
+        )
+        rid_b = make_recipe_id(
+            "select_germline_short_variant_discovery", now=self._fixed_now()
+        )
+        self.assertEqual(rid_a, rid_b)
+
+
+class RecipeIdFromArtifactPathTests(TestCase):
+    """Phase 0 step 01: recipe_id_from_artifact_path supports both layouts."""
+
+    def test_canonical_layout_returns_parent_dir_name(self) -> None:
+        rid = "20260507T120000.123Z-foo"
+        path = Path("/tmp/.runtime/runs") / rid / DEFAULT_RECIPE_SPEC_FILENAME
+        self.assertEqual(recipe_id_from_artifact_path(path), rid)
+
+    def test_legacy_directory_default_filename_returns_parent_dir(self) -> None:
+        rid = "20260507T120000.123Z-foo"
+        path = Path("/tmp") / rid / DEFAULT_SPEC_ARTIFACT_FILENAME
+        self.assertEqual(recipe_id_from_artifact_path(path), rid)
+
+    def test_legacy_layout_returns_file_stem(self) -> None:
+        rid = "20260507T120000.123Z-foo"
+        path = Path("/tmp/.runtime/specs") / f"{rid}.json"
+        self.assertEqual(recipe_id_from_artifact_path(path), rid)
+
+    def test_arbitrary_filename_returns_stem(self) -> None:
+        path = Path("/tmp/recipe.json")
+        self.assertEqual(recipe_id_from_artifact_path(path), "recipe")

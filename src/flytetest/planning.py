@@ -40,16 +40,13 @@ from flytetest.composition import compose_workflow_path
 from flytetest.mcp_contract import (
     SHOWCASE_LIMITATIONS,
     SHOWCASE_TARGETS_BY_NAME,
-    SUPPORTED_BUSCO_FIXTURE_TASK_NAME,
-    SUPPORTED_PROTEIN_WORKFLOW_NAME,
     SUPPORTED_TARGET_NAMES,
-    SUPPORTED_TASK_NAME,
-    SUPPORTED_WORKFLOW_NAME,
 )
 from flytetest.mcp_replies import PlanDecline, PlanSuccess, SuggestedBundle
-from flytetest.registry import InterfaceField, RegistryEntry, get_entry
+from flytetest.registry import RegistryEntry, get_entry
 from flytetest.resolver import AssetResolver, LocalManifestAssetResolver, ResolutionResult
 from flytetest.spec_artifacts import (
+    DEFAULT_RECIPE_SPEC_FILENAME,
     artifact_from_typed_plan,
     make_recipe_id,
     save_workflow_spec_artifact,
@@ -67,7 +64,7 @@ from flytetest.specs import (
 )
 
 
-DEFAULT_RECIPE_DIR = Path(__file__).resolve().parents[2] / ".runtime" / "specs"
+DEFAULT_RECIPE_DIR = Path(__file__).resolve().parents[2] / ".runtime" / "runs"
 
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
@@ -854,7 +851,7 @@ def _try_composition_fallback(request: str, normalized_request: str) -> TypedPla
                     required_planner_types=required_types,
                     produced_planner_types=produced_types,
                     rationale=(
-                        f"The prompt asks for annotation workflow processing that was not a hardcoded pattern.",
+                        "The prompt asks for annotation workflow processing that was not a hardcoded pattern.",
                         f"The planner found a valid registered-stage path: {' -> '.join(path)}.",
                         "This composition requires explicit user approval before execution (Milestone 19 gating pending).",
                     ),
@@ -1645,7 +1642,7 @@ def plan_request(
             biological_goal=request,
             matched_entry_names=[variant_target],
             next_steps=(
-                f"Call load_bundle('variant_calling_germline_minimal') to get starter inputs.",
+                "Call load_bundle('variant_calling_germline_minimal') to get starter inputs.",
                 f"Then call run_workflow('{variant_target}', **bundle) or run_task('{variant_target}', **bundle).",
             ),
             suggested_bundles=suggested,
@@ -1871,8 +1868,10 @@ def plan_request_reshape(
     Args:
         request: Natural-language biological request from the scientist.
         recipe_dir: Directory for composed-recipe artifacts. Defaults to
-            ``.runtime/specs`` under the repository root; tests should pass a
-            temporary directory to keep the repo free of leftover previews.
+            ``.runtime/runs`` under the repository root; the artifact lands at
+            ``<recipe_dir>/<recipe_id>/spec.json`` (Slurm UX rollout Phase 0
+            canonical layout). Tests should pass a temporary directory to keep
+            the repo free of leftover previews.
         created_at: Frozen UTC timestamp injected into composed artifacts;
             defaults to the current moment. Tests may set this for
             deterministic diffs.
@@ -1926,7 +1925,7 @@ def plan_request_reshape(
             ),
             pipeline_family="variant_calling",
             next_steps=(
-                f"Call load_bundle('variant_calling_germline_minimal') to get starter inputs.",
+                "Call load_bundle('variant_calling_germline_minimal') to get starter inputs.",
                 f"Then call run_workflow('{variant_target}', **bundle) or run_task('{variant_target}', **bundle).",
                 "Or supply explicit bindings and scalar inputs directly to run_workflow/run_task.",
             ),
@@ -1968,7 +1967,8 @@ def plan_request_reshape(
 
     target_stem = _composition_target_name(composition_goal)
     destination_dir = recipe_dir or DEFAULT_RECIPE_DIR
-    destination = destination_dir / f"{make_recipe_id(target_stem)}.json"
+    recipe_id = make_recipe_id(target_stem)
+    destination = destination_dir / recipe_id / DEFAULT_RECIPE_SPEC_FILENAME
     artifact = artifact_from_typed_plan(
         typed_plan,
         created_at=created_at or _current_plan_timestamp(),

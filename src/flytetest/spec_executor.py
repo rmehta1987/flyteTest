@@ -33,10 +33,11 @@ from flytetest.spec_artifacts import (
     SavedWorkflowSpecArtifact,
     _write_json_atomically,
     load_workflow_spec_artifact,
+    recipe_id_from_artifact_path,
     save_durable_asset_index,
 )
 from flytetest.specs import ResourceSpec, RuntimeImageSpec, SpecSerializable, WorkflowNodeSpec
-from flytetest.staging import StagingFinding, check_offline_staging
+from flytetest.staging import check_offline_staging
 
 
 _LOG = logging.getLogger(__name__)
@@ -1573,19 +1574,32 @@ def _created_at() -> str:
 
 
 def _run_id_for_artifact(artifact: SavedWorkflowSpecArtifact, artifact_path: Path, submitted_at: str) -> str:
-    """Build a run-scoped ID that is not keyed only by recipe name."""
-    digest_source = f"{artifact_path.resolve()}|{artifact.workflow_spec.name}|{artifact.created_at}|{submitted_at}"
-    digest = hashlib.sha256(digest_source.encode("utf-8")).hexdigest()[:12]
-    timestamp = submitted_at.replace(":", "").replace("-", "").replace("Z", "Z")
-    return f"{timestamp}-{_slug(artifact.workflow_spec.name, max_length=32)}-{digest}"
+    """Build a run id that doubles as the on-disk run dir name.
+
+    Returns the recipe_id derived from *artifact_path* so the run dir at
+    ``<run_root>/<recipe_id>/`` matches the spec dir created at freeze time
+    (Slurm UX rollout Phase 0 step 01 — single canonical run dir).  The
+    *artifact* and *submitted_at* arguments are kept for future provenance
+    use and to preserve the existing call site signature.
+    """
+    del artifact, submitted_at  # retained for signature stability
+    return recipe_id_from_artifact_path(artifact_path)
 
 
 def _allocate_run_dir(run_root: Path, requested_run_id: str) -> tuple[str, Path]:
-    """Reserve a unique run directory even when submissions happen in the same second."""
+    """Reserve a unique run directory.
+
+    The first submission of a recipe claims the existing
+    ``<run_root>/<recipe_id>/`` directory created by the spec freeze step
+    (Slurm UX rollout Phase 0 step 01 canonical layout).  A directory that
+    already contains a ``slurm_run_record.json`` is treated as taken — the
+    next submission cycles ``-retry<N>`` suffixes until it finds a free name,
+    matching the prior behavior for retries that submit in the same second.
+    """
     run_id = requested_run_id
     run_dir = run_root / run_id
     suffix = 1
-    while run_dir.exists():
+    while (run_dir / DEFAULT_SLURM_RUN_RECORD_FILENAME).exists():
         run_id = f"{requested_run_id}-retry{suffix}"
         run_dir = run_root / run_id
         suffix += 1
@@ -2167,7 +2181,11 @@ class SlurmWorkflowSpecExecutor:
         stdout_path = run_dir / "slurm-%j.out"
         stderr_path = run_dir / "slurm-%j.err"
         run_record_path = run_dir / DEFAULT_SLURM_RUN_RECORD_FILENAME
-        run_dir.mkdir(parents=True, exist_ok=False)
+        # exist_ok=True: in the canonical Phase 0 layout the spec freeze step
+        # already created `<run_root>/<recipe_id>/` and wrote `spec.json` into
+        # it.  `_allocate_run_dir` already protected against double-claiming by
+        # checking for an existing `slurm_run_record.json`.
+        run_dir.mkdir(parents=True, exist_ok=True)
 
         script_text = render_slurm_script(
             artifact_path=artifact_path,
@@ -2179,7 +2197,7 @@ class SlurmWorkflowSpecExecutor:
             repo_root=self._repo_root,
             python_executable=self._python_executable,
             resume_from_local_record=resume_from_local_record,
-            recipe_id=artifact_path.stem,
+            recipe_id=recipe_id_from_artifact_path(artifact_path),
         )
         script_path.write_text(script_text)
         script_path.chmod(0o755)
@@ -2253,7 +2271,7 @@ class SlurmWorkflowSpecExecutor:
         record = SlurmRunRecord(
             schema_version=SLURM_RUN_RECORD_SCHEMA_VERSION,
             run_id=run_id,
-            recipe_id=artifact_path.stem,
+            recipe_id=recipe_id_from_artifact_path(artifact_path),
             workflow_name=workflow_spec.name,
             artifact_path=artifact_path,
             script_path=script_path,

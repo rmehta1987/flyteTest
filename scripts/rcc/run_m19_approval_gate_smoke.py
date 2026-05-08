@@ -36,7 +36,8 @@ def _artifact_destination(repo_root: Path, created_at: str) -> Path:
     """Build a stable, inspectable artifact path for the approval smoke."""
     digest = hashlib.sha256(f"m19-approval-smoke|{created_at}".encode("utf-8")).hexdigest()[:12]
     timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    return repo_root / ".runtime/specs" / f"{timestamp}-m19-approval-smoke-{digest}.json"
+    recipe_id = f"{timestamp}-m19-approval-smoke-{digest}"
+    return repo_root / ".runtime/runs" / recipe_id / "spec.json"
 
 
 def _repo_path(repo_root: Path, raw_path: str) -> Path:
