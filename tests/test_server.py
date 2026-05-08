@@ -4694,6 +4694,86 @@ class ValidateRunRecipeTests(TestCase):
         self.assertIn("container", kinds)
         self.assertIn("tool_database", kinds)
 
+    def test_sbatch_test_only_invalid_partition_returns_structured_finding(self) -> None:
+        """Phase 0 step 06: validate_run_recipe surfaces sbatch --test-only failures.
+
+        Tests the helper ``_check_sbatch_test_only_for_artifact`` directly so the
+        assertion does not depend on the fixture's pre-existing binding-validation
+        behaviour.
+        """
+        from unittest.mock import patch  # noqa: PLC0415
+        from flytetest.server import _check_sbatch_test_only_for_artifact  # noqa: PLC0415
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            sif_path = tmp_path / "busco.sif"
+            sif_path.write_bytes(b"fake-sif")
+            db_path = tmp_path / "busco_db"
+            db_path.mkdir()
+            artifact = self._build_artifact(
+                tmp_path,
+                runtime_images={"busco_sif": str(sif_path)},
+                tool_databases={"busco_lineage_dir": str(db_path)},
+            )
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+
+            class _FakeProc:
+                def __init__(self, returncode, stderr=""):
+                    self.returncode = returncode
+                    self.stderr = stderr
+                    self.stdout = ""
+
+            with patch("flytetest.staging.shutil.which", return_value="/usr/bin/sbatch"), \
+                 patch(
+                     "flytetest.staging.subprocess.run",
+                     return_value=_FakeProc(
+                         returncode=1,
+                         stderr="sbatch: error: invalid partition specified: bogus\n",
+                     ),
+                 ):
+                findings = _check_sbatch_test_only_for_artifact(
+                    Path(artifact_path), artifact
+                )
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].kind, "slurm_test_only")
+        self.assertEqual(findings[0].reason, "partition_invalid")
+
+    def test_sbatch_test_only_pass_returns_no_finding(self) -> None:
+        """Helper returns no findings when sbatch --test-only would accept."""
+        from unittest.mock import patch  # noqa: PLC0415
+        from flytetest.server import _check_sbatch_test_only_for_artifact  # noqa: PLC0415
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            sif_path = tmp_path / "busco.sif"
+            sif_path.write_bytes(b"fake-sif")
+            db_path = tmp_path / "busco_db"
+            db_path.mkdir()
+            artifact = self._build_artifact(
+                tmp_path,
+                runtime_images={"busco_sif": str(sif_path)},
+                tool_databases={"busco_lineage_dir": str(db_path)},
+            )
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+
+            class _FakeProc:
+                def __init__(self, returncode, stderr=""):
+                    self.returncode = returncode
+                    self.stderr = stderr
+                    self.stdout = "sbatch: Job 12345\n"
+
+            with patch("flytetest.staging.shutil.which", return_value="/usr/bin/sbatch"), \
+                 patch(
+                     "flytetest.staging.subprocess.run",
+                     return_value=_FakeProc(returncode=0),
+                 ):
+                findings = _check_sbatch_test_only_for_artifact(
+                    Path(artifact_path), artifact
+                )
+
+        self.assertEqual(findings, [])
+
 
 # ---------------------------------------------------------------------------
 # Step 25 — Bundle MCP tools

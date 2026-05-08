@@ -3,14 +3,22 @@ input path is reachable on the compute-visible filesystem before a Slurm job
 is submitted.  Mirrors DESIGN §7.5's offline-compute invariant — compute nodes
 cannot reach the internet, so unreachable paths fail the job silently.
 
-The function returns a list of findings rather than raising; the caller
+The functions return a list of findings rather than raising; the caller
 (``SlurmWorkflowSpecExecutor.submit`` in Step 23, ``validate_run_recipe`` in
 Step 24) decides whether to block submission or surface findings as warnings.
+
+Slurm UX rollout Phase 0 step 06 adds :func:`check_sbatch_test_only`, a
+post-staging preflight that asks the Slurm controller "would this submission
+be accepted?" via ``sbatch --test-only`` without queuing a job.  Catches
+partition / account / qos errors and over-limit resource requests before the
+real submission attempt.
 """
 
 from __future__ import annotations
 
 import os
+import shutil
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -151,3 +159,100 @@ def _check_path(
             )
 
     return findings
+
+
+# Update KIND_LABELS to handle the slurm_test_only kind from the new helper.
+_KIND_LABELS["slurm_test_only"] = "Slurm pre-queue check"
+
+
+_TEST_ONLY_REASON_PATTERNS: dict[str, tuple[str, ...]] = {
+    "partition_invalid": ("invalid partition", "partition specification"),
+    "account_unknown": ("invalid account", "user does not have permission"),
+    "resources_exceed_limits": (
+        "memorypernode",
+        "time limit",
+        "exceeds the limit",
+        "node count",
+    ),
+    "qos_invalid": ("invalid qos", "qos.*does not exist"),
+}
+
+
+def _classify_test_only_failure(stderr: str) -> str:
+    """Bucket Slurm's ``--test-only`` stderr into a structured reason code.
+
+    The patterns are case-insensitive substrings; precedence follows
+    ``_TEST_ONLY_REASON_PATTERNS`` insertion order.  Anything that does
+    not match becomes ``test_only_failed`` so the caller still gets a
+    structured finding rather than a free-form error string.
+    """
+    lower = stderr.lower()
+    for reason, patterns in _TEST_ONLY_REASON_PATTERNS.items():
+        if any(pattern in lower for pattern in patterns):
+            return reason
+    return "test_only_failed"
+
+
+def check_sbatch_test_only(
+    script_path: Path,
+    *,
+    runner=None,
+) -> list[StagingFinding]:
+    """Run ``sbatch --test-only`` against the generated submission script.
+
+    Slurm UX rollout Phase 0 step 06.  Returns an empty list when the
+    Slurm controller would accept the submission, or a list of one
+    :class:`StagingFinding` describing the rejection reason
+    (``partition_invalid``, ``account_unknown``, ``resources_exceed_limits``,
+    ``qos_invalid``, or ``test_only_failed``) so the caller can surface a
+    structured failure before queuing the real job.
+
+    Does NOT queue or run the job.  Slurm's ``--test-only`` flag is
+    designed for exactly this purpose; a successful test-only call does
+    not consume any scheduler resources.
+
+    When ``sbatch`` is missing on PATH this returns an empty list so
+    local-only environments do not block on the missing dependency; the
+    main staging preflight already gates on the executable separately
+    when it actually intends to submit.
+
+    Args:
+        script_path: Path to the generated sbatch script that the real
+            submission would run.
+        runner: Injectable ``subprocess.run``-compatible callable so
+            tests can mock the controller's response.
+    """
+    if shutil.which("sbatch") is None:
+        return []
+    if not script_path.exists():
+        return [
+            StagingFinding(
+                kind="slurm_test_only",
+                key="sbatch_test_only",
+                path=str(script_path),
+                reason="script_missing",
+            )
+        ]
+
+    if runner is None:
+        runner = subprocess.run
+    proc = runner(
+        ["sbatch", "--test-only", str(script_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    if getattr(proc, "returncode", 1) == 0:
+        return []
+
+    stderr = (getattr(proc, "stderr", "") or "").strip()
+    reason = _classify_test_only_failure(stderr)
+    return [
+        StagingFinding(
+            kind="slurm_test_only",
+            key="sbatch_test_only",
+            path=str(script_path),
+            reason=reason,
+        )
+    ]

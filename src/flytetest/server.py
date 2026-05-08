@@ -166,7 +166,11 @@ from flytetest.spec_executor import (
     load_local_run_record,
     load_slurm_run_record,
 )
-from flytetest.staging import check_offline_staging, format_finding
+from flytetest.staging import (
+    check_offline_staging,
+    check_sbatch_test_only,
+    format_finding,
+)
 from flytetest.specs import ResourceSpec, RuntimeImageSpec
 
 
@@ -3122,12 +3126,76 @@ def validate_run_recipe(
             })
 
     recipe_id = recipe_id_from_artifact_path(Path(artifact_path))
-    return asdict(ValidateRecipeReply(
-        supported=not findings,
-        recipe_id=recipe_id,
-        execution_profile=execution_profile,
-        findings=tuple(findings),
-    ))
+
+    # Phase 0 step 06: after staging passes for a slurm recipe, ask the Slurm
+    # controller whether it would accept the submission via `sbatch --test-only`
+    # so partition / account / qos errors and over-limit resource requests
+    # surface here instead of 30 seconds into the real sbatch attempt.  Skipped
+    # if any staging finding already failed (pointless to test sbatch when
+    # paths are missing) or if the local environment has no sbatch executable.
+    if execution_profile == "slurm" and not findings:
+        test_only_findings = _check_sbatch_test_only_for_artifact(
+            Path(artifact_path), artifact
+        )
+        for sf in test_only_findings:
+            findings.append({
+                "kind": sf.kind,
+                "key": sf.key,
+                "path": sf.path,
+                "reason": sf.reason,
+                "message": format_finding(sf),
+            })
+
+    return asdict(
+        ValidateRecipeReply(
+            supported=not findings,
+            recipe_id=recipe_id,
+            execution_profile=execution_profile,
+            findings=tuple(findings),
+        )
+    )
+
+
+def _check_sbatch_test_only_for_artifact(
+    artifact_path: Path,
+    artifact,
+) -> list[StagingFinding]:
+    """Render a temporary sbatch script and run ``sbatch --test-only`` on it.
+
+    The script is written to a temp dir and removed after the controller
+    responds; nothing under ``.runtime/runs/`` is touched.  When ``sbatch``
+    is missing on PATH the helper short-circuits with no findings so
+    local-only test runs do not fail the validator.
+    """
+    import shutil  # noqa: PLC0415
+    import tempfile  # noqa: PLC0415
+
+    if shutil.which("sbatch") is None:
+        return []
+
+    from flytetest.spec_executor import (  # noqa: PLC0415
+        DEFAULT_SLURM_SCRIPT_FILENAME,
+        render_slurm_script,
+    )
+
+    binding_plan = artifact.binding_plan
+    workflow_spec = artifact.workflow_spec
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        script_path = tmp_path / DEFAULT_SLURM_SCRIPT_FILENAME
+        script_text = render_slurm_script(
+            artifact_path=artifact_path,
+            workflow_name=workflow_spec.name,
+            run_id="validate-test-only",
+            stdout_path=tmp_path / "slurm-%j.out",
+            stderr_path=tmp_path / "slurm-%j.err",
+            resource_spec=binding_plan.resource_spec,
+            repo_root=REPO_ROOT,
+            python_executable=sys.executable,
+            recipe_id=recipe_id_from_artifact_path(artifact_path),
+        )
+        script_path.write_text(script_text)
+        return check_sbatch_test_only(script_path)
 
 
 # ---------------------------------------------------------------------------

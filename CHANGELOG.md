@@ -32,6 +32,12 @@ Entry template:
 
 ## Unreleased
 
+### Slurm UX rollout — Phase 0 step 06 (2026-05-08)
+
+- [x] 2026-05-08 `staging.py`: new `check_sbatch_test_only(script_path, runner=...)` runs `sbatch --test-only` against a generated submission script and returns `list[StagingFinding]`. Slurm controller rejections are bucketed into structured `reason` codes (`partition_invalid`, `account_unknown`, `resources_exceed_limits`, `qos_invalid`, or `test_only_failed`) so callers handle them consistently with the rest of the staging surface. Skips silently when `sbatch` is missing on PATH so local-only environments are not blocked.
+- [x] 2026-05-08 `server.py`: `validate_run_recipe` now invokes the new check after `check_offline_staging` succeeds for slurm-profile recipes via the new `_check_sbatch_test_only_for_artifact` helper, which renders a temporary sbatch script with the frozen `resource_spec` and probes the controller without queuing a job. Catches partition / account / qos typos and over-limit resource requests *before* the real sbatch attempt instead of 30 seconds into it.
+- [x] 2026-05-08 Tests: `TestClassifyTestOnlyFailure` (5 cases) covers the reason-classification table; `TestCheckSbatchTestOnly` (7 cases) drives the helper with an injected runner across the pass / partition_invalid / resources_exceed_limits / account_unknown / unrecognised / sbatch-missing / script-missing branches; `ValidateRunRecipeTests` adds two new cases that hit the helper through `_check_sbatch_test_only_for_artifact` so the assertion does not depend on the fixture's pre-existing binding-validation behavior.
+
 ### Slurm UX rollout — Phase 0 step 05 (2026-05-08)
 
 - [x] 2026-05-08 `slurm_introspection.py` (new): `list_slurm_partitions()` wraps `sinfo --noheader --format='%P %a %l %D %A'` and returns a `list[SlurmPartitionInfo]` with `name`, `state`, `max_walltime`, `available_nodes`, `total_nodes`. The default-partition `*` suffix is stripped from names; unparseable rows are skipped rather than raising; `sinfo` missing on PATH raises `FileNotFoundError`. Sibling `list_slurm_partitions_reply()` wraps the call in a structured `{supported: bool, ...}` reply for the MCP layer.

@@ -10,7 +10,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 import pytest
 
-from flytetest.staging import StagingFinding, _check_path, check_offline_staging, format_finding
+from flytetest.staging import (
+    StagingFinding,
+    _check_path,
+    _classify_test_only_failure,
+    check_offline_staging,
+    check_sbatch_test_only,
+    format_finding,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -285,3 +292,144 @@ class TestFormatFinding:
         assert "/tmp/ref.fa" in message
         assert "Input path" in message
         assert "shared" in message
+
+
+# ---------------------------------------------------------------------------
+# Phase 0 step 06: sbatch --test-only integration
+# ---------------------------------------------------------------------------
+
+
+class _FakeProcess:
+    """Standin for ``subprocess.CompletedProcess`` for ``sbatch --test-only``."""
+
+    def __init__(self, returncode: int, stderr: str = "", stdout: str = "") -> None:
+        self.returncode = returncode
+        self.stderr = stderr
+        self.stdout = stdout
+
+
+class TestClassifyTestOnlyFailure:
+    """Bucket Slurm error strings into structured reasons."""
+
+    def test_invalid_partition(self):
+        msg = "sbatch: error: invalid partition specified: bogus_partition\n"
+        assert _classify_test_only_failure(msg) == "partition_invalid"
+
+    def test_invalid_account(self):
+        msg = "sbatch: error: invalid account or account/partition combination\n"
+        assert _classify_test_only_failure(msg) == "account_unknown"
+
+    def test_resources_exceed_limits(self):
+        msg = "sbatch: error: Memory exceeds the limit on partition caslake\n"
+        assert _classify_test_only_failure(msg) == "resources_exceed_limits"
+
+    def test_invalid_qos(self):
+        msg = "sbatch: error: invalid qos specification\n"
+        assert _classify_test_only_failure(msg) == "qos_invalid"
+
+    def test_unrecognised_falls_through(self):
+        msg = "sbatch: error: scheduler unavailable\n"
+        assert _classify_test_only_failure(msg) == "test_only_failed"
+
+
+class TestCheckSbatchTestOnly:
+    """End-to-end behaviour of the helper, mocked at the runner level."""
+
+    def test_pass_returns_no_findings(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("flytetest.staging.shutil.which", lambda _: "/usr/bin/sbatch")
+        script = tmp_path / "submit.sh"
+        script.write_text("#!/bin/bash\nsleep 1\n")
+
+        findings = check_sbatch_test_only(
+            script,
+            runner=lambda *a, **kw: _FakeProcess(returncode=0, stdout="sbatch: Job 12345\n"),
+        )
+
+        assert findings == []
+
+    def test_invalid_partition_produces_structured_finding(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("flytetest.staging.shutil.which", lambda _: "/usr/bin/sbatch")
+        script = tmp_path / "submit.sh"
+        script.write_text("#!/bin/bash\n")
+
+        findings = check_sbatch_test_only(
+            script,
+            runner=lambda *a, **kw: _FakeProcess(
+                returncode=1,
+                stderr="sbatch: error: invalid partition specified: bogus\n",
+            ),
+        )
+
+        assert len(findings) == 1
+        assert findings[0].kind == "slurm_test_only"
+        assert findings[0].reason == "partition_invalid"
+
+    def test_resources_exceed_limits_produces_structured_finding(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("flytetest.staging.shutil.which", lambda _: "/usr/bin/sbatch")
+        script = tmp_path / "submit.sh"
+        script.write_text("#!/bin/bash\n")
+
+        findings = check_sbatch_test_only(
+            script,
+            runner=lambda *a, **kw: _FakeProcess(
+                returncode=1,
+                stderr="sbatch: error: Memory exceeds the limit on partition caslake\n",
+            ),
+        )
+
+        assert len(findings) == 1
+        assert findings[0].reason == "resources_exceed_limits"
+
+    def test_account_unknown_produces_structured_finding(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("flytetest.staging.shutil.which", lambda _: "/usr/bin/sbatch")
+        script = tmp_path / "submit.sh"
+        script.write_text("#!/bin/bash\n")
+
+        findings = check_sbatch_test_only(
+            script,
+            runner=lambda *a, **kw: _FakeProcess(
+                returncode=1,
+                stderr="sbatch: error: user does not have permission to submit\n",
+            ),
+        )
+
+        assert findings[0].reason == "account_unknown"
+
+    def test_unrecognised_failure_falls_through(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("flytetest.staging.shutil.which", lambda _: "/usr/bin/sbatch")
+        script = tmp_path / "submit.sh"
+        script.write_text("#!/bin/bash\n")
+
+        findings = check_sbatch_test_only(
+            script,
+            runner=lambda *a, **kw: _FakeProcess(
+                returncode=1,
+                stderr="sbatch: error: scheduler temporarily unavailable\n",
+            ),
+        )
+
+        assert findings[0].reason == "test_only_failed"
+
+    def test_missing_sbatch_skips_silently(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("flytetest.staging.shutil.which", lambda _: None)
+        script = tmp_path / "submit.sh"
+        script.write_text("#!/bin/bash\n")
+
+        # Runner should never be called; pass a sentinel that would break if invoked.
+        def trap(*a, **kw):
+            raise AssertionError("runner must not be called when sbatch is missing")
+
+        findings = check_sbatch_test_only(script, runner=trap)
+        assert findings == []
+
+    def test_missing_script_records_structured_finding(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("flytetest.staging.shutil.which", lambda _: "/usr/bin/sbatch")
+        script = tmp_path / "absent.sh"
+
+        findings = check_sbatch_test_only(
+            script,
+            runner=lambda *a, **kw: _FakeProcess(returncode=0),
+        )
+
+        assert len(findings) == 1
+        assert findings[0].reason == "script_missing"
