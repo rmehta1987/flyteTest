@@ -16,6 +16,10 @@ SRC_DIR = REPO_ROOT / "src"
 
 sys.path.insert(0, str(TESTS_DIR))
 sys.path.insert(0, str(SRC_DIR))
+# flyte_rnaseq_workflow.py lives at the repo root and is imported below as
+# a top-level module; pytest may be invoked from a different cwd, so add
+# REPO_ROOT explicitly rather than relying on a particular working dir.
+sys.path.insert(0, str(REPO_ROOT))
 
 from flyte_stub import install_flyte_stub
 

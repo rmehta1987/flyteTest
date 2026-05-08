@@ -345,6 +345,8 @@ class ServerTests(TestCase):
             "my_custom_filter",
             # On-ramp reference composed workflow
             "apply_custom_filter",
+            # Tutorial chapter 07 reference task
+            "count_vcf_records",
             # RNA-seq QC + quantification workflow
             "rnaseq_qc_quant",
         )
@@ -494,10 +496,30 @@ class ServerTests(TestCase):
         self.assertIn("artifact_path", payload["result_summary_fields"])
         self.assertIn("workflow_spec", payload["typed_planning_fields"])
 
+    def _force_bundles_available(self):
+        """Make every BUNDLE appear available.
+
+        plan_request's `_suggested_bundles_for_target` filters by
+        availability, which depends on local fixture paths. The dev box
+        for this test suite does not stage every BRAKER3 / Exonerate /
+        BUSCO fixture, so we patch the availability check rather than
+        require the user to download large reference data.
+        """
+        from flytetest.bundles import BundleAvailability  # noqa: PLC0415
+
+        def _always_available(bundle):
+            return BundleAvailability(name=bundle.name, available=True, reasons=())
+
+        return patch(
+            "flytetest.bundles._check_bundle_availability",
+            side_effect=_always_available,
+        )
+
     def test_plan_request_matches_exact_registered_stage_name(self) -> None:
         """Free-text preview routes an exact biological stage to its registered target.
 """
-        payload = plan_request(BRAKER_GOAL_PROMPT)
+        with self._force_bundles_available():
+            payload = plan_request(BRAKER_GOAL_PROMPT)
 
         self.assertFalse(payload["supported"])
         self.assertEqual(payload["target"], SUPPORTED_WORKFLOW_NAME)
@@ -511,7 +533,8 @@ class ServerTests(TestCase):
     def test_plan_request_still_reports_broader_typed_specs(self) -> None:
         """Composition-eligible prompts decline with §10 recovery channels when no bindings exist.
 """
-        payload = plan_request("Process annotation workflow data.")
+        with self._force_bundles_available():
+            payload = plan_request("Process annotation workflow data.")
 
         self.assertFalse(payload["supported"])
         self.assertEqual(payload["pipeline_family"], "annotation")
@@ -521,7 +544,8 @@ class ServerTests(TestCase):
     def test_plan_request_matches_exact_entry_name_without_parsing_paths(self) -> None:
         """Free-text preview can still resolve an exact registered entry name.
 """
-        payload = plan_request("protein_evidence_alignment")
+        with self._force_bundles_available():
+            payload = plan_request("protein_evidence_alignment")
 
         self.assertFalse(payload["supported"])
         self.assertEqual(payload["target"], SUPPORTED_PROTEIN_WORKFLOW_NAME)
@@ -4482,6 +4506,11 @@ class ValidateRunRecipeTests(TestCase):
         """Build a minimal BUSCO Slurm artifact with controlled staging paths."""
         result_dir = tmp_path / "repeat_filter_results_validate"
         result_dir.mkdir(exist_ok=True)
+        # Stage a stub reference genome so the binding-existence check on
+        # `QualityAssessmentTarget` can resolve. The manifest record carries
+        # the absolute path so validate_run_recipe finds the file.
+        reference_genome = tmp_path / "genome.fa"
+        reference_genome.write_text(">chr1\nACGT\n")
         # Create the output files so binding validation (path-existence check) passes.
         gff3_path = result_dir / "all_repeats_removed.gff3"
         proteins_path = result_dir / "all_repeats_removed.proteins.fa"
@@ -4491,7 +4520,7 @@ class ValidateRunRecipeTests(TestCase):
             json.dumps({
                 "workflow": "annotation_repeat_filtering",
                 "assumptions": [],
-                "inputs": {"reference_genome": "data/braker3/reference/genome.fa"},
+                "inputs": {"reference_genome": str(reference_genome)},
                 "outputs": {
                     "all_repeats_removed_gff3": str(gff3_path),
                     "final_proteins_fasta": str(proteins_path),
