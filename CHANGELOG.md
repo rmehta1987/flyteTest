@@ -32,6 +32,11 @@ Entry template:
 
 ## Unreleased
 
+### Slurm UX rollout — Phase 0 step 04 (2026-05-08)
+
+- [x] 2026-05-08 `specs.py`: `ResourceSpec.__post_init__` validates format-sensitive fields at freeze time. `memory` must match `^\d+(\.\d+)?(K|M|G|T)i?$` (rejects `"32 GB"`, `"32GB"`, `"32 G"`); `walltime` must match Slurm's `[D-]HH:MM[:SS]` (rejects `"48h"`, `"4 hours"`); `cpu` must parse as a positive integer string. `partition` and `account` are required (non-empty after strip) when `execution_class != "local"`. Catches typos at recipe freeze instead of 30 seconds into the sbatch attempt.
+- [x] 2026-05-08 Tests: `ResourceSpecValidatorTests` (15 cases) in `test_specs.py` covers each validator including valid forms, common-mistake forms, whitespace-only fields, and the local-execution exemption. Existing slurm-execution-profile fixtures in `test_server.py`, `test_planning.py`, and `test_spec_executor.py` updated to pass `account="rcc-staff"` so they exercise the canonical "queue and account come from the user" path documented in AGENTS.md.
+
 ### Slurm UX rollout — Phase 0 step 03 (2026-05-08)
 
 - [x] 2026-05-08 `specs.py`: `ResourceSpec` adds `extend_module_loads: tuple[str, ...] = ()` (10 fields after this change). Recommended over `module_loads` for the common case of "I want the defaults plus one more module" — `extend_module_loads=("bcftools/1.20",)` ships all five modules without importing `DEFAULT_SLURM_MODULE_LOADS`. Docstring on both fields documents the precedence.

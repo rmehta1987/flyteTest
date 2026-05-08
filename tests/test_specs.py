@@ -318,3 +318,78 @@ class SpecTests(TestCase):
         )
 
         self.assertEqual(ExecutionProfile.from_dict(profile.to_dict()), profile)
+
+
+class ResourceSpecValidatorTests(TestCase):
+    """Phase 0 step 04: ResourceSpec.__post_init__ catches typos at freeze time."""
+
+    def test_memory_with_space_raises(self) -> None:
+        with self.assertRaisesRegex(ValueError, "memory="):
+            ResourceSpec(memory="32 GB")
+
+    def test_memory_with_b_suffix_raises(self) -> None:
+        with self.assertRaisesRegex(ValueError, "memory="):
+            ResourceSpec(memory="32GB")
+
+    def test_memory_valid_forms_pass(self) -> None:
+        ResourceSpec(memory="32G")
+        ResourceSpec(memory="500M")
+        ResourceSpec(memory="2Ti")
+        ResourceSpec(memory="80Gi")
+        ResourceSpec(memory="4.5G")
+
+    def test_walltime_non_slurm_format_raises(self) -> None:
+        with self.assertRaisesRegex(ValueError, "walltime="):
+            ResourceSpec(walltime="48h")
+
+    def test_walltime_natural_language_raises(self) -> None:
+        with self.assertRaisesRegex(ValueError, "walltime="):
+            ResourceSpec(walltime="4 hours")
+
+    def test_walltime_valid_forms_pass(self) -> None:
+        ResourceSpec(walltime="04:00:00")
+        ResourceSpec(walltime="00:30")
+        ResourceSpec(walltime="1-12:00:00")
+
+    def test_cpu_non_integer_raises(self) -> None:
+        with self.assertRaisesRegex(ValueError, "cpu="):
+            ResourceSpec(cpu="eight")
+
+    def test_cpu_zero_raises(self) -> None:
+        with self.assertRaisesRegex(ValueError, "cpu="):
+            ResourceSpec(cpu="0")
+
+    def test_cpu_negative_raises(self) -> None:
+        with self.assertRaisesRegex(ValueError, "cpu="):
+            ResourceSpec(cpu="-1")
+
+    def test_cpu_valid_string_passes(self) -> None:
+        ResourceSpec(cpu="8")
+
+    def test_partition_required_for_slurm(self) -> None:
+        with self.assertRaisesRegex(ValueError, "partition is required"):
+            ResourceSpec(execution_class="slurm", account="mylab")
+
+    def test_account_required_for_slurm(self) -> None:
+        with self.assertRaisesRegex(ValueError, "account is required"):
+            ResourceSpec(execution_class="slurm", partition="caslake")
+
+    def test_partition_whitespace_only_raises(self) -> None:
+        with self.assertRaisesRegex(ValueError, "partition is required"):
+            ResourceSpec(execution_class="slurm", partition="   ", account="mylab")
+
+    def test_local_execution_no_partition_required(self) -> None:
+        ResourceSpec(execution_class="local")  # must not raise
+        ResourceSpec()  # must not raise (execution_class None)
+
+    def test_valid_slurm_spec_passes(self) -> None:
+        spec = ResourceSpec(
+            cpu="8",
+            memory="32G",
+            walltime="04:00:00",
+            partition="caslake",
+            account="mylab",
+            execution_class="slurm",
+        )
+        self.assertEqual(spec.memory, "32G")
+        self.assertEqual(spec.walltime, "04:00:00")

@@ -640,7 +640,7 @@ class ServerTests(TestCase):
                 BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
-                resource_request={"cpu": 12, "memory": "48Gi", "partition": "batch", "walltime": "02:00:00"},
+                resource_request={"cpu": 12, "memory": "48Gi", "partition": "batch", "account": "rcc-staff", "walltime": "02:00:00"},
                 execution_profile="slurm",
                 recipe_dir=tmp_path,
             )
@@ -678,6 +678,7 @@ class ServerTests(TestCase):
                 BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                resource_request={"partition": "batch", "account": "rcc-staff"},
                 execution_profile="slurm",
                 recipe_dir=tmp_path,
             )
@@ -744,6 +745,7 @@ class ServerTests(TestCase):
                 BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                resource_request={"partition": "batch", "account": "rcc-staff"},
                 execution_profile="slurm",
                 recipe_dir=tmp_path,
             )
@@ -821,12 +823,14 @@ class ServerTests(TestCase):
                 BUSCO_GOAL_PROMPT,
                 manifest_sources=(busco_result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                resource_request={"partition": "batch", "account": "rcc-staff"},
                 execution_profile="slurm",
                 recipe_dir=tmp_path,
             )
             protein_recipe = _prepare_run_recipe_impl(
                 PROTEIN_GOAL_PROMPT,
                 explicit_bindings=_protein_workflow_bindings(),
+                resource_request={"partition": "batch", "account": "rcc-staff"},
                 execution_profile="slurm",
                 recipe_dir=tmp_path,
             )
@@ -926,7 +930,7 @@ class ServerTests(TestCase):
                 BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
-                resource_request={"cpu": 12, "memory": "48Gi", "partition": "batch"},
+                resource_request={"cpu": 12, "memory": "48Gi", "partition": "batch", "account": "rcc-staff"},
                 execution_profile="slurm",
                 recipe_dir=tmp_path,
             )
@@ -978,7 +982,7 @@ class ServerTests(TestCase):
                 BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
-                resource_request={"cpu": 12, "memory": "48Gi", "partition": "batch"},
+                resource_request={"cpu": 12, "memory": "48Gi", "partition": "batch", "account": "rcc-staff"},
                 execution_profile="slurm",
                 recipe_dir=tmp_path,
             )
@@ -1041,6 +1045,7 @@ class ServerTests(TestCase):
                 BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                resource_request={"partition": "batch", "account": "rcc-staff"},
                 execution_profile="slurm",
                 recipe_dir=tmp_path,
             )
@@ -1083,6 +1088,7 @@ class ServerTests(TestCase):
                 BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                resource_request={"partition": "batch", "account": "rcc-staff"},
                 execution_profile="slurm",
                 recipe_dir=tmp_path,
             )
@@ -1139,6 +1145,7 @@ class ServerTests(TestCase):
                 BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                resource_request={"partition": "batch", "account": "rcc-staff"},
                 execution_profile="slurm",
                 recipe_dir=tmp_path,
             )
@@ -1196,6 +1203,7 @@ class ServerTests(TestCase):
                 BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                resource_request={"partition": "batch", "account": "rcc-staff"},
                 execution_profile="slurm",
                 recipe_dir=tmp_path,
             )
@@ -1220,6 +1228,7 @@ class ServerTests(TestCase):
                 BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                resource_request={"partition": "batch", "account": "rcc-staff"},
                 execution_profile="slurm",
                 recipe_dir=tmp_path,
             )
@@ -1256,6 +1265,7 @@ class ServerTests(TestCase):
                 BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                resource_request={"partition": "batch", "account": "rcc-staff"},
                 execution_profile="slurm",
                 recipe_dir=tmp_path,
             )
@@ -2653,6 +2663,7 @@ class ServerTests(TestCase):
                 BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                resource_request={"partition": "batch", "account": "rcc-staff"},
                 execution_profile="slurm",
                 recipe_dir=tmp_path,
             )
@@ -2751,6 +2762,7 @@ class ServerTests(TestCase):
                 BUSCO_GOAL_PROMPT,
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
+                resource_request={"partition": "batch", "account": "rcc-staff"},
                 execution_profile="slurm",
                 recipe_dir=tmp_path,
             )
@@ -4330,7 +4342,7 @@ class StagingPreflightServerTests(TestCase):
                 source_prompt="staging replay test",
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
-                resource_request={"cpu": 4, "memory": "16Gi", "partition": "batch", "walltime": "01:00:00"},
+                resource_request={"cpu": 4, "memory": "16Gi", "partition": "batch", "account": "rcc-staff", "walltime": "01:00:00"},
                 execution_profile="slurm",
                 # Override both registry defaults: bad db path, valid sif path.
                 runtime_images={"busco_sif": str(valid_sif)},
@@ -4492,7 +4504,7 @@ class ValidateRunRecipeTests(TestCase):
             source_prompt="validate_run_recipe test",
             manifest_sources=(result_dir,),
             runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
-            resource_request={"cpu": 4, "memory": "16Gi", "partition": "batch", "walltime": "01:00:00"},
+            resource_request={"cpu": 4, "memory": "16Gi", "partition": "batch", "account": "rcc-staff", "walltime": "01:00:00"},
             execution_profile="slurm",
             runtime_images=runtime_images,
             tool_databases=tool_databases,

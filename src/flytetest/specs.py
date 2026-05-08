@@ -8,10 +8,28 @@ already exists.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from flytetest.serialization import SerializableMixin, deserialize_value_strict, serialize_value_with_dicts
+
+
+_MEMORY_RE = re.compile(r"^\d+(\.\d+)?(K|M|G|T)i?$")
+"""Slurm-accepted memory units: ``\\d+(.\\d+)?(K|M|G|T)i?``.
+
+Examples that pass: ``32G``, ``500M``, ``2Ti``, ``80Gi``.  Common mistakes
+this rejects at freeze: ``32 GB`` (space + ``B`` suffix), ``32GB`` (``B``
+suffix), ``32 G`` (space).
+"""
+
+_WALLTIME_RE = re.compile(r"^(\d+-)?\d{1,2}:\d{2}(:\d{2})?$")
+"""Slurm-accepted walltime: ``[D-]HH:MM[:SS]``.
+
+Examples that pass: ``04:00:00``, ``1-12:00:00``, ``00:30``.  Common
+mistakes this rejects at freeze: ``48h`` (Slurm expects colon-separated),
+``4 hours``, ``4:00`` past 99 hours (use day-prefix instead).
+"""
 
 EntityKind = Literal["task", "workflow", "generated_workflow"]
 NodeKind = Literal["task", "workflow", "generated_workflow"]
@@ -64,6 +82,59 @@ class ResourceSpec(SpecSerializable):
     module_loads: tuple[str, ...] = field(default_factory=tuple)
     extend_module_loads: tuple[str, ...] = field(default_factory=tuple)
     notes: tuple[str, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        """Validate format-sensitive fields at freeze time.
+
+        Slurm UX rollout Phase 0 step 04.  Catches typos like
+        ``memory="32 GB"`` (Slurm rejects the space + ``B`` suffix),
+        ``walltime="48h"`` (Slurm requires colon-separated), or
+        ``cpu="eight"`` at freeze rather than 30 seconds into the sbatch
+        attempt.  ``partition`` and ``account`` must be non-empty when
+        ``execution_class`` is anything other than ``"local"``; the
+        scheduler's queue policy is otherwise unspecified and submissions
+        are rejected at the controller.
+
+        ``frozen=True`` does not interfere — ``__post_init__`` runs after
+        the field assignments and only raises; no mutation is needed.
+        """
+        if self.memory is not None and not _MEMORY_RE.match(self.memory):
+            raise ValueError(
+                f"memory={self.memory!r} does not match the Slurm-accepted "
+                f"format <number>(K|M|G|T)[i] (e.g., '32G', '2Ti'). "
+                f"Common mistakes: trailing/leading whitespace, the 'B' "
+                f"suffix ('32GB'), or a space before the unit ('32 G')."
+            )
+        if self.walltime is not None and not _WALLTIME_RE.match(self.walltime):
+            raise ValueError(
+                f"walltime={self.walltime!r} does not match Slurm format "
+                f"D-HH:MM:SS, HH:MM:SS, or HH:MM (e.g., '04:00:00', "
+                f"'1-12:00:00'). Common mistakes: '48h' or '4 hours' — "
+                f"Slurm requires colon-separated values."
+            )
+        if self.cpu is not None:
+            try:
+                cpu_int = int(self.cpu)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"cpu={self.cpu!r} is not a positive integer string "
+                    f"(e.g., '8')."
+                ) from exc
+            if cpu_int <= 0:
+                raise ValueError(
+                    f"cpu={self.cpu!r} must be a positive integer string."
+                )
+        if self.execution_class and self.execution_class != "local":
+            if not (self.partition and self.partition.strip()):
+                raise ValueError(
+                    f"partition is required for execution_class="
+                    f"{self.execution_class!r}; empty / whitespace not allowed."
+                )
+            if not (self.account and self.account.strip()):
+                raise ValueError(
+                    f"account is required for execution_class="
+                    f"{self.execution_class!r}; empty / whitespace not allowed."
+                )
 
 
 @dataclass(frozen=True, slots=True)

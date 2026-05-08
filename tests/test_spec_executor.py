@@ -157,7 +157,7 @@ def _slurm_busco_artifact_with_runtime_bindings(tmp_path: Path):
         source_prompt="Run BUSCO quality assessment on the annotation using execution profile slurm.",
         manifest_sources=(result_dir,),
         runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
-        resource_request={"cpu": 20, "memory": "80Gi", "partition": "batch", "walltime": "04:00:00"},
+        resource_request={"cpu": 20, "memory": "80Gi", "partition": "batch", "account": "rcc-staff", "walltime": "04:00:00"},
         execution_profile="slurm",
     )
     return artifact_from_typed_plan(typed_plan, created_at="2026-04-08T12:00:00Z")
@@ -2192,7 +2192,7 @@ def _build_slurm_staging_artifact(
         source_prompt="staging preflight test",
         manifest_sources=(result_dir,),
         runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
-        resource_request={"cpu": 4, "memory": "16Gi", "partition": "batch", "walltime": "01:00:00"},
+        resource_request={"cpu": 4, "memory": "16Gi", "partition": "batch", "account": "rcc-staff", "walltime": "01:00:00"},
         execution_profile="slurm",
         runtime_images=runtime_images if runtime_images is not None else {},
         tool_databases=tool_databases if tool_databases is not None else {},

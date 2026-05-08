@@ -375,7 +375,7 @@ class PlanningTests(TestCase):
                 "annotation_qc_busco",
                 manifest_sources=(result_dir,),
                 runtime_bindings={"busco_lineages_text": "embryophyta_odb10"},
-                resource_request={"partition": "batch"},
+                resource_request={"partition": "batch", "account": "rcc-staff"},
                 execution_profile="slurm",
             )
 
