@@ -9,7 +9,6 @@ already exists.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Literal
 
 from flytetest.serialization import SerializableMixin, deserialize_value_strict, serialize_value_with_dicts
@@ -40,13 +39,19 @@ class ResourceSpec(SpecSerializable):
     """Describe the expected compute resources for one step or workflow.
 
     Attributes:
-        module_loads: Scheduler environment modules to load before activating
-            the project runtime.  Empty means use FLyteTest's Slurm defaults
-            (``python/3.11.9`` and ``apptainer/1.4.1``) for backward-compatible
-            submissions.  Adding this field changes ``dataclasses.asdict()``
-            output and therefore ``cache_identity_key`` for any artifact that
-            carries a ``ResourceSpec``; legacy artifacts that lack this field
-            still deserialize correctly because the default is ``()``.
+        module_loads: Full replacement of FLyteTest's
+            ``DEFAULT_SLURM_MODULE_LOADS`` defaults.  Use only when you need
+            to drop a default module (rare).  For the common case of "I want
+            the defaults plus one more module" prefer ``extend_module_loads``,
+            which appends to the defaults instead of replacing them.  If both
+            ``module_loads`` and ``extend_module_loads`` are set,
+            ``module_loads`` wins for backward compatibility and a warning
+            is logged at submit time so the silent-drop footgun is visible.
+        extend_module_loads: Modules appended to ``DEFAULT_SLURM_MODULE_LOADS``
+            for this recipe.  Recommended over ``module_loads`` for the
+            common case of adding a tool to the defaults
+            (``extend_module_loads=("bcftools/1.20",)``).  Ignored with a
+            warning when ``module_loads`` is also set.
     """
 
     cpu: str | None = None
@@ -57,6 +62,7 @@ class ResourceSpec(SpecSerializable):
     walltime: str | None = None
     execution_class: str | None = None
     module_loads: tuple[str, ...] = field(default_factory=tuple)
+    extend_module_loads: tuple[str, ...] = field(default_factory=tuple)
     notes: tuple[str, ...] = field(default_factory=tuple)
 
 

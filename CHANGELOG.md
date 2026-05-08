@@ -32,6 +32,13 @@ Entry template:
 
 ## Unreleased
 
+### Slurm UX rollout — Phase 0 step 03 (2026-05-08)
+
+- [x] 2026-05-08 `specs.py`: `ResourceSpec` adds `extend_module_loads: tuple[str, ...] = ()` (10 fields after this change). Recommended over `module_loads` for the common case of "I want the defaults plus one more module" — `extend_module_loads=("bcftools/1.20",)` ships all five modules without importing `DEFAULT_SLURM_MODULE_LOADS`. Docstring on both fields documents the precedence.
+- [x] 2026-05-08 `spec_executor.py`: new `_resolve_module_loads` helper centralizes the precedence (`module_loads` alone replaces; `extend_module_loads` alone appends to defaults; both set → `module_loads` wins, warning logged; neither set → defaults). `_slurm_module_load_lines` and `_effective_resource_spec` route through it so retries and submission share the same resolution. Eliminates the silent-drop footgun (`module_loads=["bcftools/1.20"]` previously dropped `python/3.11.9 + apptainer/1.4.1 + gatk/4.5.0 + samtools/1.22.1`).
+- [x] 2026-05-08 `AGENTS.md` §Prompt/MCP/Slurm: documented the new precedence and recommended path; legacy splat pattern still noted as an escape hatch.
+- [x] 2026-05-08 Tests: `ExtendModuleLoadsPrecedenceTests` (6 cases) covers all four precedence cases, the warning emission, the rendered Slurm script, and round-trip serialization. `test_serialization_regression.py` updated for the new field in `ResourceSpec.to_dict()`.
+
 ### Slurm UX rollout — Phase 0 step 02 (2026-05-08)
 
 - [x] 2026-05-08 `spec_executor.py` `_submit_saved_artifact`: after `save_slurm_run_record(record)` succeeds, creates user-facing convenience links inside the run dir (`inputs/` symlink for single shared root, named subdir of symlinks for multi-root, plus a real `outputs/` directory) and points `<run_root>/latest` at the most recent successful submission. Idempotent on retry — links are removed and recreated. Failures here never block sbatch.

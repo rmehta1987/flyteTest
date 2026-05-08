@@ -1369,18 +1369,51 @@ def _effective_resource_spec(
         walltime=resource_overrides.walltime or base.walltime,
         execution_class=resource_overrides.execution_class or base.execution_class,
         module_loads=resource_overrides.module_loads or base.module_loads,
+        extend_module_loads=resource_overrides.extend_module_loads or base.extend_module_loads,
         notes=(*base.notes, *resource_overrides.notes),
     )
+
+
+def _resolve_module_loads(
+    module_loads: tuple[str, ...],
+    extend_module_loads: tuple[str, ...],
+    *,
+    defaults: tuple[str, ...] = DEFAULT_SLURM_MODULE_LOADS,
+) -> tuple[str, ...]:
+    """Resolve the effective module-load list per documented precedence.
+
+    Slurm UX rollout Phase 0 step 03.  Precedence:
+
+    - ``module_loads`` set, ``extend_module_loads`` empty → full replace (legacy)
+    - ``module_loads`` empty, ``extend_module_loads`` set → ``defaults + extend``
+    - both set → ``module_loads`` wins (legacy semantics) and a warning is
+      logged so the silent-drop footgun is visible
+    - both empty → ``defaults``
+    """
+    if module_loads and extend_module_loads:
+        _LOG.warning(
+            "Both module_loads (%r) and extend_module_loads (%r) are set on "
+            "ResourceSpec; module_loads wins, extend_module_loads is ignored. "
+            "Use extend_module_loads alone for the common 'add to defaults' case.",
+            list(module_loads),
+            list(extend_module_loads),
+        )
+        return tuple(module_loads)
+    if module_loads:
+        return tuple(module_loads)
+    if extend_module_loads:
+        return tuple(defaults) + tuple(extend_module_loads)
+    return tuple(defaults)
 
 
 def _slurm_module_load_lines(resource_spec: ResourceSpec | None) -> list[str]:
     """Render scheduler module-load commands for the generated Slurm script.
 
-    Falls back to ``DEFAULT_SLURM_MODULE_LOADS`` when the resource spec
-    carries no explicit ``module_loads`` so existing recipes continue to
-    get the same default modules without change.  All module names are
-    shell-quoted so spaces or special characters in a name do not break
-    the generated script.
+    Resolves ``module_loads`` and ``extend_module_loads`` per
+    :func:`_resolve_module_loads` (Phase 0 step 03 precedence).  Falls back
+    to ``DEFAULT_SLURM_MODULE_LOADS`` when neither is set.  All module
+    names are shell-quoted so spaces or special characters in a name do
+    not break the generated script.
 
     Args:
         resource_spec: Effective resource spec for this submission, or
@@ -1390,8 +1423,13 @@ def _slurm_module_load_lines(resource_spec: ResourceSpec | None) -> list[str]:
         A list of ``  module load <quoted_name>`` lines ready to embed
         in the submission script body.
     """
-    module_loads = resource_spec.module_loads if resource_spec is not None else ()
-    selected = module_loads or DEFAULT_SLURM_MODULE_LOADS
+    if resource_spec is None:
+        selected: tuple[str, ...] = DEFAULT_SLURM_MODULE_LOADS
+    else:
+        selected = _resolve_module_loads(
+            resource_spec.module_loads,
+            resource_spec.extend_module_loads,
+        )
     return [f"  module load {shlex.quote(name)}" for name in selected]
 
 

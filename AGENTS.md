@@ -153,11 +153,14 @@ Types — `src/flytetest/planner_types.py`, `src/flytetest/types/`
   exit code, and cancellation reason when available.
 - Do not submit Slurm jobs from vague resources. Use registry hints only as
   defaults; queue and account must come from the user.
-- `resource_request` accepts `module_loads` (list of module names) to override
-  the cluster module loads per recipe. `module_loads` is a full replacement of
-  `DEFAULT_SLURM_MODULE_LOADS` (currently `python/3.11.9`, `apptainer/1.4.1`,
-  `gatk/4.5.0`, `samtools/1.22.1`). To extend the defaults rather than replace
-  them, use the escape hatch:
+- `resource_request` accepts `module_loads` (full replacement of
+  `DEFAULT_SLURM_MODULE_LOADS`, currently `python/3.11.9`, `apptainer/1.4.1`,
+  `gatk/4.5.0`, `samtools/1.22.1`) and `extend_module_loads` (appended to
+  the defaults). Use `extend_module_loads` for the common case of adding
+  one module to the defaults — `extend_module_loads=["bcftools/1.20"]`
+  ships all 5 modules. Use `module_loads` only when you need to drop a
+  default (rare). If both are set, `module_loads` wins and a warning is
+  logged. The legacy splat pattern still works:
   `from flytetest.spec_executor import DEFAULT_SLURM_MODULE_LOADS` then
   `module_loads=[*DEFAULT_SLURM_MODULE_LOADS, "bcftools/1.20"]`.
 - `monitor_slurm_job` accepts `tail_lines` (default 50, max 500) to return

@@ -30,8 +30,6 @@ from flytetest.planner_types import ReferenceGenome as AssetReferenceGenome
 from flytetest.types.assets import (
     AssetToolProvenance,
     Braker3InputBundleAsset,
-    Braker3NormalizedGff3Asset,
-    Braker3RawRunResultAsset,
     Braker3ResultBundle,
 )
 
@@ -140,6 +138,7 @@ class TestSpecLayerRegression(unittest.TestCase):
                 "walltime": None,
                 "execution_class": None,
                 "module_loads": [],
+                "extend_module_loads": [],
                 "notes": [],
             },
             "runtime_image": {

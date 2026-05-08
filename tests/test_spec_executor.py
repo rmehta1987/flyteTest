@@ -1985,6 +1985,84 @@ class ModuleLoadsAndResourceOverrideTests(TestCase):
         self.assertEqual(reloaded.resource_overrides.cpu, "32")
 
 
+class ExtendModuleLoadsPrecedenceTests(TestCase):
+    """Phase 0 step 03: extend_module_loads + module_loads precedence."""
+
+    def test_extend_alone_appends_to_defaults(self) -> None:
+        from flytetest.spec_executor import _resolve_module_loads
+
+        result = _resolve_module_loads((), ("bcftools/1.20",))
+        # 4 defaults + 1 extension = 5 modules.
+        self.assertEqual(
+            result,
+            ("python/3.11.9", "apptainer/1.4.1", "gatk/4.5.0", "samtools/1.22.1", "bcftools/1.20"),
+        )
+
+    def test_module_loads_alone_replaces_defaults(self) -> None:
+        from flytetest.spec_executor import _resolve_module_loads
+
+        result = _resolve_module_loads(("mymod/1.0",), ())
+        self.assertEqual(result, ("mymod/1.0",))
+
+    def test_neither_set_returns_defaults_unchanged(self) -> None:
+        from flytetest.spec_executor import DEFAULT_SLURM_MODULE_LOADS, _resolve_module_loads
+
+        result = _resolve_module_loads((), ())
+        self.assertEqual(result, DEFAULT_SLURM_MODULE_LOADS)
+
+    def test_both_set_module_loads_wins_with_warning(self) -> None:
+        import logging
+        from flytetest.spec_executor import _resolve_module_loads
+
+        with self.assertLogs("flytetest.spec_executor", level=logging.WARNING) as captured:
+            result = _resolve_module_loads(("mymod/1.0",), ("bcftools/1.20",))
+        self.assertEqual(result, ("mymod/1.0",))
+        self.assertTrue(any("module_loads wins" in msg for msg in captured.output))
+        self.assertTrue(any("extend_module_loads is ignored" in msg for msg in captured.output))
+
+    def test_render_slurm_script_uses_extend_module_loads(self) -> None:
+        """A ResourceSpec with extend_module_loads alone produces defaults + extensions in the script."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            artifact = _slurm_busco_artifact_with_runtime_bindings(tmp_path)
+            artifact_path = save_workflow_spec_artifact(artifact, tmp_path / "recipe.json")
+
+            custom_spec = ResourceSpec(
+                cpu="4",
+                memory="16Gi",
+                partition="batch",
+                walltime="01:00:00",
+                extend_module_loads=("bcftools/1.20",),
+            )
+            script = render_slurm_script(
+                artifact_path=artifact_path,
+                workflow_name="annotation_qc_busco",
+                run_id="run-extend",
+                stdout_path=Path("/runs/run-extend/slurm-%j.out"),
+                stderr_path=Path("/runs/run-extend/slurm-%j.err"),
+                resource_spec=custom_spec,
+                repo_root=tmp_path,
+                python_executable="/usr/bin/python3",
+            )
+
+            # All four defaults plus the extension are present.
+            self.assertIn("module load python/3.11.9", script)
+            self.assertIn("module load apptainer/1.4.1", script)
+            self.assertIn("module load gatk/4.5.0", script)
+            self.assertIn("module load samtools/1.22.1", script)
+            self.assertIn("module load bcftools/1.20", script)
+
+    def test_extend_module_loads_round_trips_via_from_dict(self) -> None:
+        spec = ResourceSpec(cpu="4", extend_module_loads=("bcftools/1.20",))
+        reloaded = ResourceSpec.from_dict(spec.to_dict())
+        self.assertEqual(reloaded.extend_module_loads, ("bcftools/1.20",))
+
+        # Legacy dict without extend_module_loads key defaults to empty tuple.
+        legacy_payload = {k: v for k, v in spec.to_dict().items() if k != "extend_module_loads"}
+        legacy = ResourceSpec.from_dict(legacy_payload)
+        self.assertEqual(legacy.extend_module_loads, ())
+
+
 class DurableAssetIndexIntegrationTests(TestCase):
     """M20b checks for durable_asset_index.json written after local execution.
 
