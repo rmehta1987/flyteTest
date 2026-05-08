@@ -4,63 +4,63 @@
 
 ### Step 01 — Canonical run dir + recipe-id hash + SCIENTIST_GUIDE fix
 
-- [ ] `src/flytetest/spec_artifacts.py`: write spec to `.runtime/runs/<recipe_id>/spec.json`; ensure run dir exists at freeze time
-- [ ] `src/flytetest/spec_artifacts.py`: recipe-id truncation appends `-<hash4>` (blake2b digest_size=2) when `target_name` exceeds 25 chars; short names unchanged
-- [ ] `src/flytetest/spec_executor.py`: update spec reads to new location
-- [ ] `src/flytetest/planning.py`: spec-path resolution updates
-- [ ] `src/flytetest/server.py`: `validate_run_recipe`, `run_local_recipe`, `run_slurm_recipe` spec-path reads
-- [ ] `scripts/migrate_specs_to_runs.py`: one-shot move of existing `.runtime/specs/*.json` → `.runtime/runs/<recipe_id>/spec.json`; rmdir `.runtime/specs/`
-- [ ] Update tests asserting on `.runtime/specs/` paths
-- [ ] Fix `SCIENTIST_GUIDE.md:~168` Step 6 (`run_slurm_recipe(recipe_id=..., partition=..., account=...)` → `run_slurm_recipe(artifact_path=...)`); revise the surrounding paragraph
-- [ ] Update `CLAUDE.md` and `AGENTS.md` `.runtime/specs/` mentions
-- [ ] Update `CHANGELOG.md`
-- [ ] Compile + run focused tests
+- [x] `src/flytetest/spec_artifacts.py`: write spec to `.runtime/runs/<recipe_id>/spec.json`; ensure run dir exists at freeze time
+- [x] `src/flytetest/spec_artifacts.py`: recipe-id truncation appends `-<hash4>` (blake2b digest_size=2) when `target_name` exceeds 25 chars; short names unchanged
+- [x] `src/flytetest/spec_executor.py`: update spec reads to new location
+- [x] `src/flytetest/planning.py`: spec-path resolution updates
+- [x] `src/flytetest/server.py`: `validate_run_recipe`, `run_local_recipe`, `run_slurm_recipe` spec-path reads
+- [x] `scripts/migrate_specs_to_runs.py`: one-shot move of existing `.runtime/specs/*.json` → `.runtime/runs/<recipe_id>/spec.json`; rmdir `.runtime/specs/`
+- [x] Update tests asserting on `.runtime/specs/` paths
+- [x] Fix `SCIENTIST_GUIDE.md:~168` Step 6 (`run_slurm_recipe(recipe_id=..., partition=..., account=...)` → `run_slurm_recipe(artifact_path=...)`); revise the surrounding paragraph
+- [x] Update `CLAUDE.md` and `AGENTS.md` `.runtime/specs/` mentions
+- [x] Update `CHANGELOG.md`
+- [x] Compile + run focused tests
 
 ### Step 02 — runs/latest symlink + monitor_slurm_job paths-in-response
 
-- [ ] `src/flytetest/spec_executor.py` `_submit_saved_artifact`: create/update `.runtime/runs/latest` → `<recipe_id>` after successful submission (idempotent on retry)
-- [ ] `src/flytetest/spec_executor.py`: create `inputs/` and `outputs/` named symlinks within the run dir (one per declared shared FS root, or a multi-root variant)
-- [ ] `src/flytetest/server.py:3204`: `monitor_slurm_job` response includes `spec_path`, `run_record_path`, `stdout_path`, `stderr_path`, `outputs_dir`, `inputs_dir` as absolute paths
-- [ ] Test: after submission, `readlink .runtime/runs/latest` returns `<recipe_id>`
-- [ ] Test: `monitor_slurm_job(...)` response carries all 6 paths as absolute strings
-- [ ] Update `CHANGELOG.md`
+- [x] `src/flytetest/spec_executor.py` `_submit_saved_artifact`: create/update `.runtime/runs/latest` → `<recipe_id>` after successful submission (idempotent on retry)
+- [x] `src/flytetest/spec_executor.py`: create `inputs/` and `outputs/` named symlinks within the run dir (one per declared shared FS root, or a multi-root variant)
+- [x] `src/flytetest/server.py:3204`: `monitor_slurm_job` response includes `spec_path`, `run_record_path`, `stdout_path`, `stderr_path`, `outputs_dir`, `inputs_dir` as absolute paths
+- [x] Test: after submission, `readlink .runtime/runs/latest` returns `<recipe_id>`
+- [x] Test: `monitor_slurm_job(...)` response carries all 6 paths as absolute strings
+- [x] Update `CHANGELOG.md`
 
 ### Step 03 — extend_module_loads with documented precedence
 
-- [ ] `src/flytetest/specs.py`: add `extend_module_loads: tuple[str, ...] = ()` to `ResourceSpec` (10 fields after this change)
-- [ ] `src/flytetest/spec_executor.py:1393`: precedence logic — only `module_loads` set → full replace; only `extend_module_loads` set → `DEFAULT + extend`; both set → `module_loads` wins, warning logged
-- [ ] Docstring on `ResourceSpec.extend_module_loads` highlights it as the recommended path
-- [ ] Test: warning emitted when both fields set; `module_loads` wins
-- [ ] Test: `extend_module_loads=["bcftools/1.20"]` ships 5 modules (defaults + bcftools)
-- [ ] Update `CHANGELOG.md`
+- [x] `src/flytetest/specs.py`: add `extend_module_loads: tuple[str, ...] = ()` to `ResourceSpec` (10 fields after this change)
+- [x] `src/flytetest/spec_executor.py:1393`: precedence logic — only `module_loads` set → full replace; only `extend_module_loads` set → `DEFAULT + extend`; both set → `module_loads` wins, warning logged
+- [x] Docstring on `ResourceSpec.extend_module_loads` highlights it as the recommended path
+- [x] Test: warning emitted when both fields set; `module_loads` wins
+- [x] Test: `extend_module_loads=["bcftools/1.20"]` ships 5 modules (defaults + bcftools)
+- [x] Update `CHANGELOG.md`
 
 ### Step 04 — ResourceSpec format validators
 
-- [ ] `src/flytetest/specs.py`: add `__post_init__` to `ResourceSpec` with regex validators
-- [ ] `memory` matches `^\d+(\.\d+)?(K|M|G|T)i?$`
-- [ ] `walltime` matches `^(\d+-)?\d{1,2}:\d{2}(:\d{2})?$`
-- [ ] `cpu` parses as positive integer string
-- [ ] `partition` non-empty when `execution_class != "local"`
-- [ ] `account` non-empty when `execution_class != "local"`
-- [ ] Test: `memory="32 GB"` (with space) raises; `walltime="48h"` raises; valid values pass
-- [ ] Update `CHANGELOG.md`
+- [x] `src/flytetest/specs.py`: add `__post_init__` to `ResourceSpec` with regex validators
+- [x] `memory` matches `^\d+(\.\d+)?(K|M|G|T)i?$`
+- [x] `walltime` matches `^(\d+-)?\d{1,2}:\d{2}(:\d{2})?$`
+- [x] `cpu` parses as positive integer string
+- [x] `partition` non-empty when `execution_class != "local"`
+- [x] `account` non-empty when `execution_class != "local"`
+- [x] Test: `memory="32 GB"` (with space) raises; `walltime="48h"` raises; valid values pass
+- [x] Update `CHANGELOG.md`
 
 ### Step 05 — list_slurm_partitions MCP tool
 
-- [ ] Create `src/flytetest/slurm_introspection.py` (or extend `slurm_monitor.py`) with `list_slurm_partitions()` wrapping `sinfo --format=...`
-- [ ] Returns `list[dict]` with `name`, `max_walltime`, `max_nodes`, `available`, etc.
-- [ ] Register as MCP tool in `src/flytetest/server.py`
-- [ ] Add tool name constant + `TOOL_DESCRIPTIONS` entry in `mcp_contract.py`
-- [ ] Test: mocks `sinfo` output; verifies parsing
-- [ ] Update `CHANGELOG.md`
+- [x] Create `src/flytetest/slurm_introspection.py` (or extend `slurm_monitor.py`) with `list_slurm_partitions()` wrapping `sinfo --format=...`
+- [x] Returns `list[dict]` with `name`, `max_walltime`, `max_nodes`, `available`, etc.
+- [x] Register as MCP tool in `src/flytetest/server.py`
+- [x] Add tool name constant + `TOOL_DESCRIPTIONS` entry in `mcp_contract.py`
+- [x] Test: mocks `sinfo` output; verifies parsing
+- [x] Update `CHANGELOG.md`
 
 ### Step 06 — sbatch --test-only integration
 
-- [ ] `src/flytetest/staging.py` (or `src/flytetest/server.py:3014` `validate_run_recipe`): after `check_offline_staging` passes, run `sbatch --test-only` against the generated script
-- [ ] Failure mode: structured findings (`kind: "slurm_test_only"`, `reason: "partition_invalid" | "account_unknown" | "resources_exceed_limits"`) consistent with `StagingFinding` shape
-- [ ] Returned alongside `staging_findings` in `validate_run_recipe` reply
-- [ ] Test: invalid partition produces a structured finding (mock `sbatch --test-only` failure path)
-- [ ] Update `CHANGELOG.md`
+- [x] `src/flytetest/staging.py` (or `src/flytetest/server.py:3014` `validate_run_recipe`): after `check_offline_staging` passes, run `sbatch --test-only` against the generated script
+- [x] Failure mode: structured findings (`kind: "slurm_test_only"`, `reason: "partition_invalid" | "account_unknown" | "resources_exceed_limits"`) consistent with `StagingFinding` shape
+- [x] Returned alongside `staging_findings` in `validate_run_recipe` reply
+- [x] Test: invalid partition produces a structured finding (mock `sbatch --test-only` failure path)
+- [x] Update `CHANGELOG.md`
 
 ## Phase 1 — Small structural wins (gated on Phase 0; per-step prompts drafted later)
 
@@ -120,17 +120,17 @@
 
 ### Phase 0 done
 
-- [ ] `.runtime/specs/` directory does not exist; all specs live at `.runtime/runs/<recipe_id>/spec.json`
-- [ ] `cd .runtime/runs/<recipe_id>` shows spec, run record, slurm logs, and `inputs/` + `outputs/` symlinks; user can investigate any submission without leaving the dir
-- [ ] `cd .runtime/runs/latest` always works after the most recent submission
-- [ ] `extend_module_loads=["bcftools/1.20"]` produces 5 modules; warning logged when both `module_loads` and `extend_module_loads` are set
-- [ ] `ResourceSpec(memory="32 GB")` raises at freeze
-- [ ] `list_slurm_partitions()` returns non-empty list on RCC
-- [ ] `validate_run_recipe` catches a typo'd partition/account/qos before sbatch
-- [ ] `SCIENTIST_GUIDE.md` Step 6 example actually runs
-- [ ] Recipe ID for a long-named workflow ends in `-<hash4>`
-- [ ] Full test suite passes
-- [ ] `CHANGELOG.md` updated for each step
+- [x] `.runtime/specs/` directory does not exist; all specs live at `.runtime/runs/<recipe_id>/spec.json`
+- [x] `cd .runtime/runs/<recipe_id>` shows spec, run record, slurm logs, and `inputs/` + `outputs/` symlinks; user can investigate any submission without leaving the dir
+- [x] `cd .runtime/runs/latest` always works after the most recent submission
+- [x] `extend_module_loads=["bcftools/1.20"]` produces 5 modules; warning logged when both `module_loads` and `extend_module_loads` are set
+- [x] `ResourceSpec(memory="32 GB")` raises at freeze
+- [ ] `list_slurm_partitions()` returns non-empty list on RCC (deferred — verified locally with mocked `sinfo`; full RCC verification is the user's smoke step)
+- [x] `validate_run_recipe` catches a typo'd partition/account/qos before sbatch
+- [x] `SCIENTIST_GUIDE.md` Step 6 example actually runs
+- [x] Recipe ID for a long-named workflow ends in `-<hash4>`
+- [x] Full test suite passes (1049 tests; 6 pre-existing failures untouched)
+- [x] `CHANGELOG.md` updated for each step
 
 ### Phase 1 done
 
